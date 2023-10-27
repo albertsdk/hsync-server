@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+**/*.pyc
+**/__pycache__
+
+# Git
+.git
+
+# Virtualenv
+.env
+.venv
+
+# Unit test / coverage
+.coverage
+coverage
+htmlcov
+
+/buckets
+/build
+/dist
+/tmp
+
+# IDE settings
+.vscode
