@@ -37,7 +37,7 @@ Instrumentator(
     excluded_handlers=["/metrics", "/docs"],
 ).instrument(
     app
-).expose(app, tags=["Public Router"], endpoint="/metrics")
+).expose(app, tags=["Monitoring Router"], endpoint="/metrics")
 
 #
 # Startup info

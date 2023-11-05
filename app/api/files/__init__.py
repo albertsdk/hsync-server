@@ -38,6 +38,25 @@ def is_valid_permission_format(permissions: str) -> bool:
     return bool(match(r"^[\-rwx]{1}[rwx-]{9}$", permissions))
 
 
+def update_file_timestamp(file_location: str, ctime: str = None, mtime: str = None):
+    # Set ctime and mtime if provided
+    if ctime or mtime:     
+        if ctime.isdigit():
+            _ctime = int(
+                datetime.fromtimestamp(int(ctime), timezone.utc).timestamp()
+            )
+        else:
+            _ctime = int(datetime.fromisoformat(ctime).timestamp())
+        if mtime.isdigit():
+            _mtime = int(
+                datetime.fromtimestamp(int(mtime), timezone.utc).timestamp()
+            )
+        else:
+            _mtime = int(datetime.fromisoformat(mtime).timestamp())
+        LOG.debug(f"Update timestamp: {file_location} ({ctime}, {mtime})")   
+        utime(file_location, (_ctime or _mtime, _mtime or _ctime))
+
+
 @auth_router.get(
     "/bucket/v1/{bucket}",
     name="Get bucket information",
@@ -173,6 +192,8 @@ async def upload_file(
         # Per-check MD5 file checksum if already exists
         if md5sum and exists(file_location) and md5sum == get_md5_hash(file_location):
             LOG.warning(f"File already present: {file_location}")
+            # Update ctime and mtime if provided
+            update_file_timestamp(file_location, ctime, mtime)
             return JSONResponse(
                 status_code=status.HTTP_409_CONFLICT,
                 content={
@@ -190,21 +211,7 @@ async def upload_file(
             while chunk := await file.read(8192):
                 await temp_file.write(chunk)
 
-        # Set ctime and mtime if provided
-        if ctime or mtime:
-            if ctime.isdigit():
-                _ctime = int(
-                    datetime.fromtimestamp(int(ctime), timezone.utc).timestamp()
-                )
-            else:
-                _ctime = int(datetime.fromisoformat(ctime).timestamp())
-            if mtime.isdigit():
-                _mtime = int(
-                    datetime.fromtimestamp(int(mtime), timezone.utc).timestamp()
-                )
-            else:
-                _mtime = int(datetime.fromisoformat(mtime).timestamp())
-            utime(file_location_tmp, (_ctime or _mtime, _mtime or _ctime))
+        update_file_timestamp(file_location_tmp, ctime, mtime)
 
         # Permissions
         if permissions:
