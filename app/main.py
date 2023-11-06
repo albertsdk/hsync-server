@@ -8,7 +8,6 @@ from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 from logging import getLogger
 from prometheus_fastapi_instrumentator import Instrumentator
-from psutil import virtual_memory
 
 
 LOG = getLogger("main")
@@ -26,7 +25,7 @@ app.include_router(health.public_router)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Store MD5 files checksum
-LOG.info(f"Loading MD5 file from: {HSYNC_BUCKETS}")
+LOG.info(f"Loading MD5 file hashes from: {HSYNC_BUCKETS}")
 md5_files = set_md5_hashes(HSYNC_BUCKETS)
 LOG.info(f"{md5_files} files stored.")
 
@@ -46,10 +45,6 @@ Instrumentator(
 LOG.debug("Available logging: DEBUG")
 LOG.info("Available logging: INFO")
 LOG.warning("Available logging: WARNING")
-
-# RAM usage
-ram_used = float(dict(virtual_memory()._asdict())["used"]) / 1024 / 1024 / 1024
-LOG.info(f"RAM Usage: {ram_used} GB")
 
 tot_time = round(time.time() - start, 3)
 LOG.info(f"HSYNC Server started in: {tot_time} sec.")
