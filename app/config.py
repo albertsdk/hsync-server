@@ -14,7 +14,7 @@ HSYNC_PATH = str(Path(os.path.dirname(__file__) + "/..").resolve())
   
 # Server API Key
 # https://it-tools.tech/token-generator?symbols=true
-HSYNC_API_KEY = os.environ.get("HSYNC_API_KEY", str(uuid4()))
+HSYNC_API_KEY = os.environ.get("HSYNC_API_KEY", "")
 
 # Local buckets path
 HSYNC_BUCKETS = f"{HSYNC_PATH}/buckets"

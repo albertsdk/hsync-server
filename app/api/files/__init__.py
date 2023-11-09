@@ -71,7 +71,7 @@ async def get_bucket(bucket: str):
         bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
 
         if not exists(bucket_dir):
-            return HTTPException(
+            raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Bucket not found"
             )
 
@@ -89,6 +89,9 @@ async def get_bucket(bucket: str):
         return JSONResponse(
             status_code=status.HTTP_200_OK, content={"name": bucket, **formatted_times}
         )
+    except HTTPException as e:
+        LOG.error(f"Failed to get bucket information: {bucket}: {e}", exc_info=True)
+        raise e
     except Exception as e:
         LOG.error(f"Failed to get bucket information: {bucket}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -129,16 +132,16 @@ async def create_bucket(bucket: str):
 
 @auth_router.delete("/bucket/v1/{bucket}")
 async def delete_bucket(bucket: str):
-    if not is_valid_bucket(bucket):
-        LOG.error(f"Invalid bucket name: {bucket}")
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid bucket name"
-        )
     bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
     try:
+        if not is_valid_bucket(bucket):
+            LOG.error(f"Invalid bucket name: {bucket}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid bucket name"
+            )
         if not exists(bucket_dir):
             LOG.warning(f"Bucket not found: {bucket_dir}")
-            return HTTPException(
+            raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Bucket not found"
             )
         rmtree(bucket_dir)
@@ -150,6 +153,9 @@ async def delete_bucket(bucket: str):
                 "bucket": bucket,
             },
         )
+    except HTTPException as e:
+        LOG.error(f"Failed to delete bucket: {bucket}: {e}", exc_info=True)
+        raise e
     except Exception as e:
         LOG.error(
             f"Unexpected error while deleting bucket {bucket}: {e}", exc_info=True
@@ -268,10 +274,13 @@ async def download_file(bucket: str, filename: str) -> FileResponse:
         file = f"{HSYNC_BUCKETS}/{bucket}/{filename}"
 
         if not await isfile(file):
-            return HTTPException(
+            raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
             )
         return FileResponse(file, filename=filename)
+    except HTTPException as e:
+        LOG.error(f"Failed to download file: {bucket}:{filename} {e}", exc_info=True)
+        raise e
     except Exception as e:
         LOG.error(f"Download failed {filename}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -295,10 +304,10 @@ async def get_files(
 
         dir = f"{HSYNC_BUCKETS}/{bucket}/{path or ''}".rstrip("/")
 
-        if not await isdir(dir):
-            return HTTPException(
+        if not exists(dir):
+            raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Directory not found: {dir}",
+                detail=f"Bucket not found: {bucket}",
             )
 
         file_list = []
@@ -325,6 +334,9 @@ async def get_files(
             status_code=status.HTTP_200_OK,
             content=file_list,
         )
+    except HTTPException as e:
+        LOG.error(f"Files list failed: {e}", exc_info=True)
+        raise e
     except Exception as e:
         LOG.error(f"Files list failed: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

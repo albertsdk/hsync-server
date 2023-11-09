@@ -14,7 +14,7 @@ LOG = getLogger("main")
 start = time.time()
 
 app = FastAPI(
-    title="HSYNC - HTTP Sync Server",
+    title="HSYNC - HTTP Sync file server",
     version="0.1.0",
 )
 app.include_router(public_router)
