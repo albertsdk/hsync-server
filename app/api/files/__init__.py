@@ -168,8 +168,8 @@ async def delete_bucket(bucket: str):
 
 @auth_router.post("/upload/v1/{bucket}")
 async def upload_file(
+    bucket: str,
     cid: str = Form(),
-    bucket: str = "",
     file: UploadFile = File(...),
     path: str = Form(""),
     ctime: str = Form(""),
@@ -288,7 +288,7 @@ async def download_file(bucket: str, filename: str) -> FileResponse:
 
 @auth_router.get("/files/v1/{bucket}")
 async def get_files(
-    bucket: str = "", path: str = None, sync_order: str = "mtime"
+    bucket: str, path: str = None, sync_order: str = "mtime"
 ) -> JSONResponse:
     try:
         if not is_valid_bucket(bucket):
@@ -344,33 +344,33 @@ async def get_files(
 
 @auth_router.delete("/file/v1/{bucket}")
 async def delete_file(
+    bucket: str,
     cid: str = Form(),
-    bucket: str = "",
     filename: str = Form(),
 ) -> JSONResponse:
     if not is_valid_bucket(bucket):
         LOG.error(f"Invalid bucket name: {bucket}")
-        return HTTPException(
+        raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid bucket name"
         )
     bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
     if not exists(bucket_dir):
         LOG.warning(f"Bucket not found: {bucket_dir}")
-        return HTTPException(
+        raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Bucket not found"
         )
 
     file = f"{bucket_dir}/{filename}"
     if not is_valid_dir(dirname(file)):
         LOG.error(f"Invalid path: {bucket}")
-        return HTTPException(
+        raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path"
         )
 
     try:
         if not exists(file):
             LOG.warning(f"File not found: {file}")
-            return HTTPException(
+            raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
             )
 
@@ -391,6 +391,9 @@ async def delete_file(
                 "file": file,
             },
         )
+    except HTTPException as e:
+        LOG.error(f"Error deleting file {file}: {e}", exc_info=True)
+        raise e
     except Exception as e:
         LOG.error(f"Unexpected error while deleting file {file}: {e}", exc_info=True)
         raise HTTPException(
