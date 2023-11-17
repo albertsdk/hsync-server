@@ -8,8 +8,8 @@ including path validation, MD5 computation, and file permission handling.
 import aiofiles
 import stat
 
-from app.config import HSYNC_BUCKETS
-from app.model.dir import Dir
+from hsync_server.config import HSYNC_BUCKETS
+from hsync_server.models.dir import Dir
 from asyncio import to_thread
 from hashlib import md5
 from logging import getLogger

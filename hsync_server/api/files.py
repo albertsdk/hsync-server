@@ -11,14 +11,14 @@ This module provides REST API endpoints for file and bucket management:
 All endpoints require API key authentication via Bearer token.
 """
 
-from app.api import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
-from app.api.events import manager
-from app.config import HSYNC_BUCKETS
-from app.file_hashes import get_md5_hash, set_md5_hash
-from app.model.file import File as LocalFile
-from app.model.event import Event, EventName
-from app.routers import auth_router
-from aiofiles.ospath import isdir, isfile
+from hsync_server.api.common import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
+from hsync_server.api.events import manager
+from hsync_server.config import HSYNC_BUCKETS
+from hsync_server.file_hashes import get_md5_hash, set_md5_hash
+from hsync_server.models.file import File as LocalFile
+from hsync_server.models.event import Event, EventName
+from hsync_server.routers import auth_router
+from aiofiles.ospath import isfile
 from aiofiles.tempfile import NamedTemporaryFile
 from datetime import datetime, timezone
 from fastapi import File, Form, HTTPException, UploadFile, status
@@ -113,7 +113,11 @@ def update_file_timestamp(
 
         LOG.debug(f"Update timestamp: {file_location} ({ctime}, {mtime})")
         # Set access time and modification time (fallback to the other if one is None)
-        utime(file_location, (_ctime or _mtime, _mtime or _ctime))
+        # Only call utime if we have at least one valid timestamp
+        atime = _ctime or _mtime
+        mtime_val = _mtime or _ctime
+        if atime is not None and mtime_val is not None:
+            utime(file_location, (atime, mtime_val))
 
 
 @auth_router.get(
@@ -340,7 +344,7 @@ async def upload_file(
 
         # Write file to temporary location first (atomic write pattern)
         async with NamedTemporaryFile(delete=False) as temp_file:
-            file_location_tmp = temp_file.name
+            file_location_tmp = str(temp_file.name)
             while chunk := await file.read(8192):
                 await temp_file.write(chunk)
 
@@ -367,9 +371,10 @@ async def upload_file(
         # Broadcast "added" event to other connected clients
         src = LocalFile().get(file_location)
         local_bucket = f"{HSYNC_BUCKETS}/{bucket}"
-        await manager.send_message(
-            Event(cid, local_bucket, bucket, EventName.added, src)
-        )
+        if src:
+            await manager.send_message(
+                Event(cid, local_bucket, bucket, EventName.added, src)
+            )
 
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
@@ -480,13 +485,15 @@ async def get_files(
                     continue
 
                 # Get file info and normalize path relative to bucket
-                file_info = LocalFile().get(file, root).to_dict()
-                file_data = (
-                    LocalFile()
-                    .from_dict(file_info, f"{HSYNC_BUCKETS}/{bucket}")
-                    .to_dict()
-                )
-                file_list.append(file_data)
+                file_obj = LocalFile().get(file, root)
+                if file_obj:
+                    file_info = file_obj.to_dict()
+                    file_data = (
+                        LocalFile()
+                        .from_dict(file_info, f"{HSYNC_BUCKETS}/{bucket}")
+                        .to_dict()
+                    )
+                    file_list.append(file_data)
 
         # Sort by specified timestamp field
         file_list.sort(key=lambda x: x.get(sync_order))
@@ -559,9 +566,10 @@ async def delete_file(
         # Broadcast "deleted" event to other clients before deletion
         src = LocalFile().get(file)
         local_bucket = f"{HSYNC_BUCKETS}/{bucket}"
-        await manager.send_message(
-            Event(cid, local_bucket, bucket, EventName.deleted, src)
-        )
+        if src:
+            await manager.send_message(
+                Event(cid, local_bucket, bucket, EventName.deleted, src)
+            )
 
         # Remove the file
         remove(file)
