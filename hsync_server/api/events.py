@@ -12,9 +12,9 @@ The WebSocket endpoint handles:
 - File system operations based on received events
 """
 
-from hsync_server.api.common import set_permissions
+from hsync_server.api.utils import set_permissions
 from hsync_server.config import HSYNC_API_KEY, HSYNC_BUCKETS
-from hsync_server.file_hashes import del_md5_hash
+from hsync_server.hashes import del_md5_hash
 from hsync_server.models.dir import Dir
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File
