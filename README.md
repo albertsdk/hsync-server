@@ -146,10 +146,10 @@ hsync-server/
 │   ├── config.py           # Configuration
 │   ├── main.py             # FastAPI application
 │   ├── routers.py          # Router configuration
-│   ├── file_hashes.py      # MD5 hash caching
+│   ├── hashes.py           # MD5 hash caching
 │   ├── api/                # API endpoints
 │   │   ├── __init__.py
-│   │   ├── common.py       # Common utilities
+│   │   ├── utils.py        # API utilities
 │   │   ├── events.py       # WebSocket handler
 │   │   ├── files.py        # REST API files/buckets
 │   │   └── health.py       # Health check
