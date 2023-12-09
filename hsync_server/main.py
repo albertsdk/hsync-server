@@ -2,8 +2,9 @@
 HSYNC Server - Main Application Entry Point.
 
 This module initializes the FastAPI application, configures routers,
-middleware, and Prometheus metrics instrumentation. It also preloads
-MD5 hashes for all existing files in the buckets directory on startup.
+middleware, rate limiting, and Prometheus metrics instrumentation.
+It also preloads MD5 hashes for all existing files in the buckets
+directory on startup.
 """
 
 import time
@@ -11,11 +12,15 @@ import time
 from .api import events, files, health
 from .config import HSYNC_BUCKETS
 from .hashes import set_md5_hashes
+from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .routers import auth_router, public_router
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 from logging import getLogger
 from prometheus_fastapi_instrumentator import Instrumentator
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 
 # Logger instance for this module
@@ -29,6 +34,11 @@ app = FastAPI(
     title="HSYNC - HTTP Sync file server",
     version="0.1.0",
 )
+
+# Configure rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Register API routers
 # Public router: endpoints that don't require authentication
