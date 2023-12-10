@@ -71,22 +71,24 @@ docker run --rm -it --entrypoint=/bin/sh hsync:0.1.0
 
 ## REST API
 
-### Bucket
+> 📖 For detailed API documentation, see [docs/api.md](docs/api.md)
+
+### Buckets
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/bucket/v1/{bucket}` | Get bucket information |
-| `POST` | `/bucket/v1?bucket={name}` | Create a new bucket |
-| `DELETE` | `/bucket/v1/{bucket}` | Delete a bucket |
+| `GET` | `/api/v1/buckets/{bucket}` | Get bucket information |
+| `POST` | `/api/v1/buckets?bucket={name}` | Create a new bucket |
+| `DELETE` | `/api/v1/buckets/{bucket}` | Delete a bucket |
 
-### File
+### Files
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/upload/v1/{bucket}` | Upload file (multipart/form-data) |
-| `GET` | `/download/v1/{bucket}?filename={path}` | Download file |
-| `GET` | `/files/v1/{bucket}` | List files in bucket |
-| `DELETE` | `/file/v1/{bucket}` | Delete file |
+| `GET` | `/api/v1/buckets/{bucket}/files` | List files in bucket |
+| `POST` | `/api/v1/buckets/{bucket}/files` | Upload file (multipart/form-data) |
+| `GET` | `/api/v1/buckets/{bucket}/files/download?filename={path}` | Download file |
+| `DELETE` | `/api/v1/buckets/{bucket}/files` | Delete file |
 
 ### Upload Parameters
 
@@ -105,7 +107,7 @@ docker run --rm -it --entrypoint=/bin/sh hsync:0.1.0
 ### Endpoint
 
 ```
-ws://host:8765/events/v1/{bucket}/{cid}
+ws://host:8765/api/v1/buckets/{bucket}/events/{cid}
 ```
 
 ### Authentication
@@ -149,9 +151,9 @@ The server implements rate limiting to prevent API abuse:
 
 | Endpoint | Limit |
 |----------|-------|
-| Upload (`/upload/v1`) | 50 requests/minute |
-| Download (`/download/v1`) | 200 requests/minute |
-| Files list (`/files/v1`) | 100 requests/minute |
+| Upload (`/api/v1/buckets/{bucket}/files` POST) | 50 requests/minute |
+| Download (`/api/v1/buckets/{bucket}/files/download`) | 200 requests/minute |
+| Files list (`/api/v1/buckets/{bucket}/files` GET) | 100 requests/minute |
 | Other endpoints | 100 requests/minute |
 
 When rate limit is exceeded, the server returns HTTP 429 (Too Many Requests).
@@ -167,6 +169,12 @@ curl http://localhost:8765/health
 ```bash
 curl http://localhost:8765/metrics
 ```
+
+## Documentation
+
+- [Architecture](docs/architecture.md) - System architecture and component overview
+- [API Reference](docs/api.md) - Complete REST and WebSocket API documentation
+- [Synchronization Flow](docs/sync-flow.md) - How file synchronization works
 
 ## Project Structure
 
@@ -193,6 +201,10 @@ hsync-server/
 │       ├── file.py
 │       ├── symlink.py      # Symbolic link model
 │       └── sync_action.py
+├── docs/                   # Documentation with Mermaid diagrams
+│   ├── architecture.md
+│   ├── api.md
+│   └── sync-flow.md
 ├── config/                 # Configuration files
 │   ├── logging-debug.yaml
 │   └── logging-info.yaml

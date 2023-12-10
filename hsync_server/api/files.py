@@ -128,7 +128,7 @@ def update_file_timestamp(
 
 
 @auth_router.get(
-    "/bucket/v1/{bucket}",
+    "/api/v1/buckets/{bucket}",
     name="Get bucket information",
     summary="Get bucket information",
     description="""Get bucket information including timestamps.""",
@@ -182,7 +182,7 @@ async def get_bucket(bucket: str) -> JSONResponse:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@auth_router.post("/bucket/v1")
+@auth_router.post("/api/v1/buckets")
 async def create_bucket(bucket: str) -> JSONResponse:
     """
     Create a new storage bucket.
@@ -231,7 +231,7 @@ async def create_bucket(bucket: str) -> JSONResponse:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@auth_router.delete("/bucket/v1/{bucket}")
+@auth_router.delete("/api/v1/buckets/{bucket}")
 async def delete_bucket(bucket: str) -> JSONResponse:
     """
     Delete a bucket and all its contents.
@@ -285,7 +285,7 @@ async def delete_bucket(bucket: str) -> JSONResponse:
         )
 
 
-@auth_router.post("/upload/v1/{bucket}")
+@auth_router.post("/api/v1/buckets/{bucket}/files")
 @limiter.limit(RATE_LIMIT_UPLOAD)
 async def upload_file(
     request: Request,
@@ -402,7 +402,7 @@ async def upload_file(
             remove(file_location_tmp)
 
 
-@auth_router.get("/download/v1/{bucket}")
+@auth_router.get("/api/v1/buckets/{bucket}/files/download")
 @limiter.limit(RATE_LIMIT_DOWNLOAD)
 async def download_file(
     request: Request, bucket: str, filename: str
@@ -444,7 +444,7 @@ async def download_file(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@auth_router.get("/files/v1/{bucket}")
+@auth_router.get("/api/v1/buckets/{bucket}/files")
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def get_files(
     request: Request,
@@ -528,7 +528,7 @@ async def get_files(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@auth_router.delete("/file/v1/{bucket}")
+@auth_router.delete("/api/v1/buckets/{bucket}/files")
 async def delete_file(
     bucket: str,
     cid: str = Form(),

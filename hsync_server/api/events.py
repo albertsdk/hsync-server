@@ -135,7 +135,7 @@ class BucketConnectionManager:
 
 # NOTE: WebSocket does not support Header Authentication
 #       and FastAPI auto-docs for WebSocket endpoints
-@public_router.websocket("/events/v1/{bucket}/{cid}")
+@public_router.websocket("/api/v1/buckets/{bucket}/events/{cid}")
 async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
     """
     WebSocket endpoint for real-time file system event synchronization.
