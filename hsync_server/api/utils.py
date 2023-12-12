@@ -25,7 +25,8 @@ def is_valid_bucket(value: str) -> bool:
     """
     Validate a bucket name.
 
-    Bucket names must be alphanumeric only (letters and digits).
+    Bucket names must contain only alphanumeric characters and hyphens.
+    Hyphens cannot be at the beginning or end.
 
     Args:
         value: The bucket name to validate.
@@ -33,7 +34,8 @@ def is_valid_bucket(value: str) -> bool:
     Returns:
         True if the bucket name is valid, False otherwise.
     """
-    return value.isalnum()
+    import re
+    return bool(re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$", value))
 
 
 def is_valid_dir(target_path: str) -> bool:

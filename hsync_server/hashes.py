@@ -59,12 +59,11 @@ def del_md5_hash(filepath: str) -> bool:
     Returns:
         True if the hash was found and deleted, False otherwise.
     """
-    md5sum = get_md5_hash(filepath)
-    if md5sum:
-        for entry in FILE_HASHES:
-            if md5sum in entry:
-                FILE_HASHES.remove(entry)
-                return True
+    hashed_key = hashlib.new("sha256", filepath.encode()).hexdigest()
+    for entry in FILE_HASHES:
+        if hashed_key in entry:
+            FILE_HASHES.remove(entry)
+            return True
     return False
 
 

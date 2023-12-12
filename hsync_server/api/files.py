@@ -74,12 +74,13 @@ def is_valid_permission_format(permissions: str) -> bool:
     Validate a symbolic permission string format.
 
     Args:
-        permissions: Permission string to validate (e.g., '-rw-r--r--').
+        permissions: Permission string to validate (e.g., '-rw-r--r--', 'drwxr-xr-x').
 
     Returns:
         True if the format is valid, False otherwise.
     """
-    return bool(match(r"^[\-rwx]{1}[rwx-]{9}$", permissions))
+    # First character: file type (d=dir, l=link, -=file, b=block, c=char, p=pipe, s=socket)
+    return bool(match(r"^[dlbcps\-][rwx-]{9}$", permissions))
 
 
 def update_file_timestamp(
