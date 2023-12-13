@@ -19,6 +19,21 @@ class TestHealthEndpoint:
         # Health endpoint returns empty string (may be JSON encoded as "")
         assert response.text in ["", '""']
 
+    @pytest.mark.asyncio
+    async def test_health_check_no_auth_required(self, client_no_auth: AsyncClient):
+        """Health endpoint does not require authentication."""
+        response = await client_no_auth.get("/health")
+        # Should not return 401 or 403
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_health_check_content_type(self, client_no_auth: AsyncClient):
+        """Health endpoint returns valid content type."""
+        response = await client_no_auth.get("/health")
+        content_type = response.headers.get("content-type", "")
+        # Accept either text/plain or application/json
+        assert "text/plain" in content_type or "application/json" in content_type
+
 
 class TestBucketEndpoints:
     """Tests for bucket management endpoints."""
