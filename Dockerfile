@@ -47,19 +47,21 @@ COPY hsync_server /project/hsync_server
 RUN mkdir -p buckets tmp \
     && ln -s /venv /project/.venv
 
-# Set environment variables
+# Set environment variables with defaults
+# These can be overridden via --env-file or -e flags
 ENV PATH="/project/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    TZ=Europe/Rome \
+    TZ=UTC \
     HSYNC_LOG_LEVEL=info \
     HSYNC_PORT=8765 \
-    HSYNC_WORKERS=1
+    HSYNC_WORKERS=1 \
+    HSYNC_API_KEY=""
 
-# Expose port
+# Expose default port (can be changed via HSYNC_PORT)
 EXPOSE 8765
 
 # Run as nobody user for security
 USER nobody
 
-# Start uvicorn server
+# Start uvicorn server with configurable parameters
 CMD ["sh", "-c", "uvicorn hsync_server.main:app --host 0.0.0.0 --port ${HSYNC_PORT} --log-config config/logging-${HSYNC_LOG_LEVEL}.yaml --log-level ${HSYNC_LOG_LEVEL} --workers ${HSYNC_WORKERS}"]
