@@ -20,7 +20,7 @@ export HSYNC_PORT="${HSYNC_PORT:-8765}"
 export HSYNC_LOG_LEVEL="${HSYNC_LOG_LEVEL:-info}"
 export HSYNC_WORKERS="${HSYNC_WORKERS:-1}"
 export HSYNC_API_KEY="${HSYNC_API_KEY:-}"
-export TZ="${TZ:-UTC}"
+export HSYNC_TZ="${HSYNC_TZ:-UTC}"
 
 # Environment file (can be set via --env-file option)
 ENV_FILE=""
@@ -72,7 +72,6 @@ ${BOLD}Commands:${RESET}
     logs        Show container logs (use -f to follow)
     shell       Open a shell in the running container
     clean       Remove container and image
-    compose     Run docker-compose commands
 
 ${BOLD}Options:${RESET}
     -e, --env-file  Environment file to load (e.g., dev.env, prod.env)
@@ -84,7 +83,7 @@ ${BOLD}Environment Variables:${RESET}
     HSYNC_LOG_LEVEL   Log level: debug, info, warning, error (default: info)
     HSYNC_WORKERS     Number of workers (default: 1)
     HSYNC_API_KEY     API key for authentication (required)
-    TZ                Timezone in IANA format (default: UTC)
+    HSYNC_TZ          Timezone in IANA format (default: UTC)
     HSYNC_VERSION     Image tag version (default: 0.1.0)
 
 ${BOLD}Examples:${RESET}
@@ -140,13 +139,13 @@ cmd_start() {
         -e "HSYNC_API_KEY=${HSYNC_API_KEY}"
         -e "HSYNC_LOG_LEVEL=${HSYNC_LOG_LEVEL}"
         -e "HSYNC_WORKERS=${HSYNC_WORKERS}"
-        -e "TZ=${TZ}"
+        -e "HSYNC_TZ=${HSYNC_TZ}"
         -v "${SCRIPT_DIR}/buckets:/project/buckets"
     )
 
     docker "${docker_args[@]}" "${IMAGE_NAME}:${IMAGE_TAG}"
     log_ok "Container started: ${CONTAINER_NAME}"
-    log_info "Port: ${HSYNC_PORT}, Workers: ${HSYNC_WORKERS}, Log Level: ${HSYNC_LOG_LEVEL}, TZ: ${TZ}"
+    log_info "Port: ${HSYNC_PORT}, Workers: ${HSYNC_WORKERS}, Log Level: ${HSYNC_LOG_LEVEL}, TZ: ${HSYNC_TZ}"
 }
 
 cmd_stop() {
@@ -185,10 +184,7 @@ cmd_clean() {
     log_ok "Cleanup complete"
 }
 
-cmd_compose() {
-    shift || true
-    docker-compose "$@"
-}
+
 
 # -----------------------------------------------------------------------------
 # Parse Options
@@ -235,7 +231,6 @@ main() {
         logs)    cmd_logs "${2:-}" ;;
         shell)   cmd_shell ;;
         clean)   cmd_clean ;;
-        compose) cmd_compose "$@" ;;
         -h|--help|help|"") show_help ;;
         *) log_error "Unknown command: $1"; show_help; exit 1 ;;
     esac
