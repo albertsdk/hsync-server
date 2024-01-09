@@ -27,6 +27,7 @@ import time
 
 from .api import events, files, health
 from .config import HSYNC_BUCKETS
+from .error_handlers import register_exception_handlers
 from .hashes import set_md5_hashes
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .routers import auth_router, public_router
@@ -55,6 +56,9 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Register custom exception handlers for standardized error responses
+register_exception_handlers(app)
 
 # Register API routers
 # Public router: endpoints that don't require authentication
