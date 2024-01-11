@@ -28,6 +28,8 @@ The WebSocket endpoint handles:
 - File system operations based on received events
 """
 
+import logging
+
 from hsync_server.api.utils import set_permissions
 from hsync_server.config import HSYNC_API_KEY, HSYNC_BUCKETS
 from hsync_server.hashes import del_md5_hash
@@ -38,15 +40,14 @@ from hsync_server.models.symlink import Symlink
 from hsync_server.routers import public_router
 from fastapi import Query, WebSocket, WebSocketDisconnect
 from json import loads, JSONDecodeError
-from logging import getLogger
 from os import makedirs, rename, remove, symlink as os_symlink, unlink
 from os.path import dirname, exists, islink
 from shutil import rmtree
 from typing import Dict, Optional
 
 
-# Logger instance for this module
-LOG = getLogger("main")
+# Logger instance for this module (uses __name__ for module-level filtering)
+LOG = logging.getLogger(__name__)
 
 
 class ConnectionManager:

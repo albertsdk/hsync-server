@@ -28,6 +28,8 @@ All endpoints require API key authentication via Bearer token.
 Rate limiting is applied to protect against abuse.
 """
 
+import logging
+
 from hsync_server.api.utils import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
 from hsync_server.api.events import bucket_manager
 from hsync_server.config import HSYNC_BUCKETS
@@ -57,7 +59,6 @@ from aiofiles.tempfile import NamedTemporaryFile
 from datetime import datetime, timezone
 from fastapi import File, Form, Request, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
-from logging import getLogger
 from os import makedirs, remove, utime, walk
 from os.path import (
     abspath,
@@ -73,8 +74,8 @@ from shutil import move, rmtree
 from typing import Optional
 
 
-# Logger instance for this module
-LOG = getLogger("main")
+# Logger instance for this module (uses __name__ for module-level filtering)
+LOG = logging.getLogger(__name__)
 
 
 def is_safe_path(base_path: str, target_path: str) -> bool:

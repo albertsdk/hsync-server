@@ -23,16 +23,17 @@ It provides two router types:
 - public_router: No authentication required (health checks, metrics)
 """
 
+import logging
+
 from .config import HSYNC_API_KEY
 from .exceptions import InvalidApiKeyError, MissingApiKeyError
 from fastapi import APIRouter, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from logging import getLogger
 from typing import Annotated
 
 
-# Logger instance for this module
-LOG = getLogger("main")
+# Logger instance for this module (uses __name__ for module-level filtering)
+LOG = logging.getLogger(__name__)
 
 
 def mask_api_key(api_key: str) -> str:

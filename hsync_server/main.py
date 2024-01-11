@@ -23,25 +23,26 @@ It also preloads MD5 hashes for all existing files in the buckets
 directory on startup.
 """
 
+import logging
 import time
 
 from .api import events, files, health
 from .config import HSYNC_BUCKETS
 from .error_handlers import register_exception_handlers
 from .hashes import set_md5_hashes
+from .middleware import RequestIdMiddleware
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .routers import auth_router, public_router
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
-from logging import getLogger
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 
-# Logger instance for this module
-LOG = getLogger("main")
+# Logger instance for this module (uses __name__ for module-level filtering)
+LOG = logging.getLogger(__name__)
 
 # Track startup time for performance monitoring
 start = time.time()
@@ -74,6 +75,10 @@ app.include_router(health.public_router)
 
 # Add GZip compression middleware for responses larger than 1000 bytes
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Add Request ID middleware for distributed tracing
+# This must be added after other middleware to ensure request_id is set first
+app.add_middleware(RequestIdMiddleware)
 
 # Preload MD5 checksums for all existing files in buckets
 # This enables fast duplicate detection without recalculating hashes
