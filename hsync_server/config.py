@@ -60,6 +60,25 @@ HSYNC_API_KEY: str = os.environ.get("HSYNC_API_KEY", "")
 # Local buckets storage path - directory where all bucket data is stored
 HSYNC_BUCKETS: str = f"{HSYNC_PATH}/buckets"
 
+# =============================================================================
+# SSL/TLS Configuration
+# =============================================================================
+
+# Enable HTTPS/WSS (set to "true" to enable SSL)
+HSYNC_SSL_ENABLED: bool = os.environ.get("HSYNC_SSL_ENABLED", "false").lower() == "true"
+
+# Path to SSL certificate file (PEM format)
+# If not set and SSL is enabled, certificates will be auto-generated
+HSYNC_SSL_CERTFILE: str = os.environ.get("HSYNC_SSL_CERTFILE", "")
+
+# Path to SSL private key file (PEM format)
+# If not set and SSL is enabled, certificates will be auto-generated
+HSYNC_SSL_KEYFILE: str = os.environ.get("HSYNC_SSL_KEYFILE", "")
+
+# Directory for auto-generated certificates (default: {HSYNC_PATH}/certs)
+# Certificates are generated automatically if HSYNC_SSL_CERTFILE/KEYFILE are not set
+HSYNC_SSL_CERT_DIR: str = os.environ.get("HSYNC_SSL_CERT_DIR", f"{HSYNC_PATH}/certs")
+
 
 def _get_log_level() -> str:
     """

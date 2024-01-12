@@ -23,5 +23,8 @@ htmlcov
 /dist
 /tmp
 
+# Auto-generated SSL certificates
+/certs
+
 # IDE settings
 .vscode
