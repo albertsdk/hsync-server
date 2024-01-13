@@ -184,34 +184,34 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             auth_message = loads(auth_data)
 
             if auth_message.get("type") != "auth":
-                LOG.warning(f"[WS] Invalid auth message type from {cid}")
+                LOG.warning(f"[WEBSOCKET ] Invalid auth message type from {cid}")
                 await websocket.close(code=4001, reason="Invalid auth message")
                 return
 
             auth_token = auth_message.get("token")
             if auth_token != HSYNC_API_KEY:
-                LOG.warning(f"[WS] Invalid API key from {cid}")
+                LOG.warning(f"[WEBSOCKET ] Invalid API key from {cid}")
                 await websocket.close(code=4003, reason="Invalid API key")
                 return
 
-            LOG.debug(f"[WS] Client {cid} authenticated")
+            LOG.debug(f"[WEBSOCKET ] Client {cid} authenticated")
             # Send auth confirmation
             await websocket.send_json({"type": "auth", "status": "ok"})
 
         except Exception as e:
-            LOG.warning(f"[WS] Auth failed for {cid}: {e}")
+            LOG.warning(f"[WEBSOCKET ] Auth failed for {cid}: {e}")
             await websocket.close(code=4003, reason="Authentication failed")
             return
 
         # Register the authenticated client with bucket-specific manager
         manager = bucket_manager.get_manager(bucket)
         manager.active_connections[cid] = websocket
-        LOG.info(f"[WS] Client connected: {cid} (bucket: {bucket})")
+        LOG.info(f"[WEBSOCKET ] Client connected: {cid} (bucket: {bucket})")
         try:
             # Main message processing loop
             while True:
                 data = await websocket.receive_text()
-                LOG.debug(f"[WS] Received message: {data}")
+                LOG.debug(f"[WEBSOCKET ] Received message: {data}")
                 try:
                     message = loads(data)
 
@@ -241,7 +241,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         if src and "path" in src:
                             dir = Dir().from_dict(src, bucket_dir)
                             if dir.path and dir.permissions:
-                                LOG.info(f'[WS] Added dir "{dir.path}"')
+                                LOG.info(f'[WEBSOCKET ] Added dir "{dir.path}"')
                                 makedirs(dir.path, exist_ok=True)
                                 await set_permissions(dir.path, dir.permissions)
                                 event = Event(
@@ -250,7 +250,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         # Handle file creation notification
                         elif src and "filepath" in src:
                             file = File().from_dict(src, bucket_dir)
-                            LOG.info(f'[WS] Added file "{file.filepath}"')
+                            LOG.info(f'[WEBSOCKET ] Added file "{file.filepath}"')
                             event = Event(
                                 cid, bucket_dir, bucket, EventName.added, file
                             )
@@ -261,7 +261,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         if src and "path" in src:
                             dir = Dir().from_dict(src, bucket_dir)
                             if dir.path and dir.permissions:
-                                LOG.info(f'[WS] Modified dir "{dir.path}"')
+                                LOG.info(f'[WEBSOCKET ] Modified dir "{dir.path}"')
                                 await set_permissions(dir.path, dir.permissions)
                                 event = Event(
                                     cid, bucket_dir, bucket, EventName.modified, dir
@@ -269,7 +269,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         # Handle file modification notification
                         elif src and "filepath" in src:
                             file = File().from_dict(src, bucket_dir)
-                            LOG.info(f'[WS] Modified file "{file.filepath}"')
+                            LOG.info(f'[WEBSOCKET ] Modified file "{file.filepath}"')
                             event = Event(
                                 cid, bucket_dir, bucket, EventName.modified, file
                             )
@@ -280,9 +280,9 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                             dir = Dir().from_dict(src, bucket_dir)
                             if dir.path:
                                 if not exists(dir.path):
-                                    LOG.warning(f'[WS] Dir: "{dir.path}" not found.')
+                                    LOG.warning(f'[WEBSOCKET ] Dir: "{dir.path}" not found.')
                                 else:
-                                    LOG.info(f'[WS] Deleted dir "{dir.path}"')
+                                    LOG.info(f'[WEBSOCKET ] Deleted dir "{dir.path}"')
                                     rmtree(dir.path, ignore_errors=False)
                                 event = Event(
                                     cid, bucket_dir, bucket, EventName.deleted, dir
@@ -293,10 +293,10 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                             if file.filepath:
                                 if not exists(file.filepath):
                                     LOG.warning(
-                                        f'[WS] File: "{file.filepath}" not found.'
+                                        f'[WEBSOCKET ] File: "{file.filepath}" not found.'
                                     )
                                 else:
-                                    LOG.info(f'[WS] Deleted file "{file.filepath}"')
+                                    LOG.info(f'[WEBSOCKET ] Deleted file "{file.filepath}"')
                                     remove(file.filepath)
                                 # Remove from hash cache
                                 del_md5_hash(file.filepath)
@@ -312,7 +312,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                             dst_dir = Dir().from_dict(dst, bucket_dir)
                             if src_dir.path and dst_dir.path:
                                 LOG.info(
-                                    f'[WS] Renamed "{src_dir.path}" -> "{dst_dir.path}"'
+                                    f'[WEBSOCKET ] Renamed "{src_dir.path}" -> "{dst_dir.path}"'
                                 )
                                 rename(src_dir.path, dst_dir.path)
                                 event = Event(
@@ -329,7 +329,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                             dst_file = File().from_dict(dst, bucket_dir, False)
                             if src_file.filepath and dst_file.filepath:
                                 LOG.info(
-                                    f'[WS] Renamed "{src_file.filepath}" -> "{dst_file.filepath}"'
+                                    f'[WEBSOCKET ] Renamed "{src_file.filepath}" -> "{dst_file.filepath}"'
                                 )
                                 rename(src_file.filepath, dst_file.filepath)
                                 event = Event(
@@ -351,7 +351,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
 
                             if link.filepath and target:
                                 LOG.info(
-                                    f'[WS] Symlink "{link.filepath}" -> "{target}"'
+                                    f'[WEBSOCKET ] Symlink "{link.filepath}" -> "{target}"'
                                 )
                                 # Ensure parent directory exists
                                 parent_dir = dirname(link.filepath)
@@ -373,23 +373,23 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         await manager.send_message(event)
 
                 except JSONDecodeError:
-                    LOG.error(f"[WS] Invalid JSON received: {data}")
+                    LOG.error(f"[WEBSOCKET ] Invalid JSON received: {data}")
                 except Exception as e:
-                    LOG.error(f"[WS] Exception data: {data}")
-                    LOG.error(f"[WS] Exception: {e}", exc_info=True)
+                    LOG.error(f"[WEBSOCKET ] Exception data: {data}")
+                    LOG.error(f"[WEBSOCKET ] Exception: {e}", exc_info=True)
 
         except WebSocketDisconnect:
             # Client disconnected normally
             manager.disconnect(cid)
-            LOG.warning(f"[WS] Disconnected (CID: {cid})")
+            LOG.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")
         except Exception as e:
             # Client disconnected with error
             manager.disconnect(cid)
-            LOG.warning(f"[WS] Disconnected (CID: {cid}) ({e})")
+            LOG.warning(f"[WEBSOCKET ] Disconnected (CID: {cid}) ({e})")
             await websocket.close()
     except Exception:
         # Handle any outer exception (e.g., auth failure)
-        LOG.warning(f"[WS] Disconnected (CID: {cid})")
+        LOG.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")
         await websocket.close()
 
 
