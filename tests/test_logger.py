@@ -91,8 +91,8 @@ class TestRequestIdFilter:
         assert record.request_id == "filter-test-id"
         set_request_id(None)  # cleanup
 
-    def test_filter_uses_dash_when_no_request_id(self):
-        """Test filter uses '-' when no request ID is set."""
+    def test_filter_uses_na_when_no_request_id(self):
+        """Test filter uses 'N/A' when no request ID is set."""
         set_request_id(None)
         filter_obj = RequestIdFilter()
         record = logging.LogRecord(
@@ -100,7 +100,7 @@ class TestRequestIdFilter:
             msg="test message", args=(), exc_info=None
         )
         filter_obj.filter(record)
-        assert record.request_id == "-"
+        assert record.request_id == "N/A"
 
 
 class TestJsonFormatter:
