@@ -29,7 +29,8 @@ def test_app(temp_buckets_dir: str) -> FastAPI:
     # Patch HSYNC_BUCKETS in all modules that use it
     with patch("hsync_server.config.HSYNC_BUCKETS", temp_buckets_dir), \
          patch("hsync_server.api.utils.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.HSYNC_BUCKETS", temp_buckets_dir):
+         patch("hsync_server.api.files.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir):
 
         from hsync_server.rate_limiter import limiter, rate_limit_exceeded_handler
         from hsync_server.error_handlers import register_exception_handlers
@@ -60,9 +61,12 @@ def test_app(temp_buckets_dir: str) -> FastAPI:
         async def health():
             return ""
 
-        # Import and register file endpoints with patched config
+        # Import bucket endpoints from buckets module
+        from hsync_server.api.buckets import (
+            get_bucket, create_bucket, delete_bucket
+        )
+        # Import file endpoints from files module
         from hsync_server.api.files import (
-            get_bucket, create_bucket, delete_bucket,
             upload_file, download_file, get_files, delete_file
         )
 
@@ -111,7 +115,8 @@ def test_app(temp_buckets_dir: str) -> FastAPI:
 @pytest.fixture
 async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncClient:
     """Create an async test client."""
-    with patch("hsync_server.api.files.HSYNC_BUCKETS", temp_buckets_dir):
+    with patch("hsync_server.api.files.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(
             transport=transport,
@@ -124,7 +129,8 @@ async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncClient:
 @pytest.fixture
 async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncClient:
     """Create an async test client without authentication."""
-    with patch("hsync_server.api.files.HSYNC_BUCKETS", temp_buckets_dir):
+    with patch("hsync_server.api.files.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(
             transport=transport,
