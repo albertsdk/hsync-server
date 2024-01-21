@@ -117,32 +117,32 @@ class TestAuthenticationRequired:
         """Bucket endpoints require authentication."""
         # GET bucket
         response = await client_no_auth.get("/api/v1/buckets/test")
-        assert response.status_code == 403
-        
+        assert response.status_code == 401
+
         # POST bucket
         response = await client_no_auth.post(
             "/api/v1/buckets",
             data={"bucket": "test"}
         )
-        assert response.status_code == 403
-        
+        assert response.status_code == 401
+
         # DELETE bucket
         response = await client_no_auth.delete("/api/v1/buckets/test")
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_file_endpoints_require_auth(self, client_no_auth: AsyncClient):
         """File endpoints require authentication."""
         # List files
         response = await client_no_auth.get("/api/v1/buckets/test/files")
-        assert response.status_code == 403
-        
+        assert response.status_code == 401
+
         # Download file
         response = await client_no_auth.get(
             "/api/v1/buckets/test/files/download",
             params={"filename": "test.txt"}
         )
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_invalid_auth_token(self, test_app, temp_buckets_dir: str):

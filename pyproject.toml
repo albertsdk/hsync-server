@@ -11,19 +11,19 @@ hsync-server = "hsync_server.__main__:main"
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.14"
-fastapi = "^0.115.8"
-uvicorn = "^0.34.0"
+fastapi = "^0.128.0"
+uvicorn = "^0.40.0"
 prometheus-fastapi-instrumentator = "^7.0.2"
 pyyaml = "^6.0.2"
-python-multipart = "^0.0.20"
+python-multipart = "^0.0.22"
 requests = "^2.32.3"
 aiohttp = "^3.11.13"
-aiofiles = "^24.1.0"
-websockets = "^15.0"
+aiofiles = "^25.1.0"
+websockets = "^16.0"
 watchdog = "^6.0.0"
 watchfiles = "^1.0.4"
 slowapi = "^0.1.9"
-cryptography = "^44.0.0"
+cryptography = "^46.0.0"
 
 
 [tool.poetry.group.dev.dependencies]
