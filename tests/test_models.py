@@ -99,8 +99,12 @@ class TestIsHiddenDir:
         """Regular directories are not hidden."""
         assert is_hidden_dir("documents") is False
         assert is_hidden_dir("/path/to/folder") is False
-        # Even if dir name starts with ., parent doesn't
-        assert is_hidden_dir("/path/to/.git") is False
+
+    def test_hidden_dir_by_name(self):
+        """Directories with names starting with '.' are hidden."""
+        assert is_hidden_dir("/path/to/.git") is True
+        assert is_hidden_dir(".hidden") is True
+        assert is_hidden_dir("/.config") is True
 
 
 class TestDirModel:
