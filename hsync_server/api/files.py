@@ -41,7 +41,7 @@ from typing import Optional
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import is_valid_permission_format, update_file_timestamp
 from hsync_server.api.utils import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
-from hsync_server.config import HSYNC_BUCKETS
+from hsync_server.config import HSYNC_BUCKETS, HSYNC_MAX_UPLOAD_SIZE
 from hsync_server.models.dir import is_hidden_dir
 from hsync_server.models.file import is_hidden_file
 from hsync_server.exceptions import (
@@ -49,6 +49,7 @@ from hsync_server.exceptions import (
     ChecksumMismatchError,
     DeleteError,
     FileNotFoundError as HSyncFileNotFoundError,
+    FileTooLargeError,
     InvalidBucketNameError,
     InvalidPathError,
     InvalidPermissionFormatError,
@@ -142,9 +143,21 @@ async def upload_file(
         makedirs(file_directory, exist_ok=True)
 
         # Write file to temporary location first (atomic write pattern)
+        # Track total bytes written to enforce size limit
+        total_bytes = 0
         async with NamedTemporaryFile(delete=False) as temp_file:
             file_location_tmp = str(temp_file.name)
             while chunk := await file.read(8192):
+                total_bytes += len(chunk)
+                # Check size limit during upload to prevent DoS
+                if HSYNC_MAX_UPLOAD_SIZE > 0 and total_bytes > HSYNC_MAX_UPLOAD_SIZE:
+                    raise FileTooLargeError(
+                        message=f"File exceeds maximum size of {HSYNC_MAX_UPLOAD_SIZE} bytes",
+                        details={
+                            "max_size": HSYNC_MAX_UPLOAD_SIZE,
+                            "received_bytes": total_bytes,
+                        },
+                    )
                 await temp_file.write(chunk)
 
         # Set timestamps on temporary file
