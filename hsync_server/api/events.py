@@ -28,6 +28,7 @@ The WebSocket endpoint handles:
 - File system operations based on received events
 """
 
+import hmac
 import logging
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -88,8 +89,9 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                 await websocket.close(code=4001, reason="Invalid auth message")
                 return
 
-            auth_token = auth_message.get("token")
-            if auth_token != HSYNC_API_KEY:
+            auth_token = auth_message.get("token", "")
+            # Use constant-time comparison to prevent timing attacks
+            if not hmac.compare_digest(auth_token, HSYNC_API_KEY):
                 LOG.warning(f"[WEBSOCKET ] Invalid API key from {cid}")
                 await websocket.close(code=4003, reason="Invalid API key")
                 return

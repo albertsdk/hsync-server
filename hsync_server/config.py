@@ -61,6 +61,22 @@ HSYNC_API_KEY: str = os.environ.get("HSYNC_API_KEY", "")
 HSYNC_BUCKETS: str = f"{HSYNC_PATH}/buckets"
 
 # =============================================================================
+# CORS Configuration
+# =============================================================================
+
+# Enable CORS middleware (set to "true" to enable)
+HSYNC_CORS_ENABLED: bool = os.environ.get("HSYNC_CORS_ENABLED", "false").lower() == "true"
+
+# Allowed origins for CORS (comma-separated list)
+# Example: "https://example.com,https://app.example.com"
+# Use "*" to allow all origins (not recommended for production)
+HSYNC_CORS_ORIGINS: list[str] = [
+    origin.strip()
+    for origin in os.environ.get("HSYNC_CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
+# =============================================================================
 # SSL/TLS Configuration
 # =============================================================================
 

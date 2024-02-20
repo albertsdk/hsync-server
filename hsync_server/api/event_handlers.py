@@ -29,6 +29,7 @@ import logging
 
 from os import makedirs, rename, remove, symlink as os_symlink, unlink
 from os.path import dirname, exists, islink
+from pathlib import Path
 from shutil import rmtree
 from typing import Any, Dict, Optional
 
@@ -42,6 +43,39 @@ from hsync_server.models.symlink import Symlink
 
 # Logger instance for this module
 LOG = logging.getLogger(__name__)
+
+
+def is_safe_symlink_target(symlink_path: str, target: str, bucket_dir: str) -> bool:
+    """
+    Validate that a symlink target is safe and within the bucket directory.
+
+    Prevents symlink attacks where a malicious client could create symlinks
+    pointing to sensitive files outside the bucket (e.g., /etc/passwd).
+
+    Args:
+        symlink_path: Full path where the symlink will be created.
+        target: The target path the symlink will point to.
+        bucket_dir: The bucket directory that should contain all files.
+
+    Returns:
+        True if the target is safe (within bucket), False otherwise.
+    """
+    bucket_path = Path(bucket_dir).resolve()
+
+    # If target is absolute, it must be within the bucket
+    if Path(target).is_absolute():
+        target_resolved = Path(target).resolve()
+    else:
+        # For relative targets, resolve from the symlink's parent directory
+        symlink_parent = Path(symlink_path).parent
+        target_resolved = (symlink_parent / target).resolve()
+
+    # Check if the resolved target is within the bucket directory
+    try:
+        target_resolved.relative_to(bucket_path)
+        return True
+    except ValueError:
+        return False
 
 
 async def handle_added_event(
@@ -241,6 +275,14 @@ async def handle_symlink_event(
         target = link.target
 
         if link.filepath and target:
+            # Validate symlink target to prevent path traversal attacks
+            if not is_safe_symlink_target(link.filepath, target, bucket_dir):
+                LOG.warning(
+                    f'[WEBSOCKET ] Rejected unsafe symlink "{link.filepath}" -> "{target}" '
+                    f"(target escapes bucket directory)"
+                )
+                return None
+
             LOG.info(f'[WEBSOCKET ] Symlink "{link.filepath}" -> "{target}"')
             # Ensure parent directory exists
             parent_dir = dirname(link.filepath)
