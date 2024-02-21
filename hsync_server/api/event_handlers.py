@@ -139,7 +139,7 @@ async def handle_added_event(
 
     # Handle file creation notification
     elif "filepath" in src:
-        file_obj = File().from_dict(src, bucket_dir)
+        file_obj = File().from_dict(src, bucket_dir, False)
         # Validate path to prevent traversal attacks
         if not is_path_within_bucket(file_obj.filepath, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
@@ -185,7 +185,7 @@ async def handle_modified_event(
 
     # Handle file modification notification
     elif "filepath" in src:
-        file_obj = File().from_dict(src, bucket_dir)
+        file_obj = File().from_dict(src, bucket_dir, False)
         # Validate path to prevent traversal attacks
         if not is_path_within_bucket(file_obj.filepath, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
