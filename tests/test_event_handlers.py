@@ -43,7 +43,7 @@ class TestIsPathWithinBucket:
     def test_none_path_rejected(self, tmp_path):
         """None path returns False."""
         bucket_dir = str(tmp_path / "bucket")
-        assert is_path_within_bucket(None, bucket_dir) is False
+        assert is_path_within_bucket(None, bucket_dir) is False  # type: ignore[arg-type]
 
     def test_absolute_path_outside_bucket(self, tmp_path):
         """Absolute path outside bucket returns False."""

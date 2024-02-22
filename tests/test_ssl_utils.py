@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
+from cryptography.x509.oid import NameOID
 
 from hsync_server.ssl_utils import (
     DEFAULT_CERT_VALIDITY_DAYS,
@@ -71,7 +72,7 @@ class TestGenerateSelfSignedCert:
         with open(cert_path, "rb") as f:
             cert = x509.load_pem_x509_certificate(f.read())
 
-        cn = cert.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)[0]
+        cn = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0]
         assert cn.value == hostname
 
     def test_certificate_has_san_extension(self, tmp_path):
@@ -132,7 +133,7 @@ class TestGenerateSelfSignedCert:
             cert = x509.load_pem_x509_certificate(f.read())
 
         # Check validity period is approximately 30 days
-        delta = cert.not_valid_after_utc - cert.not_valid_before_utc
+        delta = cert.not_valid_after_utc - cert.not_valid_before_utc  # type: ignore[attr-defined]
         assert 29 <= delta.days <= 31
 
     def test_uses_system_hostname_by_default(self, tmp_path):
@@ -146,7 +147,7 @@ class TestGenerateSelfSignedCert:
         with open(cert_path, "rb") as f:
             cert = x509.load_pem_x509_certificate(f.read())
 
-        cn = cert.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)[0]
+        cn = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0]
         assert cn.value == "mocked-hostname"
 
 

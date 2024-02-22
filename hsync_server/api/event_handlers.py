@@ -128,7 +128,7 @@ async def handle_added_event(
     if "path" in src:
         dir_obj = Dir().from_dict(src, bucket_dir)
         # Validate path to prevent traversal attacks
-        if not is_path_within_bucket(dir_obj.path, bucket_dir):
+        if not dir_obj.path or not is_path_within_bucket(dir_obj.path, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dir_obj.path}"')
             return None
         if dir_obj.path and dir_obj.permissions:
@@ -141,7 +141,7 @@ async def handle_added_event(
     elif "filepath" in src:
         file_obj = File().from_dict(src, bucket_dir, False)
         # Validate path to prevent traversal attacks
-        if not is_path_within_bucket(file_obj.filepath, bucket_dir):
+        if file_obj.filepath is None or not is_path_within_bucket(file_obj.filepath, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
             return None
         LOG.info(f'[WEBSOCKET ] Added file "{file_obj.filepath}"')
@@ -175,7 +175,7 @@ async def handle_modified_event(
     if "path" in src:
         dir_obj = Dir().from_dict(src, bucket_dir)
         # Validate path to prevent traversal attacks
-        if not is_path_within_bucket(dir_obj.path, bucket_dir):
+        if dir_obj.path is None or not is_path_within_bucket(dir_obj.path, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dir_obj.path}"')
             return None
         if dir_obj.path and dir_obj.permissions:
@@ -187,7 +187,7 @@ async def handle_modified_event(
     elif "filepath" in src:
         file_obj = File().from_dict(src, bucket_dir, False)
         # Validate path to prevent traversal attacks
-        if not is_path_within_bucket(file_obj.filepath, bucket_dir):
+        if file_obj.filepath is None or not is_path_within_bucket(file_obj.filepath, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
             return None
         LOG.info(f'[WEBSOCKET ] Modified file "{file_obj.filepath}"')
@@ -221,7 +221,7 @@ async def handle_deleted_event(
     if "path" in src:
         dir_obj = Dir().from_dict(src, bucket_dir)
         # Validate path to prevent traversal attacks
-        if not is_path_within_bucket(dir_obj.path, bucket_dir):
+        if dir_obj.path is None or not is_path_within_bucket(dir_obj.path, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dir_obj.path}"')
             return None
         if dir_obj.path:
@@ -236,7 +236,7 @@ async def handle_deleted_event(
     elif "filepath" in src:
         file_obj = File().from_dict(src, bucket_dir, False)
         # Validate path to prevent traversal attacks
-        if not is_path_within_bucket(file_obj.filepath, bucket_dir):
+        if file_obj.filepath is None or not is_path_within_bucket(file_obj.filepath, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
             return None
         if file_obj.filepath:
@@ -280,10 +280,10 @@ async def handle_renamed_event(
         src_dir = Dir().from_dict(src, bucket_dir)
         dst_dir = Dir().from_dict(dst, bucket_dir)
         # Validate both paths to prevent traversal attacks
-        if not is_path_within_bucket(src_dir.path, bucket_dir):
+        if src_dir.path is None or not is_path_within_bucket(src_dir.path, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{src_dir.path}"')
             return None
-        if not is_path_within_bucket(dst_dir.path, bucket_dir):
+        if dst_dir.path is None or not is_path_within_bucket(dst_dir.path, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dst_dir.path}"')
             return None
         if src_dir.path and dst_dir.path:
@@ -296,10 +296,10 @@ async def handle_renamed_event(
         src_file = File().from_dict(src, bucket_dir, False)
         dst_file = File().from_dict(dst, bucket_dir, False)
         # Validate both paths to prevent traversal attacks
-        if not is_path_within_bucket(src_file.filepath, bucket_dir):
+        if src_file.filepath is None or not is_path_within_bucket(src_file.filepath, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{src_file.filepath}"')
             return None
-        if not is_path_within_bucket(dst_file.filepath, bucket_dir):
+        if dst_file.filepath is None or not is_path_within_bucket(dst_file.filepath, bucket_dir):
             LOG.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dst_file.filepath}"')
             return None
         if src_file.filepath and dst_file.filepath:
