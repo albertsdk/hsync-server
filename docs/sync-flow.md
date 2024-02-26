@@ -15,27 +15,28 @@ graph TB
         WDA[Watchdog]
         CA[HSYNC Client]
     end
-    
+
     subgraph "HSYNC Server"
         REST[REST API]
         WS[WebSocket Hub]
         FSS[(Server Storage)]
     end
-    
+
     subgraph "Client B"
         CB[HSYNC Client]
         FSB[File System]
     end
 
-    FSA -->|File Change| WDA
-    WDA -->|Event| CA
-    CA -->|Upload| REST
-    REST -->|Store| FSS
-    CA -->|Event| WS
-    WS -->|Broadcast| CB
-    CB -->|Download| REST
-    REST -->|Read| FSS
-    CB -->|Write| FSB
+    FSA -->|1. File Change| WDA
+    WDA -->|2. Event| CA
+    CA -->|3. Upload| REST
+    REST -->|4. Store| FSS
+    CA -->|5. Event| WS
+    WS -->|6. Broadcast| CB
+    CB -->|7. Download Request| REST
+    FSS -->|8. Read| REST
+    REST -->|9. File Content| CB
+    CB -->|10. Write| FSB
 ```
 
 ![Overview](images/sync-flow-1.png)
