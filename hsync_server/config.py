@@ -21,7 +21,8 @@ This module loads and exposes all configuration values from environment
 variables with sensible defaults. Configuration includes server port,
 API key for authentication, timezone, logging level, and paths for file storage.
 
-Environment variables can be set via dev.env or prod.env files.
+Environment variables can be set via dev.env or prod.env files, or loaded
+at runtime using the --env-file CLI parameter.
 """
 
 import logging
@@ -31,6 +32,62 @@ from pathlib import Path
 
 from .logger import VALID_LOG_LEVELS
 
+
+# =============================================================================
+# Environment File Loading
+# =============================================================================
+
+
+def load_env_file(file_path: str) -> None:
+    """
+    Load environment variables from a file.
+
+    The file format is simple key=value pairs, one per line.
+    Lines starting with # are comments and are ignored.
+    Empty lines are ignored.
+
+    Args:
+        file_path: Path to the environment file.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If a line has invalid format.
+    """
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Environment file not found: {file_path}")
+
+    with path.open("r", encoding="utf-8") as f:
+        for line_num, line in enumerate(f, start=1):
+            line = line.strip()
+
+            # Skip empty lines and comments
+            if not line or line.startswith("#"):
+                continue
+
+            # Parse key=value
+            if "=" not in line:
+                raise ValueError(
+                    f"Invalid format at line {line_num}: expected KEY=value"
+                )
+
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+
+            # Remove surrounding quotes if present
+            if (value.startswith('"') and value.endswith('"')) or \
+               (value.startswith("'") and value.endswith("'")):
+                value = value[1:-1]
+
+            # Only set if not already in environment (CLI/shell takes precedence)
+            if key not in os.environ:
+                os.environ[key] = value
+
+
+# =============================================================================
+# Configuration Values
+# =============================================================================
 
 # Application root path - resolved absolute path to the project directory
 HSYNC_PATH: str = str(Path(os.path.dirname(__file__) + "/..").resolve())
@@ -129,3 +186,41 @@ HSYNC_LOG_LEVEL: str = _get_log_level()
 
 # Logger instance for this module (uses __name__ for module-level filtering)
 LOG = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Getter Functions (for late binding after env file loading)
+# =============================================================================
+
+
+def get_port() -> int:
+    """Get server port from environment (late binding)."""
+    return int(os.environ.get("HSYNC_PORT", 8765))
+
+
+def get_log_level() -> str:
+    """Get log level from environment (late binding)."""
+    level = os.environ.get("HSYNC_LOG_LEVEL", "info").lower()
+    if level not in VALID_LOG_LEVELS:
+        return "info"
+    return level
+
+
+def get_ssl_enabled() -> bool:
+    """Get SSL enabled flag from environment (late binding)."""
+    return os.environ.get("HSYNC_SSL_ENABLED", "false").lower() == "true"
+
+
+def get_ssl_certfile() -> str:
+    """Get SSL certificate file path from environment (late binding)."""
+    return os.environ.get("HSYNC_SSL_CERTFILE", "")
+
+
+def get_ssl_keyfile() -> str:
+    """Get SSL key file path from environment (late binding)."""
+    return os.environ.get("HSYNC_SSL_KEYFILE", "")
+
+
+def get_ssl_cert_dir() -> str:
+    """Get SSL certificate directory from environment (late binding)."""
+    return os.environ.get("HSYNC_SSL_CERT_DIR", f"{HSYNC_PATH}/certs")
