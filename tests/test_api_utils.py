@@ -251,3 +251,153 @@ class TestIsValidDir:
         assert is_valid_dir("../escape") is False
         assert is_valid_dir("subdir/../../escape") is False
 
+
+# =============================================================================
+# Path Validation Tests
+# =============================================================================
+
+
+from hsync_server.path_validation import (
+    is_valid_filename,
+    has_forbidden_chars,
+    has_control_chars,
+    is_reserved_name,
+    has_problematic_trailing,
+    FORBIDDEN_FILENAME_CHARS,
+    CONTROL_CHARS,
+    RESERVED_FILENAMES,
+)
+
+
+class TestIsValidFilename:
+    """Tests for is_valid_filename function."""
+
+    def test_valid_filenames(self):
+        """Valid filenames are accepted."""
+        assert is_valid_filename("file.txt") is True
+        assert is_valid_filename("document.pdf") is True
+        assert is_valid_filename("image-2024.png") is True
+        assert is_valid_filename("data_file.csv") is True
+
+    def test_empty_filename_rejected(self):
+        """Empty filename is rejected."""
+        assert is_valid_filename("") is False
+
+    def test_forbidden_chars_rejected(self):
+        """Filenames with forbidden characters are rejected."""
+        assert is_valid_filename("file<name>.txt") is False
+        assert is_valid_filename("file:name.txt") is False
+        assert is_valid_filename('file"name.txt') is False
+        assert is_valid_filename("file|name.txt") is False
+        assert is_valid_filename("file?name.txt") is False
+        assert is_valid_filename("file*name.txt") is False
+
+    def test_control_chars_rejected(self):
+        """Filenames with control characters are rejected."""
+        assert is_valid_filename("file\x01name.txt") is False
+        assert is_valid_filename("file\x1fname.txt") is False
+
+    def test_nul_char_rejected(self):
+        """Filenames with NUL character are rejected."""
+        assert is_valid_filename("file\x00name.txt") is False
+
+    def test_reserved_names_rejected(self):
+        """Windows reserved names are rejected."""
+        assert is_valid_filename("CON") is False
+        assert is_valid_filename("PRN") is False
+        assert is_valid_filename("AUX") is False
+        assert is_valid_filename("NUL") is False
+        assert is_valid_filename("COM1") is False
+        assert is_valid_filename("LPT1") is False
+
+    def test_reserved_names_case_insensitive(self):
+        """Reserved names are rejected regardless of case."""
+        assert is_valid_filename("con") is False
+        assert is_valid_filename("Con") is False
+        assert is_valid_filename("nul") is False
+
+    def test_reserved_names_with_extension_rejected(self):
+        """Reserved names with extensions are rejected."""
+        assert is_valid_filename("NUL.txt") is False
+        assert is_valid_filename("COM1.log") is False
+        assert is_valid_filename("con.exe") is False
+
+    def test_reserved_names_all_ports(self):
+        """All COM and LPT port numbers are rejected."""
+        for i in range(1, 10):
+            assert is_valid_filename(f"COM{i}") is False
+            assert is_valid_filename(f"LPT{i}") is False
+
+    def test_reserved_names_superscript(self):
+        """Superscript digit variants of COM and LPT are rejected."""
+        assert is_valid_filename("COM\u00b9") is False  # COM¹
+        assert is_valid_filename("COM\u00b2") is False  # COM²
+        assert is_valid_filename("COM\u00b3") is False  # COM³
+        assert is_valid_filename("LPT\u00b9") is False  # LPT¹
+
+    def test_trailing_space_rejected(self):
+        """Filenames with trailing space are rejected."""
+        assert is_valid_filename("file.txt ") is False
+        assert is_valid_filename("name ") is False
+
+    def test_trailing_period_rejected(self):
+        """Filenames with trailing period are rejected."""
+        assert is_valid_filename("file.") is False
+        assert is_valid_filename("name.") is False
+
+
+class TestHasForbiddenChars:
+    """Tests for has_forbidden_chars function."""
+
+    def test_no_forbidden_chars(self):
+        """Returns False when no forbidden chars."""
+        assert has_forbidden_chars("valid_name.txt", FORBIDDEN_FILENAME_CHARS) is False
+
+    def test_has_forbidden_chars(self):
+        """Returns True when forbidden chars present."""
+        assert has_forbidden_chars("file<name", FORBIDDEN_FILENAME_CHARS) is True
+        assert has_forbidden_chars("file>name", FORBIDDEN_FILENAME_CHARS) is True
+
+
+class TestHasControlChars:
+    """Tests for has_control_chars function."""
+
+    def test_no_control_chars(self):
+        """Returns False when no control chars."""
+        assert has_control_chars("valid_name.txt") is False
+
+    def test_has_control_chars(self):
+        """Returns True when control chars present."""
+        assert has_control_chars("file\x01name") is True
+        assert has_control_chars("file\x1fname") is True
+
+
+class TestIsReservedName:
+    """Tests for is_reserved_name function."""
+
+    def test_not_reserved(self):
+        """Returns False for normal names."""
+        assert is_reserved_name("document.txt") is False
+        assert is_reserved_name("console.log") is False  # 'console' is not reserved
+
+    def test_reserved(self):
+        """Returns True for reserved names."""
+        assert is_reserved_name("CON") is True
+        assert is_reserved_name("NUL.txt") is True
+
+
+class TestHasProblematicTrailing:
+    """Tests for has_problematic_trailing function."""
+
+    def test_no_problematic_trailing(self):
+        """Returns False when no problematic trailing."""
+        assert has_problematic_trailing("file.txt") is False
+
+    def test_trailing_space(self):
+        """Returns True for trailing space."""
+        assert has_problematic_trailing("file ") is True
+
+    def test_trailing_period(self):
+        """Returns True for trailing period."""
+        assert has_problematic_trailing("file.") is True
+
