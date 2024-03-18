@@ -123,6 +123,15 @@ def main(
     """
     HSYNC Server - HTTP-based file synchronization server.
 
+    Central server for HSYNC clients. Manages buckets (shared directories),
+    handles file uploads/downloads via REST API, and broadcasts real-time
+    events to connected clients via WebSocket.
+
+    [bold]Option Groups:[/bold]
+
+        [cyan]Server[/cyan]      Network port and logging configuration
+        [cyan]SSL/TLS[/cyan]     HTTPS/WSS encryption settings
+
     [bold]Examples:[/bold]
 
         [dim]# Start server on default port (8765)[/dim]
@@ -143,13 +152,17 @@ def main(
         [dim]# Load configuration from environment file[/dim]
         $ hsync-server --env-file /path/to/prod.env
 
-    [bold]Environment variables:[/bold]
+    [bold]Environment Variables:[/bold]
 
         HSYNC_API_KEY           API key for authentication (required)
         HSYNC_BUCKETS           Path to buckets directory
         HSYNC_CORS_ENABLED      Enable CORS (true/false)
         HSYNC_CORS_ORIGINS      Allowed CORS origins (comma-separated)
         HSYNC_MAX_UPLOAD_SIZE   Maximum upload size in bytes
+
+    [bold]Authors:[/bold]
+
+        Alberto Basso <alberto.basso@proton.me>
     """
     # Load environment file if specified (before reading any config)
     if env_file:
