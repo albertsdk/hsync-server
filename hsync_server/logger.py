@@ -30,6 +30,13 @@ This module provides a standardized logging setup with enterprise-grade features
 - Configurable log levels
 - Unified logging for uvicorn and all application logs
 - Automatic color detection (disabled for non-TTY)
+- File output support with log rotation
+
+Log rotation configuration (via environment variables):
+- HSYNC_LOG_FILE: Path to log file (enables file logging)
+- HSYNC_LOG_ROTATION: When to rotate (e.g., "10 MB", "1 day", "00:00")
+- HSYNC_LOG_RETENTION: How long to keep old logs (e.g., "7 days", "5")
+- HSYNC_LOG_COMPRESSION: Compression format (e.g., "gz", "zip", "bz2")
 
 Log formats:
 - Text: 2024-01-15T10:30:45.123Z - [12345] [req-abc123] INFO: message
@@ -43,6 +50,20 @@ from contextvars import ContextVar
 from typing import Final, Optional
 
 from loguru import logger
+
+
+# =============================================================================
+# Log Rotation Configuration Defaults
+# =============================================================================
+
+# Default rotation: rotate when file reaches 10 MB
+DEFAULT_LOG_ROTATION: Final[str] = "10 MB"
+
+# Default retention: keep logs for 7 days
+DEFAULT_LOG_RETENTION: Final[str] = "7 days"
+
+# Default compression: gzip for space efficiency
+DEFAULT_LOG_COMPRESSION: Final[str] = "gz"
 
 
 # Context variable for request ID - thread-safe storage for per-request data
@@ -170,22 +191,48 @@ def _format_record_plain(record: dict) -> str:
     )
 
 
+def _get_rotation_config() -> dict[str, Optional[str]]:
+    """
+    Get log rotation configuration from environment variables.
+
+    Returns:
+        Dictionary with rotation, retention, and compression settings.
+    """
+    return {
+        "rotation": os.environ.get("HSYNC_LOG_ROTATION", DEFAULT_LOG_ROTATION),
+        "retention": os.environ.get("HSYNC_LOG_RETENTION", DEFAULT_LOG_RETENTION),
+        "compression": os.environ.get("HSYNC_LOG_COMPRESSION", DEFAULT_LOG_COMPRESSION),
+    }
+
+
 def setup_logging(
     level: str = "info",
     log_format: Optional[str] = None,
     no_color: bool = False,
+    logfile: Optional[str] = None,
 ) -> "logger":  # type: ignore[valid-type]
     """
     Configure and return the HSYNC server logger.
 
     Sets up logging with enterprise-grade features including request ID
-    correlation, colored output, and optional JSON structured output.
+    correlation, colored output, optional JSON structured output, and
+    log rotation for file output.
+
+    Log rotation is configured via environment variables:
+    - HSYNC_LOG_FILE: Path to log file (alternative to logfile parameter)
+    - HSYNC_LOG_ROTATION: When to rotate (default: "10 MB")
+      Examples: "10 MB", "1 day", "00:00" (midnight), "1 week"
+    - HSYNC_LOG_RETENTION: How long to keep old logs (default: "7 days")
+      Examples: "7 days", "1 month", "5" (keep 5 files)
+    - HSYNC_LOG_COMPRESSION: Compression format (default: "gz")
+      Options: "gz", "bz2", "xz", "lzma", "tar", "tar.gz", "tar.bz2", "tar.xz", "zip"
 
     Args:
         level: Log level string (debug, info, warning, error, critical).
         log_format: Output format ("text" or "json"). If None, reads from
                    HSYNC_LOG_FORMAT environment variable.
         no_color: Disable colored output (default: False).
+        logfile: Optional path to log file (enables rotation).
 
     Returns:
         Configured loguru logger instance.
@@ -200,10 +247,13 @@ def setup_logging(
     if log_format is None:
         log_format = get_log_format()
 
+    # Get log file from parameter or environment variable
+    log_file = logfile or os.environ.get("HSYNC_LOG_FILE")
+
     # Remove default loguru handler
     logger.remove()
 
-    # Add new handler with custom format
+    # Add console handler
     if log_format == "json":
         logger.add(
             sys.stdout,
@@ -225,6 +275,20 @@ def setup_logging(
             colorize=use_colors,  # Enable loguru's color tag processing
         )
 
+    # Add file handler with rotation if log file is specified
+    if log_file:
+        rotation_config = _get_rotation_config()
+        logger.add(
+            log_file,
+            level=level.upper(),
+            format=_format_record_plain,
+            colorize=False,
+            encoding="utf-8",
+            rotation=rotation_config["rotation"],
+            retention=rotation_config["retention"],
+            compression=rotation_config["compression"],
+        )
+
     # Intercept standard logging (for uvicorn and other libraries)
     logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 
@@ -240,4 +304,3 @@ def setup_logging(
         logging.getLogger(logger_name).propagate = False
 
     return logger
-
