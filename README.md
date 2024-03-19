@@ -1,6 +1,8 @@
 # HSYNC Server
 
-HTTP-based file synchronization server built with FastAPI, featuring WebSocket support for real-time events.
+**HSYNC Server** - HTTP-based file synchronization server.
+
+Central server for HSYNC clients. Manages buckets (shared directories), handles file uploads/downloads via REST API, and broadcasts real-time events to connected clients via WebSocket.
 
 ## Architecture Overview
 
