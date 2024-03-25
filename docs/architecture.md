@@ -8,47 +8,47 @@ This document describes the architecture of the HSYNC Server.
 
 ```mermaid
 graph TB
-    subgraph Clients
+    subgraph "① Clients"
         C1[Client 1]
         C2[Client 2]
         C3[Client N]
     end
 
-    subgraph "HSYNC Server"
-        subgraph "FastAPI Application"
+    subgraph "② HSYNC Server"
+        subgraph "③ FastAPI Application"
             REST[REST API]
             WS[WebSocket Handler]
             RL[Rate Limiter]
         end
-        
-        subgraph "Core Services"
+
+        subgraph "④ Core Services"
             CM[Connection Manager]
             BCM[Bucket Connection Manager]
             HM[Hash Manager]
         end
-        
-        subgraph "Storage"
+
+        subgraph "⑤ Storage"
             FS[(File System)]
             MD5[(MD5 Cache)]
         end
     end
 
-    C1 -->|HTTP/REST| REST
-    C2 -->|HTTP/REST| REST
-    C1 -->|WebSocket| WS
-    C2 -->|WebSocket| WS
-    C3 -->|WebSocket| WS
-    
-    REST --> RL
-    RL --> HM
-    HM --> FS
-    HM --> MD5
-    
-    WS --> BCM
-    BCM --> CM
-    CM -->|Broadcast| C1
-    CM -->|Broadcast| C2
-    CM -->|Broadcast| C3
+    C1 -->|"① HTTP/REST"| REST
+    C2 -->|"① HTTP/REST"| REST
+    C1 -->|"② WebSocket"| WS
+    C2 -->|"② WebSocket"| WS
+    C3 -->|"② WebSocket"| WS
+
+    REST -->|"③"| RL
+    RL -->|"④"| HM
+    HM -->|"⑤"| FS
+    HM -->|"⑥"| MD5
+
+    WS -->|"⑦"| BCM
+    BCM -->|"⑧"| CM
+    CM -.->|"⑨ Broadcast"| C1
+    CM -.->|"⑨ Broadcast"| C2
+    CM -.->|"⑨ Broadcast"| C3
 ```
 
 ![System Overview](images/architecture-1.png)
@@ -69,21 +69,21 @@ graph TB
 
 ```mermaid
 graph LR
-    subgraph "hsync_server"
+    subgraph "① hsync_server"
         main[main.py]
         config[config.py]
         routers[routers.py]
         hashes[hashes.py]
         rate_limiter[rate_limiter.py]
-        
-        subgraph "api/"
+
+        subgraph "② api/"
             events[events.py]
             files[files.py]
             health[health.py]
             utils[utils.py]
         end
-        
-        subgraph "models/"
+
+        subgraph "③ models/"
             file[file.py]
             dir[dir.py]
             event[event.py]
@@ -91,18 +91,18 @@ graph LR
         end
     end
 
-    main --> config
-    main --> routers
-    main --> rate_limiter
-    main --> events
-    main --> files
-    main --> health
-    
-    files --> utils
-    files --> hashes
-    files --> events
-    
-    events --> models/
+    main -->|"①"| config
+    main -->|"②"| routers
+    main -->|"③"| rate_limiter
+    main -->|"④"| events
+    main -->|"⑤"| files
+    main -->|"⑥"| health
+
+    files -->|"⑦"| utils
+    files -->|"⑧"| hashes
+    files -->|"⑨"| events
+
+    events -->|"⑩"| models/
 ```
 
 ![Module Structure](images/architecture-2.png)
@@ -121,18 +121,18 @@ sequenceDiagram
     participant WS as WebSocket
     participant OC as Other Clients
 
-    C->>API: POST /api/v1/buckets/{bucket}/files
-    API->>RL: Check rate limit
-    RL-->>API: OK
-    API->>HM: Check MD5 hash
-    alt File exists with same hash
-        API-->>C: 409 Conflict
-    else New or modified file
-        API->>FS: Write file
-        API->>HM: Store MD5 hash
-        API->>WS: Broadcast "added" event
-        WS->>OC: Send event
-        API-->>C: 201 Created
+    C->>API: ① POST /api/v1/buckets/{bucket}/files
+    API->>RL: ② Check rate limit
+    RL-->>API: ③ OK
+    API->>HM: ④ Check MD5 hash
+    alt ⑤a File exists with same hash
+        API-->>C: ⑥a 409 Conflict
+    else ⑤b New or modified file
+        API->>FS: ⑥b Write file
+        API->>HM: ⑦ Store MD5 hash
+        API->>WS: ⑧ Broadcast "added" event
+        WS-->>OC: ⑨ Send event
+        API-->>C: ⑩ 201 Created
     end
 ```
 
@@ -148,16 +148,16 @@ sequenceDiagram
     participant FS as File System
     participant C2 as Client 2
 
-    C1->>WS: Connect
-    WS->>C1: Accept
-    C1->>WS: {"type": "auth", "token": "..."}
-    WS->>C1: {"type": "auth", "status": "ok"}
-    WS->>BCM: Register client
+    C1->>WS: ① Connect
+    WS->>C1: ② Accept
+    C1->>WS: ③ {"type": "auth", "token": "..."}
+    WS->>C1: ④ {"type": "auth", "status": "ok"}
+    WS->>BCM: ⑤ Register client
 
-    C1->>WS: {"name": "added", "src": {...}}
-    WS->>FS: Create file/directory
-    WS->>BCM: Get bucket manager
-    BCM->>C2: Broadcast event
+    C1->>WS: ⑥ {"name": "added", "src": {...}}
+    WS->>FS: ⑦ Create file/directory
+    WS->>BCM: ⑧ Get bucket manager
+    BCM-->>C2: ⑨ Broadcast event
 ```
 
 ![WebSocket Event Flow](images/architecture-4.png)

@@ -27,16 +27,16 @@ graph TB
         FSB[File System]
     end
 
-    FSA -->|1. File Change| WDA
-    WDA -->|2. Event| CA
-    CA -->|3. Upload| REST
-    REST -->|4. Store| FSS
-    CA -->|5. Event| WS
-    WS -->|6. Broadcast| CB
-    CB -->|7. Download Request| REST
-    FSS -->|8. Read| REST
-    REST -->|9. File Content| CB
-    CB -->|10. Write| FSB
+    FSA -->|"① File Change"| WDA
+    WDA -->|"② Event"| CA
+    CA -->|"③ Upload"| REST
+    REST -->|"④ Store"| FSS
+    CA -->|"⑤ Event"| WS
+    WS -.->|"⑥ Broadcast"| CB
+    CB -->|"⑦ Download Request"| REST
+    FSS -->|"⑧ Read"| REST
+    REST -->|"⑨ File Content"| CB
+    CB -->|"⑩ Write"| FSB
 ```
 
 ![Overview](images/sync-flow-1.png)
@@ -50,30 +50,30 @@ sequenceDiagram
     participant C as Client
     participant S as Server
 
-    C->>S: GET /api/v1/buckets/{bucket}/files
-    S-->>C: List of remote files
-    
-    C->>C: Scan local directory
-    C->>C: Compare local vs remote
-    
-    loop For each difference
-        alt Remote newer
-            C->>S: GET /api/v1/buckets/{bucket}/files/download
-            S-->>C: File content
-            C->>C: Write to local disk
-        else Local newer
-            C->>S: POST /api/v1/buckets/{bucket}/files
-            S-->>C: Upload confirmation
-        else Only remote
-            C->>S: GET /api/v1/buckets/{bucket}/files/download
-            S-->>C: File content
-        else Only local
-            C->>S: POST /api/v1/buckets/{bucket}/files
-            S-->>C: Upload confirmation
+    C->>S: ① GET /api/v1/buckets/{bucket}/files
+    S-->>C: ② List of remote files
+
+    C->>C: ③ Scan local directory
+    C->>C: ④ Compare local vs remote
+
+    loop ⑤ For each difference
+        alt ⑤a Remote newer
+            C->>S: ⑥ GET /api/v1/buckets/{bucket}/files/download
+            S-->>C: ⑦ File content
+            C->>C: ⑧ Write to local disk
+        else ⑤b Local newer
+            C->>S: ⑥ POST /api/v1/buckets/{bucket}/files
+            S-->>C: ⑦ Upload confirmation
+        else ⑤c Only remote
+            C->>S: ⑥ GET /api/v1/buckets/{bucket}/files/download
+            S-->>C: ⑦ File content
+        else ⑤d Only local
+            C->>S: ⑥ POST /api/v1/buckets/{bucket}/files
+            S-->>C: ⑦ Upload confirmation
         end
     end
-    
-    C->>C: Sync complete
+
+    C->>C: ⑨ Sync complete
 ```
 
 ![Initial Synchronization](images/sync-flow-2.png)
@@ -88,15 +88,15 @@ sequenceDiagram
     participant S as Server
     participant C2 as Client 2
 
-    Note over C1,C2: Both clients connected via WebSocket
+    Note over C1,C2: ① Both clients connected via WebSocket
 
-    C1->>C1: User creates file.txt
-    C1->>S: POST /api/v1/buckets/{bucket}/files
-    S->>S: Store file
-    S->>C2: WebSocket: {"name": "added", "src": {...}}
-    C2->>S: GET /api/v1/buckets/{bucket}/files/download
-    S-->>C2: File content
-    C2->>C2: Write file.txt locally
+    C1->>C1: ② User creates file.txt
+    C1->>S: ③ POST /api/v1/buckets/{bucket}/files
+    S->>S: ④ Store file
+    S-->>C2: ⑤ WebSocket: {"name": "added", "src": {...}}
+    C2->>S: ⑥ GET /api/v1/buckets/{bucket}/files/download
+    S-->>C2: ⑦ File content
+    C2->>C2: ⑧ Write file.txt locally
 ```
 
 ![Real-Time Synchronization](images/sync-flow-3.png)
@@ -105,18 +105,18 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    E[Event Received] --> T{Event Type?}
+    E[① Event Received] -->|"②"| T{Event Type?}
 
-    T -->|added| A[Download file]
-    T -->|modified| M[Download file]
-    T -->|renamed| R[Rename local file]
-    T -->|deleted| D[Delete local file]
-    T -->|symlink| L[Create symlink]
+    T -->|"③a added"| A[Download file]
+    T -->|"③b modified"| M[Download file]
+    T -->|"③c renamed"| R[Rename local file]
+    T -->|"③d deleted"| D[Delete local file]
+    T -->|"③e symlink"| L[Create symlink]
 
-    A --> V{Verify MD5}
-    M --> V
-    V -->|Match| S[Success]
-    V -->|Mismatch| RE[Retry download]
+    A -->|"④"| V{Verify MD5}
+    M -->|"④"| V
+    V -->|"⑤a Match"| S[Success]
+    V -->|"⑤b Mismatch"| RE[Retry download]
 ```
 
 ![Event Types and Actions](images/sync-flow-4.png)
@@ -127,14 +127,14 @@ HSYNC uses "last write wins" based on modification time:
 
 ```mermaid
 flowchart TD
-    C[Compare Files] --> T{mtime comparison}
-    
-    T -->|remote > local| D[Download from server]
-    T -->|local > remote| U[Upload to server]
-    T -->|equal| H{MD5 match?}
-    
-    H -->|Yes| S[Skip - files identical]
-    H -->|No| U2[Upload local version]
+    C[① Compare Files] -->|"②"| T{mtime comparison}
+
+    T -->|"③a remote > local"| D[Download from server]
+    T -->|"③b local > remote"| U[Upload to server]
+    T -->|"③c equal"| H{④ MD5 match?}
+
+    H -->|"⑤a Yes"| S[Skip - files identical]
+    H -->|"⑤b No"| U2[Upload local version]
 ```
 
 ![Conflict Resolution](images/sync-flow-5.png)
@@ -145,12 +145,12 @@ The client uses an event queue with exponential backoff for reliability:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Queued
-    Queued --> Processing: Dequeue
-    Processing --> Success: Event sent
-    Processing --> Retry: Network error
-    Retry --> Queued: Backoff wait
-    Retry --> Failed: Max retries
+    [*] --> Queued: ① Add event
+    Queued --> Processing: ② Dequeue
+    Processing --> Success: ③a Event sent
+    Processing --> Retry: ③b Network error
+    Retry --> Queued: ④ Backoff wait
+    Retry --> Failed: ⑤ Max retries
     Success --> [*]
     Failed --> [*]
 
@@ -172,18 +172,18 @@ sequenceDiagram
     participant C as Client
     participant S as Server
 
-    C->>S: WebSocket connected
-    Note over C,S: Connection lost
+    C->>S: ① WebSocket connected
+    Note over C,S: ② Connection lost
 
-    C->>C: Wait reconnect_delay seconds
-    C->>S: Reconnect WebSocket
-    S-->>C: Connection accepted
-    C->>S: Authenticate
-    S-->>C: Auth OK
+    C->>C: ③ Wait reconnect_delay seconds
+    C->>S: ④ Reconnect WebSocket
+    S-->>C: ⑤ Connection accepted
+    C->>S: ⑥ Authenticate
+    S-->>C: ⑦ Auth OK
 
-    C->>S: GET /api/v1/buckets/{bucket}/files
-    S-->>C: Current file list
-    C->>C: Resync to catch missed events
+    C->>S: ⑧ GET /api/v1/buckets/{bucket}/files
+    S-->>C: ⑨ Current file list
+    C->>C: ⑩ Resync to catch missed events
 ```
 
 ![Connection Recovery](images/sync-flow-7.png)

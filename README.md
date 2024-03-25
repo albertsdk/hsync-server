@@ -19,23 +19,21 @@ flowchart TB
         BUCKET["📁 Bucket Storage<br/><small>File Repository</small>"]
     end
 
-    %% Upload flows
-    CA -->|"⬆️ Upload"| API
-    CB -->|"⬆️ Upload"| API
+    %% Upload flow (Client → Server)
+    CA -->|"① Upload"| API
+    CB -->|"① Upload"| API
 
-    %% Download flows
-    API -->|"⬇️ Download"| CA
-    API -->|"⬇️ Download"| CB
+    %% Storage operations
+    API -->|"② Store"| BUCKET
+    BUCKET -->|"③ Read"| API
 
-    %% API to Storage
-    API <-->|"💾 Read/Write"| BUCKET
+    %% Download flow (Server → Client)
+    API -->|"④ Download"| CA
+    API -->|"④ Download"| CB
 
-    %% WebSocket connections
-    CA <-.->|"🔔 Events"| WS
-    CB <-.->|"🔔 Events"| WS
-
-    %% Event broadcast
-    WS -.->|"📢 Broadcast"| WS
+    %% WebSocket event flow
+    WS -.->|"⑤ Notify"| CA
+    WS -.->|"⑤ Notify"| CB
 
     style CA fill:#e1f5fe,stroke:#01579b,color:#01579b
     style CB fill:#e1f5fe,stroke:#01579b,color:#01579b
@@ -51,11 +49,12 @@ flowchart TB
 
 </details>
 
-**Legend:**
-- 🟦 **Clients**: Machines running HSYNC Client (desktop, laptop, etc.)
-- 🟩 **REST API**: HTTP endpoints for file upload/download
-- 🟧 **WebSocket Hub**: Real-time event distribution
-- 🟪 **Bucket Storage**: Server-side file repository
+**Flow:**
+1. **① Upload** — Clients upload files to REST API
+2. **② Store** — API writes files to bucket storage
+3. **③ Read** — API reads files from bucket storage
+4. **④ Download** — API sends files to requesting clients
+5. **⑤ Notify** — WebSocket broadcasts events to connected clients
 
 ## Features
 
