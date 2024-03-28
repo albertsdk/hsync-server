@@ -172,13 +172,123 @@ sequenceDiagram
 
 ## Error Responses
 
+### HTTP Status Codes
+
 | Status | Description |
 |--------|-------------|
-| 400 | Bad Request - Invalid parameters |
+| 400 | Bad Request - Invalid parameters or validation error |
 | 401 | Unauthorized - Invalid API key |
 | 403 | Forbidden - Missing API key |
 | 404 | Not Found - Resource not found |
-| 409 | Conflict - File already exists |
+| 422 | Unprocessable Entity - Request body validation failed |
 | 429 | Too Many Requests - Rate limit exceeded |
 | 500 | Internal Server Error |
+
+### Error Response Format
+
+All error responses follow this standardized JSON format:
+
+```json
+{
+  "error": "HSYNC-1001",
+  "message": "Human-readable error description",
+  "details": {
+    "field": "additional context"
+  }
+}
+```
+
+### Error Codes Reference
+
+Errors are categorized by prefix:
+
+| Prefix | Category | Description |
+|--------|----------|-------------|
+| `HSYNC-1XXX` | Validation | Invalid input data |
+| `HSYNC-2XXX` | Not Found | Resource does not exist |
+| `HSYNC-3XXX` | Authentication | Auth/authorization failures |
+| `HSYNC-4XXX` | File Operations | File operation failures |
+| `HSYNC-5XXX` | Server | Internal server errors |
+
+#### Validation Errors (1XXX)
+
+| Code | Name | Description |
+|------|------|-------------|
+| `HSYNC-1000` | ValidationError | Generic validation error |
+| `HSYNC-1001` | InvalidBucketNameError | Bucket name contains invalid characters |
+| `HSYNC-1002` | InvalidPathError | Path is invalid or contains traversal |
+| `HSYNC-1003` | InvalidPermissionFormatError | Permission format is invalid |
+| `HSYNC-1004` | InvalidSyncOrderError | Sync order parameter is invalid |
+| `HSYNC-1005` | ChecksumMismatchError | MD5 checksum verification failed |
+| `HSYNC-1006` | FileTooLargeError | File exceeds maximum allowed size |
+| `HSYNC-1007` | InvalidFilenameError | Filename is invalid or reserved |
+
+#### Resource Not Found Errors (2XXX)
+
+| Code | Name | Description |
+|------|------|-------------|
+| `HSYNC-2000` | ResourceNotFoundError | Generic resource not found |
+| `HSYNC-2001` | BucketNotFoundError | Bucket does not exist |
+| `HSYNC-2002` | FileNotFoundError | File does not exist |
+
+#### Authentication Errors (3XXX)
+
+| Code | Name | Description |
+|------|------|-------------|
+| `HSYNC-3000` | AuthenticationError | Generic authentication failure |
+| `HSYNC-3001` | InvalidApiKeyError | API key is invalid |
+| `HSYNC-3002` | MissingApiKeyError | API key was not provided |
+
+#### File Operation Errors (4XXX)
+
+| Code | Name | Description |
+|------|------|-------------|
+| `HSYNC-4000` | FileOperationError | Generic file operation failure |
+| `HSYNC-4001` | UploadError | File upload failed |
+| `HSYNC-4002` | DownloadError | File download failed |
+| `HSYNC-4003` | DeleteError | File deletion failed |
+
+#### Server Errors (5XXX)
+
+| Code | Name | Description |
+|------|------|-------------|
+| `HSYNC-5000` | HSyncError | Unexpected internal error |
+
+### Example Error Responses
+
+**Invalid API Key (401):**
+```json
+{
+  "error": "HSYNC-3001",
+  "message": "Invalid API key"
+}
+```
+
+**Bucket Not Found (404):**
+```json
+{
+  "error": "HSYNC-2001",
+  "message": "Bucket not found",
+  "details": {
+    "bucket": "nonexistent-bucket"
+  }
+}
+```
+
+**Validation Error (422):**
+```json
+{
+  "error": "HSYNC-1000",
+  "message": "Validation error",
+  "details": {
+    "validation_errors": [
+      {
+        "type": "missing",
+        "loc": ["body", "cid"],
+        "msg": "Field required"
+      }
+    ]
+  }
+}
+```
 

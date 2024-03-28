@@ -356,37 +356,47 @@ hsync-server/
 ├── hsync_server/           # Main Python package
 │   ├── __init__.py
 │   ├── __main__.py         # Entry point: python -m hsync_server
-│   ├── config.py           # Configuration
-│   ├── logger.py           # Logging configuration
 │   ├── main.py             # FastAPI application
+│   ├── config.py           # Configuration (pydantic-settings)
+│   ├── constants.py        # Application constants
 │   ├── routers.py          # Router configuration
+│   ├── middleware.py       # Request middleware
+│   ├── error_handlers.py   # Global error handlers
+│   ├── exceptions.py       # Custom exceptions
+│   ├── path_validation.py  # Path security validation
 │   ├── hashes.py           # MD5 hash caching
-│   ├── rate_limiter.py     # Rate limiting configuration
+│   ├── rate_limiter.py     # Rate limiting (slowapi)
+│   ├── logger.py           # Logging configuration (loguru)
+│   ├── ssl_utils.py        # SSL/TLS utilities
 │   ├── api/                # API endpoints
 │   │   ├── __init__.py
-│   │   ├── utils.py        # API utilities
+│   │   ├── files.py        # File operations (upload/download)
+│   │   ├── buckets.py      # Bucket management
 │   │   ├── events.py       # WebSocket handler
-│   │   ├── files.py        # REST API files/buckets
-│   │   └── health.py       # Health check
+│   │   ├── health.py       # Health check endpoint
+│   │   ├── event_handlers.py # Event processing
+│   │   ├── connection_manager.py # WebSocket connections
+│   │   ├── file_utils.py   # File operation utilities
+│   │   └── utils.py        # API utilities
 │   └── models/             # Data models
 │       ├── __init__.py
-│       ├── dir.py
-│       ├── event.py
-│       ├── file.py
+│       ├── dir.py          # Directory model
+│       ├── event.py        # Event model
+│       ├── file.py         # File model
 │       ├── symlink.py      # Symbolic link model
-│       └── sync_action.py
+│       └── sync_action.py  # Sync action model
 ├── docs/                   # Documentation
-│   ├── architecture.md
-│   ├── api.md
-│   └── sync-flow.md
+│   ├── architecture.md     # Architecture overview
+│   ├── api.md              # API reference
+│   └── sync-flow.md        # Synchronization flow
 ├── tests/                  # Test files
 ├── buckets/                # File storage (created at runtime)
-├── Dockerfile
+├── Dockerfile              # Docker image definition
 ├── docker.sh               # Docker management script
 ├── dev.env                 # Development environment template
 ├── prod.env                # Production environment template
-├── pyproject.toml
-└── poetry.lock
+├── pyproject.toml          # Poetry configuration
+└── poetry.lock             # Locked dependencies
 ```
 
 ## Authentication
