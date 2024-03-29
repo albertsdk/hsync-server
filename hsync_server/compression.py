@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2024 Alberto Basso <alberto.basso.dev@gmail.com>
+# SPDX-FileCopyrightText: 2024 Alberto Basso
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -33,8 +33,22 @@ COMPRESSION_LEVEL = 3
 # Content-Encoding header value for zstd compression
 CONTENT_ENCODING_ZSTD = "zstd"
 
-# Minimum file size to consider compression (1KB)
-MIN_SIZE_FOR_COMPRESSION = 1024
+# =============================================================================
+# Compression Thresholds
+# =============================================================================
+# Different thresholds based on transfer direction.
+# Server primarily handles downloads (sending files to clients).
+#
+# Download (Server→Client): 10KB threshold
+# - Below 10KB, compression overhead often exceeds transfer time savings
+# - Above 10KB, compression benefits clearly outweigh overhead
+# =============================================================================
+
+# Download threshold: 10KB (server sends to client)
+MIN_SIZE_FOR_DOWNLOAD = 10 * 1024  # 10 KB
+
+# Legacy constant for backward compatibility
+MIN_SIZE_FOR_COMPRESSION = MIN_SIZE_FOR_DOWNLOAD
 
 # File extensions that are already compressed (compression won't help)
 PRECOMPRESSED_EXTENSIONS = frozenset({
