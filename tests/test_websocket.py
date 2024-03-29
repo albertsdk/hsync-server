@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import WebSocket
 from hsync_server.api.events import ws_events, bucket_manager
+from hsync_server.config import get_compression_enabled
 from hsync_server.constants import HSYNC_VERSION
 
 
@@ -41,6 +42,7 @@ class TestWebSocketAuthentication:
             "type": "auth",
             "status": "ok",
             "version": HSYNC_VERSION,
+            "compression_enabled": get_compression_enabled(),
         })
 
     @pytest.mark.asyncio

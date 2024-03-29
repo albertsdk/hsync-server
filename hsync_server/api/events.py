@@ -42,7 +42,7 @@ from hsync_server.api.event_handlers import (
     handle_renamed_event,
     handle_symlink_event,
 )
-from hsync_server.config import HSYNC_API_KEY, HSYNC_BUCKETS
+from hsync_server.config import HSYNC_API_KEY, HSYNC_BUCKETS, get_compression_enabled
 from hsync_server.constants import HSYNC_VERSION
 from hsync_server.middleware import check_version_compatibility
 from hsync_server.models.event import EventName
@@ -126,11 +126,12 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                     )
 
             LOG.debug(f"[WEBSOCKET ] Client {cid} authenticated")
-            # Send auth confirmation with server version
+            # Send auth confirmation with server version and capabilities
             await websocket.send_json({
                 "type": "auth",
                 "status": "ok",
                 "version": HSYNC_VERSION,
+                "compression_enabled": get_compression_enabled(),
             })
 
         except Exception as e:
