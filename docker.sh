@@ -5,7 +5,7 @@
 #
 # Usage: ./docker.sh <command> [options]
 #
-# Author: Alberto Basso <alberto.sdk [at] gmail [dot] com>
+# Author: Alberto Basso
 # =============================================================================
 
 set -euo pipefail
