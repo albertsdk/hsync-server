@@ -15,7 +15,7 @@ set -euo pipefail
 # -----------------------------------------------------------------------------
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly IMAGE_NAME="hsync"
-readonly IMAGE_TAG="${HSYNC_VERSION:-0.1.0}"
+readonly IMAGE_TAG="${HSYNC_VERSION:-1.0.0}"
 readonly CONTAINER_NAME="hsync-server"
 
 # Default environment variables
@@ -87,7 +87,7 @@ ${BOLD}Environment Variables:${RESET}
     HSYNC_WORKERS     Number of workers (default: 1)
     HSYNC_API_KEY     API key for authentication (required)
     HSYNC_TZ          Timezone in IANA format (default: UTC)
-    HSYNC_VERSION     Image tag version (default: 0.1.0)
+    HSYNC_VERSION     Image tag version (default: 1.0.0)
 
 ${BOLD}Examples:${RESET}
     ./docker.sh build
