@@ -129,7 +129,7 @@ async def validation_exception_handler(
     LOG.warning(f"Validation error: {errors}")
 
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={
             "error": "HSYNC-1000",
             "message": "Validation error",
