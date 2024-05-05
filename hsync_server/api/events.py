@@ -19,15 +19,10 @@ The WebSocket endpoint handles:
 """
 
 import hmac
-import logging
 
 from fastapi import WebSocket, WebSocketDisconnect
 from json import loads, JSONDecodeError
-
-
-def _escape_braces(s: str) -> str:
-    """Escape curly braces in string for loguru format."""
-    return s.replace("{", "{{").replace("}", "}}")
+from loguru import logger as LOG
 
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.event_handlers import (
@@ -44,8 +39,9 @@ from hsync_server.models.event import EventName
 from hsync_server.routers import public_router
 
 
-# Logger instance for this module (uses __name__ for module-level filtering)
-LOG = logging.getLogger(__name__)
+def _escape_braces(s: str) -> str:
+    """Escape curly braces in string for loguru format."""
+    return s.replace("{", "{{").replace("}", "}}")
 
 
 # NOTE: WebSocket does not support Header Authentication

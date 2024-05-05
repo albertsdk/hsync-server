@@ -22,7 +22,6 @@ Usage:
 """
 
 import ipaddress
-import logging
 import os
 import socket
 from datetime import datetime, timedelta, timezone
@@ -33,8 +32,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-
-LOG = logging.getLogger(__name__)
+from loguru import logger as LOG
 
 # Default certificate validity period (365 days)
 DEFAULT_CERT_VALIDITY_DAYS = 365

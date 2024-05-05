@@ -12,16 +12,11 @@ This module provides classes for managing WebSocket connections:
 - BucketConnectionManager: Manages per-bucket ConnectionManager instances
 """
 
-import logging
-
 from fastapi import WebSocket
+from loguru import logger as LOG
 from typing import Dict, Optional
 
 from hsync_server.models.event import Event
-
-
-# Logger instance for this module
-LOG = logging.getLogger(__name__)
 
 
 class ConnectionManager:

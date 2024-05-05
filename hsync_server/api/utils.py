@@ -14,17 +14,14 @@ including path validation, MD5 computation, and file permission handling.
 import aiofiles
 import stat
 
-from hsync_server.config import HSYNC_BUCKETS
-from hsync_server.models.dir import Dir
 from asyncio import to_thread
 from hashlib import md5
-from logging import getLogger
+from loguru import logger as LOG
 from os import chmod, stat as os_stat
 from pathlib import Path
 
-
-# Logger instance for this module
-LOG = getLogger("main")
+from hsync_server.config import HSYNC_BUCKETS
+from hsync_server.models.dir import Dir
 
 
 def is_valid_bucket(value: str) -> bool:

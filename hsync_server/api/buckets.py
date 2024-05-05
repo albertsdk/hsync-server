@@ -15,9 +15,8 @@ This module provides REST API endpoints for bucket management:
 All endpoints require API key authentication via Bearer token.
 """
 
-import logging
-
 from datetime import datetime, timezone
+from loguru import logger as LOG
 from os import makedirs
 from os.path import exists, getatime, getctime, getmtime
 from shutil import rmtree
@@ -33,10 +32,6 @@ from hsync_server.exceptions import (
     InvalidBucketNameError,
 )
 from hsync_server.routers import auth_router
-
-
-# Logger instance for this module
-LOG = logging.getLogger(__name__)
 
 
 @auth_router.get(

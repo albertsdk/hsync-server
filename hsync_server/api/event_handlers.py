@@ -15,8 +15,7 @@ This module provides handler functions for different event types:
 - handle_symlink_event: Create or update symbolic links
 """
 
-import logging
-
+from loguru import logger as LOG
 from os import makedirs, rename, remove, symlink as os_symlink, unlink
 from os.path import dirname, exists, islink
 from pathlib import Path
@@ -29,10 +28,6 @@ from hsync_server.models.dir import Dir
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File
 from hsync_server.models.symlink import Symlink
-
-
-# Logger instance for this module
-LOG = logging.getLogger(__name__)
 
 
 def is_path_within_bucket(path: str, bucket_dir: str) -> bool:
