@@ -181,10 +181,10 @@ def main(
     effective_ssl_cert_dir = ssl_cert_dir if ssl_cert_dir else get_ssl_cert_dir()
 
     # Configure logging before starting the server
-    LOG = setup_logging(level=effective_log_level, no_color=no_color)
+    log = setup_logging(level=effective_log_level, no_color=no_color)
 
     # Log version at startup
-    LOG.info(f"HSYNC Server v{HSYNC_VERSION}")
+    log.info(f"HSYNC Server v{HSYNC_VERSION}")
 
     # Get SSL configuration (empty dict if SSL disabled)
     ssl_config = get_ssl_config(
@@ -196,11 +196,11 @@ def main(
 
     # Log server startup mode
     if effective_ssl_enabled:
-        LOG.info(f"Starting HSYNC server with HTTPS/WSS on port {effective_port}")
-        LOG.info(f"Certificate: {ssl_config.get('ssl_certfile', 'N/A')}")
+        log.info(f"Starting HSYNC server with HTTPS/WSS on port {effective_port}")
+        log.info(f"Certificate: {ssl_config.get('ssl_certfile', 'N/A')}")
     else:
-        LOG.info(f"Starting HSYNC server with HTTP/WS on port {effective_port}")
-        LOG.warning("SSL is disabled. Communication is NOT encrypted!")
+        log.info(f"Starting HSYNC server with HTTP/WS on port {effective_port}")
+        log.warning("SSL is disabled. Communication is NOT encrypted!")
 
     uvicorn.run(
         "hsync_server.main:app",

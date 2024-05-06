@@ -13,7 +13,7 @@ to indicate the server is running.
 """
 
 from fastapi.responses import PlainTextResponse
-from loguru import logger as LOG
+from loguru import logger as log
 
 from hsync_server.routers import public_router
 
@@ -36,4 +36,4 @@ async def root() -> str:
     return ""
 
 
-LOG.info(f"Module {__name__} loaded")
+log.info(f"Module {__name__} loaded")

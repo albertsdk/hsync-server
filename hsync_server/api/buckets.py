@@ -16,7 +16,7 @@ All endpoints require API key authentication via Bearer token.
 """
 
 from datetime import datetime, timezone
-from loguru import logger as LOG
+from loguru import logger as log
 from os import makedirs
 from os.path import exists, getatime, getctime, getmtime
 from shutil import rmtree
@@ -105,7 +105,7 @@ async def create_bucket(bucket: str) -> JSONResponse:
 
     # Check if bucket already exists
     if exists(bucket_directory):
-        LOG.warning(f"Bucket already exists: {bucket_directory}")
+        log.warning(f"Bucket already exists: {bucket_directory}")
         return JSONResponse(
             status_code=409,
             content={
@@ -115,7 +115,7 @@ async def create_bucket(bucket: str) -> JSONResponse:
         )
 
     makedirs(bucket_directory, exist_ok=True)
-    LOG.info(f'Bucket: "{bucket}" created')
+    log.info(f'Bucket: "{bucket}" created')
 
     return JSONResponse(
         status_code=201,
@@ -156,7 +156,7 @@ async def delete_bucket(bucket: str) -> JSONResponse:
     try:
         # Remove bucket and all contents
         rmtree(bucket_dir)
-        LOG.info(f'Bucket: "{bucket}" deleted successfully')
+        log.info(f'Bucket: "{bucket}" deleted successfully')
 
         return JSONResponse(
             status_code=200,
@@ -166,12 +166,12 @@ async def delete_bucket(bucket: str) -> JSONResponse:
             },
         )
     except OSError as e:
-        LOG.error(f"Failed to delete bucket {bucket}: {e}", exc_info=True)
+        log.error(f"Failed to delete bucket {bucket}: {e}", exc_info=True)
         raise DeleteError(
             message=f"Failed to delete bucket: {bucket}",
             details={"bucket": bucket, "error": str(e)},
         )
 
 
-LOG.info(f"Module {__name__} loaded")
+log.info(f"Module {__name__} loaded")
 

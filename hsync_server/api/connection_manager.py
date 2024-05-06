@@ -13,7 +13,7 @@ This module provides classes for managing WebSocket connections:
 """
 
 from fastapi import WebSocket
-from loguru import logger as LOG
+from loguru import logger as log
 from typing import Dict, Optional
 
 from hsync_server.models.event import Event
@@ -98,7 +98,7 @@ class BucketConnectionManager:
         """
         if bucket not in self.buckets:
             self.buckets[bucket] = ConnectionManager()
-            LOG.debug(f"Created ConnectionManager for bucket: {bucket}")
+            log.debug(f"Created ConnectionManager for bucket: {bucket}")
         return self.buckets[bucket]
 
     def get_connection_count(self, bucket: Optional[str] = None) -> int:

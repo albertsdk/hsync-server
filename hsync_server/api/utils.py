@@ -16,7 +16,7 @@ import stat
 
 from asyncio import to_thread
 from hashlib import md5
-from loguru import logger as LOG
+from loguru import logger as log
 from os import chmod, stat as os_stat
 from pathlib import Path
 
@@ -111,7 +111,7 @@ async def set_permissions(file_path: str, permissions: str) -> None:
         file_path: Path to the file.
         permissions: Permission string in symbolic format.
     """
-    LOG.debug(f'Set permissions: "{file_path}" ({permissions})')
+    log.debug(f'Set permissions: "{file_path}" ({permissions})')
 
     # Convert symbolic permissions to numeric mode
     mode = 0

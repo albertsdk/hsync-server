@@ -14,7 +14,7 @@ This module provides utility functions for file operations:
 """
 
 from datetime import datetime, timezone
-from loguru import logger as LOG
+from loguru import logger as log
 from os import utime
 from re import match
 
@@ -69,7 +69,7 @@ def update_file_timestamp(
         else:
             _mtime = None
 
-        LOG.debug(f"Update timestamp: {file_location} ({ctime}, {mtime})")
+        log.debug(f"Update timestamp: {file_location} ({ctime}, {mtime})")
         # Set access time and modification time (fallback to the other if one is None)
         # Only call utime if we have at least one valid timestamp
         atime = _ctime or _mtime

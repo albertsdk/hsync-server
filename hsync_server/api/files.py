@@ -21,7 +21,7 @@ from aiofiles.ospath import isfile
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
-from loguru import logger as LOG
+from loguru import logger as log
 from os import makedirs, remove, walk
 from os.path import dirname, exists, getsize
 from shutil import move
@@ -137,7 +137,7 @@ async def upload_file(
 
         # Skip upload if identical file already exists (same MD5)
         if md5sum and exists(file_location) and md5sum == get_md5_hash(file_location):
-            LOG.warning(f"File already present: {file_location}")
+            log.warning(f"File already present: {file_location}")
             # Update timestamps even if skipping upload
             update_file_timestamp(file_location, ctime, mtime)
             # Clean up partial file if exists
@@ -221,7 +221,7 @@ async def upload_file(
                 import aiofiles
                 async with aiofiles.open(file_location_tmp, "rb") as f:
                     compressed_data = await f.read()
-                LOG.debug(
+                log.debug(
                     f"Decompressing uploaded file: {total_bytes} bytes -> ~{size} bytes"
                 )
                 decompressed_data = decompress_data(compressed_data)
@@ -291,7 +291,7 @@ async def upload_file(
         # Re-raise custom exceptions - they'll be handled by global handler
         raise
     except Exception as e:
-        LOG.error(f"Upload failed for file {file.filename}: {e}", exc_info=True)
+        log.error(f"Upload failed for file {file.filename}: {e}", exc_info=True)
         raise UploadError(
             message=f"Upload failed for file {file.filename}",
             details={"filename": file.filename, "error": str(e)},
@@ -355,7 +355,7 @@ async def download_file(
         # Read and compress file
         compressed_data = compress_data(open(file, "rb").read())
         compression_ratio = len(compressed_data) / file_size * 100
-        LOG.debug(
+        log.debug(
             f"Compressed download: {file_size} -> {len(compressed_data)} bytes "
             f"({compression_ratio:.1f}%)"
         )
@@ -591,7 +591,7 @@ async def delete_file(
 
         # Remove the file
         remove(file)
-        LOG.info(f'File: "{file}" deleted successfully')
+        log.info(f'File: "{file}" deleted successfully')
 
         return JSONResponse(
             status_code=200,
@@ -601,11 +601,11 @@ async def delete_file(
             },
         )
     except OSError as e:
-        LOG.error(f"Failed to delete file {file}: {e}", exc_info=True)
+        log.error(f"Failed to delete file {file}: {e}", exc_info=True)
         raise DeleteError(
             message=f"Failed to delete file: {filename}",
             details={"bucket": bucket, "filename": filename, "error": str(e)},
         )
 
 
-LOG.info(f"Module {__name__} loaded")
+log.info(f"Module {__name__} loaded")

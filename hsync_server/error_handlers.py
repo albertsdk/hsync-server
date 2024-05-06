@@ -19,7 +19,7 @@ from typing import Any, Optional
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from loguru import logger as LOG
+from loguru import logger as log
 from pydantic import BaseModel
 
 from .exceptions import (
@@ -102,9 +102,9 @@ async def hsync_exception_handler(_request: Request, exc: HSyncError) -> JSONRes
 
     # Log based on severity
     if status_code >= 500:
-        LOG.error(f"{exc.error_code}: {exc.message}", exc_info=True)
+        log.error(f"{exc.error_code}: {exc.message}", exc_info=True)
     elif status_code >= 400:
-        LOG.warning(f"{exc.error_code}: {exc.message}")
+        log.warning(f"{exc.error_code}: {exc.message}")
 
     return JSONResponse(
         status_code=status_code,
@@ -128,7 +128,7 @@ async def validation_exception_handler(
         JSONResponse with validation error details.
     """
     errors = exc.errors()
-    LOG.warning(f"Validation error: {_safe_json(errors)}")
+    log.warning(f"Validation error: {_safe_json(errors)}")
 
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -155,7 +155,7 @@ async def global_exception_handler(_request: Request, exc: Exception) -> JSONRes
     Returns:
         JSONResponse with generic error message.
     """
-    LOG.error(f"Unhandled exception: {exc}", exc_info=True)
+    log.error(f"Unhandled exception: {exc}", exc_info=True)
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

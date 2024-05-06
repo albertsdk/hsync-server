@@ -19,7 +19,7 @@ import time
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from loguru import logger as LOG
+from loguru import logger as log
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -39,7 +39,7 @@ from .routers import auth_router, public_router
 
 # Validate that API key is configured
 if not HSYNC_API_KEY:
-    LOG.critical(
+    log.critical(
         "HSYNC_API_KEY environment variable is not set. "
         "Server cannot start without authentication configured. "
         "Generate a secure key at: https://it-tools.tech/token-generator"
@@ -47,7 +47,7 @@ if not HSYNC_API_KEY:
     sys.exit(1)
 
 if len(HSYNC_API_KEY) < 16:
-    LOG.warning(
+    log.warning(
         f"HSYNC_API_KEY is only {len(HSYNC_API_KEY)} characters. "
         "Consider using a longer key (32+ characters) for better security."
     )
@@ -81,7 +81,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Add CORS middleware if enabled (for web frontend compatibility)
 if HSYNC_CORS_ENABLED:
-    LOG.info(f"CORS enabled for origins: {HSYNC_CORS_ORIGINS or ['*']}")
+    log.info(f"CORS enabled for origins: {HSYNC_CORS_ORIGINS or ['*']}")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=HSYNC_CORS_ORIGINS or ["*"],
@@ -100,9 +100,9 @@ app.add_middleware(VersionMiddleware)
 
 # Preload MD5 checksums for all existing files in buckets
 # This enables fast duplicate detection without recalculating hashes
-LOG.info(f"Loading MD5 file hashes from: {HSYNC_BUCKETS}")
+log.info(f"Loading MD5 file hashes from: {HSYNC_BUCKETS}")
 md5_files = set_md5_hashes(HSYNC_BUCKETS)
-LOG.info(f"{md5_files} files stored.")
+log.info(f"{md5_files} files stored.")
 
 # Configure Prometheus metrics instrumentation
 # Excludes documentation and monitoring endpoints from metrics collection
@@ -113,10 +113,10 @@ Instrumentator(
 ).expose(app, tags=["Public Router"], endpoint="/metrics")
 
 # Log available logging levels for debugging configuration
-LOG.debug("Available logging: DEBUG")
-LOG.info("Available logging: INFO")
-LOG.warning("Available logging: WARNING")
+log.debug("Available logging: DEBUG")
+log.info("Available logging: INFO")
+log.warning("Available logging: WARNING")
 
 # Log total startup time
 tot_time = round(time.time() - start, 3)
-LOG.info(f"HSYNC Server started in: {tot_time} sec.")
+log.info(f"HSYNC Server started in: {tot_time} sec.")

@@ -11,7 +11,7 @@ This module provides file compression/decompression using Zstandard (zstd),
 with intelligent decision-making on when compression is beneficial.
 """
 
-from loguru import logger as LOG
+from loguru import logger as log
 from os.path import splitext
 
 import zstandard as zstd
@@ -83,13 +83,13 @@ def should_compress(filepath: str, size: int) -> bool:
     """
     # Too small to benefit from compression
     if size < MIN_SIZE_FOR_COMPRESSION:
-        LOG.debug(f"Skip compression: {filepath} too small ({size} bytes)")
+        log.debug(f"Skip compression: {filepath} too small ({size} bytes)")
         return False
 
     # Check if file extension indicates pre-compressed format
     ext = splitext(filepath.lower())[1]
     if ext in PRECOMPRESSED_EXTENSIONS:
-        LOG.debug(f"Skip compression: {filepath} already compressed ({ext})")
+        log.debug(f"Skip compression: {filepath} already compressed ({ext})")
         return False
 
     return True
@@ -148,5 +148,5 @@ async def decompress_stream(data: bytes) -> bytes:
     return decompress_data(data)
 
 
-LOG.debug(f"Module {__name__} loaded")
+log.debug(f"Module {__name__} loaded")
 
