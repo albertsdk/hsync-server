@@ -47,6 +47,17 @@ DEFAULT_DIR_PERMISSIONS = "drwxrwxr-x"
 
 
 # =============================================================================
+# Sentinel File for Empty Directories
+# =============================================================================
+
+# Sentinel filename placed in empty directories to force sync of the
+# directory structure.  Similar to Git's .gitkeep convention.
+# This file is treated as *not* hidden by is_hidden_file() so it passes
+# through the sync engine, but it is filtered from the desktop UI.
+HSYNCKEEP_FILENAME = ".hsynckeep"
+
+
+# =============================================================================
 # HTTP Headers
 # =============================================================================
 

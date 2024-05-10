@@ -28,7 +28,13 @@ from shutil import move
 from typing import Optional
 
 from hsync_server.api.connection_manager import bucket_manager
-from hsync_server.api.file_utils import is_valid_permission_format, update_file_timestamp
+from hsync_server.api.file_utils import (
+    cleanup_empty_dir,
+    ensure_sentinel_in_dir,
+    is_sentinel_file,
+    is_valid_permission_format,
+    update_file_timestamp,
+)
 from hsync_server.api.utils import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
 from hsync_server.compression import (
     compress_data,
@@ -582,6 +588,14 @@ async def delete_file(
         # Remove the file
         remove(file)
         log.info(f'File: "{file}" deleted successfully')
+
+        parent = dirname(file)
+        if is_sentinel_file(file):
+            # Sentinel removed — clean up the now-empty directory
+            cleanup_empty_dir(parent)
+        else:
+            # Regular file removed — preserve directory with sentinel
+            ensure_sentinel_in_dir(parent)
 
         return JSONResponse(
             status_code=200,
