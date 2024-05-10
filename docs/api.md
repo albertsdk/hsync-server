@@ -95,7 +95,7 @@ permissions=-rw-rw-r--
 ### List Files
 
 ```http
-GET /api/v1/buckets/mybucket/files?sync_order=mtime HTTP/1.1
+GET /api/v1/buckets/mybucket/files HTTP/1.1
 Authorization: Bearer your-api-key
 ```
 
@@ -218,7 +218,6 @@ Errors are categorized by prefix:
 | `HSYNC-1001` | InvalidBucketNameError | Bucket name contains invalid characters |
 | `HSYNC-1002` | InvalidPathError | Path is invalid or contains traversal |
 | `HSYNC-1003` | InvalidPermissionFormatError | Permission format is invalid |
-| `HSYNC-1004` | InvalidSyncOrderError | Sync order parameter is invalid |
 | `HSYNC-1005` | ChecksumMismatchError | MD5 checksum verification failed |
 | `HSYNC-1006` | FileTooLargeError | File exceeds maximum allowed size |
 | `HSYNC-1007` | InvalidFilenameError | Filename is invalid or reserved |

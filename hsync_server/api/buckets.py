@@ -87,7 +87,8 @@ async def create_bucket(bucket: str) -> JSONResponse:
     Create a new storage bucket.
 
     Creates a directory in the buckets storage area with the specified name.
-    Bucket names must be alphanumeric.
+    Bucket names must be alphanumeric (hyphens and underscores allowed,
+    but not at the beginning or end).
 
     Args:
         bucket: Name for the new bucket.
