@@ -5,7 +5,7 @@ Pytest fixtures for hsync-server tests.
 import os
 import sys
 import tempfile
-from typing import Generator
+from typing import AsyncGenerator, Generator
 from unittest.mock import patch
 
 import pytest
@@ -24,12 +24,15 @@ def temp_buckets_dir() -> Generator[str, None, None]:
 
 
 @pytest.fixture
-def test_app(temp_buckets_dir: str) -> FastAPI:
+def test_app(temp_buckets_dir: str) -> Generator[FastAPI, None, None]:
     """Create a test FastAPI application with temp buckets directory."""
     # Patch HSYNC_BUCKETS in all modules that use it
     with patch("hsync_server.config.HSYNC_BUCKETS", temp_buckets_dir), \
          patch("hsync_server.api.utils.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir), \
          patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir):
 
         from hsync_server.rate_limiter import limiter, rate_limit_exceeded_handler
@@ -113,9 +116,12 @@ def test_app(temp_buckets_dir: str) -> FastAPI:
 
 
 @pytest.fixture
-async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncClient:
+async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[AsyncClient, None]:
     """Create an async test client."""
-    with patch("hsync_server.api.files.HSYNC_BUCKETS", temp_buckets_dir), \
+    with patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir), \
          patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(
@@ -127,9 +133,12 @@ async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncClient:
 
 
 @pytest.fixture
-async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncClient:
+async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[AsyncClient, None]:
     """Create an async test client without authentication."""
-    with patch("hsync_server.api.files.HSYNC_BUCKETS", temp_buckets_dir), \
+    with patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir), \
+         patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir), \
          patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(
