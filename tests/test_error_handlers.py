@@ -2,8 +2,9 @@
 Tests for hsync_server.error_handlers module.
 """
 
+import json
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError as PydanticValidationError
@@ -105,27 +106,27 @@ class TestHsyncExceptionHandler:
     """Tests for hsync_exception_handler."""
 
     @pytest.mark.asyncio
-    async def test_handles_validation_error(self):
+    async def test_handles_validation_error(self, mocker):
         """Test handling ValidationError returns 400."""
-        request = MagicMock()
+        request = mocker.MagicMock()
         exc = ValidationError(message="Invalid data")
         response = await hsync_exception_handler(request, exc)
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        content = response.body.decode()
-        assert "HSYNC-1000" in content
+        content = json.loads(response.body)
+        assert content["error"] == "HSYNC-1000"
 
     @pytest.mark.asyncio
-    async def test_handles_not_found_error(self):
+    async def test_handles_not_found_error(self, mocker):
         """Test handling ResourceNotFoundError returns 404."""
-        request = MagicMock()
+        request = mocker.MagicMock()
         exc = ResourceNotFoundError(message="Resource not found")
         response = await hsync_exception_handler(request, exc)
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     @pytest.mark.asyncio
-    async def test_handles_server_error(self):
+    async def test_handles_server_error(self, mocker):
         """Test handling FileOperationError returns 500."""
-        request = MagicMock()
+        request = mocker.MagicMock()
         exc = FileOperationError(message="File error")
         response = await hsync_exception_handler(request, exc)
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -135,12 +136,12 @@ class TestValidationExceptionHandler:
     """Tests for validation_exception_handler."""
 
     @pytest.mark.asyncio
-    async def test_handles_validation_error(self):
+    async def test_handles_validation_error(self, mocker):
         """Test handling Pydantic validation errors."""
-        request = MagicMock()
+        request = mocker.MagicMock()
 
         # Create a mock RequestValidationError
-        exc = MagicMock(spec=RequestValidationError)
+        exc = mocker.MagicMock(spec=RequestValidationError)
         exc.errors.return_value = [
             {"loc": ["body", "field"], "msg": "field required", "type": "value_error.missing"}
         ]
@@ -148,31 +149,31 @@ class TestValidationExceptionHandler:
         response = await validation_exception_handler(request, exc)
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-        content = response.body.decode()
-        assert "HSYNC-1000" in content
-        assert "Validation error" in content
+        content = json.loads(response.body)
+        assert content["error"] == "HSYNC-1000"
+        assert content["message"] == "Validation error"
 
 
 class TestGlobalExceptionHandler:
     """Tests for global_exception_handler."""
 
     @pytest.mark.asyncio
-    async def test_handles_generic_exception(self):
+    async def test_handles_generic_exception(self, mocker):
         """Test handling generic exceptions returns 500."""
-        request = MagicMock()
+        request = mocker.MagicMock()
         exc = Exception("Something went wrong")
 
         response = await global_exception_handler(request, exc)
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-        content = response.body.decode()
-        assert "HSYNC-5000" in content
-        assert "An unexpected error occurred" in content
+        content = json.loads(response.body)
+        assert content["error"] == "HSYNC-5000"
+        assert content["message"] == "An unexpected error occurred"
 
     @pytest.mark.asyncio
-    async def test_handles_runtime_error(self):
+    async def test_handles_runtime_error(self, mocker):
         """Test handling RuntimeError."""
-        request = MagicMock()
+        request = mocker.MagicMock()
         exc = RuntimeError("Runtime error")
 
         response = await global_exception_handler(request, exc)
