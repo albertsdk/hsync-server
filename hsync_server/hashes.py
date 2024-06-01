@@ -13,14 +13,11 @@ corresponding MD5 checksums are stored for quick duplicate detection.
 """
 
 import hashlib
-
 from os import walk
 from os.path import isdir, join
-from typing import Optional
 
 from hsync_server.models.dir import is_hidden_dir
 from hsync_server.models.file import is_hidden_file
-
 
 # In-memory storage for file hashes
 # Each entry is a dict mapping SHA256(filepath) -> MD5(file_content)
@@ -41,7 +38,7 @@ def set_md5_hash(filepath: str, md5sum: str) -> None:
     FILE_HASHES.append({hashed_key: md5sum})
 
 
-def get_md5_hash(filepath: str) -> Optional[str]:
+def get_md5_hash(filepath: str) -> str | None:
     """
     Retrieve the stored MD5 hash for a file path.
 

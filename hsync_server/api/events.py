@@ -19,9 +19,9 @@ The WebSocket endpoint handles:
 """
 
 import hmac
+from json import JSONDecodeError, loads
 
 from fastapi import WebSocket, WebSocketDisconnect
-from json import loads, JSONDecodeError
 from loguru import logger as log
 
 from hsync_server.api.connection_manager import bucket_manager
@@ -92,21 +92,21 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             # Check client version compatibility if provided
             client_version = auth_message.get("version", "")
             if client_version:
-                is_compatible, reason = check_version_compatibility(
-                    HSYNC_VERSION, client_version
-                )
+                is_compatible, reason = check_version_compatibility(HSYNC_VERSION, client_version)
                 if not is_compatible:
                     log.warning(
                         f"[WEBSOCKET ] Rejecting client {cid} with incompatible "
                         f"version {client_version} (server: {HSYNC_VERSION})"
                     )
-                    await websocket.send_json({
-                        "type": "auth",
-                        "status": "error",
-                        "error": "version_incompatible",
-                        "client_version": client_version,
-                        "server_version": HSYNC_VERSION,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "auth",
+                            "status": "error",
+                            "error": "version_incompatible",
+                            "client_version": client_version,
+                            "server_version": HSYNC_VERSION,
+                        }
+                    )
                     await websocket.close(code=4002, reason="Version incompatible")
                     return
 
@@ -118,12 +118,14 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
 
             log.debug(f"[WEBSOCKET ] Client {cid} authenticated")
             # Send auth confirmation with server version and capabilities
-            await websocket.send_json({
-                "type": "auth",
-                "status": "ok",
-                "version": HSYNC_VERSION,
-                "compression_enabled": get_compression_enabled(),
-            })
+            await websocket.send_json(
+                {
+                    "type": "auth",
+                    "status": "ok",
+                    "version": HSYNC_VERSION,
+                    "compression_enabled": get_compression_enabled(),
+                }
+            )
 
         except Exception as e:
             log.warning(f"[WEBSOCKET ] Auth failed for {cid}: {e}")

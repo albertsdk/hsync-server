@@ -8,7 +8,7 @@ to connected clients via WebSocket.
 
 from enum import Enum
 from os.path import join
-from typing import Optional, Union
+
 from .dir import Dir
 from .file import File
 from .symlink import Symlink
@@ -51,8 +51,8 @@ class Event:
         localpath: str,
         bucket: str,
         name: EventName,
-        src: Union[File, Dir, Symlink],
-        dst: Optional[Union[File, Dir, Symlink]] = None,
+        src: File | Dir | Symlink,
+        dst: File | Dir | Symlink | None = None,
         strip_localpath: bool = True,
     ):
         """
@@ -72,7 +72,7 @@ class Event:
         self.name = name.value
 
         def correct_path(
-            entity: Union[File, Dir, Symlink], localpath: str, strip_localpath: bool
+            entity: File | Dir | Symlink, localpath: str, strip_localpath: bool
         ) -> None:
             """
             Normalize the path in an entity based on localpath.
@@ -86,9 +86,7 @@ class Event:
                 strip_localpath: If True, remove prefix; if False, prepend it.
             """
             # Get the path based on entity type
-            path = (
-                str(entity.path) if isinstance(entity, Dir) else str(entity.filepath)
-            )
+            path = str(entity.path) if isinstance(entity, Dir) else str(entity.filepath)
 
             # Apply path transformation
             if strip_localpath:

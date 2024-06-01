@@ -3,16 +3,14 @@
 #
 # Tests for routers module.
 
-import hmac
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from fastapi.security import HTTPAuthorizationCredentials
 
-from hsync_server.routers import verify_api_key, mask_api_key, auth_router, public_router
-from hsync_server.exceptions import InvalidApiKeyError, MissingApiKeyError
+from hsync_server.exceptions import MissingApiKeyError
+from hsync_server.routers import auth_router, mask_api_key, public_router, verify_api_key
 
 
 class TestMaskApiKey:
@@ -52,53 +50,47 @@ class TestVerifyApiKey:
     def test_valid_api_key(self):
         """Test that valid API key passes verification."""
         app = FastAPI()
-        
+
         @app.get("/test")
-        async def test_endpoint(api_key = Depends(verify_api_key)):
+        async def test_endpoint(api_key=Depends(verify_api_key)):
             return {"status": "ok"}
-        
+
         client = TestClient(app)
-        
+
         with patch("hsync_server.routers.HSYNC_API_KEY", "test-key-123"):
-            response = client.get(
-                "/test",
-                headers={"Authorization": "Bearer test-key-123"}
-            )
-        
+            response = client.get("/test", headers={"Authorization": "Bearer test-key-123"})
+
         assert response.status_code == 200
 
     def test_missing_api_key_raises_missing_error(self):
         """Test that missing API key raises MissingApiKeyError."""
         app = FastAPI()
-        
+
         @app.get("/test")
-        async def test_endpoint(api_key = Depends(verify_api_key)):
+        async def test_endpoint(api_key=Depends(verify_api_key)):
             return {"status": "ok"}
-        
+
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/test")
-        
+
         # HTTPBearer returns 401 when no credentials provided
         assert response.status_code == 401
 
     def test_invalid_api_key_returns_401(self):
         """Test that invalid API key returns 401."""
         app = FastAPI()
-        
+
         @app.get("/test")
-        async def test_endpoint(api_key = Depends(verify_api_key)):
+        async def test_endpoint(api_key=Depends(verify_api_key)):
             return {"status": "ok"}
-        
+
         client = TestClient(app, raise_server_exceptions=False)
-        
+
         # Without exception handlers registered, we get 500
         # But verify_api_key properly raises InvalidApiKeyError (401)
         with patch("hsync_server.routers.HSYNC_API_KEY", "correct-key"):
-            response = client.get(
-                "/test",
-                headers={"Authorization": "Bearer wrong-key"}
-            )
-        
+            response = client.get("/test", headers={"Authorization": "Bearer wrong-key"})
+
         # Without global exception handlers, we get 500
         # The important thing is that authentication is rejected
         assert response.status_code in [401, 500]
@@ -106,24 +98,25 @@ class TestVerifyApiKey:
     def test_empty_bearer_token_raises_error(self):
         """Test that empty bearer token raises MissingApiKeyError."""
         app = FastAPI()
-        
+
         @app.get("/test")
-        async def test_endpoint(api_key = Depends(verify_api_key)):
+        async def test_endpoint(api_key=Depends(verify_api_key)):
             return {"status": "ok"}
-        
+
         client = TestClient(app, raise_server_exceptions=False)
-        
+
         # Create a mock credentials with empty credentials
         with patch("hsync_server.routers.HSYNC_API_KEY", "test-key"):
             # Try to test with empty credentials - this is tricky via TestClient
             # Instead, let's directly test the behavior
             from fastapi.security import HTTPBearer
+
             security = HTTPBearer()
-            
+
             # The function checks if token.credentials is falsy
             mock_credentials = MagicMock()
             mock_credentials.credentials = ""
-            
+
             # This would trigger the missing key error
             with pytest.raises(MissingApiKeyError):
                 verify_api_key(mock_credentials)

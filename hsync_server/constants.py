@@ -85,4 +85,3 @@ CONTENT_TYPE_OCTET_STREAM = "application/octet-stream"
 WS_MSG_TYPE_AUTH = "auth"
 WS_MSG_STATUS_OK = "ok"
 WS_MSG_STATUS_ERROR = "error"
-

@@ -8,25 +8,23 @@ This module allows the package to be run directly using Python's -m flag.
 """
 
 import sys
-from typing import Optional
+from typing import Annotated
 
 import typer
 import uvicorn
-from typing_extensions import Annotated
 
 from hsync_server.config import (
     get_log_level,
     get_port,
-    get_ssl_certfile,
     get_ssl_cert_dir,
+    get_ssl_certfile,
     get_ssl_enabled,
     get_ssl_keyfile,
     load_env_file,
 )
 from hsync_server.constants import HSYNC_VERSION
-from hsync_server.logger import setup_logging, VALID_LOG_LEVELS
+from hsync_server.logger import VALID_LOG_LEVELS, setup_logging
 from hsync_server.ssl_utils import get_ssl_config
-
 
 # =============================================================================
 # CLI Application
@@ -47,7 +45,7 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-def _validate_log_level(value: Optional[str]) -> Optional[str]:
+def _validate_log_level(value: str | None) -> str | None:
     """Validate log level against valid options."""
     if value is not None and value not in VALID_LOG_LEVELS:
         raise typer.BadParameter(
@@ -61,64 +59,93 @@ def main(
     # -------------------------------------------------------------------------
     # Server options
     # -------------------------------------------------------------------------
-    port: Annotated[Optional[int], typer.Option(
-        "-p", "--port",
-        help="Server port (default: 8765).",
-        metavar="PORT",
-        rich_help_panel="Server",
-    )] = None,
-    log_level: Annotated[Optional[str], typer.Option(
-        "--log-level",
-        help="Log level: debug, info, warning, error (default: info).",
-        metavar="LEVEL",
-        callback=lambda v: _validate_log_level(v),
-        rich_help_panel="Server",
-    )] = None,
-    no_color: Annotated[bool, typer.Option(
-        "--no-color",
-        help="Disable colored log output.",
-        rich_help_panel="Server",
-    )] = False,
+    port: Annotated[
+        int | None,
+        typer.Option(
+            "-p",
+            "--port",
+            help="Server port (default: 8765).",
+            metavar="PORT",
+            rich_help_panel="Server",
+        ),
+    ] = None,
+    log_level: Annotated[
+        str | None,
+        typer.Option(
+            "--log-level",
+            help="Log level: debug, info, warning, error (default: info).",
+            metavar="LEVEL",
+            callback=lambda v: _validate_log_level(v),
+            rich_help_panel="Server",
+        ),
+    ] = None,
+    no_color: Annotated[
+        bool,
+        typer.Option(
+            "--no-color",
+            help="Disable colored log output.",
+            rich_help_panel="Server",
+        ),
+    ] = False,
     # -------------------------------------------------------------------------
     # SSL/TLS options
     # -------------------------------------------------------------------------
-    ssl_enabled: Annotated[bool, typer.Option(
-        "--ssl",
-        help="Enable HTTPS/WSS. Auto-generates certificates if not provided.",
-        rich_help_panel="SSL/TLS",
-    )] = False,
-    ssl_certfile: Annotated[Optional[str], typer.Option(
-        "--ssl-cert",
-        help="Path to SSL certificate file (PEM format).",
-        metavar="FILE",
-        rich_help_panel="SSL/TLS",
-    )] = None,
-    ssl_keyfile: Annotated[Optional[str], typer.Option(
-        "--ssl-key",
-        help="Path to SSL private key file (PEM format).",
-        metavar="FILE",
-        rich_help_panel="SSL/TLS",
-    )] = None,
-    ssl_cert_dir: Annotated[Optional[str], typer.Option(
-        "--ssl-cert-dir",
-        help="Directory for auto-generated certificates (default: ./certs).",
-        metavar="DIR",
-        rich_help_panel="SSL/TLS",
-    )] = None,
+    ssl_enabled: Annotated[
+        bool,
+        typer.Option(
+            "--ssl",
+            help="Enable HTTPS/WSS. Auto-generates certificates if not provided.",
+            rich_help_panel="SSL/TLS",
+        ),
+    ] = False,
+    ssl_certfile: Annotated[
+        str | None,
+        typer.Option(
+            "--ssl-cert",
+            help="Path to SSL certificate file (PEM format).",
+            metavar="FILE",
+            rich_help_panel="SSL/TLS",
+        ),
+    ] = None,
+    ssl_keyfile: Annotated[
+        str | None,
+        typer.Option(
+            "--ssl-key",
+            help="Path to SSL private key file (PEM format).",
+            metavar="FILE",
+            rich_help_panel="SSL/TLS",
+        ),
+    ] = None,
+    ssl_cert_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--ssl-cert-dir",
+            help="Directory for auto-generated certificates (default: ./certs).",
+            metavar="DIR",
+            rich_help_panel="SSL/TLS",
+        ),
+    ] = None,
     # -------------------------------------------------------------------------
     # General options
     # -------------------------------------------------------------------------
-    env_file: Annotated[Optional[str], typer.Option(
-        "--env-file",
-        help="Load environment variables from file.",
-        metavar="PATH",
-    )] = None,
-    version: Annotated[Optional[bool], typer.Option(
-        "-V", "--version",
-        help="Show version and exit.",
-        callback=_version_callback,
-        is_eager=True,
-    )] = None,
+    env_file: Annotated[
+        str | None,
+        typer.Option(
+            "--env-file",
+            help="Load environment variables from file.",
+            metavar="PATH",
+        ),
+    ] = None,
+    version: Annotated[
+        bool | None,
+        typer.Option(
+            "-V",
+            "--version",
+            help="Show version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
+    ] = None,
 ) -> None:
     """
     HSYNC Server - HTTP-based file synchronization server.
@@ -219,4 +246,3 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
-

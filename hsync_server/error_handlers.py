@@ -14,7 +14,7 @@ This module provides:
 """
 
 from json import dumps as json_dumps
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -23,13 +23,13 @@ from loguru import logger as log
 from pydantic import BaseModel
 
 from .exceptions import (
-    HSyncError,
-    ValidationError,
-    ResourceNotFoundError,
     AuthenticationError,
     FileOperationError,
+    HSyncError,
     InvalidApiKeyError,
     MissingApiKeyError,
+    ResourceNotFoundError,
+    ValidationError,
 )
 
 
@@ -50,7 +50,7 @@ class ErrorResponse(BaseModel):
 
     error: str
     message: str
-    details: Optional[dict[str, Any]] = None
+    details: dict[str, Any] | None = None
 
 
 # Mapping from exception types to HTTP status codes
@@ -181,4 +181,3 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     # Handle all other unhandled exceptions (must be last)
     app.add_exception_handler(Exception, global_exception_handler)  # type: ignore[arg-type]
-

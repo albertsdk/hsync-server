@@ -19,13 +19,11 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from .constants import HSYNC_VERSION, HEADER_CLIENT_VERSION, HEADER_SERVER_VERSION
-from .logger import get_request_id, set_request_id
+from .constants import HEADER_CLIENT_VERSION, HEADER_SERVER_VERSION, HSYNC_VERSION
+from .logger import set_request_id
 
 
-def check_version_compatibility(
-    local_version: str, remote_version: str
-) -> tuple[bool, str]:
+def check_version_compatibility(local_version: str, remote_version: str) -> tuple[bool, str]:
     """
     Check if remote version is compatible with local version using Semver.
 
@@ -80,9 +78,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         app.add_middleware(RequestIdMiddleware)
     """
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """
         Process the request, ensuring a request ID is set for tracing.
 
@@ -128,9 +124,7 @@ class VersionMiddleware(BaseHTTPMiddleware):
         app.add_middleware(VersionMiddleware)
     """
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """
         Process the request, checking version compatibility.
 
@@ -147,9 +141,7 @@ class VersionMiddleware(BaseHTTPMiddleware):
 
         # Check version compatibility if client sent version
         if client_version:
-            is_compatible, reason = check_version_compatibility(
-                HSYNC_VERSION, client_version
-            )
+            is_compatible, reason = check_version_compatibility(HSYNC_VERSION, client_version)
 
             if not is_compatible:
                 log.warning(

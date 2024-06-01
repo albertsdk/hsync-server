@@ -7,7 +7,7 @@ for representing synchronization decisions (upload, download, or no action).
 
 from datetime import timedelta as td
 from enum import Enum
-from typing import Optional
+
 from .file import File
 
 
@@ -41,7 +41,7 @@ class SyncAction:
     def __init__(
         self,
         file: File,
-        name: Optional[SyncActionName] = None,
+        name: SyncActionName | None = None,
         timedelta: int = 0,
     ):
         """

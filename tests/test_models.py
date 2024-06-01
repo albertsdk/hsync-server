@@ -4,10 +4,10 @@ Tests for server models (File, Dir, Event, Symlink).
 
 import os
 import tempfile
-import pytest
-from hsync_server.models.file import File, is_hidden_file
+
 from hsync_server.models.dir import Dir, is_hidden_dir
 from hsync_server.models.event import Event, EventName
+from hsync_server.models.file import File, is_hidden_file
 from hsync_server.models.symlink import Symlink
 
 
@@ -42,12 +42,7 @@ class TestFileModel:
 
     def test_init_basic(self):
         """Initialize File with basic parameters."""
-        f = File(
-            filepath="/bucket/test.txt",
-            size=100,
-            md5sum="abc123",
-            permissions="-rw-r--r--"
-        )
+        f = File(filepath="/bucket/test.txt", size=100, md5sum="abc123", permissions="-rw-r--r--")
         assert f.filepath == "/bucket/test.txt"
         assert f.size == 100
         assert f.md5sum == "abc123"
@@ -55,12 +50,7 @@ class TestFileModel:
 
     def test_to_dict(self):
         """Convert File to dictionary."""
-        f = File(
-            filepath="/bucket/test.txt",
-            size=100,
-            md5sum="abc123",
-            permissions="-rw-r--r--"
-        )
+        f = File(filepath="/bucket/test.txt", size=100, md5sum="abc123", permissions="-rw-r--r--")
         d = f.to_dict()
         assert d["filepath"] == "/bucket/test.txt"
         assert d["size"] == 100
@@ -71,7 +61,7 @@ class TestFileModel:
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             tmp.write(b"test content")
             tmp_path = tmp.name
-        
+
         try:
             f = File().get(tmp_path)
             assert f is not None
@@ -148,26 +138,22 @@ class TestEventModel:
 
     def test_init_with_file(self):
         """Initialize Event with File source."""
-        f = File(filepath="/buckets/test/test.txt", size=100, md5sum="abc", permissions="-rw-r--r--")
+        f = File(
+            filepath="/buckets/test/test.txt", size=100, md5sum="abc", permissions="-rw-r--r--"
+        )
         e = Event(
-            cid="client1",
-            localpath="/buckets/test",
-            bucket="test",
-            name=EventName.added,
-            src=f
+            cid="client1", localpath="/buckets/test", bucket="test", name=EventName.added, src=f
         )
         assert e.cid == "client1"
         assert e.name == EventName.added
 
     def test_to_dict(self):
         """Convert Event to dictionary."""
-        f = File(filepath="/buckets/test/test.txt", size=100, md5sum="abc", permissions="-rw-r--r--")
+        f = File(
+            filepath="/buckets/test/test.txt", size=100, md5sum="abc", permissions="-rw-r--r--"
+        )
         e = Event(
-            cid="client1",
-            localpath="/buckets/test",
-            bucket="test",
-            name=EventName.modified,
-            src=f
+            cid="client1", localpath="/buckets/test", bucket="test", name=EventName.modified, src=f
         )
         d = e.to_dict()
         assert d["name"] == "modified"
@@ -191,7 +177,7 @@ class TestSymlinkModel:
             target="/path/target",
             name="custom_name",
             ctime=1000.0,
-            mtime=2000.0
+            mtime=2000.0,
         )
         assert s.name == "custom_name"
         assert s.ctime == 1000.0
@@ -220,7 +206,7 @@ class TestSymlinkModel:
             "name": "link",
             "target": "/path/target",
             "ctime": 1000.0,
-            "mtime": 2000.0
+            "mtime": 2000.0,
         }
         s = Symlink.from_dict(data)
         assert s.filepath == "/path/link"
@@ -257,4 +243,3 @@ class TestSymlinkModel:
         # Should not raise an exception
         s = Symlink.get(str(link))
         # Broken symlinks may return None due to stat failure
-

@@ -4,7 +4,6 @@
 # Tests for SSL/TLS utilities module.
 
 import os
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -274,4 +273,3 @@ class TestConstants:
     def test_default_key_size(self):
         """Test default RSA key size."""
         assert DEFAULT_KEY_SIZE == 2048
-

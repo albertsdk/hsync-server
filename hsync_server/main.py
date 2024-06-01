@@ -108,9 +108,7 @@ log.info(f"{md5_files} files stored.")
 # Excludes documentation and monitoring endpoints from metrics collection
 Instrumentator(
     excluded_handlers=["/docs", "/metrics", "/health"],
-).instrument(
-    app
-).expose(app, tags=["Public Router"], endpoint="/metrics")
+).instrument(app).expose(app, tags=["Public Router"], endpoint="/metrics")
 
 # Log available logging levels for debugging configuration
 log.debug("Available logging: DEBUG")

@@ -13,11 +13,14 @@ This module provides utility functions for file operations:
 - Timestamp updates
 """
 
-from datetime import datetime, timezone
-from loguru import logger as log
+from datetime import UTC, datetime
 from os import listdir, rmdir, utime
-from os.path import basename, exists as path_exists, isdir, join as path_join
+from os.path import basename, isdir
+from os.path import exists as path_exists
+from os.path import join as path_join
 from re import match
+
+from loguru import logger as log
 
 
 def is_sentinel_file(filepath: str) -> bool:
@@ -124,9 +127,7 @@ def update_file_timestamp(
     if ctime or mtime:
         # Parse ctime (can be Unix timestamp or ISO format)
         if ctime and ctime.isdigit():
-            _ctime = int(
-                datetime.fromtimestamp(int(ctime), timezone.utc).timestamp()
-            )
+            _ctime = int(datetime.fromtimestamp(int(ctime), UTC).timestamp())
         elif ctime:
             _ctime = int(datetime.fromisoformat(ctime).timestamp())
         else:
@@ -134,9 +135,7 @@ def update_file_timestamp(
 
         # Parse mtime (can be Unix timestamp or ISO format)
         if mtime and mtime.isdigit():
-            _mtime = int(
-                datetime.fromtimestamp(int(mtime), timezone.utc).timestamp()
-            )
+            _mtime = int(datetime.fromtimestamp(int(mtime), UTC).timestamp())
         elif mtime:
             _mtime = int(datetime.fromisoformat(mtime).timestamp())
         else:
@@ -149,4 +148,3 @@ def update_file_timestamp(
         mtime_val = _mtime or _ctime
         if atime is not None and mtime_val is not None:
             utime(file_location, (atime, mtime_val))
-

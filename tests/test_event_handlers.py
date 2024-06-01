@@ -3,18 +3,18 @@ Tests for WebSocket event handlers.
 """
 
 import os
-import pytest
 from pathlib import Path
-from unittest.mock import patch, AsyncMock
+
+import pytest
 
 from hsync_server.api.event_handlers import (
-    is_path_within_bucket,
-    is_safe_symlink_target,
     handle_added_event,
-    handle_modified_event,
     handle_deleted_event,
+    handle_modified_event,
     handle_renamed_event,
     handle_symlink_event,
+    is_path_within_bucket,
+    is_safe_symlink_target,
 )
 
 
@@ -456,4 +456,3 @@ class TestHandleSymlinkEvent:
         src = {"filepath": "link", "target": "target.txt"}
         result = await handle_symlink_event(src, bucket_dir, "bucket", "cid")
         assert result is None
-

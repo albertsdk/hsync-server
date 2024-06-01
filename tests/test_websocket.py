@@ -2,10 +2,12 @@
 Tests for WebSocket events endpoint.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import WebSocket
-from hsync_server.api.events import ws_events, bucket_manager
+
+from hsync_server.api.events import bucket_manager, ws_events
 from hsync_server.config import get_compression_enabled
 from hsync_server.constants import HSYNC_VERSION
 
@@ -28,50 +30,52 @@ class TestWebSocketAuthentication:
         """Successful authentication allows connection."""
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-api-key"}',
-            Exception("disconnect")  # End the loop
+            Exception("disconnect"),  # End the loop
         ]
-        
+
         with patch("hsync_server.api.events.HSYNC_API_KEY", "test-api-key"):
             try:
                 await ws_events(mock_websocket, "testbucket", "client1")
             except Exception:
                 pass
-        
+
         mock_websocket.accept.assert_called_once()
-        mock_websocket.send_json.assert_called_with({
-            "type": "auth",
-            "status": "ok",
-            "version": HSYNC_VERSION,
-            "compression_enabled": get_compression_enabled(),
-        })
+        mock_websocket.send_json.assert_called_with(
+            {
+                "type": "auth",
+                "status": "ok",
+                "version": HSYNC_VERSION,
+                "compression_enabled": get_compression_enabled(),
+            }
+        )
 
     @pytest.mark.asyncio
     async def test_auth_invalid_token(self, mock_websocket):
         """Invalid token closes connection with 4003."""
         mock_websocket.receive_text.return_value = '{"type": "auth", "token": "wrong-key"}'
-        
+
         with patch("hsync_server.api.events.HSYNC_API_KEY", "correct-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
-        
+
         mock_websocket.close.assert_called_with(code=4003, reason="Invalid API key")
 
     @pytest.mark.asyncio
     async def test_auth_invalid_message_type(self, mock_websocket):
         """Invalid auth message type closes connection with 4001."""
         mock_websocket.receive_text.return_value = '{"type": "not-auth", "token": "key"}'
-        
+
         with patch("hsync_server.api.events.HSYNC_API_KEY", "key"):
             await ws_events(mock_websocket, "testbucket", "client1")
-        
+
         mock_websocket.close.assert_called_with(code=4001, reason="Invalid auth message")
 
     @pytest.mark.asyncio
     async def test_auth_malformed_json(self, mock_websocket):
         """Malformed JSON during auth closes connection."""
         mock_websocket.receive_text.return_value = "not valid json"
-        
+
         await ws_events(mock_websocket, "testbucket", "client1")
-        
+
         mock_websocket.close.assert_called()
 
 
@@ -91,45 +95,44 @@ class TestWebSocketEvents:
     @pytest.fixture
     def auth_then_event(self):
         """Helper to create auth + event sequence."""
+
         def _create(event_json):
             from fastapi import WebSocketDisconnect
-            return [
-                '{"type": "auth", "token": "test-key"}',
-                event_json,
-                WebSocketDisconnect()
-            ]
+
+            return ['{"type": "auth", "token": "test-key"}', event_json, WebSocketDisconnect()]
+
         return _create
 
     @pytest.mark.asyncio
     async def test_invalid_event_name_ignored(self, mock_websocket, auth_then_event):
         """Invalid event names are ignored."""
         from fastapi import WebSocketDisconnect
-        
+
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-key"}',
             '{"name": "invalid_event", "src": {}}',
-            WebSocketDisconnect()
+            WebSocketDisconnect(),
         ]
-        
+
         with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
-        
+
         # Should not raise, just log and continue
 
     @pytest.mark.asyncio
     async def test_malformed_event_json_ignored(self, mock_websocket):
         """Malformed event JSON is ignored."""
         from fastapi import WebSocketDisconnect
-        
+
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-key"}',
-            'not valid json',
-            WebSocketDisconnect()
+            "not valid json",
+            WebSocketDisconnect(),
         ]
-        
+
         with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
-        
+
         # Should not raise, just log and continue
 
     @pytest.mark.asyncio
@@ -139,7 +142,7 @@ class TestWebSocketEvents:
 
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-key"}',
-            WebSocketDisconnect()
+            WebSocketDisconnect(),
         ]
 
         with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
@@ -152,8 +155,9 @@ class TestWebSocketEvents:
     @pytest.mark.asyncio
     async def test_added_event_dispatched(self, mock_websocket, tmp_path):
         """Added event is dispatched to handler."""
-        from fastapi import WebSocketDisconnect
         import os
+
+        from fastapi import WebSocketDisconnect
 
         bucket_dir = str(tmp_path / "buckets" / "testbucket")
         os.makedirs(bucket_dir, exist_ok=True)
@@ -161,11 +165,13 @@ class TestWebSocketEvents:
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-key"}',
             '{"name": "added", "src": {"path": "newdir", "permissions": "755"}}',
-            WebSocketDisconnect()
+            WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"), \
-             patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")):
+        with (
+            patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"),
+            patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")),
+        ):
             await ws_events(mock_websocket, "testbucket", "client1")
 
         # Directory should be created
@@ -174,8 +180,9 @@ class TestWebSocketEvents:
     @pytest.mark.asyncio
     async def test_modified_event_dispatched(self, mock_websocket, tmp_path):
         """Modified event is dispatched to handler."""
-        from fastapi import WebSocketDisconnect
         import os
+
+        from fastapi import WebSocketDisconnect
 
         bucket_dir = str(tmp_path / "buckets" / "testbucket")
         target_dir = f"{bucket_dir}/existingdir"
@@ -184,18 +191,21 @@ class TestWebSocketEvents:
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-key"}',
             '{"name": "modified", "src": {"path": "existingdir", "permissions": "700"}}',
-            WebSocketDisconnect()
+            WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"), \
-             patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")):
+        with (
+            patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"),
+            patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")),
+        ):
             await ws_events(mock_websocket, "testbucket", "client1")
 
     @pytest.mark.asyncio
     async def test_deleted_event_dispatched(self, mock_websocket, tmp_path):
         """Deleted event is dispatched to handler."""
-        from fastapi import WebSocketDisconnect
         import os
+
+        from fastapi import WebSocketDisconnect
 
         bucket_dir = str(tmp_path / "buckets" / "testbucket")
         target_dir = f"{bucket_dir}/todelete"
@@ -204,11 +214,13 @@ class TestWebSocketEvents:
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-key"}',
             '{"name": "deleted", "src": {"path": "todelete", "permissions": "755"}}',
-            WebSocketDisconnect()
+            WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"), \
-             patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")):
+        with (
+            patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"),
+            patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")),
+        ):
             await ws_events(mock_websocket, "testbucket", "client1")
 
         # Directory should be deleted
@@ -217,8 +229,9 @@ class TestWebSocketEvents:
     @pytest.mark.asyncio
     async def test_renamed_event_dispatched(self, mock_websocket, tmp_path):
         """Renamed event is dispatched to handler."""
-        from fastapi import WebSocketDisconnect
         import os
+
+        from fastapi import WebSocketDisconnect
 
         bucket_dir = str(tmp_path / "buckets" / "testbucket")
         src_dir = f"{bucket_dir}/olddir"
@@ -227,11 +240,13 @@ class TestWebSocketEvents:
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-key"}',
             '{"name": "renamed", "src": {"path": "olddir", "permissions": "755"}, "dst": {"path": "newdir", "permissions": "755"}}',
-            WebSocketDisconnect()
+            WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"), \
-             patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")):
+        with (
+            patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"),
+            patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")),
+        ):
             await ws_events(mock_websocket, "testbucket", "client1")
 
         # Directory should be renamed
@@ -241,9 +256,10 @@ class TestWebSocketEvents:
     @pytest.mark.asyncio
     async def test_symlink_event_dispatched(self, mock_websocket, tmp_path):
         """Symlink event is dispatched to handler."""
-        from fastapi import WebSocketDisconnect
-        from pathlib import Path
         import os
+        from pathlib import Path
+
+        from fastapi import WebSocketDisconnect
 
         bucket_dir = str(tmp_path / "buckets" / "testbucket")
         os.makedirs(bucket_dir, exist_ok=True)
@@ -253,11 +269,13 @@ class TestWebSocketEvents:
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-key"}',
             '{"name": "symlink", "src": {"type": "symlink", "filepath": "link", "target": "target.txt"}}',
-            WebSocketDisconnect()
+            WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"), \
-             patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")):
+        with (
+            patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"),
+            patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")),
+        ):
             await ws_events(mock_websocket, "testbucket", "client1")
 
         # Symlink should be created
@@ -271,7 +289,7 @@ class TestWebSocketEvents:
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-key"}',
             '{"name": "added", "src": {"path": "test", "permissions": "invalid"}}',
-            WebSocketDisconnect()
+            WebSocketDisconnect(),
         ]
 
         with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
@@ -283,11 +301,10 @@ class TestWebSocketEvents:
         """Client disconnect with error is handled."""
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-key"}',
-            Exception("Connection error")
+            Exception("Connection error"),
         ]
 
         with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
 
         mock_websocket.close.assert_called()
-

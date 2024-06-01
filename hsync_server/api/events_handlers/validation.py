@@ -12,7 +12,6 @@ to prevent path traversal and symlink attacks.
 """
 
 from pathlib import Path
-from typing import Optional
 
 
 def is_path_within_bucket(path: str, bucket_dir: str) -> bool:

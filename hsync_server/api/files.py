@@ -22,11 +22,11 @@ Rate limiting is applied to protect against abuse.
 
 from loguru import logger as log
 
-# Re-export from submodules for backward compatibility
-from hsync_server.api.files.upload import upload_file  # noqa: F401
+from hsync_server.api.files.delete import delete_file  # noqa: F401
 from hsync_server.api.files.download import download_file  # noqa: F401
 from hsync_server.api.files.list import get_files, get_upload_status  # noqa: F401
-from hsync_server.api.files.delete import delete_file  # noqa: F401
 
+# Re-export from submodules for backward compatibility
+from hsync_server.api.files.upload import upload_file  # noqa: F401
 
 log.info(f"Module {__name__} loaded (compatibility layer)")

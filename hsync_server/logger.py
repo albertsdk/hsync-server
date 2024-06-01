@@ -37,10 +37,9 @@ import logging
 import os
 import sys
 from contextvars import ContextVar
-from typing import Final, Optional
+from typing import Final
 
 from loguru import logger
-
 
 # =============================================================================
 # Log Rotation Configuration Defaults
@@ -57,7 +56,7 @@ DEFAULT_LOG_COMPRESSION: Final[str] = "gz"
 
 
 # Context variable for request ID - thread-safe storage for per-request data
-request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
+request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 # Valid log levels - imported from config module to avoid circular imports
 # Re-exported here for backward compatibility
@@ -92,12 +91,12 @@ LEVEL_STYLES: dict[str, tuple[str, str]] = {
 }
 
 
-def get_request_id() -> Optional[str]:
+def get_request_id() -> str | None:
     """Get the current request ID from context."""
     return request_id_var.get()
 
 
-def set_request_id(request_id: Optional[str]) -> None:
+def set_request_id(request_id: str | None) -> None:
     """Set the request ID in context for the current request."""
     request_id_var.set(request_id)
 
@@ -181,7 +180,7 @@ def _format_record_plain(record: dict) -> str:
     )
 
 
-def _get_rotation_config() -> dict[str, Optional[str]]:
+def _get_rotation_config() -> dict[str, str | None]:
     """
     Get log rotation configuration from environment variables.
 
@@ -197,9 +196,9 @@ def _get_rotation_config() -> dict[str, Optional[str]]:
 
 def setup_logging(
     level: str = "info",
-    log_format: Optional[str] = None,
+    log_format: str | None = None,
     no_color: bool = False,
-    logfile: Optional[str] = None,
+    logfile: str | None = None,
 ) -> "logger":  # type: ignore[valid-type]
     """
     Configure and return the HSYNC server logger.

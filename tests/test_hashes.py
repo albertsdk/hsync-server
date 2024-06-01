@@ -21,10 +21,10 @@ class TestMD5HashManagement:
         """Test storing and retrieving MD5 hash."""
         filepath = "/path/to/file.txt"
         md5sum = "abc123def456"
-        
+
         hashes.set_md5_hash(filepath, md5sum)
         result = hashes.get_md5_hash(filepath)
-        
+
         assert result == md5sum
 
     def test_get_nonexistent_hash(self):
@@ -39,10 +39,10 @@ class TestMD5HashManagement:
             ("/path/file2.txt", "hash2"),
             ("/path/file3.txt", "hash3"),
         ]
-        
+
         for filepath, md5sum in files:
             hashes.set_md5_hash(filepath, md5sum)
-        
+
         for filepath, md5sum in files:
             assert hashes.get_md5_hash(filepath) == md5sum
 
@@ -50,10 +50,10 @@ class TestMD5HashManagement:
         """Test deleting MD5 hash."""
         filepath = "/path/to/file.txt"
         md5sum = "abc123def456"
-        
+
         hashes.set_md5_hash(filepath, md5sum)
         assert hashes.get_md5_hash(filepath) == md5sum
-        
+
         result = hashes.del_md5_hash(filepath)
         assert result is True
         assert hashes.get_md5_hash(filepath) is None
@@ -67,9 +67,9 @@ class TestMD5HashManagement:
         """Test that filepath is hashed (not stored plaintext)."""
         filepath = "/sensitive/path/file.txt"
         md5sum = "abc123"
-        
+
         hashes.set_md5_hash(filepath, md5sum)
-        
+
         # The filepath should not appear in the storage
         for entry in hashes.FILE_HASHES:
             for key in entry.keys():
@@ -93,9 +93,9 @@ class TestSetMD5Hashes:
                 filepath = os.path.join(temp_dir, f"file{i}.txt")
                 with open(filepath, "w") as f:
                     f.write(f"content {i}")
-            
+
             count = hashes.set_md5_hashes(temp_dir)
-            
+
             assert count == 3
             assert len(hashes.FILE_HASHES) == 3
 
@@ -106,14 +106,14 @@ class TestSetMD5Hashes:
             regular_file = os.path.join(temp_dir, "regular.txt")
             with open(regular_file, "w") as f:
                 f.write("regular content")
-            
+
             # Create hidden file
             hidden_file = os.path.join(temp_dir, ".hidden")
             with open(hidden_file, "w") as f:
                 f.write("hidden content")
-            
+
             count = hashes.set_md5_hashes(temp_dir)
-            
+
             assert count == 1  # Only regular file
 
     def test_set_md5_hashes_skips_hidden_dirs(self):
@@ -123,16 +123,16 @@ class TestSetMD5Hashes:
             regular_file = os.path.join(temp_dir, "regular.txt")
             with open(regular_file, "w") as f:
                 f.write("content")
-            
+
             # Create hidden directory with file inside
             hidden_dir = os.path.join(temp_dir, ".hidden")
             os.makedirs(hidden_dir)
             hidden_file = os.path.join(hidden_dir, "file.txt")
             with open(hidden_file, "w") as f:
                 f.write("hidden content")
-            
+
             count = hashes.set_md5_hashes(temp_dir)
-            
+
             assert count == 1  # Only regular file in root
 
     def test_set_md5_hashes_recursive(self):
@@ -141,14 +141,14 @@ class TestSetMD5Hashes:
             # Create nested structure
             subdir = os.path.join(temp_dir, "subdir")
             os.makedirs(subdir)
-            
+
             with open(os.path.join(temp_dir, "root.txt"), "w") as f:
                 f.write("root")
             with open(os.path.join(subdir, "nested.txt"), "w") as f:
                 f.write("nested")
-            
+
             count = hashes.set_md5_hashes(temp_dir)
-            
+
             assert count == 2
 
     def test_set_md5_hashes_invalid_directory(self):
@@ -161,16 +161,15 @@ class TestSetMD5Hashes:
         # Add some initial hashes
         hashes.set_md5_hash("/old/file.txt", "oldhash")
         assert len(hashes.FILE_HASHES) == 1
-        
+
         with tempfile.TemporaryDirectory() as temp_dir:
             filepath = os.path.join(temp_dir, "new.txt")
             with open(filepath, "w") as f:
                 f.write("new content")
-            
+
             hashes.set_md5_hashes(temp_dir)
-            
+
             # Old hash should be gone
             assert hashes.get_md5_hash("/old/file.txt") is None
             # Only new file should be present
             assert len(hashes.FILE_HASHES) == 1
-

@@ -4,7 +4,7 @@ Tests for API utility functions.
 
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 
@@ -13,11 +13,11 @@ from hsync_server.api.file_utils import (
     update_file_timestamp,
 )
 from hsync_server.api.utils import (
-    get_permissions,
-    set_permissions,
     get_dir_info,
+    get_permissions,
     is_valid_bucket,
     is_valid_dir,
+    set_permissions,
 )
 
 
@@ -61,14 +61,14 @@ class TestUpdateFileTimestamp:
         with tempfile.NamedTemporaryFile(delete=False) as f:
             f.write(b"test")
             temp_path = f.name
-        
+
         try:
             # Use Unix timestamps as strings
             ctime = "1705320600"
             mtime = "1705320700"
-            
+
             update_file_timestamp(temp_path, ctime, mtime)
-            
+
             stat = os.stat(temp_path)
             # Check that mtime was set
             assert abs(stat.st_mtime - 1705320700) < 1
@@ -80,12 +80,12 @@ class TestUpdateFileTimestamp:
         with tempfile.NamedTemporaryFile(delete=False) as f:
             f.write(b"test")
             temp_path = f.name
-        
+
         try:
             iso_time = "2024-01-15T12:30:00+00:00"
-            
+
             update_file_timestamp(temp_path, ctime=iso_time, mtime=iso_time)
-            
+
             expected_ts = datetime.fromisoformat(iso_time).timestamp()
             stat = os.stat(temp_path)
             assert abs(stat.st_mtime - expected_ts) < 1
@@ -97,12 +97,12 @@ class TestUpdateFileTimestamp:
         with tempfile.NamedTemporaryFile(delete=False) as f:
             f.write(b"test")
             temp_path = f.name
-        
+
         try:
             mtime = "1705320700"
-            
+
             update_file_timestamp(temp_path, mtime=mtime)
-            
+
             stat = os.stat(temp_path)
             assert abs(stat.st_mtime - 1705320700) < 1
         finally:
@@ -113,10 +113,10 @@ class TestUpdateFileTimestamp:
         with tempfile.NamedTemporaryFile(delete=False) as f:
             f.write(b"test")
             temp_path = f.name
-        
+
         try:
             original_mtime = os.stat(temp_path).st_mtime
-            
+
             update_file_timestamp(temp_path, ctime=None, mtime=None)
 
             # Timestamp should be unchanged
@@ -272,14 +272,12 @@ class TestIsValidDir:
 
 
 from hsync_server.path_validation import (
-    is_valid_filename,
-    has_forbidden_chars,
-    has_control_chars,
-    is_reserved_name,
-    has_problematic_trailing,
     FORBIDDEN_FILENAME_CHARS,
-    CONTROL_CHARS,
-    RESERVED_FILENAMES,
+    has_control_chars,
+    has_forbidden_chars,
+    has_problematic_trailing,
+    is_reserved_name,
+    is_valid_filename,
 )
 
 
@@ -414,4 +412,3 @@ class TestHasProblematicTrailing:
     def test_trailing_period(self):
         """Returns True for trailing period."""
         assert has_problematic_trailing("file.") is True
-
