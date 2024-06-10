@@ -67,7 +67,12 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI, None, None]:
         from hsync_server.api.buckets import create_bucket, delete_bucket, get_bucket
 
         # Import file endpoints from files module
-        from hsync_server.api.files import delete_file, download_file, get_files, upload_file
+        from hsync_server.api.files import (
+            delete_file,
+            download_file,
+            get_files,
+            upload_file,
+        )
 
         test_auth_router.add_api_route("/api/v1/buckets/{bucket}", get_bucket, methods=["GET"])
         test_auth_router.add_api_route("/api/v1/buckets", create_bucket, methods=["POST"])
