@@ -49,7 +49,7 @@ from hsync_server.exceptions import (
 from hsync_server.hashes import get_md5_hash, set_md5_hash
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File as LocalFile
-from hsync_server.path_validation import is_valid_filename
+from hsync_server.path_validation import is_valid_filename, sanitize_filename
 from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
 
@@ -109,13 +109,35 @@ async def upload_file(
     is_resumable = offset > 0
     is_compressed = compressed.lower() == "true"
     try:
-        # Validate inputs
+        # Early validation: Check size BEFORE accepting any data
+        # This prevents DoS attacks with huge files
+        if HSYNC_MAX_UPLOAD_SIZE > 0 and size > HSYNC_MAX_UPLOAD_SIZE:
+            raise FileTooLargeError(
+                message=f"File size {size} exceeds maximum allowed size of {HSYNC_MAX_UPLOAD_SIZE} bytes",
+                details={
+                    "max_size": HSYNC_MAX_UPLOAD_SIZE,
+                    "provided_size": size,
+                },
+            )
+
+        # Validate and sanitize inputs
         if not is_valid_bucket(bucket):
             raise InvalidBucketNameError(details={"bucket": bucket})
         if not is_valid_dir(path):
             raise InvalidPathError(details={"path": path})
         if permissions and not is_valid_permission_format(permissions):
             raise InvalidPermissionFormatError(details={"permissions": permissions})
+
+        # Sanitize filename to handle dangerous characters automatically
+        original_filename = file.filename or ""
+        safe_filename = sanitize_filename(original_filename)
+
+        # If sanitization changed the filename, warn but allow it
+        if safe_filename != original_filename:
+            log.warning(f"Filename sanitized: '{original_filename}' -> '{safe_filename}'")
+            # Update file.filename with sanitized name for further processing
+            file.filename = safe_filename
+
         if not is_valid_filename(file.filename or ""):
             raise InvalidFilenameError(details={"filename": file.filename})
 
