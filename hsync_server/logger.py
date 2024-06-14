@@ -143,7 +143,7 @@ def get_log_format() -> str:
     return fmt
 
 
-def _format_record_colored(record: dict) -> str:
+def _format_record_colored(record: Any) -> str:
     """
     Custom format function for loguru with colors.
 
@@ -166,7 +166,7 @@ def _format_record_colored(record: dict) -> str:
     )
 
 
-def _format_record_plain(record: dict) -> str:
+def _format_record_plain(record: Any) -> str:
     """
     Custom format function for loguru without colors.
 
@@ -261,7 +261,7 @@ def setup_logging(
         logger.add(
             sys.stdout,
             level=level.upper(),
-            format=format_func,
+            format=format_func,  # type: ignore[arg-type]
             colorize=use_colors,  # Enable loguru's color tag processing
         )
 
@@ -271,7 +271,7 @@ def setup_logging(
         logger.add(
             log_file,
             level=level.upper(),
-            format=_format_record_plain,
+            format=_format_record_plain,  # type: ignore[arg-type]
             colorize=False,
             encoding="utf-8",
             rotation=rotation_config["rotation"],
