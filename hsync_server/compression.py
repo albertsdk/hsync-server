@@ -219,6 +219,43 @@ def compress_file(filepath: str) -> bytes:
         return compress_data(f.read())
 
 
+async def async_compress_file(filepath: str, chunk_size: int = 64 * 1024) -> bytes:
+    """
+    Read and compress a file asynchronously using streaming compression.
+
+    Reads the file in chunks using async I/O and compresses using zstd's
+    streaming API, producing a single compressed frame. This avoids loading
+    the entire uncompressed file into memory at once.
+
+    The file size is passed to the stream writer so that the content size
+    is embedded in the frame header, allowing the client to decompress
+    without knowing the output size in advance.
+
+    Args:
+        filepath: Path to file to compress.
+        chunk_size: Size of read chunks in bytes (default: 64KB).
+
+    Returns:
+        Compressed file content as a single zstd frame.
+    """
+    import io
+    from os.path import getsize
+
+    import aiofiles
+
+    file_size = getsize(filepath)
+    output = io.BytesIO()
+    compressor = zstd.ZstdCompressor(level=COMPRESSION_LEVEL)
+    with compressor.stream_writer(output, size=file_size, closefd=False) as writer:
+        async with aiofiles.open(filepath, "rb") as f:
+            while True:
+                chunk = await f.read(chunk_size)
+                if not chunk:
+                    break
+                writer.write(chunk)
+    return output.getvalue()
+
+
 async def decompress_stream(data: bytes) -> bytes:
     """
     Decompress data asynchronously (for FastAPI handlers).

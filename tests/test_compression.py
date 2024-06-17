@@ -49,6 +49,60 @@ class TestCompression:
         assert compressed != test_content
         assert len(compressed) < len(test_content)
 
+    def test_async_compress_file(self, tmp_path):
+        """Test async streaming file compression produces single decompressible frame."""
+        import asyncio
+
+        test_file = tmp_path / "test_async.txt"
+        # Content larger than chunk_size (64KB) to test multi-chunk reading
+        test_content = b"Async compress test data " * 5000  # ~120KB
+        test_file.write_bytes(test_content)
+
+        async def run_test():
+            return await compression.async_compress_file(str(test_file))
+
+        compressed = asyncio.run(run_test())
+        assert compressed != test_content
+        assert len(compressed) < len(test_content)
+
+        # Verify it decompresses correctly (single frame, client-compatible)
+        decompressed = compression.decompress_data(compressed)
+        assert decompressed == test_content
+
+    def test_async_compress_file_matches_sync(self, tmp_path):
+        """Test async compression produces same decompressed result as sync."""
+        import asyncio
+
+        test_file = tmp_path / "test_match.txt"
+        test_content = b"Match test data " * 8000  # ~128KB
+        test_file.write_bytes(test_content)
+
+        sync_compressed = compression.compress_file(str(test_file))
+
+        async def run_test():
+            return await compression.async_compress_file(str(test_file))
+
+        async_compressed = asyncio.run(run_test())
+
+        # Both should decompress to the same content
+        assert compression.decompress_data(sync_compressed) == test_content
+        assert compression.decompress_data(async_compressed) == test_content
+
+    def test_async_compress_file_small_file(self, tmp_path):
+        """Test async compression works for files smaller than chunk size."""
+        import asyncio
+
+        test_file = tmp_path / "small.txt"
+        test_content = b"Small file content"
+        test_file.write_bytes(test_content)
+
+        async def run_test():
+            return await compression.async_compress_file(str(test_file))
+
+        compressed = asyncio.run(run_test())
+        decompressed = compression.decompress_data(compressed)
+        assert decompressed == test_content
+
 
 class TestShouldCompress:
     """Tests for should_compress function."""
