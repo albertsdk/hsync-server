@@ -8,10 +8,29 @@ to connected clients via WebSocket.
 
 from enum import Enum
 from os.path import join
+from typing import TYPE_CHECKING, TypedDict
 
 from .dir import Dir
 from .file import File
 from .symlink import Symlink
+
+if TYPE_CHECKING:
+    from .file import FileDict
+
+
+# =============================================================================
+# TypedDicts for type-safe serialization
+# =============================================================================
+
+
+class EventDict(TypedDict):
+    """Type-safe dictionary representation of an Event."""
+
+    cid: str
+    name: str
+    bucket: str
+    src: "FileDict | dict"
+    dst: "FileDict | dict | None"
 
 
 class EventName(str, Enum):
@@ -119,17 +138,17 @@ class Event:
             f"dst={self.dst})"
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> EventDict:
         """
         Convert the Event instance to a dictionary.
 
         Returns:
-            Dictionary representation suitable for JSON serialization.
+            EventDict representation suitable for JSON serialization.
         """
-        return {
-            "cid": self.cid,
-            "name": self.name,
-            "bucket": self.bucket,
-            "src": self.src.to_dict(),
-            "dst": self.dst.to_dict() if self.dst else None,
-        }
+        return EventDict(
+            cid=self.cid,
+            name=self.name,
+            bucket=self.bucket,
+            src=self.src.to_dict(),
+            dst=self.dst.to_dict() if self.dst else None,
+        )
