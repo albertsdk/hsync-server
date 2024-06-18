@@ -15,13 +15,15 @@ corresponding MD5 checksums are stored for quick duplicate detection.
 import hashlib
 from os import walk
 from os.path import isdir, join
+from typing import Any
 
 from hsync_server.models.dir import is_hidden_dir
 from hsync_server.models.file import is_hidden_file
 
 # In-memory storage for file hashes
-# Each entry is a dict mapping SHA256(filepath) -> MD5(file_content)
-FILE_HASHES: list[dict[str, str]] = []
+# Maps SHA256(filepath) ->)
+# Using dict MD5(file_content for O(1) lookups instead of list
+FILE_HASHES: dict[str, str] = {}
 
 
 def set_md5_hash(filepath: str, md5sum: str) -> None:
@@ -34,8 +36,8 @@ def set_md5_hash(filepath: str, md5sum: str) -> None:
         filepath: Absolute path to the file.
         md5sum: MD5 checksum of the file content.
     """
-    hashed_key = hashlib.new("sha256", filepath.encode()).hexdigest()
-    FILE_HASHES.append({hashed_key: md5sum})
+    hashed_key: str = hashlib.sha256(filepath.encode()).hexdigest()
+    FILE_HASHES[hashed_key] = md5sum
 
 
 def get_md5_hash(filepath: str) -> str | None:
@@ -48,11 +50,8 @@ def get_md5_hash(filepath: str) -> str | None:
     Returns:
         The MD5 checksum if found, None otherwise.
     """
-    hashed_key = hashlib.new("sha256", filepath.encode()).hexdigest()
-    for entry in FILE_HASHES:
-        if hashed_key in entry:
-            return entry[hashed_key]
-    return None
+    hashed_key: str = hashlib.sha256(filepath.encode()).hexdigest()
+    return FILE_HASHES.get(hashed_key)
 
 
 def del_md5_hash(filepath: str) -> bool:
@@ -65,11 +64,10 @@ def del_md5_hash(filepath: str) -> bool:
     Returns:
         True if the hash was found and deleted, False otherwise.
     """
-    hashed_key = hashlib.new("sha256", filepath.encode()).hexdigest()
-    for entry in FILE_HASHES:
-        if hashed_key in entry:
-            FILE_HASHES.remove(entry)
-            return True
+    hashed_key: str = hashlib.sha256(filepath.encode()).hexdigest()
+    if hashed_key in FILE_HASHES:
+        del FILE_HASHES[hashed_key]
+        return True
     return False
 
 
@@ -113,7 +111,7 @@ def set_md5_hashes(directory: str) -> int:
         raise ValueError(f"Invalid directory path: {directory}")
 
     # Reset the hash storage
-    FILE_HASHES = []
+    FILE_HASHES = {}
     file_count = 0
 
     # Walk directory tree, skipping hidden directories
