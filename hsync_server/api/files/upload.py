@@ -17,7 +17,7 @@ This module provides the REST API endpoint for file upload with:
 
 from os import makedirs, remove
 from os.path import exists, getsize
-from shutil import move
+from shutil import copy2, move
 
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
@@ -106,6 +106,8 @@ async def upload_file(
     """
     file_location_tmp = None
     partial_file_path = None
+    backup_path = None
+    file_location = None
     is_resumable = offset > 0
     is_compressed = compressed.lower() == "true"
     try:
@@ -164,6 +166,13 @@ async def upload_file(
 
         # Ensure directory exists
         makedirs(file_directory, exist_ok=True)
+
+        # Create backup of existing file before overwriting
+        # This ensures readers can still access the complete original file
+        # while the new version is being uploaded
+        backup_path = f"{file_location}.backup"
+        if exists(file_location):
+            copy2(file_location, backup_path)
 
         # Handle resumable upload
         if is_resumable:
@@ -282,6 +291,10 @@ async def upload_file(
         move(file_location_tmp, file_location)
         file_location_tmp = None  # Don't clean up - it's been moved
 
+        # Clean up backup file after successful upload
+        if backup_path and exists(backup_path):
+            remove(backup_path)
+
         # Broadcast "added" event to other connected clients
         src = LocalFile().get(file_location)
         local_bucket = f"{HSYNC_BUCKETS}/{bucket}"
@@ -307,6 +320,10 @@ async def upload_file(
         raise
     except Exception as e:
         log.error(f"Upload failed for file {file.filename}: {e}", exc_info=True)
+        # Restore from backup if it exists
+        if backup_path and exists(backup_path) and file_location:
+            move(backup_path, file_location)
+            log.info(f"Restored backup for file: {file_location}")
         raise UploadError(
             message=f"Upload failed for file {file.filename}",
             details={"filename": file.filename, "error": str(e)},

@@ -166,6 +166,9 @@ async def get_files(
             # Skip hidden files using is_hidden_file
             if is_hidden_file(file_path):
                 continue
+            # Skip backup files (used during upload to maintain read access)
+            if file.endswith(".backup"):
+                continue
 
             # Get file info and normalize path relative to bucket
             file_obj = LocalFile().get(file, root)
