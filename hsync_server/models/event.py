@@ -6,7 +6,7 @@ file system events (add, modify, rename, delete) that are broadcast
 to connected clients via WebSocket.
 """
 
-from enum import Enum
+from enum import StrEnum
 from os.path import join
 from typing import TYPE_CHECKING, TypedDict
 
@@ -33,7 +33,7 @@ class EventDict(TypedDict):
     dst: "FileDict | dict | None"
 
 
-class EventName(str, Enum):
+class EventName(StrEnum):
     """
     Enumeration of supported file system event types.
 

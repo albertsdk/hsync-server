@@ -6,12 +6,12 @@ for representing synchronization decisions (upload, download, or no action).
 """
 
 from datetime import timedelta as td
-from enum import Enum
+from enum import StrEnum
 
 from .file import File
 
 
-class SyncActionName(str, Enum):
+class SyncActionName(StrEnum):
     """
     Enumeration of possible synchronization actions.
 
