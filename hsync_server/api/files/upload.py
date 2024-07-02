@@ -50,6 +50,7 @@ from hsync_server.exceptions import (
 from hsync_server.hashes import get_md5_hash, set_md5_hash
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File as LocalFile
+from hsync_server.models.file import invalidate_md5_cache
 from hsync_server.path_validation import is_valid_filename, sanitize_filename
 from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
@@ -314,6 +315,9 @@ async def upload_file(
         # Atomically move file to final destination
         move(file_location_tmp, file_location)
         file_location_tmp = None  # Don't clean up - it's been moved
+
+        # Invalidate MD5 cache for this file (content has changed)
+        invalidate_md5_cache(file_location)
 
         # Clean up backup file after successful upload
         if backup_path and exists(backup_path):

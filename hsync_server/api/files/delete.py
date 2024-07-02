@@ -35,6 +35,7 @@ from hsync_server.exceptions import (
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File as LocalFile
+from hsync_server.models.file import invalidate_md5_cache
 from hsync_server.routers import auth_router
 
 
@@ -94,6 +95,7 @@ async def delete_file(
 
         # Remove the file
         remove(file)
+        invalidate_md5_cache(file)
         log.info(f'File: "{file}" deleted successfully')
 
         # Also remove any backup file associated with this file
