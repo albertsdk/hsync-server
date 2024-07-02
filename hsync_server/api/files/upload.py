@@ -36,10 +36,11 @@ from hsync_server.api.utils import (
     set_permissions,
 )
 from hsync_server.compression import decompress_data
-from hsync_server.config import HSYNC_BUCKETS, HSYNC_MAX_UPLOAD_SIZE
+from hsync_server.config import HSYNC_BUCKETS, HSYNC_MAX_UPLOAD_SIZE, get_settings
 from hsync_server.exceptions import (
     ChecksumMismatchError,
     FileTooLargeError,
+    InsufficientStorageError,
     InvalidBucketNameError,
     InvalidFilenameError,
     InvalidPathError,
@@ -121,6 +122,29 @@ async def upload_file(
                     "provided_size": size,
                 },
             )
+
+        # Check disk space before accepting upload
+        min_free = get_settings().min_free_disk_space
+        if min_free > 0:
+            from shutil import disk_usage
+
+            try:
+                usage = disk_usage(HSYNC_BUCKETS)
+                if usage.free < min_free:
+                    free_mb = usage.free / (1024 * 1024)
+                    min_free_mb = min_free / (1024 * 1024)
+                    raise InsufficientStorageError(
+                        message=(
+                            f"Insufficient storage: {free_mb:.0f} MB available, "
+                            f"{min_free_mb:.0f} MB required"
+                        ),
+                        details={
+                            "available_bytes": usage.free,
+                            "required_bytes": min_free,
+                        },
+                    )
+            except OSError:
+                log.warning("Could not check disk space")
 
         # Validate and sanitize inputs
         if not is_valid_bucket(bucket):

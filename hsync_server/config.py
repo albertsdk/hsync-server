@@ -126,6 +126,13 @@ class Settings(BaseSettings):
         description="Directory for auto-generated certificates",
     )
 
+    # Disk Space Configuration
+    min_free_disk_space: int = Field(
+        default=500 * 1024 * 1024,  # 500 MB
+        ge=0,
+        description="Minimum free disk space in bytes before accepting uploads (0 = disabled)",
+    )
+
     # WebSocket Configuration
     ws_heartbeat_interval: int = Field(
         default=30,

@@ -199,3 +199,10 @@ class DeleteError(FileOperationError):
 
     error_code = "HSYNC-4003"
     default_message = "Delete failed"
+
+
+class InsufficientStorageError(FileOperationError):
+    """Insufficient storage space on server."""
+
+    error_code = "HSYNC-4004"
+    default_message = "Insufficient storage space"
