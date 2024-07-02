@@ -7,11 +7,37 @@
 """
 Data models package for HSYNC Server.
 
-This package contains Pydantic models and data classes for
-file synchronization operations.
+Re-exports all models from hsync_common.models for backward compatibility.
 """
 
-from hsync_server.models.dir import Dir
-from hsync_server.models.event import Event, EventName
-from hsync_server.models.file import File
-from hsync_server.models.sync_action import SyncAction, SyncActionName
+from hsync_common.models import (  # noqa: F401
+    Dir,
+    Event,
+    EventDict,
+    EventName,
+    File,
+    FileDict,
+    Symlink,
+    SyncAction,
+    SyncActionName,
+    clear_md5_cache,
+    invalidate_md5_cache,
+    is_hidden_dir,
+    is_hidden_file,
+)
+
+__all__ = [
+    "Dir",
+    "Event",
+    "EventDict",
+    "EventName",
+    "File",
+    "FileDict",
+    "SyncAction",
+    "SyncActionName",
+    "Symlink",
+    "clear_md5_cache",
+    "invalidate_md5_cache",
+    "is_hidden_dir",
+    "is_hidden_file",
+]

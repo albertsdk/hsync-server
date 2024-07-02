@@ -741,6 +741,23 @@ files = [
 ]
 
 [[package]]
+name = "hsync-common"
+version = "1.0.0"
+description = "HSYNC Common - shared models, constants, and compression utilities"
+optional = false
+python-versions = ">=3.12,<3.14"
+files = []
+develop = true
+
+[package.dependencies]
+loguru = "^0.7.3"
+zstandard = "^0.25.0"
+
+[package.source]
+type = "directory"
+url = "../hsync-common"
+
+[[package]]
 name = "httpcore"
 version = "1.0.9"
 description = "A minimal low-level HTTP client."
@@ -2378,4 +2395,4 @@ cffi = ["cffi (>=1.17,<2.0)", "cffi (>=2.0.0b)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.12,<3.14"
-content-hash = "a5283a82e6190a5eaf2f1215c809b0dcb0f21786f3f5b071ea3b2910157d64d5"
+content-hash = "2685b580dc72aa3c140851bdacaba10da65d4820f551ec2646cb3adc3dc7e455"
