@@ -39,21 +39,15 @@ import sys
 from contextvars import ContextVar
 from typing import Any, Final
 
+from hsync_common.logger import (
+    DEFAULT_LOG_COMPRESSION,
+    DEFAULT_LOG_RETENTION,
+    DEFAULT_LOG_ROTATION,
+    LEVEL_STYLES,
+    BaseInterceptHandler,
+    get_rotation_config,
+)
 from loguru import logger
-
-# =============================================================================
-# Log Rotation Configuration Defaults
-# =============================================================================
-
-# Default rotation: rotate when file reaches 10 MB
-DEFAULT_LOG_ROTATION: Final[str] = "10 MB"
-
-# Default retention: keep logs for 7 days
-DEFAULT_LOG_RETENTION: Final[str] = "7 days"
-
-# Default compression: gzip for space efficiency
-DEFAULT_LOG_COMPRESSION: Final[str] = "gz"
-
 
 # Context variable for request ID - thread-safe storage for per-request data
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
@@ -64,31 +58,6 @@ from hsync_server.config import VALID_LOG_LEVELS
 
 # Valid log formats
 VALID_LOG_FORMATS: Final[tuple[str, ...]] = ("text", "json")
-
-# =============================================================================
-# Color Configuration (Best Practices)
-# =============================================================================
-#
-# Following industry-standard log coloring conventions:
-# - Timestamps: dim/muted to reduce visual noise
-# - DEBUG: gray/dim - low priority, verbose information
-# - INFO: default/white - normal operational messages
-# - SUCCESS: green - positive outcomes
-# - WARNING: yellow - attention needed but not critical
-# - ERROR: red - failures that need investigation
-# - CRITICAL: bold red - severe issues requiring immediate action
-# =============================================================================
-
-# Loguru color tags for terminal output
-# Using loguru's built-in color system for proper terminal compatibility
-LEVEL_STYLES: dict[str, tuple[str, str]] = {
-    "DEBUG": ("<dim>", "</dim>"),
-    "INFO": ("", ""),
-    "SUCCESS": ("<green>", "</green>"),
-    "WARNING": ("<yellow>", "</yellow>"),
-    "ERROR": ("<red>", "</red>"),
-    "CRITICAL": ("<bold><red>", "</red></bold>"),
-}
 
 
 def get_request_id() -> str | None:
@@ -101,33 +70,18 @@ def set_request_id(request_id: str | None) -> None:
     request_id_var.set(request_id)
 
 
-class InterceptHandler(logging.Handler):
+class InterceptHandler(BaseInterceptHandler):
     """
     Handler that intercepts standard logging and redirects to loguru.
 
-    This allows uvicorn and other libraries using standard logging
-    to have their logs processed through loguru with consistent formatting.
+    Binds the current request_id (from the contextvar) to every log record
+    so that downstream loguru handlers can include it in their output.
     """
 
-    def emit(self, record: logging.LogRecord) -> None:
-        """Redirect log record to loguru."""
-        # Get corresponding loguru level
-        try:
-            level: str = logger.level(record.levelname).name
-        except ValueError:
-            level = str(record.levelno)
-
-        # Find caller from where originated the logged message
-        frame: Any = logging.currentframe()  # type: ignore[assignment]
-        depth = 2
-        while frame and frame.f_code.co_filename == logging.__file__:
-            frame = frame.f_back
-            depth += 1
-
-        # Bind request_id to the log context
-        request_id = get_request_id()
-        log = logger.bind(request_id=request_id or "N/A")
-        log.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+    def __init__(self) -> None:
+        super().__init__(
+            bind_extra=lambda: {"request_id": get_request_id() or "N/A"},
+        )
 
 
 def get_log_format() -> str:
@@ -181,18 +135,8 @@ def _format_record_plain(record: Any) -> str:
     )
 
 
-def _get_rotation_config() -> dict[str, str | None]:
-    """
-    Get log rotation configuration from environment variables.
-
-    Returns:
-        Dictionary with rotation, retention, and compression settings.
-    """
-    return {
-        "rotation": os.environ.get("HSYNC_LOG_ROTATION", DEFAULT_LOG_ROTATION),
-        "retention": os.environ.get("HSYNC_LOG_RETENTION", DEFAULT_LOG_RETENTION),
-        "compression": os.environ.get("HSYNC_LOG_COMPRESSION", DEFAULT_LOG_COMPRESSION),
-    }
+# Backward-compatible alias for the shared rotation config helper.
+_get_rotation_config = get_rotation_config
 
 
 def setup_logging(
