@@ -16,7 +16,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, Literal
 
-from dotenv import load_dotenv
+from hsync_common.env import load_env_file as _load_env_file
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -43,33 +43,12 @@ _HSYNC_PATH: str = str(Path(__file__).parent.parent.resolve())
 
 
 def load_env_file(file_path: str) -> None:
+    """Load env vars from a file and clear the server settings cache.
+
+    Thin wrapper around :func:`hsync_common.env.load_env_file` that binds
+    the local cache invalidation callback.
     """
-    Load environment variables from a file using python-dotenv.
-
-    The file format supports:
-    - KEY=value pairs (one per line)
-    - Comments starting with #
-    - Quoted values (single or double quotes)
-    - export KEY=value syntax
-    - Multiline values with quotes
-
-    Environment variables already set (e.g., from CLI or shell) take
-    precedence and are NOT overwritten by the file.
-
-    Args:
-        file_path: Path to the environment file.
-
-    Raises:
-        FileNotFoundError: If the file does not exist.
-    """
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"Environment file not found: {file_path}")
-
-    # override=False ensures CLI/shell variables take precedence
-    load_dotenv(dotenv_path=path, override=False)
-    # Clear cached settings to reload from new env
-    get_settings.cache_clear()
+    _load_env_file(file_path, on_loaded=get_settings.cache_clear)
 
 
 # =============================================================================
