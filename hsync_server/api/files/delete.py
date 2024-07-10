@@ -106,8 +106,10 @@ async def delete_file(
 
         parent = dirname(file)
         if is_sentinel_file(file):
-            # Sentinel removed — clean up the now-empty directory
-            cleanup_empty_dir(parent)
+            # Sentinel removed — clean up the now-empty directory.
+            # bucket_root must never be removed: a sentinel deletion at the
+            # bucket root would otherwise wipe the whole bucket folder.
+            cleanup_empty_dir(parent, bucket_root=bucket_dir)
         else:
             # Regular file removed — preserve directory with sentinel
             ensure_sentinel_in_dir(parent)

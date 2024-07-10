@@ -45,6 +45,29 @@ class TestIsPathWithinBucket:
         bucket_dir = str(tmp_path / "bucket")
         assert is_path_within_bucket(None, bucket_dir) is False  # type: ignore[arg-type]
 
+    def test_root_allowed_by_default(self, tmp_path):
+        """Default behaviour: the bucket root itself is considered within the bucket."""
+        bucket_dir = str(tmp_path)
+        assert is_path_within_bucket(bucket_dir, bucket_dir) is True
+
+    def test_root_rejected_when_allow_root_false(self, tmp_path):
+        """allow_root=False rejects the bucket root to protect destructive ops.
+
+        Regression test: a malicious or buggy client could send a delete
+        event with path==bucket_dir which would result in ``rmtree`` on
+        the whole bucket. The validation layer must reject the root
+        when allow_root=False is passed.
+        """
+        bucket_dir = str(tmp_path)
+        assert is_path_within_bucket(bucket_dir, bucket_dir, allow_root=False) is False
+
+    def test_subpath_still_accepted_when_allow_root_false(self, tmp_path):
+        """Subdirectories of the bucket remain valid when allow_root=False."""
+        bucket_dir = str(tmp_path)
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        assert is_path_within_bucket(str(sub), bucket_dir, allow_root=False) is True
+
     def test_absolute_path_outside_bucket(self, tmp_path):
         """Absolute path outside bucket returns False."""
         bucket_dir = str(tmp_path / "bucket")

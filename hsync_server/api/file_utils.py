@@ -67,17 +67,29 @@ def ensure_sentinel_in_dir(dir_path: str) -> None:
             log.warning(f'Cannot create sentinel "{sentinel}": {exc}')
 
 
-def cleanup_empty_dir(dir_path: str) -> None:
+def cleanup_empty_dir(dir_path: str, bucket_root: str | None = None) -> None:
     """Remove *dir_path* if it is completely empty (no files at all).
 
     Called after deleting a sentinel file so that the directory does
     not linger on disk once it has no real content.  Only removes the
     directory if it contains zero entries (hidden or otherwise).
 
+    The bucket root directory is never removed, even when empty, to
+    prevent a malicious or legacy client from destroying a bucket by
+    deleting the ``.hsynckeep`` sentinel located at its root.
+
     Args:
         dir_path: Absolute path to the directory to check.
+        bucket_root: Absolute path of the bucket root that must NOT be
+            removed. When omitted no root guard is applied (legacy
+            behaviour, used by tests that operate outside of a bucket).
     """
+    from os.path import realpath
+
     if not path_exists(dir_path) or not isdir(dir_path):
+        return
+
+    if bucket_root and realpath(dir_path) == realpath(bucket_root):
         return
 
     try:
