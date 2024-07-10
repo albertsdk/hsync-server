@@ -19,40 +19,20 @@ Error Code Format: HSYNC-XXXX
 - 5XXX: Internal server errors
 """
 
-from typing import Any
+from hsync_common.exceptions import HSyncError as _CommonHSyncError
 
 
-class HSyncError(Exception):
+class HSyncError(_CommonHSyncError):
     """
-    Base exception for all HSYNC errors.
+    Base exception for all HSYNC server errors.
 
-    Attributes:
-        message: Human-readable error message.
-        error_code: Unique error code for debugging (e.g., "HSYNC-1001").
-        details: Optional additional error details.
+    Inherits the common construction contract (``message``, ``error_code``,
+    ``details``, ``to_dict()``) from ``hsync_common.exceptions.HSyncError``
+    and keeps the server-specific default error code (``HSYNC-5000``).
     """
 
     error_code: str = "HSYNC-5000"
     default_message: str = "An unexpected error occurred"
-
-    def __init__(
-        self,
-        message: str | None = None,
-        details: dict[str, Any] | None = None,
-    ) -> None:
-        self.message = message or self.default_message
-        self.details = details or {}
-        super().__init__(self.message)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert exception to dictionary for JSON response."""
-        result: dict[str, Any] = {
-            "error": self.error_code,
-            "message": self.message,
-        }
-        if self.details:
-            result["details"] = self.details
-        return result
 
 
 # =============================================================================
