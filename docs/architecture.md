@@ -29,7 +29,7 @@ graph TB
 
         subgraph "⑤ Storage"
             FS[(File System)]
-            MD5[(MD5 Cache)]
+            SHA-256[(SHA-256 Cache)]
         end
     end
 
@@ -42,7 +42,7 @@ graph TB
     REST -->|"③"| RL
     RL -->|"④"| HM
     HM -->|"⑤"| FS
-    HM -->|"⑥"| MD5
+    HM -->|"⑥"| SHA-256
 
     WS -->|"⑦"| BCM
     BCM -->|"⑧"| CM
@@ -62,7 +62,7 @@ graph TB
 | **Rate Limiter** | Protects endpoints from abuse (slowapi) |
 | **Connection Manager** | Manages WebSocket connections per bucket |
 | **Bucket Connection Manager** | Isolates connections by bucket for scalability |
-| **Hash Manager** | Caches MD5 hashes for duplicate detection |
+| **Hash Manager** | Caches SHA-256 hashes for duplicate detection |
 | **File System** | Stores bucket data in `/buckets/{bucket_name}/` |
 
 ## Module Structure
@@ -124,12 +124,12 @@ sequenceDiagram
     C->>API: ① POST /api/v1/buckets/{bucket}/files
     API->>RL: ② Check rate limit
     RL-->>API: ③ OK
-    API->>HM: ④ Check MD5 hash
+    API->>HM: ④ Check SHA-256 hash
     alt ⑤a File exists with same hash
         API-->>C: ⑥a 409 Conflict
     else ⑤b New or modified file
         API->>FS: ⑥b Write file
-        API->>HM: ⑦ Store MD5 hash
+        API->>HM: ⑦ Store SHA-256 hash
         API->>WS: ⑧ Broadcast "added" event
         WS-->>OC: ⑨ Send event
         API-->>C: ⑩ 201 Created

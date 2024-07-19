@@ -7,56 +7,54 @@
 """
 File hash management module for HSYNC Server.
 
-This module provides an in-memory cache for MD5 file checksums.
-File paths are hashed with SHA256 for privacy/security, and the
-corresponding MD5 checksums are stored for quick duplicate detection.
+This module provides an in-memory cache for SHA-256 file checksums.
+File paths are hashed with SHA-256 for privacy/security, and the
+corresponding SHA-256 checksums are stored for quick duplicate detection.
 """
 
 import hashlib
 from os import walk
 from os.path import isdir, join
-from typing import Any
 
 from hsync_server.models.dir import is_hidden_dir
 from hsync_server.models.file import is_hidden_file
 
 # In-memory storage for file hashes
-# Maps SHA256(filepath) ->)
-# Using dict MD5(file_content for O(1) lookups instead of list
+# Maps SHA256(filepath) -> SHA256(file_content)
 FILE_HASHES: dict[str, str] = {}
 
 
-def set_md5_hash(filepath: str, md5sum: str) -> None:
+def set_sha256_hash(filepath: str, sha256sum: str) -> None:
     """
-    Store an MD5 hash for a file path.
+    Store a SHA-256 hash for a file path.
 
-    The file path is hashed with SHA256 before storage for privacy.
+    The file path is hashed with SHA-256 before storage for privacy.
 
     Args:
         filepath: Absolute path to the file.
-        md5sum: MD5 checksum of the file content.
+        sha256sum: SHA-256 checksum of the file content.
     """
     hashed_key: str = hashlib.sha256(filepath.encode()).hexdigest()
-    FILE_HASHES[hashed_key] = md5sum
+    FILE_HASHES[hashed_key] = sha256sum
 
 
-def get_md5_hash(filepath: str) -> str | None:
+def get_sha256_hash(filepath: str) -> str | None:
     """
-    Retrieve the stored MD5 hash for a file path.
+    Retrieve the stored SHA-256 hash for a file path.
 
     Args:
         filepath: Absolute path to the file.
 
     Returns:
-        The MD5 checksum if found, None otherwise.
+        The SHA-256 checksum if found, None otherwise.
     """
     hashed_key: str = hashlib.sha256(filepath.encode()).hexdigest()
     return FILE_HASHES.get(hashed_key)
 
 
-def del_md5_hash(filepath: str) -> bool:
+def del_sha256_hash(filepath: str) -> bool:
     """
-    Delete the stored MD5 hash for a file path.
+    Delete the stored SHA-256 hash for a file path.
 
     Args:
         filepath: Absolute path to the file.
@@ -71,11 +69,11 @@ def del_md5_hash(filepath: str) -> bool:
     return False
 
 
-def set_md5_hashes(directory: str) -> int:
+def set_sha256_hashes(directory: str) -> int:
     """
-    Compute and store MD5 hashes for all files in a directory.
+    Compute and store SHA-256 hashes for all files in a directory.
 
-    Recursively walks the directory tree, computing MD5 checksums
+    Recursively walks the directory tree, computing SHA-256 checksums
     for all non-hidden files. Hidden files and directories (starting
     with '.') are skipped.
 
@@ -90,18 +88,18 @@ def set_md5_hashes(directory: str) -> int:
     """
     global FILE_HASHES
 
-    def _compute_md5(filepath: str, chunk_size: int = 8192) -> str:
+    def _compute_sha256(filepath: str, chunk_size: int = 8192) -> str:
         """
-        Compute MD5 checksum of a file using chunked reading.
+        Compute SHA-256 checksum of a file using chunked reading.
 
         Args:
             filepath: Path to the file.
             chunk_size: Size of chunks to read (default 8KB).
 
         Returns:
-            Hexadecimal MD5 digest string.
+            Hexadecimal SHA-256 digest string.
         """
-        hasher = hashlib.md5()
+        hasher = hashlib.sha256()
         with open(filepath, "rb") as file:
             for chunk in iter(lambda: file.read(chunk_size), b""):
                 hasher.update(chunk)
@@ -123,8 +121,8 @@ def set_md5_hashes(directory: str) -> int:
             file_path = join(root, file)
             # Skip hidden files using is_hidden_file
             if not is_hidden_file(file_path):
-                md5 = _compute_md5(file_path)
-                set_md5_hash(file_path, md5)
+                sha256 = _compute_sha256(file_path)
+                set_sha256_hash(file_path, sha256)
                 file_count += 1
 
     return file_count

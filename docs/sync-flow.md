@@ -113,7 +113,7 @@ flowchart TD
     T -->|"③d deleted"| D[Delete local file]
     T -->|"③e symlink"| L[Create symlink]
 
-    A -->|"④"| V{Verify MD5}
+    A -->|"④"| V{Verify SHA-256}
     M -->|"④"| V
     V -->|"⑤a Match"| S[Success]
     V -->|"⑤b Mismatch"| RE[Retry download]
@@ -131,7 +131,7 @@ flowchart TD
 
     T -->|"③a remote > local"| D[Download from server]
     T -->|"③b local > remote"| U[Upload to server]
-    T -->|"③c equal"| H{④ MD5 match?}
+    T -->|"③c equal"| H{④ SHA-256 match?}
 
     H -->|"⑤a Yes"| S[Skip - files identical]
     H -->|"⑤b No"| U2[Upload local version]

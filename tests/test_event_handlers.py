@@ -144,7 +144,7 @@ class TestHandleAddedEvent:
         """Successfully add a file notification."""
         bucket_dir = str(tmp_path / "bucket")
         os.makedirs(bucket_dir)
-        src = {"filepath": "file.txt", "md5sum": "abc123", "permissions": "644"}
+        src = {"filepath": "file.txt", "sha256sum": "abc123", "permissions": "644"}
         result = await handle_added_event(src, bucket_dir, "bucket", "cid")
         assert result is not None
 
@@ -153,7 +153,7 @@ class TestHandleAddedEvent:
         """Path traversal in file add is rejected."""
         bucket_dir = str(tmp_path / "bucket")
         os.makedirs(bucket_dir)
-        src = {"filepath": "../../../etc/passwd", "md5sum": "abc", "permissions": "644"}
+        src = {"filepath": "../../../etc/passwd", "sha256sum": "abc", "permissions": "644"}
         result = await handle_added_event(src, bucket_dir, "bucket", "cid")
         assert result is None
 
@@ -207,7 +207,7 @@ class TestHandleModifiedEvent:
         """Successfully modify a file notification."""
         bucket_dir = str(tmp_path / "bucket")
         os.makedirs(bucket_dir)
-        src = {"filepath": "file.txt", "md5sum": "abc123", "permissions": "644"}
+        src = {"filepath": "file.txt", "sha256sum": "abc123", "permissions": "644"}
         result = await handle_modified_event(src, bucket_dir, "bucket", "cid")
         assert result is not None
 
@@ -216,7 +216,7 @@ class TestHandleModifiedEvent:
         """Path traversal in file modify is rejected."""
         bucket_dir = str(tmp_path / "bucket")
         os.makedirs(bucket_dir)
-        src = {"filepath": "../../../etc/passwd", "md5sum": "abc", "permissions": "644"}
+        src = {"filepath": "../../../etc/passwd", "sha256sum": "abc", "permissions": "644"}
         result = await handle_modified_event(src, bucket_dir, "bucket", "cid")
         assert result is None
 
@@ -273,7 +273,7 @@ class TestHandleDeletedEvent:
         os.makedirs(bucket_dir)
         file_path = f"{bucket_dir}/todelete.txt"
         Path(file_path).write_text("content")
-        src = {"filepath": "todelete.txt", "md5sum": "abc", "permissions": "644"}
+        src = {"filepath": "todelete.txt", "sha256sum": "abc", "permissions": "644"}
         result = await handle_deleted_event(src, bucket_dir, "bucket", "cid")
         assert result is not None
         assert not os.path.exists(file_path)
@@ -283,7 +283,7 @@ class TestHandleDeletedEvent:
         """Path traversal in file delete is rejected."""
         bucket_dir = str(tmp_path / "bucket")
         os.makedirs(bucket_dir)
-        src = {"filepath": "../../../etc/passwd", "md5sum": "abc", "permissions": "644"}
+        src = {"filepath": "../../../etc/passwd", "sha256sum": "abc", "permissions": "644"}
         result = await handle_deleted_event(src, bucket_dir, "bucket", "cid")
         assert result is None
 
@@ -351,8 +351,8 @@ class TestHandleRenamedEvent:
         os.makedirs(bucket_dir)
         src_file = f"{bucket_dir}/old.txt"
         Path(src_file).write_text("content")
-        src = {"filepath": "old.txt", "md5sum": "abc", "permissions": "644"}
-        dst = {"filepath": "new.txt", "md5sum": "abc", "permissions": "644"}
+        src = {"filepath": "old.txt", "sha256sum": "abc", "permissions": "644"}
+        dst = {"filepath": "new.txt", "sha256sum": "abc", "permissions": "644"}
         result = await handle_renamed_event(src, dst, bucket_dir, "bucket", "cid")
         assert result is not None
         assert not os.path.exists(src_file)
@@ -363,8 +363,8 @@ class TestHandleRenamedEvent:
         """Path traversal in src file is rejected."""
         bucket_dir = str(tmp_path / "bucket")
         os.makedirs(bucket_dir)
-        src = {"filepath": "../../../etc/passwd", "md5sum": "abc", "permissions": "644"}
-        dst = {"filepath": "new.txt", "md5sum": "abc", "permissions": "644"}
+        src = {"filepath": "../../../etc/passwd", "sha256sum": "abc", "permissions": "644"}
+        dst = {"filepath": "new.txt", "sha256sum": "abc", "permissions": "644"}
         result = await handle_renamed_event(src, dst, bucket_dir, "bucket", "cid")
         assert result is None
 
@@ -375,8 +375,8 @@ class TestHandleRenamedEvent:
         os.makedirs(bucket_dir)
         src_file = f"{bucket_dir}/old.txt"
         Path(src_file).write_text("content")
-        src = {"filepath": "old.txt", "md5sum": "abc", "permissions": "644"}
-        dst = {"filepath": "../../../tmp/malicious.txt", "md5sum": "abc", "permissions": "644"}
+        src = {"filepath": "old.txt", "sha256sum": "abc", "permissions": "644"}
+        dst = {"filepath": "../../../tmp/malicious.txt", "sha256sum": "abc", "permissions": "644"}
         result = await handle_renamed_event(src, dst, bucket_dir, "bucket", "cid")
         assert result is None
 

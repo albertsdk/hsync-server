@@ -228,7 +228,7 @@ class TestFileUploadValidation:
         os.makedirs(bucket_path)
 
         file_content = b"duplicate content"
-        md5sum = hashlib.md5(file_content).hexdigest()
+        sha256sum = hashlib.sha256(file_content).hexdigest()
 
         # First upload
         response = await client.post(
@@ -238,7 +238,7 @@ class TestFileUploadValidation:
                 "cid": "test-client-1",
                 "path": "",
                 "permissions": "-rw-r--r--",
-                "md5sum": md5sum,
+                "sha256sum": sha256sum,
             },
         )
         assert response.status_code == 201
@@ -251,7 +251,7 @@ class TestFileUploadValidation:
                 "cid": "test-client-1",
                 "path": "",
                 "permissions": "-rw-r--r--",
-                "md5sum": md5sum,
+                "sha256sum": sha256sum,
             },
         )
         assert response.status_code == 409
@@ -270,7 +270,7 @@ class TestFileUploadValidation:
                 "cid": "test-client-1",
                 "path": "",
                 "permissions": "-rw-r--r--",
-                "md5sum": "wrongchecksum",
+                "sha256sum": "wrongchecksum",
             },
         )
         assert response.status_code == 400

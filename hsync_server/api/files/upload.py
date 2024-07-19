@@ -9,7 +9,7 @@ File upload endpoint for HSYNC Server.
 
 This module provides the REST API endpoint for file upload with:
 - Resumable upload support
-- MD5 checksum verification
+- SHA-256 checksum verification
 - Timestamp preservation
 - Permission setting
 - Compression support
@@ -30,7 +30,7 @@ from hsync_server.api.file_utils import (
     update_file_timestamp,
 )
 from hsync_server.api.utils import (
-    compute_md5,
+    compute_sha256,
     is_valid_bucket,
     is_valid_dir,
     set_permissions,
@@ -47,10 +47,10 @@ from hsync_server.exceptions import (
     InvalidPermissionFormatError,
     UploadError,
 )
-from hsync_server.hashes import get_md5_hash, set_md5_hash
+from hsync_server.hashes import get_sha256_hash, set_sha256_hash
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File as LocalFile
-from hsync_server.models.file import invalidate_md5_cache
+from hsync_server.models.file import invalidate_sha256_cache
 from hsync_server.path_validation import is_valid_filename, sanitize_filename
 from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
@@ -66,7 +66,7 @@ async def upload_file(
     path: str = Form(""),
     ctime: str = Form(""),
     mtime: str = Form(""),
-    md5sum: str = Form(""),
+    sha256sum: str = Form(""),
     permissions: str = Form("-rw-rw-r--"),
     offset: int = Form(0),
     size: int = Form(0),
@@ -76,7 +76,7 @@ async def upload_file(
     """
     Upload a file to a bucket with resumable upload support.
 
-    Handles file upload with integrity verification (MD5), timestamp
+    Handles file upload with integrity verification (SHA-256), timestamp
     preservation, and permission setting. Broadcasts an "added" event
     to all connected WebSocket clients.
 
@@ -90,7 +90,7 @@ async def upload_file(
         path: Subdirectory path within the bucket.
         ctime: Creation time (Unix timestamp or ISO string).
         mtime: Modification time (Unix timestamp or ISO string).
-        md5sum: Expected MD5 checksum for integrity verification.
+        sha256sum: Expected SHA-256 checksum for integrity verification.
         permissions: File permissions in symbolic format.
         offset: Byte offset for resumable uploads (0 for new uploads).
         size: Total file size (required for resumable uploads).
@@ -103,7 +103,7 @@ async def upload_file(
         InvalidPathError: If path is invalid.
         InvalidPermissionFormatError: If permission format is invalid.
         InvalidFilenameError: If filename contains forbidden characters or is reserved.
-        ChecksumMismatchError: If MD5 checksum verification fails.
+        ChecksumMismatchError: If SHA-256 checksum verification fails.
         UploadError: If upload operation fails.
     """
     file_location_tmp = None
@@ -174,8 +174,8 @@ async def upload_file(
         file_location = f"{file_directory}/{file.filename}"
         partial_file_path = f"{file_location}.part"
 
-        # Skip upload if identical file already exists (same MD5)
-        if md5sum and exists(file_location) and md5sum == get_md5_hash(file_location):
+        # Skip upload if identical file already exists (same SHA-256)
+        if sha256sum and exists(file_location) and sha256sum == get_sha256_hash(file_location):
             log.warning(f"File already present: {file_location}")
             # Update timestamps even if skipping upload
             update_file_timestamp(file_location, ctime, mtime)
@@ -305,23 +305,23 @@ async def upload_file(
         if permissions:
             await set_permissions(file_location_tmp, permissions)
 
-        # Verify MD5 checksum if provided
-        md5sum_tmp = await compute_md5(file_location_tmp)
-        if md5sum and md5sum != md5sum_tmp:
+        # Verify SHA-256 checksum if provided
+        sha256sum_tmp = await compute_sha256(file_location_tmp)
+        if sha256sum and sha256sum != sha256sum_tmp:
             raise ChecksumMismatchError(
-                message=f"Checksum mismatch: expected {md5sum}, got {md5sum_tmp}",
-                details={"expected": md5sum, "actual": md5sum_tmp},
+                message=f"Checksum mismatch: expected {sha256sum}, got {sha256sum_tmp}",
+                details={"expected": sha256sum, "actual": sha256sum_tmp},
             )
 
-        # Store MD5 hash for future duplicate detection
-        set_md5_hash(file_location, md5sum_tmp)
+        # Store SHA-256 hash for future duplicate detection
+        set_sha256_hash(file_location, sha256sum_tmp)
 
         # Atomically move file to final destination
         move(file_location_tmp, file_location)
         file_location_tmp = None  # Don't clean up - it's been moved
 
-        # Invalidate MD5 cache for this file (content has changed)
-        invalidate_md5_cache(file_location)
+        # Invalidate SHA-256 cache for this file (content has changed)
+        invalidate_sha256_cache(file_location)
 
         # Clean up backup file after successful upload
         if backup_path and exists(backup_path):

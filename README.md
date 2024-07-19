@@ -62,7 +62,7 @@ flowchart TB
 - 📁 Bucket management for file organization
 - 🔄 WebSocket for real-time synchronization
 - 🔐 API Key authentication (Bearer Token)
-- ✅ MD5-based file integrity verification
+- ✅ SHA-256-based file integrity verification
 - 📊 Integrated Prometheus metrics
 - 🐳 Docker-ready deployment
 - 🛡️ Rate limiting to prevent API abuse
@@ -136,7 +136,7 @@ The server uses environment variables for configuration. Create a `.env` file or
 | `HSYNC_WORKERS` | Number of uvicorn workers | `1` |
 | `HSYNC_TZ` | Timezone in IANA format (e.g., `Europe/Rome`) | `UTC` |
 
-> ⚠️ **Warning**: Multi-worker mode (`HSYNC_WORKERS > 1`) is NOT recommended. WebSocket connections and MD5 cache are not shared between workers.
+> ⚠️ **Warning**: Multi-worker mode (`HSYNC_WORKERS > 1`) is NOT recommended. WebSocket connections and SHA-256 cache are not shared between workers.
 
 ### SSL/TLS Configuration
 
@@ -272,7 +272,7 @@ docker run --rm -it --entrypoint=/bin/sh hsync:1.0.0
 | `path` | string | Relative path in bucket |
 | `ctime` | string | Creation time |
 | `mtime` | string | Modification time |
-| `md5sum` | string | MD5 checksum |
+| `sha256sum` | string | SHA-256 checksum |
 | `permissions` | string | File permissions (e.g., `-rw-rw-r--`) |
 
 ## WebSocket
@@ -394,7 +394,7 @@ hsync-server/
 │   ├── error_handlers.py   # Global error handlers
 │   ├── exceptions.py       # Custom exceptions
 │   ├── path_validation.py  # Path security validation
-│   ├── hashes.py           # MD5 hash caching
+│   ├── hashes.py           # SHA-256 hash caching
 │   ├── rate_limiter.py     # Rate limiting (slowapi)
 │   ├── logger.py           # Logging configuration (loguru)
 │   ├── ssl_utils.py        # SSL/TLS utilities

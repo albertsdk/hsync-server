@@ -8,7 +8,6 @@
 File operations API for HSYNC Server.
 
 This module provides REST API endpoints for file management:
-- File upload with integrity verification (MD5)
 - File download with streaming response
 - File listing with sorting options
 - File deletion with event broadcasting

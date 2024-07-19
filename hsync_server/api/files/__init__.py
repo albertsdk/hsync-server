@@ -8,7 +8,7 @@
 File operations API subpackage.
 
 This module provides REST API endpoints for file management:
-- File upload with integrity verification (MD5)
+- File upload with integrity verification (SHA-256)
 - File download with streaming response
 - File listing with sorting options
 - File deletion with event broadcasting
