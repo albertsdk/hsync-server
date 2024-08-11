@@ -16,6 +16,7 @@ import uvicorn
 from hsync_server.config import (
     get_log_level,
     get_port,
+    get_reload,
     get_ssl_cert_dir,
     get_ssl_certfile,
     get_ssl_enabled,
@@ -234,7 +235,7 @@ def main(
         host="0.0.0.0",
         port=effective_port,
         log_level=effective_log_level,
-        reload=True,
+        reload=get_reload(),
         **ssl_config,
     )
 
