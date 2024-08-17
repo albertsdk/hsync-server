@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, Response
 from loguru import logger as log
 
-from hsync_server.api.utils import is_valid_bucket, is_valid_dir
+from hsync_server.api.utils import compute_sha256, is_valid_bucket, is_valid_dir
 from hsync_server.compression import (
     CONTENT_ENCODING_ZSTD,
     async_compress_file,
@@ -32,6 +32,7 @@ from hsync_server.exceptions import (
     InvalidBucketNameError,
     InvalidPathError,
 )
+from hsync_server.hashes import get_sha256_hash
 from hsync_server.rate_limiter import RATE_LIMIT_DOWNLOAD, limiter
 from hsync_server.routers import auth_router
 
@@ -76,6 +77,14 @@ async def download_file(request: Request, bucket: str, filename: str):
 
     file_size = getsize(file)
 
+    # Retrieve or compute the SHA-256 checksum of the file being served,
+    # so the client can verify integrity against the current server-side state.
+    sha256sum = get_sha256_hash(file)
+    if sha256sum is None:
+        sha256sum = await compute_sha256(file)
+
+    checksum_header = {"X-Checksum-SHA256": sha256sum} if sha256sum else {}
+
     # Check if compression should be used:
     # - Compression is enabled on server
     # - File is compressible (not too small, not pre-compressed)
@@ -99,8 +108,9 @@ async def download_file(request: Request, bucket: str, filename: str):
             headers={
                 "Content-Encoding": CONTENT_ENCODING_ZSTD,
                 "Content-Disposition": f'attachment; filename="{filename.split("/")[-1]}"',
+                **checksum_header,
             },
         )
 
     # Standard download (streaming, supports Range requests)
-    return FileResponse(file, filename=filename)
+    return FileResponse(file, filename=filename, headers=checksum_header)
