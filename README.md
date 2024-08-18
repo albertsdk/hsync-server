@@ -143,33 +143,44 @@ The server uses environment variables for configuration. Create a `.env` file or
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `HSYNC_SSL_ENABLED` | Enable HTTPS/WSS (`true`/`false`) | `false` |
+| `HSYNC_SSL_KEYFILE_PASSWORD` | Password used to encrypt/decrypt the SSL private key on disk (**required when SSL is enabled**) | (empty) |
 | `HSYNC_SSL_CERTFILE` | Path to SSL certificate (PEM format) | (auto-generated) |
-| `HSYNC_SSL_KEYFILE` | Path to SSL private key (PEM format) | (auto-generated) |
+| `HSYNC_SSL_KEYFILE` | Path to SSL private key (PEM format, encrypted PKCS#8) | (auto-generated) |
 | `HSYNC_SSL_CERT_DIR` | Directory for auto-generated certificates | `./certs` |
 
 ## SSL/TLS (HTTPS/WSS)
 
 The server supports encrypted communication via HTTPS and WSS (WebSocket Secure).
+SSL private keys are **always stored encrypted on disk** (PKCS#8 +
+BestAvailableEncryption); `HSYNC_SSL_KEYFILE_PASSWORD` is therefore mandatory
+whenever `HSYNC_SSL_ENABLED=true`. Source the password from a secret manager
+(HashiCorp Vault, AWS Secrets Manager, k8s secret, systemd `LoadCredentialEncrypted=`,
+…) rather than committing it to the repository.
 
 ### Quick Start with Self-Signed Certificates
 
 ```bash
-# Enable SSL - certificates are auto-generated if not provided
-HSYNC_SSL_ENABLED=true HSYNC_API_KEY=secret ./docker.sh start
+# Enable SSL - certificates are auto-generated if not provided.
+# HSYNC_SSL_KEYFILE_PASSWORD is required and is used to encrypt the new key.
+HSYNC_SSL_ENABLED=true \
+HSYNC_SSL_KEYFILE_PASSWORD="$(openssl rand -base64 32)" \
+HSYNC_API_KEY=secret ./docker.sh start
 ```
 
 When SSL is enabled without explicit certificate paths, the server automatically generates self-signed certificates in the `certs/` directory with:
-- RSA 2048-bit key
+- RSA 2048-bit key (encrypted PKCS#8 PEM)
 - SHA-256 signature
 - 1-year validity
 - Subject Alternative Names (SAN) for hostname, localhost, 127.0.0.1, ::1
 
 ### Using Custom Certificates
 
-For production, use certificates from a trusted CA (e.g., Let's Encrypt):
+For production, use certificates from a trusted CA (e.g., Let's Encrypt). The
+private key file must be encrypted with `HSYNC_SSL_KEYFILE_PASSWORD`:
 
 ```bash
 export HSYNC_SSL_ENABLED=true
+export HSYNC_SSL_KEYFILE_PASSWORD="$(cat /run/secrets/hsync_ssl_password)"
 export HSYNC_SSL_CERTFILE=/etc/letsencrypt/live/yourdomain/fullchain.pem
 export HSYNC_SSL_KEYFILE=/etc/letsencrypt/live/yourdomain/privkey.pem
 ./docker.sh start
