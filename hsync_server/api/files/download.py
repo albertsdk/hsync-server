@@ -26,7 +26,7 @@ from hsync_server.compression import (
     async_compress_file,
     should_compress,
 )
-from hsync_server.config import HSYNC_BUCKETS, get_compression_enabled
+from hsync_server.config import get_buckets_path, get_compression_enabled
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.exceptions import (
     InvalidBucketNameError,
@@ -64,7 +64,7 @@ async def download_file(request: Request, bucket: str, filename: str):
     if not is_valid_dir(filename):
         raise InvalidPathError(details={"path": filename})
 
-    file = f"{HSYNC_BUCKETS}/{bucket}/{filename}"
+    file = f"{get_buckets_path()}/{bucket}/{filename}"
     backup_file = f"{file}.backup"
 
     # If a backup file exists (due to ongoing upload), serve that instead

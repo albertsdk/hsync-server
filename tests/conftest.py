@@ -25,15 +25,14 @@ def temp_buckets_dir() -> Generator[str, None, None]:
 @pytest.fixture
 def test_app(temp_buckets_dir: str) -> Generator[FastAPI, None, None]:
     """Create a test FastAPI application with temp buckets directory."""
-    # Patch HSYNC_BUCKETS in all modules that use it
+    # Redirect get_buckets_path() to the temp directory in all modules that import it
     with (
-        patch("hsync_server.config.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.utils.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.utils.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.files.upload.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.files.download.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.files.list.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
     ):
         from slowapi.errors import RateLimitExceeded
         from slowapi.middleware import SlowAPIMiddleware
@@ -100,11 +99,11 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI, None, None]:
 async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[AsyncClient, None]:
     """Create an async test client."""
     with (
-        patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.upload.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.files.download.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.files.list.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
     ):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(
@@ -121,11 +120,11 @@ async def client_no_auth(
 ) -> AsyncGenerator[AsyncClient, None]:
     """Create an async test client without authentication."""
     with (
-        patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir),
-        patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.upload.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.files.download.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.files.list.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
     ):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:

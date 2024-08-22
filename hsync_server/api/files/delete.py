@@ -25,7 +25,7 @@ from hsync_server.api.file_utils import (
     is_sentinel_file,
 )
 from hsync_server.api.utils import is_valid_bucket, is_valid_dir
-from hsync_server.config import HSYNC_BUCKETS
+from hsync_server.config import get_buckets_path
 from hsync_server.exceptions import (
     BucketNotFoundError,
     DeleteError,
@@ -70,7 +70,7 @@ async def delete_file(
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
 
-    bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
+    bucket_dir = f"{get_buckets_path()}/{bucket}"
     if not exists(bucket_dir):
         raise BucketNotFoundError(details={"bucket": bucket})
 
@@ -88,7 +88,7 @@ async def delete_file(
 
         # Broadcast "deleted" event to other clients before deletion
         src = LocalFile().get(file)
-        local_bucket = f"{HSYNC_BUCKETS}/{bucket}"
+        local_bucket = f"{get_buckets_path()}/{bucket}"
         if src:
             manager = bucket_manager.get_manager(bucket)
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.deleted, src))

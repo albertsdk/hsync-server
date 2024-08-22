@@ -291,7 +291,7 @@ class TestFileSizeLimit:
         # Create content larger than limit
         large_content = b"x" * 1000
 
-        with patch("hsync_server.api.files.upload.HSYNC_MAX_UPLOAD_SIZE", 100):
+        with patch("hsync_server.api.files.upload.get_max_upload_size", return_value=100):
             response = await client.post(
                 "/api/v1/buckets/sizelimitbucket/files",
                 files={"file": ("large.txt", io.BytesIO(large_content), "text/plain")},
@@ -311,7 +311,7 @@ class TestFileSizeLimit:
 
         small_content = b"small"
 
-        with patch("hsync_server.api.files.upload.HSYNC_MAX_UPLOAD_SIZE", 1000):
+        with patch("hsync_server.api.files.upload.get_max_upload_size", return_value=1000):
             response = await client.post(
                 "/api/v1/buckets/sizelimitbucket2/files",
                 files={"file": ("small.txt", io.BytesIO(small_content), "text/plain")},
@@ -330,7 +330,7 @@ class TestFileSizeLimit:
 
         content = b"x" * 1000
 
-        with patch("hsync_server.api.files.upload.HSYNC_MAX_UPLOAD_SIZE", 0):
+        with patch("hsync_server.api.files.upload.get_max_upload_size", return_value=0):
             response = await client.post(
                 "/api/v1/buckets/nolimitbucket/files",
                 files={"file": ("file.txt", io.BytesIO(content), "text/plain")},

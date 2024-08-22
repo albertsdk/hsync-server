@@ -62,7 +62,7 @@ class TestVerifyApiKey:
 
         client = TestClient(app)
 
-        with patch("hsync_server.routers.HSYNC_API_KEY", "test-key-123"):
+        with patch("hsync_server.routers.get_api_key", return_value="test-key-123"):
             response = client.get("/test", headers={"Authorization": "Bearer test-key-123"})
 
         assert response.status_code == 200
@@ -93,7 +93,7 @@ class TestVerifyApiKey:
 
         # Without exception handlers registered, we get 500
         # But verify_api_key properly raises InvalidApiKeyError (401)
-        with patch("hsync_server.routers.HSYNC_API_KEY", "correct-key"):
+        with patch("hsync_server.routers.get_api_key", return_value="correct-key"):
             response = client.get("/test", headers={"Authorization": "Bearer wrong-key"})
 
         # Without global exception handlers, we get 500
@@ -111,7 +111,7 @@ class TestVerifyApiKey:
         client = TestClient(app, raise_server_exceptions=False)
 
         # Create a mock credentials with empty credentials
-        with patch("hsync_server.routers.HSYNC_API_KEY", "test-key"):
+        with patch("hsync_server.routers.get_api_key", return_value="test-key"):
             # Try to test with empty credentials - this is tricky via TestClient
             # Instead, let's directly test the behavior
             from fastapi.security import HTTPBearer

@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger as log
 
 from hsync_server.api.utils import is_valid_bucket
-from hsync_server.config import HSYNC_BUCKETS
+from hsync_server.config import get_buckets_path
 from hsync_server.exceptions import (
     BucketNotFoundError,
     DeleteError,
@@ -60,7 +60,7 @@ async def get_bucket(bucket: str) -> JSONResponse:
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
 
-    bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
+    bucket_dir = f"{get_buckets_path()}/{bucket}"
 
     if not exists(bucket_dir):
         raise BucketNotFoundError(details={"bucket": bucket})
@@ -99,7 +99,7 @@ async def create_bucket(bucket: str) -> JSONResponse:
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
 
-    bucket_directory = f"{HSYNC_BUCKETS}/{bucket}"
+    bucket_directory = f"{get_buckets_path()}/{bucket}"
 
     # Check if bucket already exists
     if exists(bucket_directory):
@@ -146,7 +146,7 @@ async def delete_bucket(bucket: str) -> JSONResponse:
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
 
-    bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
+    bucket_dir = f"{get_buckets_path()}/{bucket}"
 
     if not exists(bucket_dir):
         raise BucketNotFoundError(details={"bucket": bucket})

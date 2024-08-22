@@ -36,7 +36,7 @@ from hsync_server.api.utils import (
     set_permissions,
 )
 from hsync_server.compression import decompress_data
-from hsync_server.config import HSYNC_BUCKETS, HSYNC_MAX_UPLOAD_SIZE, get_settings
+from hsync_server.config import get_buckets_path, get_max_upload_size, get_settings
 from hsync_server.exceptions import (
     ChecksumMismatchError,
     FileTooLargeError,
@@ -114,13 +114,16 @@ async def upload_file(
     is_compressed = compressed.lower() == "true"
     upload_successful = False
     try:
+        max_upload_size = get_max_upload_size()
+        buckets_path = get_buckets_path()
+
         # Early validation: Check size BEFORE accepting any data
         # This prevents DoS attacks with huge files
-        if HSYNC_MAX_UPLOAD_SIZE > 0 and size > HSYNC_MAX_UPLOAD_SIZE:
+        if max_upload_size > 0 and size > max_upload_size:
             raise FileTooLargeError(
-                message=f"File size {size} exceeds maximum allowed size of {HSYNC_MAX_UPLOAD_SIZE} bytes",
+                message=f"File size {size} exceeds maximum allowed size of {max_upload_size} bytes",
                 details={
-                    "max_size": HSYNC_MAX_UPLOAD_SIZE,
+                    "max_size": max_upload_size,
                     "provided_size": size,
                 },
             )
@@ -131,7 +134,7 @@ async def upload_file(
             from shutil import disk_usage
 
             try:
-                usage = disk_usage(HSYNC_BUCKETS)
+                usage = disk_usage(buckets_path)
                 if usage.free < min_free:
                     free_mb = usage.free / (1024 * 1024)
                     min_free_mb = min_free / (1024 * 1024)
@@ -170,7 +173,7 @@ async def upload_file(
             raise InvalidFilenameError(details={"filename": file.filename})
 
         # Define file paths
-        file_directory = f"{HSYNC_BUCKETS}/{bucket}/{path}"
+        file_directory = f"{buckets_path}/{bucket}/{path}"
         file_location = f"{file_directory}/{file.filename}"
         partial_file_path = f"{file_location}.part"
 
@@ -223,11 +226,11 @@ async def upload_file(
             async with aiofiles.open(partial_file_path, "ab") as f:
                 while chunk := await file.read(8192):
                     total_bytes += len(chunk)
-                    if HSYNC_MAX_UPLOAD_SIZE > 0 and total_bytes > HSYNC_MAX_UPLOAD_SIZE:
+                    if max_upload_size > 0 and total_bytes > max_upload_size:
                         raise FileTooLargeError(
-                            message=f"File exceeds maximum size of {HSYNC_MAX_UPLOAD_SIZE} bytes",
+                            message=f"File exceeds maximum size of {max_upload_size} bytes",
                             details={
-                                "max_size": HSYNC_MAX_UPLOAD_SIZE,
+                                "max_size": max_upload_size,
                                 "received_bytes": total_bytes,
                             },
                         )
@@ -261,11 +264,11 @@ async def upload_file(
                 file_location_tmp = str(temp_file.name)
                 while chunk := await file.read(8192):
                     total_bytes += len(chunk)
-                    if HSYNC_MAX_UPLOAD_SIZE > 0 and total_bytes > HSYNC_MAX_UPLOAD_SIZE:
+                    if max_upload_size > 0 and total_bytes > max_upload_size:
                         raise FileTooLargeError(
-                            message=f"File exceeds maximum size of {HSYNC_MAX_UPLOAD_SIZE} bytes",
+                            message=f"File exceeds maximum size of {max_upload_size} bytes",
                             details={
-                                "max_size": HSYNC_MAX_UPLOAD_SIZE,
+                                "max_size": max_upload_size,
                                 "received_bytes": total_bytes,
                             },
                         )
@@ -329,7 +332,7 @@ async def upload_file(
 
         # Broadcast "added" event to other connected clients
         src = LocalFile().get(file_location)
-        local_bucket = f"{HSYNC_BUCKETS}/{bucket}"
+        local_bucket = f"{buckets_path}/{bucket}"
         if src:
             manager = bucket_manager.get_manager(bucket)
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))

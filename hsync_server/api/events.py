@@ -35,8 +35,8 @@ from hsync_server.api.event_handlers import (
     handle_symlink_event,
 )
 from hsync_server.config import (
-    HSYNC_API_KEY,
-    HSYNC_BUCKETS,
+    get_api_key,
+    get_buckets_path,
     get_compression_enabled,
     get_ws_heartbeat_interval,
     get_ws_heartbeat_timeout,
@@ -93,7 +93,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
 
             auth_token = auth_message.get("token", "")
             # Use constant-time comparison to prevent timing attacks
-            if not hmac.compare_digest(auth_token, HSYNC_API_KEY):
+            if not hmac.compare_digest(auth_token, get_api_key()):
                 log.warning(f"[WEBSOCKET ] Invalid API key from {cid}")
                 await websocket.close(code=4003, reason="Invalid API key")
                 return
@@ -213,7 +213,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                     # Extract event data
                     src = message.get("src", None)
                     dst = message.get("dst", None)
-                    bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
+                    bucket_dir = f"{get_buckets_path()}/{bucket}"
                     event_name = EventName(message.get("name"))
 
                     # Initialize event to None - will be set if valid event processed

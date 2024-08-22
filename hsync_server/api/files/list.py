@@ -19,7 +19,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from hsync_server.api.utils import is_valid_bucket, is_valid_dir
-from hsync_server.config import HSYNC_BUCKETS
+from hsync_server.config import get_buckets_path
 from hsync_server.exceptions import (
     BucketNotFoundError,
     InvalidBucketNameError,
@@ -69,7 +69,7 @@ async def get_upload_status(
     if not is_valid_dir(dirname(filename)):
         raise InvalidPathError(details={"path": filename})
 
-    file_path = f"{HSYNC_BUCKETS}/{bucket}/{filename}"
+    file_path = f"{get_buckets_path()}/{bucket}/{filename}"
     partial_path = f"{file_path}.part"
 
     # Check if complete file already exists with same SHA-256
@@ -150,7 +150,8 @@ async def get_files(
         raise InvalidPathError(details={"path": path})
 
     # Construct directory path
-    dir = f"{HSYNC_BUCKETS}/{bucket}/{path or ''}".rstrip("/")
+    buckets_path = get_buckets_path()
+    dir = f"{buckets_path}/{bucket}/{path or ''}".rstrip("/")
 
     if not exists(dir):
         raise BucketNotFoundError(details={"bucket": bucket, "path": path})
@@ -174,7 +175,7 @@ async def get_files(
             file_obj = LocalFile().get(file, root)
             if file_obj:
                 file_info = file_obj.to_dict()
-                file_data = LocalFile().from_dict(file_info, f"{HSYNC_BUCKETS}/{bucket}").to_dict()
+                file_data = LocalFile().from_dict(file_info, f"{buckets_path}/{bucket}").to_dict()
                 file_list.append(file_data)
 
     # Sort by mtime ascending (oldest first) to prioritize updating older files

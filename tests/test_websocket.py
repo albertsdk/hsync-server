@@ -33,7 +33,7 @@ class TestWebSocketAuthentication:
             Exception("disconnect"),  # End the loop
         ]
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-api-key"):
+        with patch("hsync_server.api.events.get_api_key", return_value="test-api-key"):
             try:
                 await ws_events(mock_websocket, "testbucket", "client1")
             except Exception:
@@ -54,7 +54,7 @@ class TestWebSocketAuthentication:
         """Invalid token closes connection with 4003."""
         mock_websocket.receive_text.return_value = '{"type": "auth", "token": "wrong-key"}'
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "correct-key"):
+        with patch("hsync_server.api.events.get_api_key", return_value="correct-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
 
         mock_websocket.close.assert_called_with(code=4003, reason="Invalid API key")
@@ -64,7 +64,7 @@ class TestWebSocketAuthentication:
         """Invalid auth message type closes connection with 4001."""
         mock_websocket.receive_text.return_value = '{"type": "not-auth", "token": "key"}'
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "key"):
+        with patch("hsync_server.api.events.get_api_key", return_value="key"):
             await ws_events(mock_websocket, "testbucket", "client1")
 
         mock_websocket.close.assert_called_with(code=4001, reason="Invalid auth message")
@@ -114,7 +114,7 @@ class TestWebSocketEvents:
             WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
+        with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
 
         # Should not raise, just log and continue
@@ -130,7 +130,7 @@ class TestWebSocketEvents:
             WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
+        with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
 
         # Should not raise, just log and continue
@@ -145,7 +145,7 @@ class TestWebSocketEvents:
             WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
+        with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
 
         # Client should be removed from connections
@@ -169,8 +169,11 @@ class TestWebSocketEvents:
         ]
 
         with (
-            patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"),
-            patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")),
+            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
+            patch(
+                "hsync_server.api.events.get_buckets_path",
+                return_value=str(tmp_path / "buckets"),
+            ),
         ):
             await ws_events(mock_websocket, "testbucket", "client1")
 
@@ -195,8 +198,11 @@ class TestWebSocketEvents:
         ]
 
         with (
-            patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"),
-            patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")),
+            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
+            patch(
+                "hsync_server.api.events.get_buckets_path",
+                return_value=str(tmp_path / "buckets"),
+            ),
         ):
             await ws_events(mock_websocket, "testbucket", "client1")
 
@@ -218,8 +224,11 @@ class TestWebSocketEvents:
         ]
 
         with (
-            patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"),
-            patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")),
+            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
+            patch(
+                "hsync_server.api.events.get_buckets_path",
+                return_value=str(tmp_path / "buckets"),
+            ),
         ):
             await ws_events(mock_websocket, "testbucket", "client1")
 
@@ -244,8 +253,11 @@ class TestWebSocketEvents:
         ]
 
         with (
-            patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"),
-            patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")),
+            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
+            patch(
+                "hsync_server.api.events.get_buckets_path",
+                return_value=str(tmp_path / "buckets"),
+            ),
         ):
             await ws_events(mock_websocket, "testbucket", "client1")
 
@@ -273,8 +285,11 @@ class TestWebSocketEvents:
         ]
 
         with (
-            patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"),
-            patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")),
+            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
+            patch(
+                "hsync_server.api.events.get_buckets_path",
+                return_value=str(tmp_path / "buckets"),
+            ),
         ):
             await ws_events(mock_websocket, "testbucket", "client1")
 
@@ -292,7 +307,7 @@ class TestWebSocketEvents:
             WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
+        with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
             # Should not raise
             await ws_events(mock_websocket, "testbucket", "client1")
 
@@ -304,7 +319,7 @@ class TestWebSocketEvents:
             Exception("Connection error"),
         ]
 
-        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
+        with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
 
         mock_websocket.close.assert_called()
