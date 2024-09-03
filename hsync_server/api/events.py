@@ -24,6 +24,7 @@ import hmac
 from json import JSONDecodeError, loads
 
 from fastapi import WebSocket, WebSocketDisconnect
+from hsync_common.text import escape_loguru_braces
 from loguru import logger as log
 
 from hsync_server.api.connection_manager import bucket_manager
@@ -46,11 +47,6 @@ from hsync_server.middleware import check_version_compatibility
 from hsync_server.models.event import EventName
 from hsync_server.rate_limiter import create_ws_message_bucket
 from hsync_server.routers import public_router
-
-
-def _escape_braces(s: str) -> str:
-    """Escape curly braces in string for loguru format."""
-    return s.replace("{", "{{").replace("}", "}}")
 
 
 # NOTE: WebSocket does not support Header Authentication
@@ -183,7 +179,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                     await websocket.close(code=4004, reason="Heartbeat timeout")
                     break
 
-                log.debug(f"[WEBSOCKET ] Received message: {_escape_braces(data)}")
+                log.debug(f"[WEBSOCKET ] Received message: {escape_loguru_braces(data)}")
                 try:
                     message = loads(data)
 
@@ -236,9 +232,9 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         await manager.send_message(event)
 
                 except JSONDecodeError:
-                    log.error(f"[WEBSOCKET ] Invalid JSON received: {_escape_braces(data)}")
+                    log.error(f"[WEBSOCKET ] Invalid JSON received: {escape_loguru_braces(data)}")
                 except Exception as e:
-                    log.error(f"[WEBSOCKET ] Exception data: {_escape_braces(data)}")
+                    log.error(f"[WEBSOCKET ] Exception data: {escape_loguru_braces(data)}")
                     log.error(f"[WEBSOCKET ] Exception: {e}", exc_info=True)
 
         except WebSocketDisconnect:
