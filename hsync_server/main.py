@@ -46,21 +46,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     start = time.time()
 
-    # Validate that API key is configured
+    # API key validity (presence + min length) is guaranteed by the Settings
+    # field_validator at config load time, so the lifespan only logs status.
     api_key = get_api_key()
-    if not api_key:
-        log.critical(
-            "HSYNC_API_KEY environment variable is not set. "
-            "Server cannot start without authentication configured. "
-            "Generate a secure key at: https://it-tools.tech/token-generator"
-        )
-        raise RuntimeError("HSYNC_API_KEY is not set")
-
-    if len(api_key) < 16:
-        log.warning(
-            f"HSYNC_API_KEY is only {len(api_key)} characters. "
-            "Consider using a longer key (32+ characters) for better security."
-        )
+    log.info(f"API key configured ({len(api_key)} characters)")
 
     # Preload SHA-256 checksums for all existing files in buckets
     # This enables fast duplicate detection without recalculating hashes

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from hsync_server import config
 
@@ -149,6 +150,46 @@ class TestSettings:
         """Test that workers must be at least 1."""
         with pytest.raises(Exception):
             config.Settings(workers=0)
+
+
+class TestApiKeyValidator:
+    """Tests for the api_key field_validator (fail-fast at config load)."""
+
+    def test_empty_api_key_rejected(self):
+        with pytest.raises(ValidationError, match="HSYNC_API_KEY must be set"):
+            config.Settings(api_key="")
+
+    def test_api_key_too_short_rejected(self):
+        with pytest.raises(ValidationError, match="at least 16 characters"):
+            config.Settings(api_key="short-key")
+
+    def test_api_key_exactly_16_chars_accepted(self):
+        settings = config.Settings(api_key="a" * 16)
+        assert settings.api_key.get_secret_value() == "a" * 16
+
+    def test_api_key_long_accepted(self):
+        key = "a-valid-32-character-api-key!!!!"
+        assert len(key) >= 16
+        settings = config.Settings(api_key=key)
+        assert settings.api_key.get_secret_value() == key
+
+
+class TestSslKeyfilePasswordValidator:
+    """Tests for the model_validator enforcing ssl password when SSL is on."""
+
+    def test_ssl_password_required_when_ssl_enabled(self):
+        with pytest.raises(ValidationError, match="HSYNC_SSL_KEYFILE_PASSWORD is required"):
+            config.Settings(ssl_enabled=True, ssl_keyfile_password="")
+
+    def test_ssl_password_not_required_when_ssl_disabled(self):
+        settings = config.Settings(ssl_enabled=False, ssl_keyfile_password="")
+        assert settings.ssl_enabled is False
+        assert settings.ssl_keyfile_password.get_secret_value() == ""
+
+    def test_ssl_password_accepted_when_ssl_enabled(self):
+        settings = config.Settings(ssl_enabled=True, ssl_keyfile_password="some-strong-password")
+        assert settings.ssl_enabled is True
+        assert settings.ssl_keyfile_password.get_secret_value() == "some-strong-password"
 
 
 class TestGetSettings:
