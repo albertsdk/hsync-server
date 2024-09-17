@@ -13,7 +13,7 @@ This module provides the REST API endpoints for:
 """
 
 from os import remove, walk
-from os.path import dirname, exists, getsize
+from pathlib import Path
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -66,14 +66,14 @@ async def get_upload_status(
     """
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
-    if not is_valid_dir(dirname(filename)):
+    if not is_valid_dir(str(Path(filename).parent)):
         raise InvalidPathError(details={"path": filename})
 
     file_path = f"{get_buckets_path()}/{bucket}/{filename}"
     partial_path = f"{file_path}.part"
 
     # Check if complete file already exists with same SHA-256
-    if sha256sum and exists(file_path) and sha256sum == get_sha256_hash(file_path):
+    if sha256sum and Path(file_path).exists() and sha256sum == get_sha256_hash(file_path):
         return JSONResponse(
             status_code=200,
             content={
@@ -84,8 +84,8 @@ async def get_upload_status(
         )
 
     # Check for partial file
-    if exists(partial_path):
-        partial_size = getsize(partial_path)
+    if Path(partial_path).exists():
+        partial_size = Path(partial_path).stat().st_size
         # Validate partial file is not larger than expected
         if size > 0 and partial_size >= size:
             # Partial file is invalid, remove it
@@ -153,7 +153,7 @@ async def get_files(
     buckets_path = get_buckets_path()
     dir = f"{buckets_path}/{bucket}/{path or ''}".rstrip("/")
 
-    if not exists(dir):
+    if not Path(dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket, "path": path})
 
     # Collect file metadata
