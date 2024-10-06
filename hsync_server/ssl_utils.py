@@ -109,7 +109,6 @@ def generate_self_signed_cert(
         subject_attrs=subject_attrs,
         san_list=san_list,
         validity_days=validity_days,
-        basic_constraints_ca=True,
     )
 
     not_valid_after = datetime.now(UTC) + timedelta(days=validity_days)
