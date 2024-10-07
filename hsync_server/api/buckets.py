@@ -16,7 +16,6 @@ All endpoints require API key authentication via Bearer token.
 """
 
 from datetime import UTC, datetime
-from os import makedirs
 from pathlib import Path
 from shutil import rmtree
 
@@ -113,7 +112,7 @@ async def create_bucket(bucket: str) -> JSONResponse:
             },
         )
 
-    makedirs(bucket_directory, exist_ok=True)
+    Path(bucket_directory).mkdir(parents=True, exist_ok=True)
     log.info(f'Bucket: "{bucket}" created')
 
     return JSONResponse(
