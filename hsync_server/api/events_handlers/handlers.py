@@ -38,6 +38,7 @@ from hsync_server.models.dir import Dir
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File
 from hsync_server.models.symlink import Symlink
+from hsync_server.tombstones import clear_deletion, record_deletion
 
 
 async def handle_added_event(
@@ -82,6 +83,10 @@ async def handle_added_event(
             log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
             return None
         log.info(f'[WEBSOCKET ] Added file "{file_obj.filepath}"')
+        # A (re-)created file invalidates any prior deletion marker so peers
+        # do not delete the freshly added file on their next full sync.
+        if not is_sentinel_file(file_obj.filepath):
+            clear_deletion(bucket, bucket_dir, file_obj.filepath)
         return Event(cid, bucket_dir, bucket, EventName.added, file_obj)
 
     return None
@@ -128,6 +133,8 @@ async def handle_modified_event(
             log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
             return None
         log.info(f'[WEBSOCKET ] Modified file "{file_obj.filepath}"')
+        if not is_sentinel_file(file_obj.filepath):
+            clear_deletion(bucket, bucket_dir, file_obj.filepath)
         return Event(cid, bucket_dir, bucket, EventName.modified, file_obj)
 
     return None
@@ -196,6 +203,15 @@ async def handle_deleted_event(
                     ensure_sentinel_in_dir(parent)
             # Remove from hash cache
             del_sha256_hash(file_obj.filepath)
+            # Record a tombstone so peers offline at deletion time do not
+            # resurrect the file on their next full sync.
+            if not is_sentinel_file(file_obj.filepath):
+                record_deletion(
+                    bucket,
+                    bucket_dir,
+                    file_obj.filepath,
+                    sha256sum=file_obj.sha256sum,
+                )
             return Event(cid, bucket_dir, bucket, EventName.deleted, file_obj)
 
     return None

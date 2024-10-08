@@ -23,7 +23,11 @@ from loguru import logger as log
 
 from hsync_server.api.files.delete import delete_file  # noqa: F401
 from hsync_server.api.files.download import download_file  # noqa: F401
-from hsync_server.api.files.list import get_files, get_upload_status  # noqa: F401
+from hsync_server.api.files.list import (  # noqa: F401
+    get_files,
+    get_tombstones,
+    get_upload_status,
+)
 
 # Re-export from submodules for backward compatibility
 from hsync_server.api.files.upload import upload_file  # noqa: F401

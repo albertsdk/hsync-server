@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Final, Literal
 
 from hsync_common.env import load_env_file as _load_env_file
+from hsync_common.models.tombstone import TOMBSTONE_TTL_DAYS_DEFAULT
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -132,6 +133,13 @@ class Settings(BaseSettings):
         default=10,
         ge=3,
         description="WebSocket heartbeat timeout in seconds",
+    )
+
+    # Tombstone Configuration
+    tombstone_ttl_days: int = Field(
+        default=TOMBSTONE_TTL_DAYS_DEFAULT,
+        ge=0,
+        description="Days to retain deletion markers before garbage collection (0 = forever)",
     )
 
     # Development
@@ -312,3 +320,8 @@ def get_ws_heartbeat_timeout() -> int:
 def get_reload() -> bool:
     """Get uvicorn auto-reload flag (late binding)."""
     return get_settings().reload
+
+
+def get_tombstone_ttl_days() -> int:
+    """Get tombstone retention window in days from environment (late binding)."""
+    return get_settings().tombstone_ttl_days

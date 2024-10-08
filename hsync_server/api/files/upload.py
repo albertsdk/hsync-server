@@ -54,6 +54,7 @@ from hsync_server.models.file import invalidate_sha256_cache
 from hsync_server.path_validation import is_valid_filename, sanitize_filename
 from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
+from hsync_server.tombstones import clear_deletion
 
 
 @auth_router.post("/api/v1/buckets/{bucket}/files")
@@ -186,6 +187,8 @@ async def upload_file(
             log.warning(f"File already present: {file_location}")
             # Update timestamps even if skipping upload
             update_file_timestamp(file_location, ctime, mtime)
+            # The file exists: drop any stale deletion marker for it.
+            clear_deletion(bucket, f"{buckets_path}/{bucket}", file_location)
             # Clean up partial file if exists
             if Path(partial_file_path).exists():
                 remove(partial_file_path)
@@ -332,6 +335,10 @@ async def upload_file(
 
         # Invalidate SHA-256 cache for this file (content has changed)
         invalidate_sha256_cache(file_location)
+
+        # A successful upload (re-)creates the file: drop any deletion marker
+        # so peers do not delete it on their next full sync.
+        clear_deletion(bucket, f"{buckets_path}/{bucket}", file_location)
 
         # Clean up backup file after successful upload
         if backup_path and Path(backup_path).exists():

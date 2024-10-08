@@ -4,9 +4,11 @@ Tests for WebSocket event handlers.
 
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+import hsync_server.tombstones as tombstones
 from hsync_server.api.event_handlers import (
     handle_added_event,
     handle_deleted_event,
@@ -16,6 +18,15 @@ from hsync_server.api.event_handlers import (
     is_path_within_bucket,
     is_safe_symlink_target,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_tombstones(tmp_path):
+    """Keep tombstone side-cars inside the test tmp dir and reset the cache."""
+    tombstones.reset_cache()
+    with patch.object(tombstones, "get_buckets_path", return_value=str(tmp_path)):
+        yield
+    tombstones.reset_cache()
 
 
 class TestIsPathWithinBucket:
@@ -158,6 +169,20 @@ class TestHandleAddedEvent:
         assert result is None
 
     @pytest.mark.asyncio
+    async def test_add_file_clears_tombstone(self, tmp_path):
+        """Re-adding a previously deleted path clears its tombstone (no resurrection)."""
+        bucket_dir = str(tmp_path / "bucket")
+        os.makedirs(bucket_dir)
+        store = tombstones.get_tombstone_store("bucket")
+        store.record("file.txt", sha256sum="old", timestamp=1000)
+        assert store.get("file.txt") is not None
+
+        src = {"filepath": "file.txt", "sha256sum": "abc123", "permissions": "644"}
+        result = await handle_added_event(src, bucket_dir, "bucket", "cid")
+        assert result is not None
+        assert tombstones.get_tombstone_store("bucket").get("file.txt") is None
+
+    @pytest.mark.asyncio
     async def test_add_empty_src_returns_none(self, tmp_path):
         """Empty src dict returns None."""
         bucket_dir = str(tmp_path / "bucket")
@@ -221,6 +246,20 @@ class TestHandleModifiedEvent:
         assert result is None
 
     @pytest.mark.asyncio
+    async def test_modify_file_clears_tombstone(self, tmp_path):
+        """Modifying a previously deleted path clears its tombstone."""
+        bucket_dir = str(tmp_path / "bucket")
+        os.makedirs(bucket_dir)
+        store = tombstones.get_tombstone_store("bucket")
+        store.record("file.txt", sha256sum="old", timestamp=1000)
+        assert store.get("file.txt") is not None
+
+        src = {"filepath": "file.txt", "sha256sum": "abc123", "permissions": "644"}
+        result = await handle_modified_event(src, bucket_dir, "bucket", "cid")
+        assert result is not None
+        assert tombstones.get_tombstone_store("bucket").get("file.txt") is None
+
+    @pytest.mark.asyncio
     async def test_modify_empty_src_returns_none(self, tmp_path):
         """Empty src dict returns None."""
         bucket_dir = str(tmp_path / "bucket")
@@ -277,6 +316,22 @@ class TestHandleDeletedEvent:
         result = await handle_deleted_event(src, bucket_dir, "bucket", "cid")
         assert result is not None
         assert not os.path.exists(file_path)
+
+    @pytest.mark.asyncio
+    async def test_delete_file_records_tombstone(self, tmp_path):
+        """Deleting a file records a tombstone so offline peers do not resurrect it."""
+        bucket_dir = str(tmp_path / "bucket")
+        os.makedirs(bucket_dir)
+        file_path = f"{bucket_dir}/todelete.txt"
+        Path(file_path).write_text("content")
+
+        src = {"filepath": "todelete.txt", "sha256sum": "abc", "permissions": "644"}
+        result = await handle_deleted_event(src, bucket_dir, "bucket", "cid")
+        assert result is not None
+
+        entry = tombstones.get_tombstone_store("bucket").get("todelete.txt")
+        assert entry is not None
+        assert entry["ts"] > 0
 
     @pytest.mark.asyncio
     async def test_delete_file_path_traversal_rejected(self, tmp_path):
