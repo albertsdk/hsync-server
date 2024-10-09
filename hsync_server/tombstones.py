@@ -14,9 +14,17 @@ file during a full reconciliation.
 """
 
 from hsync_common.constants import HSYNCTOMBSTONES_FILENAME
-from hsync_common.models.tombstone import TombstoneStore
+from hsync_common.models.tombstone import TombstoneStore, relpath_in_bucket
 
 from hsync_server.config import get_buckets_path, get_tombstone_ttl_days
+
+__all__ = [
+    "clear_deletion",
+    "get_tombstone_store",
+    "record_deletion",
+    "relpath_in_bucket",
+    "reset_cache",
+]
 
 # Cache of per-bucket stores, keyed by bucket name.
 _stores: dict[str, TombstoneStore] = {}
@@ -25,11 +33,6 @@ _stores: dict[str, TombstoneStore] = {}
 def _store_path(bucket: str) -> str:
     """Return the side-car file path for a bucket's tombstones."""
     return f"{get_buckets_path()}/{bucket}/{HSYNCTOMBSTONES_FILENAME}"
-
-
-def relpath_in_bucket(abs_path: str, bucket_dir: str) -> str:
-    """Return the bucket-relative path used as the tombstone identity."""
-    return str(abs_path).removeprefix(str(bucket_dir)).lstrip("/")
 
 
 def get_tombstone_store(bucket: str) -> TombstoneStore:
