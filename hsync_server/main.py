@@ -26,7 +26,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from .api import buckets, events, files, health  # noqa: F401
-from .config import get_api_key, get_buckets_path, get_cors_enabled, get_cors_origins
+from .config import get_api_key, get_buckets_path, get_cors_enabled, get_cors_origins, get_settings
 from .constants import HSYNC_VERSION
 from .error_handlers import register_exception_handlers
 from .hashes import set_sha256_hashes
@@ -71,10 +71,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 # Initialize FastAPI application with metadata
+# API docs (Swagger UI / ReDoc) are disabled by default in production;
+# set HSYNC_ENABLE_DOCS=true for development.
+_settings = get_settings()
 app = FastAPI(
     title="HSYNC - HTTP Sync file server",
     version=HSYNC_VERSION,
     lifespan=lifespan,
+    docs_url="/docs" if _settings.enable_docs else None,
+    redoc_url="/redoc" if _settings.enable_docs else None,
 )
 
 # Configure rate limiting
