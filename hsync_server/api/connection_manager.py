@@ -15,6 +15,7 @@ This module provides classes for managing WebSocket connections:
 from fastapi import WebSocket
 from loguru import logger as log
 
+from hsync_server.config import get_ws_max_connections, get_ws_max_connections_per_ip
 from hsync_server.models.event import Event
 
 
@@ -84,6 +85,50 @@ class BucketConnectionManager:
     def __init__(self):
         """Initialize with empty buckets dictionary."""
         self.buckets: dict[str, ConnectionManager] = {}
+        # Slot accounting for DoS protection. Counts every accepted connection
+        # for its whole lifetime (including the pre-auth window), independently
+        # of the post-auth ``active_connections`` registry used for broadcasting.
+        self._total_slots: int = 0
+        self._slots_per_ip: dict[str, int] = {}
+
+    def try_acquire_slot(self, client_ip: str) -> bool:
+        """
+        Reserve a connection slot, enforcing global and per-IP caps.
+
+        Must be called right after ``websocket.accept()``. The reservation has
+        to be released via :meth:`release_slot` once the connection ends. The
+        check/increment is atomic with respect to the asyncio event loop (no
+        ``await`` in between), so concurrent handlers cannot over-commit.
+
+        Args:
+            client_ip: Direct peer IP of the connecting client.
+
+        Returns:
+            True if a slot was reserved, False if a limit would be exceeded.
+        """
+        if self._total_slots >= get_ws_max_connections():
+            log.warning(f"WS global connection limit reached ({self._total_slots})")
+            return False
+        if self._slots_per_ip.get(client_ip, 0) >= get_ws_max_connections_per_ip():
+            log.warning(f"WS per-IP connection limit reached for {client_ip}")
+            return False
+        self._total_slots += 1
+        self._slots_per_ip[client_ip] = self._slots_per_ip.get(client_ip, 0) + 1
+        return True
+
+    def release_slot(self, client_ip: str) -> None:
+        """
+        Release a previously reserved connection slot.
+
+        Args:
+            client_ip: Direct peer IP used when the slot was acquired.
+        """
+        self._total_slots = max(0, self._total_slots - 1)
+        remaining = self._slots_per_ip.get(client_ip, 0) - 1
+        if remaining > 0:
+            self._slots_per_ip[client_ip] = remaining
+        else:
+            self._slots_per_ip.pop(client_ip, None)
 
     def get_manager(self, bucket: str) -> ConnectionManager:
         """

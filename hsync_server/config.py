@@ -134,6 +134,21 @@ class Settings(BaseSettings):
         ge=3,
         description="WebSocket heartbeat timeout in seconds",
     )
+    ws_auth_timeout: int = Field(
+        default=10,
+        ge=1,
+        description="Seconds to wait for the WebSocket auth message before closing",
+    )
+    ws_max_connections: int = Field(
+        default=1000,
+        ge=1,
+        description="Maximum number of concurrent WebSocket connections (all buckets)",
+    )
+    ws_max_connections_per_ip: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum number of concurrent WebSocket connections per client IP",
+    )
 
     # Tombstone Configuration
     tombstone_ttl_days: int = Field(
@@ -321,6 +336,21 @@ def get_ws_heartbeat_interval() -> int:
 def get_ws_heartbeat_timeout() -> int:
     """Get WebSocket heartbeat timeout in seconds (late binding)."""
     return get_settings().ws_heartbeat_timeout
+
+
+def get_ws_auth_timeout() -> int:
+    """Get WebSocket authentication timeout in seconds (late binding)."""
+    return get_settings().ws_auth_timeout
+
+
+def get_ws_max_connections() -> int:
+    """Get the global WebSocket connection cap (late binding)."""
+    return get_settings().ws_max_connections
+
+
+def get_ws_max_connections_per_ip() -> int:
+    """Get the per-IP WebSocket connection cap (late binding)."""
+    return get_settings().ws_max_connections_per_ip
 
 
 def get_reload() -> bool:
