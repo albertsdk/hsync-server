@@ -17,13 +17,13 @@ from pathlib import Path
 
 from aiofiles.ospath import isfile
 from fastapi import Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, StreamingResponse
 from loguru import logger as log
 
 from hsync_server.api.utils import compute_sha256, is_valid_bucket, is_valid_dir
 from hsync_server.compression import (
     CONTENT_ENCODING_ZSTD,
-    async_compress_file,
+    async_compress_stream,
     should_compress,
 )
 from hsync_server.config import get_buckets_path, get_compression_enabled
@@ -95,15 +95,12 @@ async def download_file(request: Request, bucket: str, filename: str):
     )
 
     if use_compression:
-        # Async streaming compression: reads file in chunks, produces single zstd frame
-        compressed_data = await async_compress_file(file)
-        compression_ratio = len(compressed_data) / file_size * 100
-        log.debug(
-            f"Compressed download: {file_size} -> {len(compressed_data)} bytes "
-            f"({compression_ratio:.1f}%)"
-        )
-        return Response(
-            content=compressed_data,
+        # Streaming compression: reads and compresses the file in chunks and
+        # streams the single zstd frame to the client, so neither the file nor
+        # its compressed form is ever fully buffered in memory (memory-bomb DoS).
+        log.debug(f"Compressed streaming download: {file} ({file_size} bytes)")
+        return StreamingResponse(
+            async_compress_stream(file),
             media_type="application/octet-stream",
             headers={
                 "Content-Encoding": CONTENT_ENCODING_ZSTD,

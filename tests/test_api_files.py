@@ -105,6 +105,32 @@ class TestFileDownload:
 
         assert response.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_download_compressed_streaming(self, client: AsyncClient, temp_buckets_dir: str):
+        """A large compressible file is streamed zstd-compressed and round-trips (2.11)."""
+        from unittest.mock import patch
+
+        bucket_path = os.path.join(temp_buckets_dir, "compressbucket")
+        os.makedirs(bucket_path)
+        file_path = os.path.join(bucket_path, "big.txt")
+        # Compressible content above the 10KB download threshold.
+        content = ("compressible streaming download line\n" * 5000).encode()
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        with patch("hsync_server.api.files.download.get_compression_enabled", return_value=True):
+            response = await client.get(
+                "/api/v1/buckets/compressbucket/files/download",
+                params={"filename": "big.txt"},
+            )
+
+        assert response.status_code == 200
+        assert response.headers.get("Content-Encoding") == "zstd"
+        # httpx transparently decodes the zstd Content-Encoding, so reaching the
+        # original bytes proves the streamed body is a single, valid zstd frame
+        # decodable by a real client (one-shot decompression compatibility).
+        assert response.content == content
+
 
 class TestFileList:
     """Tests for file listing endpoint."""
