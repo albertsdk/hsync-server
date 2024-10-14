@@ -11,12 +11,12 @@ packages = [{include = "hsync_server"}]
 hsync-server = "hsync_server.__main__:main"
 
 [tool.poetry.dependencies]
-python = ">=3.12,<3.14"
+python = ">=3.12,<3.15"
 hsync-common = {path = "../hsync-common", develop = true}
-fastapi = "^0.136.0"
-uvicorn = "^0.46.0"
+fastapi = "^0.137.0"
+uvicorn = "^0.49.0"
 prometheus-fastapi-instrumentator = "^7.0.2"
-python-multipart = "^0.0.28"
+python-multipart = "^0.0.32"
 aiofiles = "^25.1.0"
 websockets = "^16.0"
 watchdog = "^6.0.0"
@@ -48,14 +48,14 @@ python_functions = ["test_*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
 ignore = ["E501", "E402", "B904", "SIM115", "SIM117", "B008", "B017", "F401", "SIM101", "SIM103", "SIM105", "SIM118", "F841"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = false
 warn_unused_ignores = false
 disallow_untyped_defs = false
