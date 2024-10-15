@@ -68,6 +68,10 @@ flowchart TB
 - 🛡️ Rate limiting to prevent API abuse
 - 🔗 Symbolic link synchronization support
 - 📦 Per-bucket connection management for scalability
+- ⏩ Resumable uploads (offset-based, with `upload-status` checks)
+- 🪦 Deletion tombstones to prevent resurrecting files deleted on another peer
+- ⏱️ Clock-synchronization endpoint for NTP-like client offset correction
+- 🗜️ Zstandard (zstd) transfer compression
 
 ## Requirements
 
@@ -273,6 +277,22 @@ docker run --rm -it --entrypoint=/bin/sh hsync:1.0.0
 | `POST` | `/api/v1/buckets/{bucket}/files` | Upload file (multipart/form-data) |
 | `GET` | `/api/v1/buckets/{bucket}/files/download?filename={path}` | Download file |
 | `DELETE` | `/api/v1/buckets/{bucket}/files` | Delete file |
+| `GET` | `/api/v1/buckets/{bucket}/files/upload-status` | Check resumable-upload status (offset) |
+
+### Tombstones
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/buckets/{bucket}/tombstones` | List deletion markers for a bucket |
+| `POST` | `/api/v1/buckets/{bucket}/tombstones` | Merge deletion markers pushed by a peer |
+
+### Monitoring & Sync
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/health` | Health check (empty `200 OK`) | No |
+| `GET` | `/metrics` | Prometheus metrics | No |
+| `GET` | `/api/v1/time` | Server timestamp for client clock sync | No |
 
 ### Upload Parameters
 
@@ -409,13 +429,15 @@ hsync-server/
 │   ├── rate_limiter.py     # Rate limiting (slowapi)
 │   ├── logger.py           # Logging configuration (loguru)
 │   ├── ssl_utils.py        # SSL/TLS utilities
+│   ├── compression.py      # Zstandard compression helpers
+│   ├── tombstones.py       # Deletion-marker (tombstone) store
 │   ├── api/                # API endpoints
 │   │   ├── __init__.py
-│   │   ├── files.py        # File operations (upload/download)
+│   │   ├── files/          # File operations (list/upload/download/delete/upload-status)
 │   │   ├── buckets.py      # Bucket management
 │   │   ├── events.py       # WebSocket handler
-│   │   ├── health.py       # Health check endpoint
-│   │   ├── event_handlers.py # Event processing
+│   │   ├── events_handlers/ # Event processing and validation
+│   │   ├── health.py       # Health check + time endpoints
 │   │   ├── connection_manager.py # WebSocket connections
 │   │   ├── file_utils.py   # File operation utilities
 │   │   └── utils.py        # API utilities
@@ -454,4 +476,4 @@ Authorization: Bearer {HSYNC_API_KEY}
 
 ## License
 
-This project is licensed under the [Mozilla Public License 2.0](LICENSE).
+[Mozilla Public License 2.0](LICENSE)
