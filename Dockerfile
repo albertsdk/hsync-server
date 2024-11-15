@@ -1,3 +1,8 @@
+# NOTE: The build context must be the repository root (the parent of
+# hsync-server), because hsync-server depends on the local ../hsync-common
+# package. Build via `./docker.sh build`, which sets the correct context and
+# passes `-f hsync-server/Dockerfile`.
+
 ### Builder
 FROM python:3.13.11-alpine3.22 AS builder
 
@@ -21,7 +26,11 @@ ENV POETRY_NO_INTERACTION=1 \
 
 # Add minimal files needed for poetry install
 RUN touch README.md
-COPY pyproject.toml poetry.lock /project/
+COPY hsync-server/pyproject.toml hsync-server/poetry.lock /project/
+
+# Copy the local path dependency so Poetry can resolve hsync-common,
+# declared as {path = "../hsync-common"} -> /hsync-common at build time
+COPY hsync-common /hsync-common
 
 # Install dependencies and clean cache in single layer
 RUN poetry env use python3.13 \
@@ -39,8 +48,12 @@ WORKDIR /project/
 # Copy the virtual environment from the builder stage
 COPY --from=builder /project/.venv /venv
 
+# Copy the editable path dependency to the same absolute path used at build
+# time so the venv's editable install of hsync-common resolves at runtime
+COPY hsync-common /hsync-common
+
 # Copy application source code
-COPY hsync_server /project/hsync_server
+COPY hsync-server/hsync_server /project/hsync_server
 
 # Setup directories and permissions in single layer
 RUN mkdir -p buckets tmp \
