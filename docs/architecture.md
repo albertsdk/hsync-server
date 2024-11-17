@@ -2,8 +2,6 @@
 
 This document describes the architecture of the HSYNC Server.
 
-> **Note**: Diagrams are written in Mermaid. If they don't render, run `./generate-diagrams.sh` to generate PNG images in the `images/` directory.
-
 ## System Overview
 
 ```mermaid
@@ -50,8 +48,6 @@ graph TB
     CM -.->|"⑨ Broadcast"| C2
     CM -.->|"⑨ Broadcast"| C3
 ```
-
-![System Overview](images/architecture-1.png)
 
 ## Component Description
 
@@ -105,8 +101,6 @@ graph LR
     events -->|"⑩"| models/
 ```
 
-![Module Structure](images/architecture-2.png)
-
 ## Data Flow
 
 ### File Upload Flow
@@ -136,8 +130,6 @@ sequenceDiagram
     end
 ```
 
-![File Upload Flow](images/architecture-3.png)
-
 ### WebSocket Event Flow
 
 ```mermaid
@@ -159,5 +151,3 @@ sequenceDiagram
     WS->>BCM: ⑧ Get bucket manager
     BCM-->>C2: ⑨ Broadcast event
 ```
-
-![WebSocket Event Flow](images/architecture-4.png)

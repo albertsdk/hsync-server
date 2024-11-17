@@ -2,8 +2,6 @@
 
 This document describes how file synchronization works between clients through the HSYNC server.
 
-> **Note**: Diagrams are written in Mermaid. If they don't render, run `./generate-diagrams.sh` to generate PNG images in the `images/` directory.
-
 ## Overview
 
 HSYNC uses a combination of REST API for file transfers and WebSocket for real-time event propagation.
@@ -38,8 +36,6 @@ graph TB
     REST -->|"⑨ File Content"| CB
     CB -->|"⑩ Write"| FSB
 ```
-
-![Overview](images/sync-flow-1.png)
 
 ## Initial Synchronization
 
@@ -76,8 +72,6 @@ sequenceDiagram
     C->>C: ⑨ Sync complete
 ```
 
-![Initial Synchronization](images/sync-flow-2.png)
-
 ## Real-Time Synchronization (Watch Mode)
 
 In watch mode, clients maintain a WebSocket connection for instant updates:
@@ -99,8 +93,6 @@ sequenceDiagram
     C2->>C2: ⑧ Write file.txt locally
 ```
 
-![Real-Time Synchronization](images/sync-flow-3.png)
-
 ## Event Types and Actions
 
 ```mermaid
@@ -119,8 +111,6 @@ flowchart TD
     V -->|"⑤b Mismatch"| RE[Retry download]
 ```
 
-![Event Types and Actions](images/sync-flow-4.png)
-
 ## Conflict Resolution
 
 HSYNC uses "last write wins" based on modification time:
@@ -136,8 +126,6 @@ flowchart TD
     H -->|"⑤a Yes"| S[Skip - files identical]
     H -->|"⑤b No"| U2[Upload local version]
 ```
-
-![Conflict Resolution](images/sync-flow-5.png)
 
 ## Event Queue and Retry
 
@@ -161,8 +149,6 @@ stateDiagram-v2
     end note
 ```
 
-![Event Queue and Retry](images/sync-flow-6.png)
-
 ## Connection Recovery
 
 When the WebSocket connection is lost:
@@ -185,5 +171,3 @@ sequenceDiagram
     S-->>C: ⑨ Current file list
     C->>C: ⑩ Resync to catch missed events
 ```
-
-![Connection Recovery](images/sync-flow-7.png)

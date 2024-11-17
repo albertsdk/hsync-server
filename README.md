@@ -51,13 +51,6 @@ flowchart TB
     style BUCKET fill:#f3e5f5,stroke:#7b1fa2,color:#7b1fa2
 ```
 
-<details>
-<summary>📷 View as image (if Mermaid is not rendered)</summary>
-
-![Architecture Overview](docs/images/README-1.png)
-
-</details>
-
 **Flow:**
 1. **① Upload** — Clients upload files to REST API
 2. **② Store** — API writes files to bucket storage
