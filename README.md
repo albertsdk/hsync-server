@@ -383,16 +383,23 @@ Compression is automatically skipped for:
 
 ## Rate Limiting
 
-The server implements rate limiting to prevent API abuse:
+The server implements per-IP rate limiting (slowapi) to prevent API abuse.
+All limits are configurable via environment variables:
 
-| Endpoint | Limit |
-|----------|-------|
-| Upload (`/api/v1/buckets/{bucket}/files` POST) | 50 requests/minute |
-| Download (`/api/v1/buckets/{bucket}/files/download`) | 200 requests/minute |
-| Files list (`/api/v1/buckets/{bucket}/files` GET) | 100 requests/minute |
-| Other endpoints | 100 requests/minute |
+| Endpoint | Default limit | Environment variable |
+|----------|---------------|----------------------|
+| Upload (`/api/v1/buckets/{bucket}/files` POST) | 200/minute | `HSYNC_RATE_LIMIT_UPLOAD` |
+| Download (`/api/v1/buckets/{bucket}/files/download`) | 1000/minute | `HSYNC_RATE_LIMIT_DOWNLOAD` |
+| WebSocket connections (`.../events/{cid}`) | 50/minute | `HSYNC_RATE_LIMIT_WEBSOCKET` |
+| Other endpoints (list, delete, buckets, tombstones, upload-status) | 500/minute | `HSYNC_RATE_LIMIT_DEFAULT` |
+| WebSocket event messages (per connection) | 10/second | `HSYNC_RATE_LIMIT_WS_MESSAGES` |
 
-When rate limit is exceeded, the server returns HTTP 429 (Too Many Requests).
+When a rate limit is exceeded, the server returns HTTP 429 (Too Many Requests).
+
+> **Reverse proxies**: `X-Forwarded-For` is honoured only when the direct peer
+> is listed in `HSYNC_TRUSTED_PROXIES` (comma-separated). Otherwise the header is
+> ignored and the direct peer address is used, preventing rate-limit bypass via
+> IP spoofing.
 
 ## Health Check
 
@@ -438,7 +445,7 @@ hsync-server/
 │   │   ├── files/          # File operations (list/upload/download/delete/upload-status)
 │   │   ├── buckets.py      # Bucket management
 │   │   ├── events.py       # WebSocket handler
-│   │   ├── events_handlers/ # Event processing and validation
+│   │   ├── event_handlers.py # Event processing and validation
 │   │   ├── health.py       # Health check + time endpoints
 │   │   ├── connection_manager.py # WebSocket connections
 │   │   ├── file_utils.py   # File operation utilities
