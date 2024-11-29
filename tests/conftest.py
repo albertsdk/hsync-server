@@ -72,6 +72,7 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI]:
             download_file,
             get_files,
             get_tombstones,
+            get_upload_status,
             upload_file,
         )
 
@@ -87,6 +88,9 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI]:
             "/api/v1/buckets/{bucket}/files/download", download_file, methods=["GET"]
         )
         test_auth_router.add_api_route("/api/v1/buckets/{bucket}/files", get_files, methods=["GET"])
+        test_auth_router.add_api_route(
+            "/api/v1/buckets/{bucket}/files/upload-status", get_upload_status, methods=["GET"]
+        )
         test_auth_router.add_api_route(
             "/api/v1/buckets/{bucket}/files", delete_file, methods=["DELETE"]
         )
