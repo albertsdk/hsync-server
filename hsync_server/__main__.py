@@ -190,6 +190,8 @@ def main(
         HSYNC_CORS_ENABLED      Enable CORS (true/false)
         HSYNC_CORS_ORIGINS      Allowed CORS origins (comma-separated)
         HSYNC_MAX_UPLOAD_SIZE   Maximum upload size in bytes
+        HSYNC_RATE_LIMIT_*      Rate limit settings
+        HSYNC_TRUSTED_PROXIES   Trusted reverse proxies for X-Forwarded-For
 
     [bold]Authors:[/bold]
 

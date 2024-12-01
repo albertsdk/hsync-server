@@ -141,6 +141,12 @@ The server uses environment variables for configuration. Create a `.env` file or
 | `HSYNC_LOG_LEVEL` | Log level (`debug`, `info`, `warning`, `error`, `critical`) | `info` |
 | `HSYNC_WORKERS` | Number of uvicorn workers | `1` |
 | `HSYNC_TZ` | Timezone in IANA format (e.g., `Europe/Rome`) | `UTC` |
+| `HSYNC_BUCKETS` | Directory where bucket data is stored | `<app>/buckets` |
+| `HSYNC_MAX_UPLOAD_SIZE` | Maximum upload size in bytes | `10737418240` |
+| `HSYNC_MIN_FREE_DISK_SPACE` | Minimum free disk space before accepting uploads (`0` disables) | `524288000` |
+| `HSYNC_CORS_ENABLED` | Enable CORS middleware (`true`/`false`) | `false` |
+| `HSYNC_CORS_ORIGINS` | Comma-separated allowed CORS origins | (empty) |
+| `HSYNC_ENABLE_DOCS` | Expose `/docs` and `/redoc` | `false` |
 
 > ⚠️ **Warning**: Multi-worker mode (`HSYNC_WORKERS > 1`) is NOT recommended. WebSocket connections and SHA-256 cache are not shared between workers.
 
@@ -153,6 +159,22 @@ The server uses environment variables for configuration. Create a `.env` file or
 | `HSYNC_SSL_CERTFILE` | Path to SSL certificate (PEM format) | (auto-generated) |
 | `HSYNC_SSL_KEYFILE` | Path to SSL private key (PEM format, encrypted PKCS#8) | (auto-generated) |
 | `HSYNC_SSL_CERT_DIR` | Directory for auto-generated certificates | `./certs` |
+
+### WebSocket Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HSYNC_WS_HEARTBEAT_INTERVAL` | Heartbeat interval in seconds | `30` |
+| `HSYNC_WS_HEARTBEAT_TIMEOUT` | Heartbeat timeout in seconds | `10` |
+| `HSYNC_WS_AUTH_TIMEOUT` | Seconds to wait for WebSocket auth message | `10` |
+| `HSYNC_WS_MAX_CONNECTIONS` | Maximum concurrent WebSocket connections | `1000` |
+| `HSYNC_WS_MAX_CONNECTIONS_PER_IP` | Maximum concurrent WebSocket connections per IP | `10` |
+
+### Tombstone Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HSYNC_TOMBSTONE_TTL_DAYS` | Days to retain deletion markers (`0` = forever) | `30` |
 
 ## SSL/TLS (HTTPS/WSS)
 
@@ -245,13 +267,24 @@ The server is designed to run in Docker. Use the `docker.sh` script for all oper
 ./docker.sh start --env-file prod.env
 ```
 
+`docker.sh` passes the selected file to Docker with `--env-file`; it does not
+`source` the file in the shell. This keeps shell code out of the wrapper and
+avoids putting secret values such as `HSYNC_API_KEY` directly in the Docker
+command line.
+
 ### Environment Variables
 
-You can also set environment variables directly:
+You can also set non-secret environment variables directly. For secrets, prefer
+an env file with restrictive permissions or your platform's secret manager:
 
 ```bash
-HSYNC_API_KEY="your-secret-key" ./docker.sh start
+export HSYNC_API_KEY
+./docker.sh start
 ```
+
+When `HSYNC_API_KEY` is already present in the parent environment, `docker.sh`
+passes it by name (`-e HSYNC_API_KEY`) rather than embedding the value in the
+process arguments.
 
 ### Debug Container
 
@@ -393,6 +426,9 @@ All limits are configurable via environment variables:
 | WebSocket connections (`.../events/{cid}`) | 50/minute | `HSYNC_RATE_LIMIT_WEBSOCKET` |
 | Other endpoints (list, delete, buckets, tombstones, upload-status) | 500/minute | `HSYNC_RATE_LIMIT_DEFAULT` |
 | WebSocket event messages (per connection) | 10/second | `HSYNC_RATE_LIMIT_WS_MESSAGES` |
+
+Rate limit values use the format `<number>/<period>`, where period is one of
+`second`, `minute`, `hour`, or `day`.
 
 When a rate limit is exceeded, the server returns HTTP 429 (Too Many Requests).
 

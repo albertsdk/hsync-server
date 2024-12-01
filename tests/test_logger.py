@@ -9,6 +9,7 @@ import os
 
 import pytest
 
+from hsync_server import config
 from hsync_server.logger import (
     VALID_LOG_FORMATS,
     VALID_LOG_LEVELS,
@@ -66,23 +67,32 @@ class TestInterceptHandler:
 class TestGetLogFormat:
     """Tests for get_log_format function."""
 
-    def test_default_is_text(self):
+    def test_default_is_text(self, monkeypatch):
         """Test default format is 'text'."""
-        # Ensure env var is not set
-        os.environ.pop("HSYNC_LOG_FORMAT", None)
-        assert get_log_format() == "text"
+        monkeypatch.delenv("HSYNC_LOG_FORMAT", raising=False)
+        config.get_settings.cache_clear()
+        try:
+            assert get_log_format() == "text"
+        finally:
+            config.get_settings.cache_clear()
 
-    def test_json_format_from_env(self):
+    def test_json_format_from_env(self, monkeypatch):
         """Test JSON format from environment variable."""
-        os.environ["HSYNC_LOG_FORMAT"] = "json"
-        assert get_log_format() == "json"
-        os.environ.pop("HSYNC_LOG_FORMAT", None)
+        monkeypatch.setenv("HSYNC_LOG_FORMAT", "json")
+        config.get_settings.cache_clear()
+        try:
+            assert get_log_format() == "json"
+        finally:
+            config.get_settings.cache_clear()
 
-    def test_invalid_format_defaults_to_text(self):
+    def test_invalid_format_defaults_to_text(self, monkeypatch):
         """Test invalid format defaults to 'text'."""
-        os.environ["HSYNC_LOG_FORMAT"] = "invalid"
-        assert get_log_format() == "text"
-        os.environ.pop("HSYNC_LOG_FORMAT", None)
+        monkeypatch.setenv("HSYNC_LOG_FORMAT", "invalid")
+        config.get_settings.cache_clear()
+        try:
+            assert get_log_format() == "text"
+        finally:
+            config.get_settings.cache_clear()
 
 
 class TestSetupLogging:

@@ -34,20 +34,27 @@ Log formats:
 """
 
 import logging
-import os
 import sys
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 from hsync_common.logger import (
-    DEFAULT_LOG_COMPRESSION,
-    DEFAULT_LOG_RETENTION,
-    DEFAULT_LOG_ROTATION,
     LEVEL_STYLES,
     BaseInterceptHandler,
-    get_rotation_config,
 )
 from loguru import logger
+
+from hsync_server.config import (
+    VALID_LOG_FORMATS as _VALID_LOG_FORMATS,
+)
+from hsync_server.config import (
+    VALID_LOG_LEVELS,
+    get_log_file,
+    get_log_rotation_config,
+)
+from hsync_server.config import (
+    get_log_format as get_config_log_format,
+)
 
 if TYPE_CHECKING:
     from loguru import Logger
@@ -55,12 +62,9 @@ if TYPE_CHECKING:
 # Context variable for request ID - thread-safe storage for per-request data
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
-# Valid log levels - imported from config module to avoid circular imports
-# Re-exported here for backward compatibility
-from hsync_server.config import VALID_LOG_LEVELS
-
-# Valid log formats
-VALID_LOG_FORMATS: Final[tuple[str, ...]] = ("text", "json")
+# Valid log levels/formats are imported from config and re-exported here for
+# backward compatibility with callers/tests that imported them from logger.
+VALID_LOG_FORMATS = _VALID_LOG_FORMATS
 
 
 def get_request_id() -> str | None:
@@ -94,10 +98,7 @@ def get_log_format() -> str:
     Returns:
         Log format string ("text" or "json").
     """
-    fmt = os.environ.get("HSYNC_LOG_FORMAT", "text").lower()
-    if fmt not in VALID_LOG_FORMATS:
-        return "text"
-    return fmt
+    return get_config_log_format()
 
 
 def _format_record_colored(record: Any) -> str:
@@ -138,8 +139,8 @@ def _format_record_plain(record: Any) -> str:
     )
 
 
-# Backward-compatible alias for the shared rotation config helper.
-_get_rotation_config = get_rotation_config
+# Backward-compatible alias for the rotation config helper.
+_get_rotation_config = get_log_rotation_config
 
 
 def setup_logging(
@@ -184,8 +185,8 @@ def setup_logging(
     if log_format is None:
         log_format = get_log_format()
 
-    # Get log file from parameter or environment variable
-    log_file = logfile or os.environ.get("HSYNC_LOG_FILE")
+    # Get log file from parameter or environment-backed Settings
+    log_file = logfile or get_log_file()
 
     # Remove default loguru handler
     logger.remove()
