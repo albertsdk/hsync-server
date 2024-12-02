@@ -32,7 +32,7 @@ from hsync_server.api.file_utils import (
     ensure_sentinel_in_dir,
     is_sentinel_file,
 )
-from hsync_server.api.utils import set_permissions
+from hsync_server.api.utils import set_directory_permissions
 from hsync_server.hashes import del_sha256_hash
 from hsync_server.models.dir import Dir
 from hsync_server.models.event import Event, EventName
@@ -72,7 +72,7 @@ async def handle_added_event(
         if dir_obj.path and dir_obj.permissions:
             log.info(f'[WEBSOCKET ] Added dir "{dir_obj.path}"')
             Path(dir_obj.path).mkdir(parents=True, exist_ok=True)
-            await set_permissions(dir_obj.path, dir_obj.permissions)
+            await set_directory_permissions(dir_obj.path, dir_obj.permissions)
             return Event(cid, bucket_dir, bucket, EventName.added, dir_obj)
 
     # Handle file creation notification
@@ -122,7 +122,7 @@ async def handle_modified_event(
             return None
         if dir_obj.path and dir_obj.permissions:
             log.info(f'[WEBSOCKET ] Modified dir "{dir_obj.path}"')
-            await set_permissions(dir_obj.path, dir_obj.permissions)
+            await set_directory_permissions(dir_obj.path, dir_obj.permissions)
             return Event(cid, bucket_dir, bucket, EventName.modified, dir_obj)
 
     # Handle file modification notification

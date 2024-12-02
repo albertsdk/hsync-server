@@ -17,6 +17,8 @@ from hsync_server.api.utils import (
     get_permissions,
     is_valid_bucket,
     is_valid_dir,
+    permissions_to_mode,
+    set_directory_permissions,
     set_permissions,
 )
 
@@ -170,6 +172,16 @@ class TestGetPermissions:
 class TestSetPermissions:
     """Tests for set_permissions function."""
 
+    def test_permissions_to_mode_symbolic(self):
+        """Symbolic permissions are converted to octal mode."""
+        assert permissions_to_mode("-rw-rw-r--") == 0o664
+        assert permissions_to_mode("drwxr-xr-x") == 0o755
+
+    def test_permissions_to_mode_octal(self):
+        """Legacy numeric permission strings are supported explicitly."""
+        assert permissions_to_mode("755") == 0o755
+        assert permissions_to_mode("0644") == 0o644
+
     @pytest.mark.asyncio
     async def test_set_file_permissions(self):
         """Set permissions on a file."""
@@ -197,6 +209,31 @@ class TestSetPermissions:
             assert stat.st_mode & 0o777 == 0o755
         finally:
             os.unlink(temp_path)
+
+    @pytest.mark.asyncio
+    async def test_set_numeric_permissions(self):
+        """Numeric permissions do not collapse to chmod 000."""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"test")
+            temp_path = f.name
+
+        try:
+            await set_permissions(temp_path, "644")
+            stat = os.stat(temp_path)
+            assert stat.st_mode & 0o777 == 0o644
+        finally:
+            os.unlink(temp_path)
+
+    @pytest.mark.asyncio
+    async def test_set_directory_permissions_keeps_owner_access(self, tmp_path):
+        """Bucket directories must remain accessible to the server owner."""
+        test_dir = tmp_path / "restricted"
+        test_dir.mkdir()
+
+        await set_directory_permissions(str(test_dir), "d---------")
+
+        stat = os.stat(test_dir)
+        assert stat.st_mode & 0o700 == 0o700
 
 
 class TestGetDirInfo:
