@@ -4,6 +4,8 @@ import tomllib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+from fastapi import FastAPI
 from typer.testing import CliRunner
 
 from hsync_server import __main__ as cli
@@ -86,3 +88,40 @@ class TestVersionAndEnvFile:
     def test_invalid_log_level_rejected(self):
         result = runner.invoke(cli.app, ["--log-level", "bogus"])
         assert result.exit_code != 0
+
+
+class TestFastApiApplication:
+    def test_files_package_reexports_endpoint_functions(self):
+        """The files package exports endpoint functions used by compatibility imports."""
+        from hsync_server.api import files
+        from hsync_server.api.files.delete import delete_file
+        from hsync_server.api.files.download import download_file
+        from hsync_server.api.files.list import get_files, get_tombstones, get_upload_status
+        from hsync_server.api.files.upload import upload_file
+
+        assert files.upload_file is upload_file
+        assert files.download_file is download_file
+        assert files.get_files is get_files
+        assert files.get_tombstones is get_tombstones
+        assert files.get_upload_status is get_upload_status
+        assert files.delete_file is delete_file
+
+    @pytest.mark.asyncio
+    async def test_lifespan_preloads_hashes_from_configured_bucket_path(
+        self, tmp_path, monkeypatch
+    ):
+        """Lifespan validates config and preloads hashes from the configured bucket path."""
+        from hsync_server import main as app_main
+
+        calls = {}
+
+        def fake_set_sha256_hashes(path: str) -> int:
+            calls["path"] = path
+            return 3
+
+        monkeypatch.setattr(app_main, "get_api_key", lambda: "test-api-key-12345")
+        monkeypatch.setattr(app_main, "get_buckets_path", lambda: str(tmp_path))
+        monkeypatch.setattr(app_main, "set_sha256_hashes", fake_set_sha256_hashes)
+
+        async with app_main.lifespan(FastAPI()):
+            assert calls["path"] == str(tmp_path)
