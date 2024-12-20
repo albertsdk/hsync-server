@@ -454,6 +454,13 @@ curl http://localhost:8765/metrics
 - [Architecture](docs/architecture.md) - System architecture and component overview
 - [API Reference](docs/api.md) - Complete REST and WebSocket API documentation
 - [Synchronization Flow](docs/sync-flow.md) - How file synchronization works
+- [Contributing](CONTRIBUTING.md) - Development setup and contribution guidelines
+- [Security Policy](SECURITY.md) - Supported versions and how to report vulnerabilities
+
+### Related projects
+
+- [HSYNC Common](../hsync-common/README.md) - Shared models, constants, and utilities used by the server
+- [HSYNC Client](../hsync-client/README.md) - Sync client (Server Mode and LAN/P2P Mode)
 
 ## Project Structure
 
