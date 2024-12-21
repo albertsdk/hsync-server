@@ -15,9 +15,10 @@ This module provides the REST API endpoint for file upload with:
 - Compression support
 """
 
-from os import remove
+import asyncio
+from os import fsync, remove, replace
 from pathlib import Path
-from shutil import copy2, move
+from shutil import copy2
 
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
@@ -55,6 +56,12 @@ from hsync_server.path_validation import is_valid_filename, sanitize_filename
 from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import clear_deletion
+
+
+async def _flush_to_disk(handle) -> None:
+    """Flush an open aiofiles handle's buffers to physical storage (fsync)."""
+    await handle.flush()
+    await asyncio.to_thread(fsync, handle.fileno())
 
 
 @auth_router.post("/api/v1/buckets/{bucket}/files")
@@ -242,6 +249,8 @@ async def upload_file(
                             },
                         )
                     await f.write(chunk)
+                # Ensure appended data reaches physical storage
+                await _flush_to_disk(f)
 
             # Check if upload is complete
             if size > 0 and total_bytes < size:
@@ -283,6 +292,8 @@ async def upload_file(
                             },
                         )
                     await temp_file.write(chunk)
+                # Ensure written data reaches physical storage
+                await _flush_to_disk(temp_file)
 
             # Handle compressed upload - decompress the file
             if is_compressed and total_bytes > 0:
@@ -294,12 +305,14 @@ async def upload_file(
                 decompressed_data = decompress_data(compressed_data)
                 async with aiofiles.open(file_location_tmp, "wb") as f:
                     await f.write(decompressed_data)
+                    # Ensure decompressed data reaches physical storage
+                    await _flush_to_disk(f)
                 total_bytes = len(decompressed_data)
 
             # Check if this is partial upload (size provided but not fully received)
             if size > 0 and total_bytes < size and not is_compressed:
-                # Move temp file to partial file location
-                move(file_location_tmp, partial_file_path)
+                # Move temp file to partial file location (same-filesystem rename)
+                replace(file_location_tmp, partial_file_path)
                 file_location_tmp = None
                 upload_successful = True
                 return JSONResponse(
@@ -329,8 +342,9 @@ async def upload_file(
         # Store SHA-256 hash for future duplicate detection
         set_sha256_hash(file_location, sha256sum_tmp)
 
-        # Atomically move file to final destination
-        move(file_location_tmp, file_location)
+        # Atomically move file to final destination (same-filesystem rename) so a
+        # partially written file is never visible at the target path
+        replace(file_location_tmp, file_location)
         file_location_tmp = None  # Don't clean up - it's been moved
 
         # Invalidate SHA-256 cache for this file (content has changed)
@@ -372,7 +386,7 @@ async def upload_file(
         log.error(f"Upload failed for file {file.filename}: {e}", exc_info=True)
         # Restore from backup if it exists
         if backup_path and Path(backup_path).exists() and file_location:
-            move(backup_path, file_location)
+            replace(backup_path, file_location)
             log.info(f"Restored backup for file: {file_location}")
         raise UploadError(
             message=f"Upload failed for file {file.filename}",
