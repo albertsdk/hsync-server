@@ -26,7 +26,7 @@ Log rotation configuration (via environment variables):
 - HSYNC_LOG_FILE: Path to log file (enables file logging)
 - HSYNC_LOG_ROTATION: When to rotate (e.g., "10 MB", "1 day", "00:00")
 - HSYNC_LOG_RETENTION: How long to keep old logs (e.g., "7 days", "5")
-- HSYNC_LOG_COMPRESSION: Compression format (e.g., "gz", "zip", "bz2")
+- HSYNC_LOG_COMPRESSION: Compression format (default "xz"; also "gz", "zip", "bz2")
 
 Log formats:
 - Text: 2024-01-15T10:30:45.123Z - [12345] [req-abc123] INFO: message
@@ -162,8 +162,8 @@ def setup_logging(
       Examples: "10 MB", "1 day", "00:00" (midnight), "1 week"
     - HSYNC_LOG_RETENTION: How long to keep old logs (default: "7 days")
       Examples: "7 days", "1 month", "5" (keep 5 files)
-    - HSYNC_LOG_COMPRESSION: Compression format (default: "gz")
-      Options: "gz", "bz2", "xz", "lzma", "tar", "tar.gz", "tar.bz2", "tar.xz", "zip"
+    - HSYNC_LOG_COMPRESSION: Compression format (default: "xz")
+      Options: "xz", "gz", "bz2", "lzma", "tar", "tar.gz", "tar.bz2", "tar.xz", "zip"
 
     Args:
         level: Log level string (debug, info, warning, error, critical).
