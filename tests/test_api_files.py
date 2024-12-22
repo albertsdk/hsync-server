@@ -366,6 +366,82 @@ class TestFileSizeLimit:
         assert response.status_code == 201
 
 
+class TestFileDiskSpace:
+    """Tests for the size-aware disk space guard on upload."""
+
+    @pytest.mark.asyncio
+    async def test_upload_rejected_when_size_exceeds_free_minus_reserve(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """Free space above the reserve but below reserve+size must be rejected."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        bucket_path = os.path.join(temp_buckets_dir, "diskbucket")
+        os.makedirs(bucket_path)
+
+        content = b"x" * 1000
+        reserve = 100  # bytes of reserve
+        # 500 free bytes: above the reserve (100) but below reserve + size (1100)
+        fake_usage = MagicMock(free=500)
+
+        with (
+            patch(
+                "hsync_server.api.files.upload.get_settings",
+                return_value=SimpleNamespace(min_free_disk_space=reserve),
+            ),
+            patch("shutil.disk_usage", return_value=fake_usage),
+        ):
+            response = await client.post(
+                "/api/v1/buckets/diskbucket/files",
+                files={"file": ("disk.txt", io.BytesIO(content), "text/plain")},
+                data={
+                    "cid": "test-client-1",
+                    "path": "",
+                    "permissions": "-rw-r--r--",
+                    "size": str(len(content)),
+                },
+            )
+
+        assert response.status_code != 201
+        assert "HSYNC-4004" in response.text
+
+    @pytest.mark.asyncio
+    async def test_upload_allowed_when_free_covers_reserve_plus_size(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """Free space covering reserve + size must be accepted."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        bucket_path = os.path.join(temp_buckets_dir, "diskbucket2")
+        os.makedirs(bucket_path)
+
+        content = b"x" * 1000
+        reserve = 100
+        fake_usage = MagicMock(free=10_000)  # plenty of room
+
+        with (
+            patch(
+                "hsync_server.api.files.upload.get_settings",
+                return_value=SimpleNamespace(min_free_disk_space=reserve),
+            ),
+            patch("shutil.disk_usage", return_value=fake_usage),
+        ):
+            response = await client.post(
+                "/api/v1/buckets/diskbucket2/files",
+                files={"file": ("disk.txt", io.BytesIO(content), "text/plain")},
+                data={
+                    "cid": "test-client-1",
+                    "path": "",
+                    "permissions": "-rw-r--r--",
+                    "size": str(len(content)),
+                },
+            )
+
+        assert response.status_code == 201
+
+
 class TestFileDownloadValidation:
     """Tests for file download validation."""
 

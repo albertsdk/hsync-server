@@ -121,38 +121,28 @@ def update_file_timestamp(
     file_location: str, ctime: str | None = None, mtime: str | None = None
 ) -> None:
     """
-    Update file access and modification timestamps.
+    Restore the file modification time.
 
-    Accepts timestamps as either Unix timestamps (digit strings) or
-    ISO format datetime strings.
+    Accepts the timestamp as either a Unix timestamp (digit string) or an
+    ISO format datetime string. Only the modification time is restored: POSIX
+    ``ctime`` is not settable and writing it into ``atime`` would corrupt the
+    access time, so the access time is set to ``mtime`` to keep them consistent.
 
     Args:
         file_location: Path to the file.
-        ctime: Creation/access time (Unix timestamp or ISO string).
+        ctime: Accepted for protocol compatibility but not applied (POSIX
+            ctime cannot be set).
         mtime: Modification time (Unix timestamp or ISO string).
     """
-    # Only update if at least one timestamp is provided
-    if ctime or mtime:
-        # Parse ctime (can be Unix timestamp or ISO format)
-        if ctime and ctime.isdigit():
-            _ctime = int(datetime.fromtimestamp(int(ctime), UTC).timestamp())
-        elif ctime:
-            _ctime = int(datetime.fromisoformat(ctime).timestamp())
-        else:
-            _ctime = None
+    if not mtime:
+        return
 
-        # Parse mtime (can be Unix timestamp or ISO format)
-        if mtime and mtime.isdigit():
-            _mtime = int(datetime.fromtimestamp(int(mtime), UTC).timestamp())
-        elif mtime:
-            _mtime = int(datetime.fromisoformat(mtime).timestamp())
-        else:
-            _mtime = None
+    # Parse mtime (can be Unix timestamp or ISO format)
+    if mtime.isdigit():
+        _mtime = int(datetime.fromtimestamp(int(mtime), UTC).timestamp())
+    else:
+        _mtime = int(datetime.fromisoformat(mtime).timestamp())
 
-        log.debug(f"Update timestamp: {file_location} ({ctime}, {mtime})")
-        # Set access time and modification time (fallback to the other if one is None)
-        # Only call utime if we have at least one valid timestamp
-        atime = _ctime or _mtime
-        mtime_val = _mtime or _ctime
-        if atime is not None and mtime_val is not None:
-            utime(file_location, (atime, mtime_val))
+    log.debug(f"Update timestamp: {file_location} (mtime={mtime})")
+    # Set both access and modification time to mtime; ctime is not preservable.
+    utime(file_location, (_mtime, _mtime))

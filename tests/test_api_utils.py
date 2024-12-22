@@ -65,15 +65,17 @@ class TestUpdateFileTimestamp:
             temp_path = f.name
 
         try:
-            # Use Unix timestamps as strings
+            # Use Unix timestamps as strings (ctime differs from mtime on purpose)
             ctime = "1705320600"
             mtime = "1705320700"
 
             update_file_timestamp(temp_path, ctime, mtime)
 
             stat = os.stat(temp_path)
-            # Check that mtime was set
+            # mtime is restored from the mtime argument
             assert abs(stat.st_mtime - 1705320700) < 1
+            # atime mirrors mtime; ctime must NOT be written into atime
+            assert abs(stat.st_atime - 1705320700) < 1
         finally:
             os.unlink(temp_path)
 
