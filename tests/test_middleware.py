@@ -10,15 +10,15 @@ from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from hsync_server.constants import (
-    HEADER_CLIENT_VERSION,
+    HEADER_PROTOCOL_VERSION,
     HEADER_SERVER_VERSION,
     HSYNC_VERSION,
+    PROTOCOL_VERSION_REST,
 )
 from hsync_server.logger import get_request_id
 from hsync_server.middleware import (
     RequestIdMiddleware,
     VersionMiddleware,
-    check_version_compatibility,
 )
 
 
@@ -159,72 +159,11 @@ class TestRequestIdMiddlewareIntegration:
         assert resp2.json()["id"] == "id2"
 
 
-class TestCheckVersionCompatibility:
-    """Tests for check_version_compatibility function."""
-
-    def test_identical_versions_are_compatible(self):
-        """Test that identical versions are compatible."""
-        is_compatible, reason = check_version_compatibility("1.0.0", "1.0.0")
-        assert is_compatible is True
-        assert reason == "compatible"
-
-    def test_different_patch_version_is_compatible(self):
-        """Test that different patch versions are compatible."""
-        is_compatible, reason = check_version_compatibility("1.0.0", "1.0.5")
-        assert is_compatible is True
-        assert reason == "compatible"
-
-    def test_different_minor_version_warns(self):
-        """Test that different minor versions trigger warning but are allowed."""
-        is_compatible, reason = check_version_compatibility("1.0.0", "1.2.0")
-        assert is_compatible is True
-        assert reason == "minor_mismatch"
-
-    def test_different_major_version_is_incompatible(self):
-        """Test that different major versions are incompatible."""
-        is_compatible, reason = check_version_compatibility("1.0.0", "2.0.0")
-        assert is_compatible is False
-        assert reason == "major_mismatch"
-
-    def test_major_version_zero_comparison(self):
-        """Test comparison with major version 0 (pre-1.0 releases)."""
-        is_compatible, reason = check_version_compatibility("0.1.0", "0.2.0")
-        assert is_compatible is True
-        assert reason == "minor_mismatch"
-
-        is_compatible, reason = check_version_compatibility("0.1.0", "1.0.0")
-        assert is_compatible is False
-        assert reason == "major_mismatch"
-
-    def test_invalid_version_format_handled_gracefully(self):
-        """Test that invalid version format is treated as major mismatch."""
-        # Invalid version strings are compared as strings, resulting in major mismatch
-        is_compatible, reason = check_version_compatibility("1.0.0", "invalid")
-        assert is_compatible is False
-        assert reason == "major_mismatch"
-
-    def test_empty_version_handled_gracefully(self):
-        """Test that empty version is treated as major mismatch."""
-        # Empty version string is compared as string, resulting in major mismatch
-        is_compatible, reason = check_version_compatibility("1.0.0", "")
-        assert is_compatible is False
-
-    def test_version_with_less_than_three_parts(self):
-        """Test versions with less than 3 parts are padded with zeros."""
-        is_compatible, reason = check_version_compatibility("1", "1.0")
-        assert is_compatible is True
-        assert reason == "compatible"
-
-        is_compatible, reason = check_version_compatibility("1.0", "1.0.1")
-        assert is_compatible is True
-        assert reason == "compatible"
-
-
 class TestVersionMiddleware:
     """Tests for VersionMiddleware."""
 
-    def test_adds_server_version_header(self):
-        """Test that X-Server-Version header is added to response."""
+    def test_adds_version_headers(self):
+        """X-Server-Version and X-Protocol-Version are added to responses."""
         app = FastAPI()
         app.add_middleware(VersionMiddleware)
 
@@ -236,11 +175,11 @@ class TestVersionMiddleware:
         response = client.get("/test")
 
         assert response.status_code == 200
-        assert HEADER_SERVER_VERSION in response.headers
         assert response.headers[HEADER_SERVER_VERSION] == HSYNC_VERSION
+        assert response.headers[HEADER_PROTOCOL_VERSION] == PROTOCOL_VERSION_REST
 
-    def test_accepts_compatible_version(self):
-        """Test that compatible client version is accepted."""
+    def test_accepts_matching_protocol(self):
+        """A request with the server's protocol version is accepted."""
         app = FastAPI()
         app.add_middleware(VersionMiddleware)
 
@@ -249,13 +188,13 @@ class TestVersionMiddleware:
             return {"status": "ok"}
 
         client = TestClient(app)
-        response = client.get("/test", headers={HEADER_CLIENT_VERSION: HSYNC_VERSION})
+        response = client.get("/test", headers={HEADER_PROTOCOL_VERSION: PROTOCOL_VERSION_REST})
 
         assert response.status_code == 200
-        assert response.headers[HEADER_SERVER_VERSION] == HSYNC_VERSION
+        assert response.headers[HEADER_PROTOCOL_VERSION] == PROTOCOL_VERSION_REST
 
-    def test_rejects_incompatible_major_version(self):
-        """Test that incompatible major version returns 426."""
+    def test_rejects_mismatched_protocol(self):
+        """A mismatched protocol version is hard-failed with 426."""
         app = FastAPI()
         app.add_middleware(VersionMiddleware)
 
@@ -263,42 +202,19 @@ class TestVersionMiddleware:
         async def test_endpoint():
             return {"status": "ok"}
 
-        # Use a different major version
-        incompatible_version = "99.0.0"
         client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/test", headers={HEADER_CLIENT_VERSION: incompatible_version})
+        response = client.get("/test", headers={HEADER_PROTOCOL_VERSION: "api/999"})
 
         assert response.status_code == 426
         assert response.headers[HEADER_SERVER_VERSION] == HSYNC_VERSION
+        assert response.headers[HEADER_PROTOCOL_VERSION] == PROTOCOL_VERSION_REST
         data = response.json()
         assert "error" in data
-        assert data["client_version"] == incompatible_version
-        assert data["server_version"] == HSYNC_VERSION
-        assert data["reason"] == "major_mismatch"
+        assert data["client_protocol_version"] == "api/999"
+        assert data["server_protocol_version"] == PROTOCOL_VERSION_REST
 
-    def test_allows_minor_version_mismatch(self):
-        """Test that minor version mismatch is allowed but warned."""
-        app = FastAPI()
-        app.add_middleware(VersionMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        # Create a version with different minor
-        parts = HSYNC_VERSION.split(".")
-        minor = int(parts[1]) + 1 if len(parts) > 1 else 1
-        minor_version = f"{parts[0]}.{minor}.0"
-
-        client = TestClient(app)
-        response = client.get("/test", headers={HEADER_CLIENT_VERSION: minor_version})
-
-        # Should still work
-        assert response.status_code == 200
-        assert response.headers[HEADER_SERVER_VERSION] == HSYNC_VERSION
-
-    def test_works_without_client_version_header(self):
-        """Test that requests without version header are accepted."""
+    def test_works_without_protocol_header(self):
+        """Requests without the protocol header are accepted."""
         app = FastAPI()
         app.add_middleware(VersionMiddleware)
 
@@ -310,7 +226,7 @@ class TestVersionMiddleware:
         response = client.get("/test")
 
         assert response.status_code == 200
-        assert HEADER_SERVER_VERSION in response.headers
+        assert HEADER_PROTOCOL_VERSION in response.headers
 
 
 class TestVersionMiddlewareIntegration:
@@ -329,7 +245,10 @@ class TestVersionMiddlewareIntegration:
         client = TestClient(app)
         response = client.get(
             "/test",
-            headers={HEADER_CLIENT_VERSION: HSYNC_VERSION, "X-Request-ID": "test-request-id"},
+            headers={
+                HEADER_PROTOCOL_VERSION: PROTOCOL_VERSION_REST,
+                "X-Request-ID": "test-request-id",
+            },
         )
 
         assert response.status_code == 200
@@ -338,8 +257,8 @@ class TestVersionMiddlewareIntegration:
         assert HEADER_SERVER_VERSION in response.headers
         assert response.headers[HEADER_SERVER_VERSION] == HSYNC_VERSION
 
-    def test_version_check_before_request_id(self):
-        """Test that version check happens before request processing."""
+    def test_protocol_check_before_request_id(self):
+        """A protocol mismatch returns 426 without setting a request ID."""
         app = FastAPI()
         app.add_middleware(RequestIdMiddleware)
         app.add_middleware(VersionMiddleware)
@@ -348,12 +267,16 @@ class TestVersionMiddlewareIntegration:
         async def test_endpoint():
             return {"request_id": get_request_id()}
 
-        # Incompatible version should return 426 without setting request ID
+        # An incompatible protocol must 426 before any request handling.
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get(
-            "/test", headers={HEADER_CLIENT_VERSION: "99.0.0", "X-Request-ID": "should-not-appear"}
+            "/test",
+            headers={
+                HEADER_PROTOCOL_VERSION: "api/999",
+                "X-Request-ID": "should-not-appear",
+            },
         )
 
         assert response.status_code == 426
-        # Request ID should not be set since version check failed early
+        # Request ID should not be set since the protocol check failed early
         assert "X-Request-ID" not in response.headers

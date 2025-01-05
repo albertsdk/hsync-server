@@ -20,6 +20,10 @@ from hsync_common.constants import (  # noqa: E402, F401
     HSYNCKEEP_FILENAME,
     VERSION,
 )
+from hsync_common.protocol.handshake import (  # noqa: E402, F401
+    PROTOCOL_VERSION_REST,
+    PROTOCOL_VERSION_WS,
+)
 
 # Application version (re-exported from hsync-common)
 HSYNC_VERSION = VERSION
@@ -65,6 +69,9 @@ HEADER_PERMISSIONS = "X-Permissions"
 HEADER_CLIENT_NAME = "X-Client-Name"
 HEADER_CLIENT_VERSION = "X-Client-Version"
 HEADER_SERVER_VERSION = "X-Server-Version"
+# Wire-protocol version (single source of truth in hsync_common.protocol). Unlike
+# the app version above, a mismatch here is a hard failure (no legacy support).
+HEADER_PROTOCOL_VERSION = "X-Protocol-Version"
 
 
 # =============================================================================

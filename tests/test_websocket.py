@@ -2,14 +2,25 @@
 Tests for WebSocket events endpoint.
 """
 
+from json import dumps
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import WebSocket
+from hsync_common.protocol.handshake import (
+    Capability,
+    build_ws_auth_ok,
+    build_ws_auth_request,
+)
 
 from hsync_server.api.events import bucket_manager, ws_events
 from hsync_server.config import get_compression_enabled
 from hsync_server.constants import HSYNC_VERSION
+
+
+def _auth_frame(token: str) -> str:
+    """Serialize a protocol-conformant WebSocket auth frame for tests."""
+    return dumps(build_ws_auth_request(token=token, app_version=HSYNC_VERSION, capabilities=[]))
 
 
 class TestWebSocketAuthentication:
@@ -29,7 +40,7 @@ class TestWebSocketAuthentication:
     async def test_auth_success(self, mock_websocket):
         """Successful authentication allows connection."""
         mock_websocket.receive_text.side_effect = [
-            '{"type": "auth", "token": "test-api-key"}',
+            _auth_frame("test-api-key"),
             Exception("disconnect"),  # End the loop
         ]
 
@@ -40,19 +51,15 @@ class TestWebSocketAuthentication:
                 pass
 
         mock_websocket.accept.assert_called_once()
+        expected_caps = {Capability.compression} if get_compression_enabled() else set()
         mock_websocket.send_json.assert_called_with(
-            {
-                "type": "auth",
-                "status": "ok",
-                "version": HSYNC_VERSION,
-                "compression_enabled": get_compression_enabled(),
-            }
+            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=expected_caps)
         )
 
     @pytest.mark.asyncio
     async def test_auth_invalid_token(self, mock_websocket):
         """Invalid token closes connection with 4003."""
-        mock_websocket.receive_text.return_value = '{"type": "auth", "token": "wrong-key"}'
+        mock_websocket.receive_text.return_value = _auth_frame("wrong-key")
 
         with patch("hsync_server.api.events.get_api_key", return_value="correct-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
@@ -66,7 +73,7 @@ class TestWebSocketAuthentication:
 
         async def _never_returns(*args, **kwargs):
             await asyncio.sleep(1)
-            return '{"type": "auth", "token": "x"}'
+            return _auth_frame("x")
 
         mock_websocket.receive_text.side_effect = _never_returns
 
@@ -130,7 +137,7 @@ class TestWebSocketEvents:
         def _create(event_json):
             from fastapi import WebSocketDisconnect
 
-            return ['{"type": "auth", "token": "test-key"}', event_json, WebSocketDisconnect()]
+            return [_auth_frame("test-key"), event_json, WebSocketDisconnect()]
 
         return _create
 
@@ -140,7 +147,7 @@ class TestWebSocketEvents:
         from fastapi import WebSocketDisconnect
 
         mock_websocket.receive_text.side_effect = [
-            '{"type": "auth", "token": "test-key"}',
+            _auth_frame("test-key"),
             '{"name": "invalid_event", "src": {}}',
             WebSocketDisconnect(),
         ]
@@ -156,7 +163,7 @@ class TestWebSocketEvents:
         from fastapi import WebSocketDisconnect
 
         mock_websocket.receive_text.side_effect = [
-            '{"type": "auth", "token": "test-key"}',
+            _auth_frame("test-key"),
             "not valid json",
             WebSocketDisconnect(),
         ]
@@ -172,7 +179,7 @@ class TestWebSocketEvents:
         from fastapi import WebSocketDisconnect
 
         mock_websocket.receive_text.side_effect = [
-            '{"type": "auth", "token": "test-key"}',
+            _auth_frame("test-key"),
             WebSocketDisconnect(),
         ]
 
@@ -194,7 +201,7 @@ class TestWebSocketEvents:
         os.makedirs(bucket_dir, exist_ok=True)
 
         mock_websocket.receive_text.side_effect = [
-            '{"type": "auth", "token": "test-key"}',
+            _auth_frame("test-key"),
             '{"name": "added", "src": {"path": "newdir", "permissions": "755"}}',
             WebSocketDisconnect(),
         ]
@@ -223,7 +230,7 @@ class TestWebSocketEvents:
         os.makedirs(target_dir, exist_ok=True)
 
         mock_websocket.receive_text.side_effect = [
-            '{"type": "auth", "token": "test-key"}',
+            _auth_frame("test-key"),
             '{"name": "modified", "src": {"path": "existingdir", "permissions": "700"}}',
             WebSocketDisconnect(),
         ]
@@ -249,7 +256,7 @@ class TestWebSocketEvents:
         os.makedirs(target_dir, exist_ok=True)
 
         mock_websocket.receive_text.side_effect = [
-            '{"type": "auth", "token": "test-key"}',
+            _auth_frame("test-key"),
             '{"name": "deleted", "src": {"path": "todelete", "permissions": "755"}}',
             WebSocketDisconnect(),
         ]
@@ -278,7 +285,7 @@ class TestWebSocketEvents:
         os.makedirs(src_dir, exist_ok=True)
 
         mock_websocket.receive_text.side_effect = [
-            '{"type": "auth", "token": "test-key"}',
+            _auth_frame("test-key"),
             '{"name": "renamed", "src": {"path": "olddir", "permissions": "755"}, "dst": {"path": "newdir", "permissions": "755"}}',
             WebSocketDisconnect(),
         ]
@@ -310,7 +317,7 @@ class TestWebSocketEvents:
         Path(target_file).write_text("content")
 
         mock_websocket.receive_text.side_effect = [
-            '{"type": "auth", "token": "test-key"}',
+            _auth_frame("test-key"),
             '{"name": "symlink", "src": {"type": "symlink", "filepath": "link", "target": "target.txt"}}',
             WebSocketDisconnect(),
         ]
@@ -333,7 +340,7 @@ class TestWebSocketEvents:
         from fastapi import WebSocketDisconnect
 
         mock_websocket.receive_text.side_effect = [
-            '{"type": "auth", "token": "test-key"}',
+            _auth_frame("test-key"),
             '{"name": "added", "src": {"path": "test", "permissions": "invalid"}}',
             WebSocketDisconnect(),
         ]
@@ -346,7 +353,7 @@ class TestWebSocketEvents:
     async def test_client_disconnect_with_error(self, mock_websocket):
         """Client disconnect with error is handled."""
         mock_websocket.receive_text.side_effect = [
-            '{"type": "auth", "token": "test-key"}',
+            _auth_frame("test-key"),
             Exception("Connection error"),
         ]
 
