@@ -5,7 +5,6 @@ Tests the loguru-based logging configuration.
 """
 
 import logging
-import os
 
 import pytest
 

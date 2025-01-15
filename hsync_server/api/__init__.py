@@ -18,3 +18,12 @@ from hsync_server.api.utils import (
     is_valid_dir,
     set_permissions,
 )
+
+__all__ = [
+    "compute_sha256",
+    "get_dir_info",
+    "get_permissions",
+    "is_valid_bucket",
+    "is_valid_dir",
+    "set_permissions",
+]

@@ -2,8 +2,6 @@
 Tests for compression utilities.
 """
 
-import pytest
-
 from hsync_server import compression
 
 

@@ -2,12 +2,6 @@
 Tests for file utility functions.
 """
 
-import os
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
-
 from hsync_server.api import file_utils
 
 
