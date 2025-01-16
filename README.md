@@ -452,7 +452,7 @@ curl http://localhost:8765/metrics
 ## Documentation
 
 - [Architecture](docs/architecture.md) - System architecture and component overview
-- [Architecture Decision Records](../hsync-common/docs/adr/README.md) - Why the stable, cross-project decisions were made
+- [Architecture Decision Records](https://github.com/albertobasso/hsync-common/blob/main/docs/adr/README.md) - Why the stable, cross-project decisions were made
 - [API Reference](docs/api.md) - Complete REST and WebSocket API documentation
 - [Synchronization Flow](docs/sync-flow.md) - How file synchronization works
 - [Contributing](CONTRIBUTING.md) - Development setup and contribution guidelines
@@ -460,8 +460,8 @@ curl http://localhost:8765/metrics
 
 ### Related projects
 
-- [HSYNC Common](../hsync-common/README.md) - Shared models, constants, and utilities used by the server
-- [HSYNC Client](../hsync-client/README.md) - Sync client (Server Mode and LAN/P2P Mode)
+- [HSYNC Common](https://github.com/albertobasso/hsync-common/blob/main/README.md) - Shared models, constants, and utilities used by the server
+- [HSYNC Client](https://github.com/albertobasso/hsync-client/blob/main/README.md) - Sync client (Server Mode and LAN/P2P Mode)
 
 ## Project Structure
 
