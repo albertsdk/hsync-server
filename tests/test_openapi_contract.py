@@ -5,7 +5,7 @@
 # Copyright (C) 2025 Alberto Basso
 
 """
-Contract drift check for the committed REST OpenAPI snapshot (§1 / P0-A).
+Contract drift check for the committed REST OpenAPI snapshot.
 
 The committed snapshot in ``hsync_common.protocol`` is the single source of
 truth for the REST surface shared with the Python and Android clients. This

@@ -1,4 +1,4 @@
-# CI — hsync-server (§6)
+# CI — hsync-server
 # Lint + tests for the FastAPI server. hsync-server depends on the shared library
 # through a Poetry path dependency (../hsync-common), so the sibling repo is
 # checked out alongside it. The pytest run includes the OpenAPI contract drift
