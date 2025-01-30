@@ -11,14 +11,13 @@ This module provides common utility functions used across API endpoints,
 including path validation, SHA-256 computation, and file permission handling.
 """
 
-import stat
 from asyncio import to_thread
 from hashlib import sha256
 from os import chmod
-from os import stat as os_stat
-from re import fullmatch
 
 import aiofiles
+from hsync_common.permissions import get_permissions as _read_permissions
+from hsync_common.permissions import octal_to_mode
 from loguru import logger as log
 
 from hsync_server.config import get_buckets_path
@@ -87,65 +86,45 @@ async def compute_sha256(filepath: str, chunk_size: int = 8192) -> str:
 
 async def get_permissions(obj_path: str) -> str:
     """
-    Get the file permissions in symbolic notation.
+    Get the file permissions as a canonical octal string.
 
     Args:
         obj_path: Path to the file or directory.
 
     Returns:
-        Permission string in symbolic format (e.g., '-rw-r--r--').
+        Octal permission string (e.g., '644').
     """
-    obj_stat = await to_thread(os_stat, obj_path)
-    permissions = obj_stat.st_mode
-    return stat.filemode(permissions)
+    return await to_thread(_read_permissions, obj_path)
 
 
 async def set_permissions(file_path: str, permissions: str) -> None:
     """
-    Set file permissions from symbolic notation.
+    Set file permissions from a canonical octal string.
 
-    Parses a symbolic permission string (e.g., '-rw-rw-r--') and
-    applies the corresponding numeric mode to the file.
+    Parses an octal permission string (e.g., '664') and applies the
+    corresponding numeric mode to the file.
 
     Args:
         file_path: Path to the file.
-        permissions: Permission string in symbolic format.
+        permissions: Octal permission string.
     """
     log.debug(f'Set permissions: "{file_path}" ({permissions})')
 
-    mode = permissions_to_mode(permissions)
+    mode = octal_to_mode(permissions)
     await to_thread(chmod, file_path, mode)
 
 
 async def set_directory_permissions(dir_path: str, permissions: str) -> None:
     """Set directory permissions without making bucket storage inaccessible.
 
-    Directory permissions come from clients and may be very restrictive or, for
-    legacy callers, numeric (for example ``755``).  The server must always keep
-    owner rwx access on bucket directories so that it can traverse, update and
-    back up its own storage tree.
+    Directory permissions come from clients as an octal string (for example
+    ``755``).  The server must always keep owner rwx access on bucket
+    directories so that it can traverse, update and back up its own storage
+    tree.
     """
-    mode = permissions_to_mode(permissions) | OWNER_DIRECTORY_ACCESS
+    mode = octal_to_mode(permissions) | OWNER_DIRECTORY_ACCESS
     log.debug(f'Set directory permissions: "{dir_path}" ({permissions} -> {mode:o})')
     await to_thread(chmod, dir_path, mode)
-
-
-def permissions_to_mode(permissions: str) -> int:
-    """Convert symbolic or octal permissions to a numeric mode."""
-    if fullmatch(r"0?[0-7]{3}", permissions):
-        return int(permissions, 8)
-
-    # Convert symbolic permissions to numeric mode
-    mode = 0
-    permission_types = {"r": 4, "w": 2, "x": 1}
-
-    # Process owner, group, and other permission sections
-    for i, section in enumerate([permissions[1:4], permissions[4:7], permissions[7:10]]):
-        for char in section:
-            if char in permission_types:
-                mode |= permission_types[char] << (6 - (i * 3))
-
-    return mode
 
 
 async def get_dir_info(path: str) -> Dir:

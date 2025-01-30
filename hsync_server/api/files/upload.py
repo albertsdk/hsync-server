@@ -23,11 +23,11 @@ from shutil import copy2
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
+from hsync_common.permissions import is_valid_octal_permissions
 from loguru import logger as log
 
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import (
-    is_valid_permission_format,
     update_file_timestamp,
 )
 from hsync_server.api.utils import (
@@ -75,7 +75,7 @@ async def upload_file(
     ctime: str = Form(""),
     mtime: str = Form(""),
     sha256sum: str = Form(""),
-    permissions: str = Form("-rw-rw-r--"),
+    permissions: str = Form("664"),
     offset: int = Form(0),
     size: int = Form(0),
     compressed: str = Form("false"),
@@ -99,7 +99,7 @@ async def upload_file(
         ctime: Creation time (Unix timestamp or ISO string).
         mtime: Modification time (Unix timestamp or ISO string).
         sha256sum: Expected SHA-256 checksum for integrity verification.
-        permissions: File permissions in symbolic format.
+        permissions: File permissions as an octal string (e.g., '644').
         offset: Byte offset for resumable uploads (0 for new uploads).
         size: Total file size (required for resumable uploads).
 
@@ -166,7 +166,7 @@ async def upload_file(
             raise InvalidBucketNameError(details={"bucket": bucket})
         if not is_valid_dir(path):
             raise InvalidPathError(details={"path": path})
-        if permissions and not is_valid_permission_format(permissions):
+        if permissions and not is_valid_octal_permissions(permissions):
             raise InvalidPermissionFormatError(details={"permissions": permissions})
 
         # Sanitize filename to handle dangerous characters automatically

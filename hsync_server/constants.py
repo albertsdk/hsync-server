@@ -49,11 +49,11 @@ ENDPOINT_EVENTS = "/events"
 # File Defaults
 # =============================================================================
 
-# Default file permissions for uploaded files
-DEFAULT_FILE_PERMISSIONS = "-rw-rw-r--"
+# Default file permissions for uploaded files (octal)
+DEFAULT_FILE_PERMISSIONS = "664"
 
-# Default directory permissions
-DEFAULT_DIR_PERMISSIONS = "drwxrwxr-x"
+# Default directory permissions (octal)
+DEFAULT_DIR_PERMISSIONS = "775"
 
 
 # HSYNCKEEP_FILENAME is re-exported from hsync_common.constants above

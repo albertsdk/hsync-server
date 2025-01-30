@@ -147,7 +147,7 @@ class TestHandleAddedEvent:
         """Restrictive client directory perms must not break server storage access."""
         bucket_dir = str(tmp_path / "bucket")
         os.makedirs(bucket_dir)
-        src = {"path": "restricted", "permissions": "d---------"}
+        src = {"path": "restricted", "permissions": "000"}
 
         result = await handle_added_event(src, bucket_dir, "bucket", "cid")
 
