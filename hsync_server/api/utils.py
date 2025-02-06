@@ -12,16 +12,16 @@ including path validation, SHA-256 computation, and file permission handling.
 """
 
 from asyncio import to_thread
-from hashlib import sha256
 from os import chmod
 
-import aiofiles
+from hsync_common.hashing import compute_sha256_async
+from hsync_common.models.dir import Dir
+from hsync_common.path_validation import is_valid_bucket_name
 from hsync_common.permissions import get_permissions as _read_permissions
 from hsync_common.permissions import octal_to_mode
 from loguru import logger as log
 
 from hsync_server.config import get_buckets_path
-from hsync_server.models.dir import Dir
 from hsync_server.path_validation import is_valid_path as validate_path_traversal
 
 OWNER_DIRECTORY_ACCESS = 0o700
@@ -40,9 +40,7 @@ def is_valid_bucket(value: str) -> bool:
     Returns:
         True if the bucket name is valid, False otherwise.
     """
-    import re
-
-    return bool(re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9_-]*[a-zA-Z0-9])?$", value))
+    return is_valid_bucket_name(value)
 
 
 def is_valid_dir(target_path: str) -> bool:
@@ -61,27 +59,6 @@ def is_valid_dir(target_path: str) -> bool:
     """
     # Use the new robust is_valid_path function
     return validate_path_traversal(target_path, get_buckets_path())
-
-
-async def compute_sha256(filepath: str, chunk_size: int = 8192) -> str:
-    """
-    Asynchronously compute the SHA-256 checksum of a file.
-
-    Reads the file in chunks to handle large files efficiently
-    without loading the entire file into memory.
-
-    Args:
-        filepath: Path to the file.
-        chunk_size: Size of chunks to read (default 8KB).
-
-    Returns:
-        Hexadecimal SHA-256 digest string.
-    """
-    hash_sha256 = sha256()
-    async with aiofiles.open(filepath, "rb") as f:
-        while chunk := await f.read(chunk_size):
-            hash_sha256.update(chunk)
-    return hash_sha256.hexdigest()
 
 
 async def get_permissions(obj_path: str) -> str:

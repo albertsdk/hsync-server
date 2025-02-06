@@ -18,9 +18,10 @@ from pathlib import Path
 from aiofiles.ospath import isfile
 from fastapi import Request
 from fastapi.responses import FileResponse, StreamingResponse
+from hsync_common.hashing import compute_sha256_async
 from loguru import logger as log
 
-from hsync_server.api.utils import compute_sha256, is_valid_bucket, is_valid_dir
+from hsync_server.api.utils import is_valid_bucket, is_valid_dir
 from hsync_server.compression import (
     CONTENT_ENCODING_ZSTD,
     async_compress_stream,
@@ -81,7 +82,7 @@ async def download_file(request: Request, bucket: str, filename: str):
     # so the client can verify integrity against the current server-side state.
     sha256sum = get_sha256_hash(file)
     if sha256sum is None:
-        sha256sum = await compute_sha256(file)
+        sha256sum = await compute_sha256_async(file)
 
     checksum_header = {"X-Checksum-SHA256": sha256sum} if sha256sum else {}
 

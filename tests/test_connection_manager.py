@@ -5,13 +5,13 @@ Tests for ConnectionManager and BucketConnectionManager.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from hsync_common.models.event import Event, EventName
+from hsync_common.models.file import File
 
 from hsync_server.api.connection_manager import (
     BucketConnectionManager,
     ConnectionManager,
 )
-from hsync_server.models.event import Event, EventName
-from hsync_server.models.file import File
 
 
 class TestConnectionManager:

@@ -23,6 +23,10 @@ from shutil import copy2
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
+from hsync_common.hashing import compute_sha256_async
+from hsync_common.models.event import Event, EventName
+from hsync_common.models.file import File as LocalFile
+from hsync_common.models.file import invalidate_sha256_cache
 from hsync_common.permissions import is_valid_octal_permissions
 from loguru import logger as log
 
@@ -31,7 +35,6 @@ from hsync_server.api.file_utils import (
     update_file_timestamp,
 )
 from hsync_server.api.utils import (
-    compute_sha256,
     is_valid_bucket,
     is_valid_dir,
     set_permissions,
@@ -49,9 +52,6 @@ from hsync_server.exceptions import (
     UploadError,
 )
 from hsync_server.hashes import get_sha256_hash, set_sha256_hash
-from hsync_server.models.event import Event, EventName
-from hsync_server.models.file import File as LocalFile
-from hsync_server.models.file import invalidate_sha256_cache
 from hsync_server.path_validation import is_valid_filename, sanitize_filename
 from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
@@ -334,7 +334,7 @@ async def upload_file(
             await set_permissions(file_location_tmp, permissions)
 
         # Verify SHA-256 checksum if provided
-        sha256sum_tmp = await compute_sha256(file_location_tmp)
+        sha256sum_tmp = await compute_sha256_async(file_location_tmp)
         if sha256sum and sha256sum != sha256sum_tmp:
             raise ChecksumMismatchError(
                 message=f"Checksum mismatch: expected {sha256sum}, got {sha256sum_tmp}",

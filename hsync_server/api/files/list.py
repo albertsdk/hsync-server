@@ -17,6 +17,9 @@ from pathlib import Path
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from hsync_common.models.dir import is_hidden_dir
+from hsync_common.models.file import File as LocalFile
+from hsync_common.models.file import is_hidden_file
 
 from hsync_server.api.utils import is_valid_bucket, is_valid_dir
 from hsync_server.config import get_buckets_path
@@ -26,9 +29,6 @@ from hsync_server.exceptions import (
     InvalidPathError,
 )
 from hsync_server.hashes import get_sha256_hash
-from hsync_server.models.dir import is_hidden_dir
-from hsync_server.models.file import File as LocalFile
-from hsync_server.models.file import is_hidden_file
 from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import get_tombstone_store

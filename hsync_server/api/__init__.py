@@ -11,7 +11,6 @@ This package contains all REST API and WebSocket endpoints.
 """
 
 from hsync_server.api.utils import (
-    compute_sha256,
     get_dir_info,
     get_permissions,
     is_valid_bucket,
@@ -20,7 +19,6 @@ from hsync_server.api.utils import (
 )
 
 __all__ = [
-    "compute_sha256",
     "get_dir_info",
     "get_permissions",
     "is_valid_bucket",

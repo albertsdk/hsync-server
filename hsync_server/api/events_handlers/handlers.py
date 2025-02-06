@@ -21,6 +21,10 @@ from pathlib import Path
 from shutil import rmtree
 from typing import Any
 
+from hsync_common.models.dir import Dir
+from hsync_common.models.event import Event, EventName
+from hsync_common.models.file import File
+from hsync_common.models.symlink import Symlink
 from loguru import logger as log
 
 from hsync_server.api.events_handlers.validation import (
@@ -34,10 +38,6 @@ from hsync_server.api.file_utils import (
 )
 from hsync_server.api.utils import set_directory_permissions
 from hsync_server.hashes import del_sha256_hash
-from hsync_server.models.dir import Dir
-from hsync_server.models.event import Event, EventName
-from hsync_server.models.file import File
-from hsync_server.models.symlink import Symlink
 from hsync_server.tombstones import clear_deletion, record_deletion
 
 
