@@ -20,16 +20,18 @@ def deterministic_cli_output(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Force plain, uncolored CLI output for every test.
 
-    CI environments (e.g. GitHub Actions) export ``FORCE_COLOR``, which makes
-    Rich emit ANSI styling. The highlighter then wraps option names like
-    ``--log-level`` in escape codes, splitting the substring and breaking
-    assertions on ``result.output``/``result.stdout``. Clearing the
-    color-forcing variables lets Rich fall back to plain output for the
-    captured (non-terminal) stream while still honouring an explicit
-    ``COLUMNS``.
+    Typer forces a colored terminal whenever ``GITHUB_ACTIONS`` (or
+    ``FORCE_COLOR``/``PY_COLORS``) is set, so on CI its Rich highlighter wraps
+    option names like ``--log-level`` in ANSI codes, splitting the substring and
+    breaking assertions on ``result.output``/``result.stdout``. That decision is
+    baked into ``typer.rich_utils.FORCE_TERMINAL`` at import time, so clearing
+    the env vars later is useless; instead we override the module global, which
+    ``_get_rich_console`` re-reads on every call. ``False`` disables color/style
+    entirely while still honouring an explicit ``COLUMNS``.
     """
-    monkeypatch.delenv("FORCE_COLOR", raising=False)
-    monkeypatch.delenv("PY_COLORS", raising=False)
+    import typer.rich_utils as rich_utils
+
+    monkeypatch.setattr(rich_utils, "FORCE_TERMINAL", False, raising=False)
 
 
 @pytest.fixture
