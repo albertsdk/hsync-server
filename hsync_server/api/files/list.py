@@ -17,6 +17,7 @@ from pathlib import Path
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
 from hsync_common.models.dir import is_hidden_dir
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
@@ -71,7 +72,7 @@ async def get_upload_status(
         raise InvalidPathError(details={"path": filename})
 
     file_path = f"{get_buckets_path()}/{bucket}/{filename}"
-    partial_path = f"{file_path}.part"
+    partial_path = f"{file_path}{PARTIAL_DOWNLOAD_SUFFIX}"
 
     # Check if complete file already exists with same SHA-256
     if sha256sum and Path(file_path).exists() and sha256sum == get_sha256_hash(file_path):
