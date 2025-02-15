@@ -32,7 +32,7 @@ from hsync_common.protocol.handshake import (
     build_ws_auth_ok,
     decode_capabilities,
 )
-from hsync_common.text import escape_loguru_braces
+from hsync_common.text import escape_loguru_markup
 from loguru import logger as log
 
 from hsync_server.api.connection_manager import bucket_manager
@@ -202,7 +202,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                     await websocket.close(code=4004, reason="Heartbeat timeout")
                     break
 
-                log.debug(f"[WEBSOCKET ] Received message: {escape_loguru_braces(data)}")
+                log.debug(f"[WEBSOCKET ] Received message: {escape_loguru_markup(data)}")
                 try:
                     message = loads(data)
 
@@ -255,9 +255,9 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         await manager.send_message(event)
 
                 except JSONDecodeError:
-                    log.error(f"[WEBSOCKET ] Invalid JSON received: {escape_loguru_braces(data)}")
+                    log.error(f"[WEBSOCKET ] Invalid JSON received: {escape_loguru_markup(data)}")
                 except Exception as e:
-                    log.error(f"[WEBSOCKET ] Exception data: {escape_loguru_braces(data)}")
+                    log.error(f"[WEBSOCKET ] Exception data: {escape_loguru_markup(data)}")
                     log.error(f"[WEBSOCKET ] Exception: {e}", exc_info=True)
 
         except WebSocketDisconnect:
