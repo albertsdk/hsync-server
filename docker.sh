@@ -19,6 +19,14 @@ readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly IMAGE_NAME="hsync"
 readonly IMAGE_TAG="${HSYNC_VERSION:-1.0.0}"
 readonly CONTAINER_NAME="hsync-server"
+# Named volume for SSL material: persisting the auto-generated self-signed
+# certificate across container recreation keeps the server identity (and the
+# client's TOFU fingerprint pin) stable. A named volume inherits the image's
+# hsync:hsync ownership, so the unprivileged user can write the encrypted key.
+readonly CERTS_VOLUME="${CONTAINER_NAME}-certs"
+# Remembers the env-file used by the last successful `start`, so `restart` can
+# transparently reuse it without re-specifying --env-file. Local state only.
+readonly ENV_STATE_FILE="${SCRIPT_DIR}/.hsync-last-env-file"
 
 # Default environment variables
 export HSYNC_PORT="${HSYNC_PORT:-8765}"
@@ -119,6 +127,13 @@ ${BOLD}Environment Variables:${RESET}
     HSYNC_TZ          Timezone in IANA format (default: UTC)
     HSYNC_VERSION     Image tag version (default: 1.0.0)
 
+    SSL/TLS (forwarded by name from the current environment):
+    HSYNC_SSL_ENABLED           Enable HTTPS/WSS (true/false)
+    HSYNC_SSL_KEYFILE_PASSWORD  Password for the encrypted private key (required when SSL on)
+    HSYNC_SSL_CERTFILE          Path to SSL certificate (PEM)
+    HSYNC_SSL_KEYFILE           Path to SSL private key (PEM)
+    HSYNC_SSL_CERT_DIR          Directory for auto-generated certificates
+
 ${BOLD}Examples:${RESET}
     ./docker.sh build
     ./docker.sh start --env-file dev.env
@@ -174,6 +189,7 @@ cmd_start() {
         --restart unless-stopped
         -p "${HSYNC_PORT}:${HSYNC_PORT}"
         -v "${SCRIPT_DIR}/buckets:/project/buckets"
+        -v "${CERTS_VOLUME}:/project/certs"
     )
 
     if [[ -n "${ENV_FILE}" ]]; then
@@ -193,7 +209,27 @@ cmd_start() {
         docker_args+=(-e HSYNC_API_KEY)
     fi
 
+    # Forward SSL/TLS settings from the parent environment by name. Passing them
+    # by name (not as VAR=value) keeps the secret HSYNC_SSL_KEYFILE_PASSWORD off
+    # the command line, and ensures `HSYNC_SSL_ENABLED=true ./docker.sh start`
+    # actually reaches the server (the entrypoint reads these to enable HTTPS).
+    for ssl_var in HSYNC_SSL_ENABLED HSYNC_SSL_KEYFILE_PASSWORD \
+        HSYNC_SSL_CERTFILE HSYNC_SSL_KEYFILE HSYNC_SSL_CERT_DIR; do
+        if [[ -n "${!ssl_var:-}" ]]; then
+            docker_args+=(-e "${ssl_var}")
+        fi
+    done
+
     docker "${docker_args[@]}" "${IMAGE_NAME}:${IMAGE_TAG}"
+
+    # Remember the env-file (if any) so `restart` can reuse it transparently;
+    # clear the record when started without one to avoid reusing a stale file.
+    if [[ -n "${ENV_FILE}" ]]; then
+        printf '%s\n' "${ENV_FILE}" > "${ENV_STATE_FILE}"
+    else
+        rm -f "${ENV_STATE_FILE}"
+    fi
+
     log_ok "Container started: ${CONTAINER_NAME}"
     log_info "Port: ${HSYNC_PORT}, Workers: ${HSYNC_WORKERS}, Log Level: ${HSYNC_LOG_LEVEL}, TZ: ${HSYNC_TZ}"
 }
@@ -206,6 +242,18 @@ cmd_stop() {
 }
 
 cmd_restart() {
+    # Reuse the env-file from the last start unless one was passed explicitly,
+    # so `restart` keeps the same configuration (API key, SSL, ...) as `start`.
+    if [[ -z "${ENV_FILE}" && -f "${ENV_STATE_FILE}" ]]; then
+        local remembered
+        remembered="$(cat "${ENV_STATE_FILE}" 2>/dev/null || true)"
+        if [[ -n "${remembered}" && -f "${remembered}" ]]; then
+            ENV_FILE="${remembered}"
+            log_info "Reusing env-file from last start: ${ENV_FILE}"
+        elif [[ -n "${remembered}" ]]; then
+            log_warn "Remembered env-file no longer exists: ${remembered}"
+        fi
+    fi
     cmd_stop
     cmd_start
 }
@@ -231,6 +279,11 @@ cmd_clean() {
     docker stop "${CONTAINER_NAME}" 2>/dev/null || true
     docker rm "${CONTAINER_NAME}" 2>/dev/null || true
     docker rmi "${IMAGE_NAME}:${IMAGE_TAG}" 2>/dev/null || true
+    # Drop the persisted SSL material too: a fresh image deserves a fresh
+    # self-signed identity. Connecting clients will re-pin on next handshake.
+    docker volume rm "${CERTS_VOLUME}" 2>/dev/null || true
+    # Forget the remembered env-file: a clean slate should not auto-reuse it.
+    rm -f "${ENV_STATE_FILE}"
     log_ok "Cleanup complete"
 }
 
