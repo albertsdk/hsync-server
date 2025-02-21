@@ -59,9 +59,9 @@ Higher layers import lower ones. `api/*` reuses `hsync_common.models` and
 | Flow | Path | Anchor |
 | ---- | ---- | ------ |
 | Upload | `POST /api/v1/buckets/{bucket}/files` | `api/files/upload.py:70` |
-| Download | `GET /api/v1/files/download` | `api/files/download.py:43` |
+| Download | `GET /api/v1/buckets/{bucket}/files/download` | `api/files/download.py:43` |
 | List | `GET /api/v1/buckets/{bucket}/files` | `api/files/list.py:124` |
-| Delete | `DELETE /api/v1/files` | `api/files/delete.py:44` |
+| Delete | `DELETE /api/v1/buckets/{bucket}/files` | `api/files/delete.py:44` |
 | WS events | `WS /api/v1/buckets/{bucket}/events/{cid}` | `api/events.py:62` |
 
 REST upload writes to disk, updates the hash cache, records/clears tombstones, and
