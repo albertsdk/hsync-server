@@ -28,6 +28,12 @@ the server-local choices not big enough for an ADR.
   stable for peer TOFU pinning across restarts.
 - **Resumable uploads via `.part` + fsync** (`api/files/upload.py`) for reliability
   on flaky NAS links.
+- **Tag-driven GHCR release** (`.github/workflows/release.yml`): pushing a
+  `vX.Y.Z` tag builds and pushes a multi-arch (`linux/amd64`, `linux/arm64`)
+  image to `ghcr.io/albertobasso/hsync-server`, tagged with the version and
+  `latest`. Build context is the repo root with `../hsync-common` checked out
+  alongside, matching `docker.sh`/`Dockerfile`. The server ships only as an
+  image — no standalone binary.
 
 ## House rules (from `CLAUDE.md`)
 
