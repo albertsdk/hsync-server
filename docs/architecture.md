@@ -99,7 +99,7 @@ graph LR
             end
         end
 
-        subgraph Models["④ models/"]
+        subgraph Models["④ models (from hsync-common)"]
             file[file.py]
             dir[dir.py]
             event[event.py]

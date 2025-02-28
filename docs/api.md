@@ -195,8 +195,12 @@ Unix epoch seconds. Clients use this for NTP-like clock-offset estimation.
 ### Endpoint
 
 ```
-ws://host:8765/api/v1/buckets/{bucket}/events/{cid}
+ws(s)://host:8765/api/v1/buckets/{bucket}/events/{cid}
 ```
+
+> Use `wss://` when the server is behind TLS (recommended for production).
+> The client automatically upgrades to `wss://` when the server URL uses
+> `https://`.
 
 ### Authentication Flow
 
