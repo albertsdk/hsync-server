@@ -85,8 +85,12 @@ on the client side.
 | [api.md](api.md) | Complete REST + WebSocket API reference. |
 | [sync-flow.md](sync-flow.md) | Server-side sync flow: file storage, event broadcast, tombstones. |
 | [faq.md](faq.md) | Frequently asked questions, troubleshooting, and why to choose HSYNC. |
-| [deployment.md](deployment.md) | Production deployment: Docker Compose, reverse proxy, systemd, troubleshooting. |
+| [deployment.md](deployment.md) | Production deployment: Docker Compose, systemd service, troubleshooting. |
+| [reverse-proxy.md](reverse-proxy.md) | Reverse proxy configuration: Nginx and Traefik examples. |
 | [operations.md](operations.md) | Day-to-day operations: backup/restore, upgrade, monitoring, performance. |
+| [security-best-practices.md](security-best-practices.md) | Hardening checklist: API keys, firewall, TLS, rate limiting, logging. |
+| [developer.md](developer.md) | Internal implementation details: module structure and component reference (for contributors). |
+| [testing.md](testing.md) | Test suite guide: structure, fixtures, mocking, contract tests (for contributors). |
 
 ## Environment Variables
 

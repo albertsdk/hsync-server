@@ -17,9 +17,6 @@ with automatic TLS, reverse proxy configuration, and running as a systemd servic
 - [Docker Management with `docker.sh`](#docker-management-with-dockersh)
 - [Docker Compose (recommended for production)](#docker-compose-recommended-for-production)
 - [Reverse Proxy Configuration](#reverse-proxy-configuration)
-  - [Caddy](#caddy)
-  - [Nginx](#nginx)
-  - [Traefik](#traefik)
 - [Systemd Service (without Docker)](#systemd-service-without-docker)
 - [Troubleshooting](#troubleshooting)
 
@@ -44,18 +41,6 @@ with automatic TLS, reverse proxy configuration, and running as a systemd servic
 | RAM | 1 GB |
 | Disk | SSD, with at least 10% free space above your expected storage needs |
 
-### Metadata overhead
-
-The server stores files as plain files on disk — there is no database. The only
-additional metadata is:
-
-- **SHA-256 cache**: an in-memory LRU cache (not persisted). Size depends on the
-  number of unique files uploaded since the last restart. Roughly 32 bytes per
-  entry plus key overhead.
-- **Tombstones**: one small JSON file per bucket, typically a few KB even for
-  thousands of deletion markers.
-
-Neither should exceed a few MB in practice.
 
 ---
 
@@ -264,101 +249,9 @@ docker compose up -d
 The HSYNC Server does **not** include a built-in TLS terminator for production.
 Always run it behind a reverse proxy that terminates HTTPS.
 
-### Caddy
-
-Caddy is the simplest option — it handles TLS automatically. See the
-[Docker Compose](#docker-compose-recommended-for-production) section above for a
-complete example.
-
-### Nginx
-
-```nginx
-# /etc/nginx/sites-available/hsync
-server {
-    listen 443 ssl http2;
-    server_name your-domain.com;
-
-    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-
-    client_max_body_size 10g;
-
-    location / {
-        proxy_pass http://127.0.0.1:8765;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 86400s;
-    }
-}
-
-server {
-    listen 80;
-    server_name your-domain.com;
-    return 301 https://$server_name$request_uri;
-}
-```
-
-> **Note**: The `proxy_read_timeout 86400s` is important for long-lived WebSocket
-> connections. Without it, nginx may close idle connections prematurely.
-
-### Traefik
-
-```yaml
-# docker-compose.yml with Traefik
-services:
-  traefik:
-    image: traefik:v3.0
-    container_name: traefik
-    restart: unless-stopped
-    command:
-      - "--providers.docker=true"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=admin@your-domain.com"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-    ports:
-      - "443:443"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "traefik-le:/letsencrypt"
-    networks:
-      - hsync-net
-
-  hsync-server:
-    image: ghcr.io/albertobasso/hsync-server:latest
-    container_name: hsync-server
-    restart: unless-stopped
-    expose:
-      - "8765"
-    env_file:
-      - ./prod.env
-    volumes:
-      - hsync-buckets:/project/buckets
-      - hsync-certs:/project/certs
-      - hsync-logs:/project/logs
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.hsync.rule=Host(`your-domain.com`)"
-      - "traefik.http.routers.hsync.entrypoints=websecure"
-      - "traefik.http.routers.hsync.tls.certresolver=letsencrypt"
-      - "traefik.http.services.hsync.loadbalancer.server.port=8765"
-    networks:
-      - hsync-net
-
-volumes:
-  hsync-buckets:
-  hsync-certs:
-  hsync-logs:
-  traefik-le:
-
-networks:
-  hsync-net:
-    driver: bridge
-```
+See the [Reverse Proxy Guide](reverse-proxy.md) for Nginx and Traefik
+configuration examples. Caddy is covered in the
+[Docker Compose](#docker-compose-recommended-for-production) section above.
 
 ---
 
@@ -505,6 +398,7 @@ Or set `HSYNC_LOG_LEVEL=debug` in your environment file.
 - [README](README.md) — install and quickstart.
 - [API Reference](api.md) — complete REST + WebSocket contract.
 - [Architecture](architecture.md) — server components and module structure.
+- [Reverse Proxy Guide](reverse-proxy.md) — nginx and Traefik configuration.
 - [Sync Flow](sync-flow.md) — end-to-end synchronization behavior.
 - [FAQ](faq.md) — frequently asked questions.
 - [Client Examples](../../hsync-client/docs/examples.md) — usage examples for the HSYNC client.

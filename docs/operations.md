@@ -47,54 +47,97 @@ With `docker.sh`, these volumes are managed automatically:
 The only data that needs to be backed up is the **buckets directory**. It
 contains all uploaded files and tombstones.
 
-### Backup
+### Backup strategies
+
+**Method 1: Full backup with server stop (recommended for consistency)**
+
+Best for scheduled backups when a brief downtime (~30 seconds) is acceptable.
 
 ```bash
 #!/bin/bash
 # backup-hsync.sh — run daily via cron
-
 BACKUP_DIR="/var/backups/hsync"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+RETENTION_DAYS=30
 mkdir -p "$BACKUP_DIR"
 
-# Stop the server to ensure consistency (optional but recommended)
 ./docker.sh stop
-
-# Create a compressed archive of the buckets directory
 tar -czf "$BACKUP_DIR/hsync-buckets-$TIMESTAMP.tar.gz" -C buckets .
-
-# Restart the server
 ./docker.sh start --env-file prod.env
 
-# Keep only the last 30 backups
-ls -t "$BACKUP_DIR"/hsync-buckets-*.tar.gz | tail -n +31 | xargs -r rm
+# Rotate old backups
+find "$BACKUP_DIR" -name "hsync-buckets-*.tar.gz" -mtime +$RETENTION_DAYS -delete
 ```
 
-For a zero-downtime backup (without stopping the container), use a filesystem
-snapshot (LVM, ZFS, btrfs) or `docker cp`:
+**Method 2: Zero-downtime via filesystem snapshots (LVM/ZFS/btrfs)**
+
+For high-availability deployments where stopping the server is not acceptable:
+
+```bash
+# ZFS example
+zfs snapshot tank/hsync-buckets@backup-$(date +%Y%m%d)
+zfs send tank/hsync-buckets@backup-$(date +%Y%m%d) | gzip > backup.zfs.gz
+
+# LVM example
+lvcreate -L 1G -s -n hsync-buckets-snap /dev/vg0/hsync-buckets
+mount /dev/vg0/hsync-buckets-snap /mnt/snap
+tar -czf backup.tar.gz -C /mnt/snap .
+umount /mnt/snap
+lvremove -f /dev/vg0/hsync-buckets-snap
+```
+
+**Method 3: Hot backup via `docker cp` (acceptable for small buckets)**
 
 ```bash
 docker cp hsync-server:/project/buckets /tmp/hsync-buckets-backup
-tar -czf "$BACKUP_DIR/hsync-buckets-$TIMESTAMP.tar.gz" -C /tmp hsync-buckets-backup
+tar -czf "$BACKUP_DIR/hsync-buckets-$TIMESTAMP.tar.gz" -C /tmp hsync-buckets-backup .
 rm -rf /tmp/hsync-buckets-backup
 ```
 
-> **Warning**: `docker cp` on a live container is not atomic. For critical data,
-> stop the container or use filesystem snapshots.
+> **Warning**: `docker cp` on a live container is not atomic — files changed
+> during the copy may be inconsistent. For buckets larger than a few GB, prefer
+> Method 1 or 2.
 
 ### Restore
 
 ```bash
-# Stop the server
+# 1. Stop the server
 ./docker.sh stop
 
-# Restore from backup (overwrites the buckets directory)
+# 2. (Optional) Rename current buckets for safety
+mv buckets buckets.bak.$(date +%Y%m%d)
+
+# 3. Restore from backup
+mkdir -p buckets
 tar -xzf "$BACKUP_DIR/hsync-buckets-20250101-120000.tar.gz" -C buckets
 
-# Start the server
+# 4. Start the server
 ./docker.sh start --env-file prod.env
 ```
 
+### Restore verification
+
+After restoring, verify the server sees the files correctly:
+
+```bash
+# Check health
+curl http://localhost:8765/health
+
+# List files in each bucket
+curl -H "Authorization: Bearer $HSYNC_API_KEY" \
+  http://localhost:8765/api/v1/buckets/mybucket/files
+```
+
+### Disaster recovery scenario
+
+If you lose the entire server (hardware failure, VM destroyed):
+
+1. Provision a new server with Docker installed
+2. Clone the repository: `git clone https://github.com/albertobasso/hsync-server.git`
+3. Copy your `prod.env` and latest backup to the new server
+4. Restore buckets as above
+5. Update DNS to point to the new server's IP
+6. Clients will automatically reconnect (they retry on connection loss)
 ---
 
 ## Upgrade Guide

@@ -145,7 +145,8 @@ sequenceDiagram
 
 ## Resumable upload
 
-The server tracks partial uploads so clients can resume interrupted transfers:
+The server tracks partial uploads so clients can resume interrupted transfers
+without re-sending already transferred bytes:
 
 ```mermaid
 sequenceDiagram
@@ -159,6 +160,32 @@ sequenceDiagram
     S->>S: ④ Append to partial file
     S-->>C: ⑤ 201 Created
 ```
+
+### How it works
+
+1. **Before upload**, the client checks the upload status endpoint. The server
+   returns either `{"status": "resumable", "offset": N}` (bytes already
+   received) or `{"offset": 0}` (no partial upload exists).
+
+2. **During upload**, the server writes incoming bytes to a partial file
+   (`.hsyncpart` suffix) alongside the target path. If the connection drops,
+   the partial file preserves the received bytes.
+
+3. **On completion**, the partial file is atomically renamed to the target
+   filename. The SHA-256 hash is computed and stored in the cache.
+
+4. **Cleanup**: Partial files left behind after a server restart are removed
+   during the next bucket scan. The client also cleans up its own partial
+   downloads at the start of each sync cycle.
+
+### Resumable vs. restart
+
+- An upload is **resumable** if the partial file still exists on the server
+  and the client's `Content-Range` header matches the stored offset.
+- An upload **restarts** if the file was deleted on the server, the partial
+  file was cleaned up, or the client's local file hash changed since the
+  partial upload began.
+
 
 ## Health and monitoring
 
