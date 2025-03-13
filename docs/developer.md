@@ -213,4 +213,4 @@ before rate limiting and logging use it.
 - [Sync Flow](sync-flow.md) — server-side sync flow.
 - [API Reference](api.md) — complete REST + WebSocket contract.
 - [Contributing](../CONTRIBUTING.md) — development setup and guidelines.
-- [HSYNC Common docs](../../hsync-common/docs/README.md) — shared models and protocol.
+- [HSYNC Common docs](https://github.com/albertobasso/hsync-common/blob/main/docs/README.md) — shared models and protocol.

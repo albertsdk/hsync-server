@@ -74,7 +74,7 @@ poetry run hsync-server    # honors HSYNC_* env vars (host/port, API key, SSL)
 ```
 
 Clients then point at it with `-s https://<host>:<port>` and the matching
-`HSYNC_API_KEY`. See [Getting Started](../../hsync-client/docs/getting-started.md)
+`HSYNC_API_KEY`. See [Getting Started](https://github.com/albertobasso/hsync-client/blob/main/docs/getting-started.md)
 on the client side.
 
 ## Where to start
@@ -169,7 +169,7 @@ all defaults.
 > development and LAN testing only.
 
 For the ecosystem-wide decision records, see the
-[ADRs in hsync-common](../../hsync-common/docs/adr/README.md).
+[ADRs in hsync-common](https://github.com/albertobasso/hsync-common/blob/main/docs/adr/README.md).
 
 ## Upgrade
 
@@ -180,10 +180,10 @@ For upgrade instructions (Docker, Docker Compose, and systemd/Poetry), see the
 
 For practical usage examples of the HSYNC client — including first-time setup,
 file exclusion, conflict resolution, restore from tombstones, and migration —
-see the [client examples](../../hsync-client/docs/examples.md).
+see the [client examples](https://github.com/albertobasso/hsync-client/blob/main/docs/examples.md).
 
 ## Related projects
 
-- [hsync-client](../../hsync-client/docs/README.md) — the sync client / CLI.
-- [hsync-desktop](../../hsync-desktop/docs/README.md) — desktop GUI front-end.
-- [hsync-android](../../hsync-android/docs/README.md) — the Android app.
+- [hsync-client](https://github.com/albertobasso/hsync-client/blob/main/docs/README.md) — the sync client / CLI.
+- [hsync-desktop](https://github.com/albertobasso/hsync-desktop/blob/main/docs/README.md) — desktop GUI front-end.
+- [hsync-android](https://github.com/albertobasso/hsync-android/blob/main/docs/README.md) — the Android app.

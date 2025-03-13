@@ -31,7 +31,7 @@ links to the relevant guide.
 
 Only for remote / cross-network sync. Devices on the same network can use the
 client's serverless **LAN Mode** instead. See
-[client LAN Mode](../../hsync-client/docs/lan-mode.md).
+[client LAN Mode](https://github.com/albertobasso/hsync-client/blob/main/docs/lan-mode.md).
 
 ## Deployment & Configuration
 

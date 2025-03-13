@@ -6,7 +6,7 @@ broadcasts events, and lets clients decide what to do.
 
 > For the client-side flow (initial sync, conflict resolution, event queue,
 > retry logic, connection recovery) see the
-> [client Sync Flow](../../hsync-client/docs/sync-flow.md).
+> [client Sync Flow](https://github.com/albertobasso/hsync-client/blob/main/docs/sync-flow.md).
 
 ## Overview
 
