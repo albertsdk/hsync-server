@@ -77,20 +77,46 @@ Clients then point at it with `-s https://<host>:<port>` and the matching
 `HSYNC_API_KEY`. See [Getting Started](../../hsync-client/docs/getting-started.md)
 on the client side.
 
+## Where to start
+
+- **New to HSYNC?** → Start with the [Architecture overview](architecture.md).
+- **Deploying for the first time?** → Go to the [Deployment Guide](deployment.md).
+- **Already running?** → See [Operations Guide](operations.md) for day-to-day tasks.
+- **Hardening a production instance?** → Follow the [Security Best Practices](security-best-practices.md) checklist.
+- **Integrating with the API?** → Read the [API Reference](api.md).
+- **Contributing to the project?** → Start with the [Developer Guide](developer.md).
+
 ## Documentation map
+
+### Getting Started & Deployment
 
 | Document | What it covers |
 | -------- | -------------- |
 | [architecture.md](architecture.md) | Server components: FastAPI app, connection manager, storage, hashing. |
-| [api.md](api.md) | Complete REST + WebSocket API reference. |
-| [sync-flow.md](sync-flow.md) | Server-side sync flow: file storage, event broadcast, tombstones. |
-| [faq.md](faq.md) | Frequently asked questions, troubleshooting, and why to choose HSYNC. |
 | [deployment.md](deployment.md) | Production deployment: Docker Compose, systemd service, troubleshooting. |
 | [reverse-proxy.md](reverse-proxy.md) | Reverse proxy configuration: Nginx and Traefik examples. |
-| [operations.md](operations.md) | Day-to-day operations: backup/restore, upgrade, monitoring, performance. |
+
+### Day-to-Day Operations
+
+| Document | What it covers |
+| -------- | -------------- |
+| [operations.md](operations.md) | Backup/restore, upgrade, monitoring, performance. |
 | [security-best-practices.md](security-best-practices.md) | Hardening checklist: API keys, firewall, TLS, rate limiting, logging. |
-| [developer.md](developer.md) | Internal implementation details: module structure and component reference (for contributors). |
-| [testing.md](testing.md) | Test suite guide: structure, fixtures, mocking, contract tests (for contributors). |
+| [faq.md](faq.md) | Frequently asked questions, troubleshooting, and why to choose HSYNC. |
+
+### Technical Reference
+
+| Document | What it covers |
+| -------- | -------------- |
+| [api.md](api.md) | Complete REST + WebSocket API reference. |
+| [sync-flow.md](sync-flow.md) | Server-side sync flow: file storage, event broadcast, tombstones. |
+
+### For Contributors
+
+| Document | What it covers |
+| -------- | -------------- |
+| [developer.md](developer.md) | Internal implementation details: module structure and component reference. |
+| [testing.md](testing.md) | Test suite guide: structure, fixtures, mocking, contract tests. |
 
 ## Environment Variables
 
