@@ -20,14 +20,16 @@ from os import fsync, remove, replace
 from pathlib import Path
 from shutil import copy2
 
+import zstandard as zstd
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
 from hsync_common.hashing import compute_sha256_async
-from hsync_common.models.event import Event, EventName
+from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
-from hsync_common.models.file import invalidate_sha256_cache, is_partial_file
+from hsync_common.models.file import invalidate_sha256_cache, is_hidden_file, is_partial_file
+from hsync_common.path_validation import is_internal_name, is_valid_filename, sanitize_filename
 from hsync_common.permissions import is_valid_octal_permissions
 from loguru import logger as log
 
@@ -37,7 +39,7 @@ from hsync_server.api.file_utils import (
 )
 from hsync_server.api.utils import (
     is_valid_bucket,
-    is_valid_dir,
+    resolve_within_bucket,
     set_permissions,
 )
 from hsync_server.compression import decompress_data
@@ -51,9 +53,9 @@ from hsync_server.exceptions import (
     InvalidPathError,
     InvalidPermissionFormatError,
     UploadError,
+    ValidationError,
 )
 from hsync_server.hashes import get_sha256_hash, set_sha256_hash
-from hsync_server.path_validation import is_valid_filename, sanitize_filename
 from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import clear_deletion
@@ -75,7 +77,7 @@ async def upload_file(
     path: str = Form(""),
     ctime: str = Form(""),
     mtime: str = Form(""),
-    sha256sum: str = Form(""),
+    sha256sum: str = Form(),
     permissions: str = Form("664"),
     offset: int = Form(0),
     size: int = Form(0),
@@ -165,8 +167,11 @@ async def upload_file(
         # Validate and sanitize inputs
         if not is_valid_bucket(bucket):
             raise InvalidBucketNameError(details={"bucket": bucket})
-        if not is_valid_dir(path):
-            raise InvalidPathError(details={"path": path})
+        if not is_valid_cid(cid):
+            raise ValidationError(
+                message="Invalid client ID format",
+                details={"cid": cid},
+            )
         if permissions and not is_valid_octal_permissions(permissions):
             raise InvalidPermissionFormatError(details={"permissions": permissions})
 
@@ -183,8 +188,22 @@ async def upload_file(
         if not is_valid_filename(file.filename or ""):
             raise InvalidFilenameError(details={"filename": file.filename})
 
+        # Internal sync-engine artifacts must never enter the storage via the
+        # wire: a peer that could (re)write them would alter every other
+        # peer's sync behaviour through the sync channel itself.
+        if is_internal_name(file.filename or ""):
+            raise InvalidFilenameError(
+                message="Internal sync-engine filenames are not allowed",
+                details={"filename": file.filename},
+            )
+
+        # Confine the upload directory to *this* bucket: the raw form path is
+        # untrusted input and must never escape into a sibling bucket.
+        file_directory = resolve_within_bucket(bucket, path)
+        if file_directory is None:
+            raise InvalidPathError(details={"path": path})
+
         # Define file paths
-        file_directory = f"{buckets_path}/{bucket}/{path}"
         file_location = f"{file_directory}/{file.filename}"
         partial_file_path = f"{file_location}{PARTIAL_DOWNLOAD_SUFFIX}"
 
@@ -302,10 +321,40 @@ async def upload_file(
             if is_compressed and total_bytes > 0:
                 import aiofiles
 
+                # Anti decompression-bomb: the compressed payload may expand
+                # arbitrarily, so the decompressed size is hard-capped. The
+                # cap is the declared file size when known (the content must
+                # match it exactly — integrity is verified below), otherwise
+                # the configured upload limit.
+                if size > 0:
+                    max_decompressed = size
+                elif max_upload_size > 0:
+                    max_decompressed = max_upload_size
+                else:
+                    raise ValidationError(
+                        message="Missing/invalid 'size' for compressed upload",
+                        details={"size": size},
+                    )
                 async with aiofiles.open(file_location_tmp, "rb") as f:
                     compressed_data = await f.read()
                 log.debug(f"Decompressing uploaded file: {total_bytes} bytes -> ~{size} bytes")
-                decompressed_data = decompress_data(compressed_data)
+                try:
+                    decompressed_data = decompress_data(
+                        compressed_data, max_output_size=max_decompressed
+                    )
+                except zstd.ZstdError as exc:
+                    raise ValidationError(
+                        message=f"Invalid compressed payload: {exc}",
+                        details={"size": size, "compressed_bytes": total_bytes},
+                    ) from exc
+                if size > 0 and len(decompressed_data) != size:
+                    raise ValidationError(
+                        message=(
+                            f"Decompressed size mismatch: expected {size}, "
+                            f"got {len(decompressed_data)}"
+                        ),
+                        details={"expected": size, "actual": len(decompressed_data)},
+                    )
                 async with aiofiles.open(file_location_tmp, "wb") as f:
                     await f.write(decompressed_data)
                     # Ensure decompressed data reaches physical storage
@@ -334,9 +383,10 @@ async def upload_file(
         if permissions:
             await set_permissions(file_location_tmp, permissions)
 
-        # Verify SHA-256 checksum if provided
+        # SHA-256 integrity is mandatory: the received bytes must hash to the
+        # declared checksum, otherwise the upload is rejected (400).
         sha256sum_tmp = await compute_sha256_async(file_location_tmp)
-        if sha256sum and sha256sum != sha256sum_tmp:
+        if sha256sum != sha256sum_tmp:
             raise ChecksumMismatchError(
                 message=f"Checksum mismatch: expected {sha256sum}, got {sha256sum_tmp}",
                 details={"expected": sha256sum, "actual": sha256sum_tmp},
@@ -361,8 +411,12 @@ async def upload_file(
         if backup_path and Path(backup_path).exists():
             remove(backup_path)
 
-        # Broadcast "added" event to other connected clients
-        src = LocalFile().get(file_location)
+        # Broadcast "added" event to other connected clients. Hidden files
+        # are excluded (as they are from the /files listing): peers syncing
+        # hidden files pick them up via their own watcher or the next full
+        # reconciliation, and a peer cannot push dotfiles onto clients that
+        # never asked for them.
+        src = None if is_hidden_file(file_location) else LocalFile().get(file_location)
         local_bucket = f"{buckets_path}/{bucket}"
         if src:
             manager = bucket_manager.get_manager(bucket)
@@ -379,10 +433,12 @@ async def upload_file(
     except (
         InvalidBucketNameError,
         InvalidPathError,
+        InvalidFilenameError,
         InvalidPermissionFormatError,
         ChecksumMismatchError,
         FileTooLargeError,
         InsufficientStorageError,
+        ValidationError,
     ):
         # Re-raise custom exceptions - they'll be handled by global handler
         raise

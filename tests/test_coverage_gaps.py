@@ -15,6 +15,7 @@ Covers edge-case branches in:
 - tombstones.py prune edge
 """
 
+import hashlib
 import io
 import os
 from json import dumps
@@ -178,6 +179,7 @@ class TestUploadCoverageGaps:
                 "permissions": "644",
                 "compressed": "true",
                 "size": str(len(original)),
+                "sha256sum": hashlib.sha256(original).hexdigest(),
             },
         )
         assert response.status_code == 201
@@ -194,7 +196,12 @@ class TestUploadCoverageGaps:
         response = await client.post(
             "/api/v1/buckets/sanitizebucket/files",
             files={"file": ("file with spaces.txt", io.BytesIO(b"data"), "text/plain")},
-            data={"cid": "c1", "path": "", "permissions": "644"},
+            data={
+                "cid": "c1",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(b"data").hexdigest(),
+            },
         )
         assert response.status_code == 201
         # The sanitized file should exist
@@ -215,7 +222,12 @@ class TestUploadCoverageGaps:
         response = await client.post(
             "/api/v1/buckets/overwritebucket/files",
             files={"file": ("ov.txt", io.BytesIO(b"new content"), "text/plain")},
-            data={"cid": "c1", "path": "", "permissions": "644"},
+            data={
+                "cid": "c1",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(b"new content").hexdigest(),
+            },
         )
         assert response.status_code == 201
         with open(existing, "rb") as f:
@@ -233,7 +245,13 @@ class TestUploadCoverageGaps:
             response = await client.post(
                 "/api/v1/buckets/partialfail/files",
                 files={"file": ("p.txt", io.BytesIO(b"1234567890"), "text/plain")},
-                data={"cid": "c1", "path": "", "permissions": "644", "size": "10"},
+                data={
+                    "cid": "c1",
+                    "path": "",
+                    "permissions": "644",
+                    "size": "10",
+                    "sha256sum": hashlib.sha256(b"1234567890").hexdigest(),
+                },
             )
         assert response.status_code == 400
         # No lingering .part file
@@ -254,6 +272,7 @@ class TestUploadCoverageGaps:
                 "permissions": "644",
                 "mtime": "1577836800",
                 "ctime": "1577836800",
+                "sha256sum": hashlib.sha256(b"data").hexdigest(),
             },
         )
         assert response.status_code == 201
@@ -278,7 +297,13 @@ class TestUploadCoverageGaps:
             response = await client.post(
                 "/api/v1/buckets/oserrbucket/files",
                 files={"file": ("f.txt", io.BytesIO(b"data"), "text/plain")},
-                data={"cid": "c1", "path": "", "permissions": "644", "size": "4"},
+                data={
+                    "cid": "c1",
+                    "path": "",
+                    "permissions": "644",
+                    "size": "4",
+                    "sha256sum": hashlib.sha256(b"data").hexdigest(),
+                },
             )
         assert response.status_code == 201
 

@@ -48,7 +48,6 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI]:
     with (
         patch("hsync_server.api.utils.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.upload.get_buckets_path", return_value=temp_buckets_dir),
-        patch("hsync_server.api.files.download.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.list.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
@@ -138,7 +137,6 @@ async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[Asy
     """Create an async test client."""
     with (
         patch("hsync_server.api.files.upload.get_buckets_path", return_value=temp_buckets_dir),
-        patch("hsync_server.api.files.download.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.list.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
@@ -158,7 +156,6 @@ async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGener
     """Create an async test client without authentication."""
     with (
         patch("hsync_server.api.files.upload.get_buckets_path", return_value=temp_buckets_dir),
-        patch("hsync_server.api.files.download.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.list.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),

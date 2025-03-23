@@ -59,8 +59,12 @@ event is rebroadcast.
 
 - `is_path_within_bucket` (`validation.py:17`) — containment guard for every
   write/delete target.
-- `is_safe_symlink_target` (`validation.py:48`) — blocks symlink escapes outside
-  the bucket.
+- Symlink targets are checked with `is_safe_symlink_target` (SSOT in
+  `hsync_common.path_validation`) — blocks symlink escapes outside the bucket.
+- Wire-path gate in `events.py` (`_event_paths_safe`): every `src`/`dst`
+  `filepath`/`path` is validated with `validate_remote_relpath` before dispatch
+  (traversal, absolute paths, backslashes, internal engine artifacts rejected);
+  the connection `cid` is validated with `is_valid_cid` at accept time.
 
 ## Deleted-event semantics
 

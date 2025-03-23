@@ -18,6 +18,11 @@ from pathlib import Path
 
 from loguru import logger as log
 
+# Wire-supplied mtimes may not exceed now + this skew: a peer asserting
+# far-future timestamps would win every mtime-based conflict resolution on
+# every other peer (conflict engineering).
+MTIME_MAX_FUTURE_SKEW_SECONDS = 300
+
 
 def is_sentinel_file(filepath: str) -> bool:
     """Return True if *filepath* is a .hsynckeep sentinel file."""
@@ -127,6 +132,13 @@ def update_file_timestamp(
         _mtime = int(datetime.fromtimestamp(int(mtime), UTC).timestamp())
     else:
         _mtime = int(datetime.fromisoformat(mtime).timestamp())
+
+    # Clamp far-future peer-supplied timestamps (conflict engineering would
+    # favour the newest mtime on every peer).
+    max_ts = int(datetime.now(UTC).timestamp()) + MTIME_MAX_FUTURE_SKEW_SECONDS
+    if _mtime > max_ts:
+        log.warning(f"Clamping far-future mtime ({_mtime} -> {max_ts}): {file_location}")
+        _mtime = max_ts
 
     log.debug(f"Update timestamp: {file_location} (mtime={mtime})")
     # Set both access and modification time to mtime; ctime is not preservable.

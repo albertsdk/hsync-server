@@ -22,7 +22,7 @@ from hsync_common.models.dir import is_hidden_dir
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
 
-from hsync_server.api.utils import is_valid_bucket, is_valid_dir
+from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
 from hsync_server.config import get_buckets_path
 from hsync_server.exceptions import (
     BucketNotFoundError,
@@ -68,10 +68,10 @@ async def get_upload_status(
     """
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
-    if not is_valid_dir(str(Path(filename).parent)):
+    file_path = resolve_within_bucket(bucket, filename)
+    if file_path is None:
         raise InvalidPathError(details={"path": filename})
 
-    file_path = f"{get_buckets_path()}/{bucket}/{filename}"
     partial_path = f"{file_path}{PARTIAL_DOWNLOAD_SUFFIX}"
 
     # Check if complete file already exists with same SHA-256
@@ -148,12 +148,14 @@ async def get_files(
     # Validate inputs
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
-    if path and not is_valid_dir(path):
+
+    # Confine to *this* bucket: the filter path is untrusted input and must
+    # never escape into a sibling bucket or outside the storage root.
+    dir = resolve_within_bucket(bucket, path or "")
+    if dir is None:
         raise InvalidPathError(details={"path": path})
 
-    # Construct directory path
     buckets_path = get_buckets_path()
-    dir = f"{buckets_path}/{bucket}/{path or ''}".rstrip("/")
 
     if not Path(dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket, "path": path})

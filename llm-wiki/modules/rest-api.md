@@ -37,24 +37,34 @@ Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–
 Multipart form fields: `cid, file, path, ctime, mtime, sha256sum, permissions`
 (default `664`), and resumable fields `offset, size, compressed, compressed_size`
 (`upload.py:73`–`83`). Behavior:
-- Filename validated/sanitized (`is_valid_filename`/`sanitize_filename`,
-  `path_validation.py`); subdir path checked against the bucket root.
+- Filename validated/sanitized (`is_valid_filename`/`sanitize_filename` from
+  `hsync_common.path_validation`); internal engine names
+  (`.hsyncignore`/`.hsyncstate`/`.hsynctombstones`, `*.part`) rejected with
+  `InvalidFilenameError`; `cid` format checked with `is_valid_cid`.
+- `sha256sum` is a **required** form field: the received bytes must hash to it
+  or the upload fails with `ChecksumMismatchError`.
+- Subdir path and filename confined to the bucket via `resolve_within_bucket`
+  (`api/utils.py:46`) — rejects cross-bucket escapes (`../other-bucket/x`).
 - Resumable: `offset > 0` appends to a `.part` file; full write flushed via
   `_flush_to_disk` → `fsync` (`upload.py:62`).
-- Optional zstd payload decompressed with `decompress_data` (`compression.py`).
-- SHA-256 verified against `sha256sum` → `ChecksumMismatchError` (`exceptions.py:78`);
-  on success cache updated `set_sha256_hash` (`hashes.py:28`) and any tombstone
+- Optional zstd payload decompressed with `decompress_data(...,
+  max_output_size=...)` capped at the declared `size` (anti decompression-bomb);
+  a decompressed size different from `size` is rejected.
+- On success cache updated `set_sha256_hash` (`hashes.py:28`) and any tombstone
   cleared `clear_deletion` (`tombstones.py:66`).
 - Size guard `get_max_upload_size()` (`config.py:397`) → `FileTooLargeError`.
-- Permissions applied via `set_permissions` (`api/utils.py:77`).
-- Broadcasts an `added` event to bucket subscribers (see
-  [websocket.md](websocket.md)).
+- Permissions applied via `set_permissions` (`api/utils.py:82`) — special bits
+  (setuid/setgid/sticky) stripped (`sanitize_remote_permissions`).
+- Wire-supplied mtimes clamped to `now + 300 s` (`api/file_utils.py:24`).
+- Broadcasts an `added` event to bucket subscribers, skipping hidden files
+  (see [websocket.md](websocket.md)).
 
 ## Download (`api/files/download.py:43`)
 
 Streams the file; supports zstd via `compression.async_compress_stream`
-(`compression.py:53`) when `get_compression_enabled()` (`config.py:437`). Missing
-file → `FileNotFoundError` (`exceptions.py:118`).
+(`compression.py:53`) when `get_compression_enabled()` (`config.py:437`). The
+`filename` is confined with `resolve_within_bucket` (rejects cross-bucket and
+internal-engine paths). Missing file → `FileNotFoundError` (`exceptions.py:118`).
 
 ## List / upload-status / tombstones (`api/files/list.py`)
 
@@ -74,10 +84,11 @@ tombstone (`record_deletion`, `tombstones.py:49`), cleans up now-empty dirs
 
 ## Shared helpers (`api/utils.py`, `api/file_utils.py`)
 
-- `api/utils.py`: bucket/dir validation, permission get/set (`:64`/`:77`/`:94`),
-  `get_dir_info` → `Dir` (`:107`).
-- `api/file_utils.py`: sentinel handling (`:22`/`:29`), empty-dir cleanup (`:67`),
-  timestamp updates (`:105`).
+- `api/utils.py`: bucket validation, `resolve_within_bucket` per-bucket
+  confinement (`:46`), permission get/set (`:70`/`:83`/`:103`, wire values
+  masked of special bits), `get_dir_info` → `Dir` (`:117`).
+- `api/file_utils.py`: sentinel handling (`:27`/`:34`), empty-dir cleanup (`:72`),
+  timestamp updates with far-future clamp (`:110`).
 
 > Validation primitives are reused from `hsync_common` (path_validation,
 > permissions); do not reimplement them here (DRY rule, `CLAUDE.md`).

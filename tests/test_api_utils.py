@@ -5,6 +5,7 @@ Tests for API utility functions.
 import os
 import tempfile
 from datetime import datetime
+from unittest.mock import patch
 
 import pytest
 from hsync_common.permissions import is_valid_octal_permissions, octal_to_mode
@@ -16,7 +17,7 @@ from hsync_server.api.utils import (
     get_dir_info,
     get_permissions,
     is_valid_bucket,
-    is_valid_dir,
+    resolve_within_bucket,
     set_directory_permissions,
     set_permissions,
 )
@@ -289,19 +290,44 @@ class TestIsValidBucket:
         assert is_valid_bucket("my/bucket") is False
 
 
-class TestIsValidDir:
-    """Tests for is_valid_dir function."""
+class TestResolveWithinBucket:
+    """Tests for resolve_within_bucket (per-bucket confinement)."""
 
-    def test_valid_paths(self):
-        """Valid paths are accepted."""
-        assert is_valid_dir("subdir") is True
-        assert is_valid_dir("subdir/nested") is True
-        assert is_valid_dir("") is True
+    def test_valid_paths(self, tmp_path):
+        """Valid relative paths resolve inside the bucket."""
+        with patch("hsync_server.api.utils.get_buckets_path", return_value=str(tmp_path)):
+            assert resolve_within_bucket("b", "subdir") == str(
+                (tmp_path / "b" / "subdir").resolve()
+            )
+            assert resolve_within_bucket("b", "subdir/nested") == str(
+                (tmp_path / "b" / "subdir" / "nested").resolve()
+            )
+            # Empty and "." refer to the bucket root
+            assert resolve_within_bucket("b", "") == str((tmp_path / "b").resolve())
+            assert resolve_within_bucket("b", ".") == str((tmp_path / "b").resolve())
 
-    def test_path_traversal_rejected(self):
+    def test_path_traversal_rejected(self, tmp_path):
         """Path traversal attempts are rejected."""
-        assert is_valid_dir("../escape") is False
-        assert is_valid_dir("subdir/../../escape") is False
+        with patch("hsync_server.api.utils.get_buckets_path", return_value=str(tmp_path)):
+            assert resolve_within_bucket("b", "../escape") is None
+            assert resolve_within_bucket("b", "subdir/../../escape") is None
+
+    def test_cross_bucket_rejected(self, tmp_path):
+        """A path escaping into a sibling bucket is rejected."""
+        with patch("hsync_server.api.utils.get_buckets_path", return_value=str(tmp_path)):
+            assert resolve_within_bucket("A", "../B/x") is None
+
+    def test_backslash_and_absolute_rejected(self, tmp_path):
+        """Windows separators and absolute paths are rejected."""
+        with patch("hsync_server.api.utils.get_buckets_path", return_value=str(tmp_path)):
+            assert resolve_within_bucket("b", "..\\..\\evil") is None
+            assert resolve_within_bucket("b", "/etc/passwd") is None
+
+    def test_internal_names_rejected(self, tmp_path):
+        """Engine-owned files are rejected."""
+        with patch("hsync_server.api.utils.get_buckets_path", return_value=str(tmp_path)):
+            assert resolve_within_bucket("b", ".hsyncignore") is None
+            assert resolve_within_bucket("b", "sub/.hsyncstate") is None
 
 
 # =============================================================================
@@ -309,7 +335,7 @@ class TestIsValidDir:
 # =============================================================================
 
 
-from hsync_server.path_validation import (
+from hsync_common.path_validation import (
     FORBIDDEN_FILENAME_CHARS,
     has_control_chars,
     has_forbidden_chars,

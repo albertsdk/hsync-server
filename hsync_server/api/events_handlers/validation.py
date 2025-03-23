@@ -43,36 +43,3 @@ def is_path_within_bucket(path: str, bucket_dir: str, allow_root: bool = True) -
     if not allow_root and target_path == bucket_path:
         return False
     return True
-
-
-def is_safe_symlink_target(symlink_path: str, target: str, bucket_dir: str) -> bool:
-    """
-    Validate that a symlink target is safe and within the bucket directory.
-
-    Prevents symlink attacks where a malicious client could create symlinks
-    pointing to sensitive files outside the bucket (e.g., /etc/passwd).
-
-    Args:
-        symlink_path: Full path where the symlink will be created.
-        target: The target path the symlink will point to.
-        bucket_dir: The bucket directory that should contain all files.
-
-    Returns:
-        True if the target is safe (within bucket), False otherwise.
-    """
-    bucket_path = Path(bucket_dir).resolve()
-
-    # If target is absolute, it must be within the bucket
-    if Path(target).is_absolute():
-        target_resolved = Path(target).resolve()
-    else:
-        # For relative targets, resolve from the symlink's parent directory
-        symlink_parent = Path(symlink_path).parent
-        target_resolved = (symlink_parent / target).resolve()
-
-    # Check if the resolved target is within the bucket directory
-    try:
-        target_resolved.relative_to(bucket_path)
-        return True
-    except ValueError:
-        return False

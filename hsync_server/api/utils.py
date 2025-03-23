@@ -13,16 +13,16 @@ including path validation, SHA-256 computation, and file permission handling.
 
 from asyncio import to_thread
 from os import chmod
+from pathlib import Path
 
 from hsync_common.hashing import compute_sha256_async
 from hsync_common.models.dir import Dir
-from hsync_common.path_validation import is_valid_bucket_name
+from hsync_common.path_validation import is_valid_bucket_name, resolve_within
 from hsync_common.permissions import get_permissions as _read_permissions
-from hsync_common.permissions import octal_to_mode
+from hsync_common.permissions import octal_to_mode, sanitize_remote_permissions
 from loguru import logger as log
 
 from hsync_server.config import get_buckets_path
-from hsync_server.path_validation import is_valid_path as validate_path_traversal
 
 OWNER_DIRECTORY_ACCESS = 0o700
 
@@ -43,22 +43,28 @@ def is_valid_bucket(value: str) -> bool:
     return is_valid_bucket_name(value)
 
 
-def is_valid_dir(target_path: str) -> bool:
-    """
-    Validate a directory path to prevent path traversal attacks.
+def resolve_within_bucket(bucket: str, rel: str) -> str | None:
+    """Resolve a client-supplied relative path inside a *specific* bucket.
 
-    Ensures the target path resolves to a location within the
-    buckets directory, preventing access to files outside
-    the allowed storage area.
+    The path is validated with
+    :func:`hsync_common.path_validation.validate_remote_relpath` (rejecting
+    traversal, absolute paths, backslashes, reserved names and internal
+    engine artifacts) and confined to ``buckets_path/bucket`` via
+    ``resolve()`` + ``relative_to()`` — a path such as ``../other-bucket/x``
+    can never escape into a sibling bucket (cross-bucket confinement).
 
     Args:
-        target_path: Relative path to validate.
+        bucket: Target bucket name (already validated).
+        rel: Client-supplied bucket-relative path; ``""`` and ``"."`` refer
+            to the bucket root.
 
     Returns:
-        True if the path is safe, False if it escapes the bucket root.
+        The confined absolute path, or ``None`` when the path is unsafe.
     """
-    # Use the new robust is_valid_path function
-    return validate_path_traversal(target_path, get_buckets_path())
+    base = f"{get_buckets_path()}/{bucket}"
+    if rel in ("", "."):
+        return str(Path(base).resolve())
+    return resolve_within(base, rel)
 
 
 async def get_permissions(obj_path: str) -> str:
@@ -79,12 +85,15 @@ async def set_permissions(file_path: str, permissions: str) -> None:
     Set file permissions from a canonical octal string.
 
     Parses an octal permission string (e.g., '664') and applies the
-    corresponding numeric mode to the file.
+    corresponding numeric mode to the file. The value comes from a remote
+    peer, so special bits (setuid/setgid/sticky) are always stripped: a
+    synced file must never become a setuid executable on this host.
 
     Args:
         file_path: Path to the file.
         permissions: Octal permission string.
     """
+    permissions = sanitize_remote_permissions(permissions)
     log.debug(f'Set permissions: "{file_path}" ({permissions})')
 
     mode = octal_to_mode(permissions)
@@ -97,9 +106,10 @@ async def set_directory_permissions(dir_path: str, permissions: str) -> None:
     Directory permissions come from clients as an octal string (for example
     ``755``).  The server must always keep owner rwx access on bucket
     directories so that it can traverse, update and back up its own storage
-    tree.
+    tree. Special bits (setuid/setgid/sticky) are stripped first, as the
+    value is supplied by a remote peer.
     """
-    mode = octal_to_mode(permissions) | OWNER_DIRECTORY_ACCESS
+    mode = octal_to_mode(sanitize_remote_permissions(permissions)) | OWNER_DIRECTORY_ACCESS
     log.debug(f'Set directory permissions: "{dir_path}" ({permissions} -> {mode:o})')
     await to_thread(chmod, dir_path, mode)
 
