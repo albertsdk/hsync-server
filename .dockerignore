@@ -1,0 +1,18 @@
+# Python
+**/*.pyc
+**/__pycache__
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Git
+.git
+
+# Virtualenv
+.venv
+
+# Project specific files
+buckets/
+tmp/
