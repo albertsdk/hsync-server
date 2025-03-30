@@ -51,25 +51,14 @@ class File:
         self.permissions = permissions
         self.ctime = self._parse_time(ctime)
         self.mtime = self._parse_time(mtime)
-        """self.cdate = (
-            datetime.fromtimestamp(self.ctime, tz=timezone.utc).isoformat()
-            if self.ctime
-            else None
-        )
-        self.mdate = (
-            datetime.fromtimestamp(self.mtime, tz=timezone.utc).isoformat()
-            if self.mtime
-            else None
-        )"""
 
     def __repr__(self):
         return (
-            f"File(filepath={self.filepath}, "
+            f"{self.__class__.__name__}("
+            f"filepath={self.filepath}, "
             f"name={self.name}, "
             f"ctime={self.ctime}, "
             f"mtime={self.mtime}, "
-            # f"cdate={self.cdate}, "
-            # f"mdate={self.mdate}, "
             f"size={self.size}, "
             f"md5sum={self.md5sum}, "
             f"permissions={self.permissions})"
@@ -102,8 +91,6 @@ class File:
             "name": self.name,
             "ctime": self.ctime,
             "mtime": self.mtime,
-            # "cdate": self.cdate,
-            # "mdate": self.mdate,
             "size": self.size,
             "md5sum": self.md5sum,
             "permissions": self.permissions,
