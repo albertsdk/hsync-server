@@ -34,10 +34,10 @@ LOG.info(f"{md5_files} files stored.")
 # Prometheus Metrics
 #
 Instrumentator(
-    excluded_handlers=["/metrics", "/docs"],
+    excluded_handlers=["/docs", "/metrics", "/health"],
 ).instrument(
     app
-).expose(app, tags=["Monitoring Router"], endpoint="/metrics")
+).expose(app, tags=["Public Router"], endpoint="/metrics")
 
 #
 # Startup info
