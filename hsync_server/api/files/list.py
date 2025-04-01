@@ -12,12 +12,14 @@ This module provides the REST API endpoints for:
 - Getting upload status for resumable uploads
 """
 
+import hmac
 from os import remove, walk
 from pathlib import Path
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
+from hsync_common.hashing import is_sha256_hex
 from hsync_common.models.dir import is_hidden_dir
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
@@ -75,7 +77,12 @@ async def get_upload_status(
     partial_path = f"{file_path}{PARTIAL_DOWNLOAD_SUFFIX}"
 
     # Check if complete file already exists with same SHA-256
-    if sha256sum and Path(file_path).exists() and sha256sum == get_sha256_hash(file_path):
+    if (
+        sha256sum
+        and is_sha256_hex(sha256sum)
+        and Path(file_path).exists()
+        and hmac.compare_digest(sha256sum, get_sha256_hash(file_path) or "")
+    ):
         return JSONResponse(
             status_code=200,
             content={

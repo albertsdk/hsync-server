@@ -63,6 +63,44 @@ class TestConnectionManager:
         """Disconnecting non-existent client doesn't raise."""
         manager.disconnect("nonexistent")  # Should not raise
 
+    def test_disconnect_with_websocket_only_evicts_same_socket(self, manager):
+        """Cleanup of an older socket must not evict a newer registration
+        that reused the same cid."""
+        old_ws, new_ws = MagicMock(), MagicMock()
+        manager.active_connections["client1"] = new_ws
+
+        manager.disconnect("client1", old_ws)  # stale cleanup: must be a no-op
+        assert manager.active_connections["client1"] is new_ws
+
+        manager.disconnect("client1", new_ws)  # owner cleanup: evicts
+        assert "client1" not in manager.active_connections
+
+    @pytest.mark.asyncio
+    async def test_send_message_tolerates_mutation_and_dead_sockets(self, manager):
+        """A dead socket mid-broadcast is evicted without aborting delivery,
+        and a concurrent disconnect during iteration must not raise."""
+        dead = AsyncMock()
+        dead.send_json.side_effect = RuntimeError("socket closed")
+        live = AsyncMock()
+
+        manager.active_connections = {
+            "sender": AsyncMock(),
+            "dead": dead,
+            "live": live,
+        }
+
+        file = File(
+            filepath="/buckets/test/test.txt", size=100, sha256sum="abc", permissions="-rw-r--r--"
+        )
+        event = Event(
+            cid="sender", localpath="/buckets/test", bucket="test", name=EventName.added, src=file
+        )
+
+        await manager.send_message(event)
+
+        live.send_json.assert_called_once()
+        assert "dead" not in manager.active_connections
+
     @pytest.mark.asyncio
     async def test_send_message_broadcasts_to_others(self, manager):
         """Test that send_message broadcasts to all except sender."""

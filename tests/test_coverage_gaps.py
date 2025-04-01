@@ -160,13 +160,17 @@ class TestUploadCoverageGaps:
 
     @pytest.mark.asyncio
     async def test_upload_compressed(self, client: AsyncClient, temp_buckets_dir: str):
-        """A compressed upload is decompressed server-side."""
+        """A compressed upload is decompressed server-side.
+
+        The payload is > 1 MB so the streaming decompressor iterates over
+        multiple chunks (its read window is 1 MB).
+        """
         import zstandard
 
         bucket_path = os.path.join(temp_buckets_dir, "compressupload")
         os.makedirs(bucket_path)
 
-        original = b"Hello compressed world!" * 100
+        original = b"Hello compressed world!" * 100_000  # ~2.3 MB
         cctx = zstandard.ZstdCompressor()
         compressed = cctx.compress(original)
 

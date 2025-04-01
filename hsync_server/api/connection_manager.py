@@ -46,14 +46,20 @@ class ConnectionManager:
         await websocket.accept()
         self.active_connections[client_id] = websocket
 
-    def disconnect(self, client_id: str) -> None:
+    def disconnect(self, client_id: str, websocket: WebSocket | None = None) -> None:
         """
         Remove a client's WebSocket connection.
 
+        When *websocket* is given, the registration is dropped only if it
+        still belongs to that very socket — so the cleanup of an older
+        connection can never evict a newer one that reused the same cid.
+
         Args:
             client_id: The client ID to disconnect.
+            websocket: The socket being closed, if known.
         """
-        self.active_connections.pop(client_id, None)
+        if websocket is None or self.active_connections.get(client_id) is websocket:
+            self.active_connections.pop(client_id, None)
 
     async def send_message(self, event: Event) -> None:
         """
@@ -62,10 +68,18 @@ class ConnectionManager:
         Args:
             event: The Event object to broadcast.
         """
-        for cid, connection in self.active_connections.items():
+        # Iterate over a snapshot: registrations change concurrently as
+        # clients connect/disconnect, and one dead socket must not abort
+        # delivery to the remaining clients.
+        for cid, connection in list(self.active_connections.items()):
             # Don't send the event back to its originator
             if cid != event.cid:
-                await connection.send_json(event.to_dict())
+                try:
+                    await connection.send_json(event.to_dict())
+                except Exception as e:
+                    log.warning(f"[WEBSOCKET ] Dropping dead connection for {cid}: {e}")
+                    if self.active_connections.get(cid) is connection:
+                        self.active_connections.pop(cid, None)
 
 
 class BucketConnectionManager:

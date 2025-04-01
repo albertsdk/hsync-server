@@ -20,12 +20,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.hsyncignore`/`.hsyncstate`/`.hsynctombstones` (and `*.part`) return 400
 - **Decompression-bomb protection**: compressed uploads are decompressed with
   a hard cap (the declared `size`) and the real decompressed size must match
-  the declaration
+  the declaration. Decompression streams chunk-by-chunk from temp file to
+  temp file in a worker thread (`asyncio.to_thread`), so a large expanded
+  payload no longer sits in server memory nor stalls the event loop
 - **WebSocket event hardening**: every event `src`/`dst` path is validated
   (`validate_remote_relpath`) before dispatch or relay, dropping traversal,
-  absolute and backslash payloads; connection CIDs are format-validated
+  absolute and backslash payloads; when a payload carries both `filepath` and
+  `path`, *all* of them must validate; connection CIDs are format-validated
 - **Permissions hardening**: setuid/setgid/sticky bits are stripped from
   client-supplied permission strings before being applied
+- **Constant-time checksum comparisons**: the upload SHA-256 integrity check
+  (and the duplicate-detection comparison) now use `hmac.compare_digest`;
+  declared checksums are format-validated first (`is_sha256_hex`), since
+  `compare_digest` raises `TypeError` on non-ASCII input
+- **WebSocket bucket validation**: the `{bucket}` URL segment is now
+  validated with `is_valid_bucket` at accept time — a segment like `..`
+  (reachable via `%2e%2e`) previously escaped the storage root and turned
+  delete/rename/symlink events into arbitrary sibling-directory operations
+- **WebSocket broadcast robustness**: delivery iterates a snapshot of the
+  connections and tolerates dead sockets (evicting them) instead of aborting
+  mid-broadcast or raising on concurrent connect/disconnect
+- **Duplicate-CID eviction**: a second WebSocket connection reusing an
+  existing cid now explicitly evicts the stale registration instead of
+  silently hijacking it, and disconnect cleanup only removes the registration
+  if it still belongs to the closing socket
+- **Compressed uploads are not resumable**: `compressed=true` with
+  `offset > 0` is rejected up-front (400) — the resumable path never
+  decompresses, so such uploads could only fail integrity later
+- **In-flight upload temp files are hidden** (dot-prefixed), so partially
+  written content no longer appears in `/files` listings where peers could
+  sync it under random names
 - **Timestamp hardening**: far-future client-supplied mtimes are clamped to
   `now + 5 min` (conflict-engineering mitigation)
 

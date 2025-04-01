@@ -13,9 +13,69 @@ from hsync_common.protocol.handshake import (
     build_ws_auth_request,
 )
 
-from hsync_server.api.events import bucket_manager, ws_events
+from hsync_server.api.events import _event_paths_safe, bucket_manager, ws_events
 from hsync_server.config import get_compression_enabled
 from hsync_server.constants import HSYNC_VERSION
+
+
+class TestWebSocketPathParamValidation:
+    """URL path parameters (bucket, cid) are validated right after accept."""
+
+    @pytest.fixture
+    def mock_websocket(self):
+        ws = AsyncMock(spec=WebSocket)
+        ws.accept = AsyncMock()
+        ws.receive_text = AsyncMock()
+        ws.send_json = AsyncMock()
+        ws.close = AsyncMock()
+        return ws
+
+    @pytest.mark.asyncio
+    async def test_invalid_bucket_rejected(self, mock_websocket):
+        """A bucket segment like `..` (via %2e%2e) must never reach bucket_dir
+        construction — it would escape the storage root."""
+        await ws_events(mock_websocket, "..", "client1")
+
+        mock_websocket.accept.assert_called_once()
+        mock_websocket.close.assert_called_with(code=4000, reason="Invalid bucket name")
+
+    @pytest.mark.asyncio
+    async def test_invalid_cid_rejected(self, mock_websocket):
+        await ws_events(mock_websocket, "testbucket", "bad cid!")
+
+        mock_websocket.accept.assert_called_once()
+        mock_websocket.close.assert_called_with(code=4000, reason="Invalid client ID")
+
+    @pytest.mark.asyncio
+    async def test_cid_with_trailing_newline_rejected(self, mock_websocket):
+        await ws_events(mock_websocket, "testbucket", "client1\n")
+
+        mock_websocket.close.assert_called_with(code=4000, reason="Invalid client ID")
+
+
+class TestEventPathsSafe:
+    """The WS wire-path gate validates *every* path key present in a payload."""
+
+    def test_none_payload_is_safe(self):
+        assert _event_paths_safe(None) is True
+
+    def test_single_valid_key_accepted(self):
+        assert _event_paths_safe({"filepath": "dir/file.txt"}) is True
+        assert _event_paths_safe({"path": "dir"}) is True
+
+    def test_both_keys_valid_accepted(self):
+        assert _event_paths_safe({"filepath": "dir/file.txt", "path": "dir"}) is True
+
+    def test_malicious_second_key_rejected(self):
+        # `filepath` is valid, but the smuggled `path` must validate too.
+        assert _event_paths_safe({"filepath": "ok.txt", "path": "../evil"}) is False
+        assert _event_paths_safe({"path": "ok", "filepath": "..\\evil"}) is False
+
+    def test_no_path_key_rejected(self):
+        assert _event_paths_safe({"name": "x"}) is False
+
+    def test_non_dict_payload_rejected(self):
+        assert _event_paths_safe("string") is False
 
 
 def _auth_frame(token: str) -> str:

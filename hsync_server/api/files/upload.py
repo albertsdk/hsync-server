@@ -16,6 +16,7 @@ This module provides the REST API endpoint for file upload with:
 """
 
 import asyncio
+import hmac
 from os import fsync, remove, replace
 from pathlib import Path
 from shutil import copy2
@@ -25,7 +26,7 @@ from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
-from hsync_common.hashing import compute_sha256_async
+from hsync_common.hashing import compute_sha256_async, is_sha256_hex
 from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import invalidate_sha256_cache, is_hidden_file, is_partial_file
@@ -42,7 +43,7 @@ from hsync_server.api.utils import (
     resolve_within_bucket,
     set_permissions,
 )
-from hsync_server.compression import decompress_data
+from hsync_server.compression import decompress_file_to_file
 from hsync_server.config import get_buckets_path, get_max_upload_size, get_settings
 from hsync_server.exceptions import (
     ChecksumMismatchError,
@@ -172,6 +173,25 @@ async def upload_file(
                 message="Invalid client ID format",
                 details={"cid": cid},
             )
+        # The declared checksum must be a well-formed digest: it is compared
+        # with hmac.compare_digest, which raises TypeError on non-ASCII input
+        # — a malformed declaration must be a 400, not an unhandled 500.
+        if not is_sha256_hex(sha256sum):
+            raise ValidationError(
+                message="Invalid SHA-256 checksum format",
+                details={"sha256sum": sha256sum},
+            )
+        # Compressed uploads must arrive in a single request: the resumable
+        # path appends raw bytes to a .part and never decompresses it, so a
+        # resumed compressed upload could only ever fail the integrity check.
+        if is_compressed and is_resumable:
+            raise ValidationError(
+                message=(
+                    "Compressed uploads are not resumable: "
+                    "send the full payload in a single request"
+                ),
+                details={"offset": offset, "compressed": compressed},
+            )
         if permissions and not is_valid_octal_permissions(permissions):
             raise InvalidPermissionFormatError(details={"permissions": permissions})
 
@@ -211,7 +231,7 @@ async def upload_file(
         if (
             sha256sum
             and Path(file_location).exists()
-            and sha256sum == get_sha256_hash(file_location)
+            and hmac.compare_digest(sha256sum, get_sha256_hash(file_location) or "")
         ):
             log.warning(f"File already present: {file_location}")
             # Update timestamps even if skipping upload
@@ -301,7 +321,11 @@ async def upload_file(
             # Create the temp file in the destination directory so the final
             # move() below resolves to an atomic same-filesystem rename instead
             # of a non-atomic copy+remove (which could leave a torn file).
-            async with NamedTemporaryFile(delete=False, dir=file_directory) as temp_file:
+            # The dot prefix keeps the in-flight artifact hidden: it must not
+            # appear in /files listings (peers would sync torn content).
+            async with NamedTemporaryFile(
+                delete=False, dir=file_directory, prefix=".hsync-upload-"
+            ) as temp_file:
                 file_location_tmp = str(temp_file.name)
                 while chunk := await file.read(8192):
                     total_bytes += len(chunk)
@@ -319,8 +343,6 @@ async def upload_file(
 
             # Handle compressed upload - decompress the file
             if is_compressed and total_bytes > 0:
-                import aiofiles
-
                 # Anti decompression-bomb: the compressed payload may expand
                 # arbitrarily, so the decompressed size is hard-capped. The
                 # cap is the declared file size when known (the content must
@@ -335,31 +357,41 @@ async def upload_file(
                         message="Missing/invalid 'size' for compressed upload",
                         details={"size": size},
                     )
-                async with aiofiles.open(file_location_tmp, "rb") as f:
-                    compressed_data = await f.read()
-                log.debug(f"Decompressing uploaded file: {total_bytes} bytes -> ~{size} bytes")
+                # Streaming decompression: the compressed temp file is expanded
+                # into a second temp file chunk-by-chunk, so neither the
+                # compressed input nor the expanded output (each up to the cap)
+                # is ever fully buffered in memory. The expand runs in a
+                # worker thread (blocking file I/O + CPU-bound decompression
+                # must not stall the event loop).
+                decompressed_tmp = f"{file_location_tmp}.decompressed"
                 try:
-                    decompressed_data = decompress_data(
-                        compressed_data, max_output_size=max_decompressed
-                    )
-                except zstd.ZstdError as exc:
-                    raise ValidationError(
-                        message=f"Invalid compressed payload: {exc}",
-                        details={"size": size, "compressed_bytes": total_bytes},
-                    ) from exc
-                if size > 0 and len(decompressed_data) != size:
-                    raise ValidationError(
-                        message=(
-                            f"Decompressed size mismatch: expected {size}, "
-                            f"got {len(decompressed_data)}"
-                        ),
-                        details={"expected": size, "actual": len(decompressed_data)},
-                    )
-                async with aiofiles.open(file_location_tmp, "wb") as f:
-                    await f.write(decompressed_data)
-                    # Ensure decompressed data reaches physical storage
-                    await _flush_to_disk(f)
-                total_bytes = len(decompressed_data)
+                    try:
+                        decompressed_bytes = await asyncio.to_thread(
+                            decompress_file_to_file,
+                            file_location_tmp,
+                            decompressed_tmp,
+                            max_decompressed,
+                        )
+                    except zstd.ZstdError as exc:
+                        raise ValidationError(
+                            message=f"Invalid compressed payload: {exc}",
+                            details={"size": size, "compressed_bytes": total_bytes},
+                        ) from exc
+                    if size > 0 and decompressed_bytes != size:
+                        raise ValidationError(
+                            message=(
+                                f"Decompressed size mismatch: expected {size}, "
+                                f"got {decompressed_bytes}"
+                            ),
+                            details={"expected": size, "actual": decompressed_bytes},
+                        )
+                    # Swap the expanded content back onto the upload temp path
+                    # (same-filesystem rename).
+                    replace(decompressed_tmp, file_location_tmp)
+                    total_bytes = decompressed_bytes
+                finally:
+                    if Path(decompressed_tmp).exists():
+                        remove(decompressed_tmp)
 
             # Check if this is partial upload (size provided but not fully received)
             if size > 0 and total_bytes < size and not is_compressed:
@@ -386,7 +418,7 @@ async def upload_file(
         # SHA-256 integrity is mandatory: the received bytes must hash to the
         # declared checksum, otherwise the upload is rejected (400).
         sha256sum_tmp = await compute_sha256_async(file_location_tmp)
-        if sha256sum != sha256sum_tmp:
+        if not hmac.compare_digest(sha256sum, sha256sum_tmp):
             raise ChecksumMismatchError(
                 message=f"Checksum mismatch: expected {sha256sum}, got {sha256sum_tmp}",
                 details={"expected": sha256sum, "actual": sha256sum_tmp},

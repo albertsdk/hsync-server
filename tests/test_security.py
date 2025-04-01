@@ -164,6 +164,57 @@ class TestUploadIntegrity:
         assert not os.path.exists(os.path.join(temp_buckets_dir, "intbucket2", "f.txt"))
 
 
+class TestUploadChecksumFormat:
+    """Malformed checksum declarations are 400s, never unhandled 500s."""
+
+    @pytest.mark.asyncio
+    async def test_non_ascii_sha256sum_rejected(self, client: AsyncClient, temp_buckets_dir: str):
+        """hmac.compare_digest raises TypeError on non-ASCII: the format gate
+        must reject the declaration first."""
+        os.makedirs(os.path.join(temp_buckets_dir, "fmtbucket"))
+        response = await client.post(
+            "/api/v1/buckets/fmtbucket/files",
+            files={"file": ("f.txt", io.BytesIO(b"data"), "text/plain")},
+            data=_upload_data(b"data", sha256sum="é" * 64),
+        )
+        assert response.status_code == 400
+        assert not os.path.exists(os.path.join(temp_buckets_dir, "fmtbucket", "f.txt"))
+
+    @pytest.mark.asyncio
+    async def test_short_sha256sum_rejected(self, client: AsyncClient, temp_buckets_dir: str):
+        os.makedirs(os.path.join(temp_buckets_dir, "fmtbucket2"))
+        response = await client.post(
+            "/api/v1/buckets/fmtbucket2/files",
+            files={"file": ("f.txt", io.BytesIO(b"data"), "text/plain")},
+            data=_upload_data(b"data", sha256sum="abcd"),
+        )
+        assert response.status_code == 400
+
+
+class TestCompressedUploadNotResumable:
+    """Compressed uploads with offset > 0 are rejected up-front: the resumable
+    path never decompresses, so they could only fail integrity later."""
+
+    @pytest.mark.asyncio
+    async def test_compressed_resume_rejected(self, client: AsyncClient, temp_buckets_dir: str):
+        bucket = os.path.join(temp_buckets_dir, "cresume")
+        os.makedirs(bucket)
+        original = b"payload" * 100
+        compressed = zstandard.ZstdCompressor().compress(original)
+
+        response = await client.post(
+            "/api/v1/buckets/cresume/files",
+            files={"file": ("c.txt", io.BytesIO(compressed), "application/octet-stream")},
+            data=_upload_data(
+                original,
+                compressed="true",
+                size=str(len(original)),
+                offset="10",
+            ),
+        )
+        assert response.status_code == 400
+
+
 class TestDecompressionBomb:
     """Compressed uploads are capped at the declared size."""
 

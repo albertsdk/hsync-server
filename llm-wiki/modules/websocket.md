@@ -64,7 +64,16 @@ event is rebroadcast.
 - Wire-path gate in `events.py` (`_event_paths_safe`): every `src`/`dst`
   `filepath`/`path` is validated with `validate_remote_relpath` before dispatch
   (traversal, absolute paths, backslashes, internal engine artifacts rejected);
-  the connection `cid` is validated with `is_valid_cid` at accept time.
+  when a payload carries both keys, *all* of them must validate, so a
+  malicious second key cannot smuggle past the gate;
+  the connection `cid` is validated with `is_valid_cid` at accept time, and
+  the `{bucket}` URL segment with `is_valid_bucket` (a `..` segment via
+  `%2e%2e` would otherwise escape the storage root).
+- Connection registry (`connection_manager.py`): a reconnecting cid explicitly
+  evicts the stale registration (no silent hijack); `disconnect(cid, websocket)`
+  only drops the entry if it still belongs to the closing socket; broadcast
+  (`send_message`) iterates a snapshot and evicts dead sockets per-connection
+  instead of aborting mid-broadcast.
 
 ## Deleted-event semantics
 

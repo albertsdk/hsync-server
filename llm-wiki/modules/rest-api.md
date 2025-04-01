@@ -41,15 +41,23 @@ Multipart form fields: `cid, file, path, ctime, mtime, sha256sum, permissions`
   `hsync_common.path_validation`); internal engine names
   (`.hsyncignore`/`.hsyncstate`/`.hsynctombstones`, `*.part`) rejected with
   `InvalidFilenameError`; `cid` format checked with `is_valid_cid`.
-- `sha256sum` is a **required** form field: the received bytes must hash to it
-  or the upload fails with `ChecksumMismatchError`.
+- `sha256sum` is a **required** form field and must be a well-formed 64-hex
+  digest (`is_sha256_hex`): the received bytes must hash to it
+  (`hmac.compare_digest`) or the upload fails with `ChecksumMismatchError`.
+- Compressed uploads are **not resumable**: `compressed=true` with
+  `offset > 0` is rejected up-front (the resumable path never decompresses).
 - Subdir path and filename confined to the bucket via `resolve_within_bucket`
   (`api/utils.py:46`) — rejects cross-bucket escapes (`../other-bucket/x`).
 - Resumable: `offset > 0` appends to a `.part` file; full write flushed via
-  `_flush_to_disk` → `fsync` (`upload.py:62`).
-- Optional zstd payload decompressed with `decompress_data(...,
-  max_output_size=...)` capped at the declared `size` (anti decompression-bomb);
-  a decompressed size different from `size` is rejected.
+  `_flush_to_disk` → `fsync` (`upload.py:62`). In-flight temp files are
+  dot-prefixed (`.hsync-upload-*`), so they never appear in `/files` listings.
+- Optional zstd payload expanded with `decompress_file_to_file`
+  (`compression.py`, capped via `decompress_stream`) in a worker thread
+  (`asyncio.to_thread`): the compressed temp file is decompressed
+  chunk-by-chunk into a second temp file which is then renamed over it, so
+  neither side is ever fully buffered in memory nor is the event loop
+  stalled; the cap is the declared `size` (anti decompression-bomb) and a
+  decompressed size different from `size` is rejected.
 - On success cache updated `set_sha256_hash` (`hashes.py:28`) and any tombstone
   cleared `clear_deletion` (`tombstones.py:66`).
 - Size guard `get_max_upload_size()` (`config.py:397`) → `FileTooLargeError`.
