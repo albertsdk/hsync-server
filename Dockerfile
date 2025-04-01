@@ -67,3 +67,4 @@ RUN   rm -rf /project/.venv \
 
 # docker build -t hsync:0.1.0 .
 # docker run --network="host" -e HSYNC_API_KEY="development" -e HSYNC_LOG_LEVEL="debug" hsync:0.1.0
+# docker run --rm -it --entrypoint=/bin/sh hsync:0.1.0

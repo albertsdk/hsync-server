@@ -5,8 +5,12 @@ from app.config import HSYNC_BUCKETS
 from app.model.dir import Dir
 from asyncio import to_thread
 from hashlib import md5
+from logging import getLogger
 from os import chmod, stat as os_stat
 from pathlib import Path
+
+
+LOG = getLogger("main")
 
 
 def is_valid_bucket(value) -> bool:
@@ -38,6 +42,7 @@ async def get_permissions(obj_path) -> str:
 
 
 async def set_permissions(file_path, permissions: str):
+    LOG.debug(f'Set permissions: "{file_path}" ({permissions})') 
     mode = 0
     permission_types = {"r": 4, "w": 2, "x": 1}
     for i, section in enumerate(
