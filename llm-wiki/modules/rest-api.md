@@ -66,6 +66,12 @@ Multipart form fields: `cid, file, path, ctime, mtime, sha256sum, permissions`
 - Wire-supplied mtimes clamped to `now + 300 s` (`api/file_utils.py:24`).
 - Broadcasts an `added` event to bucket subscribers, skipping hidden files
   (see [websocket.md](websocket.md)).
+- **No path leak on errors (H7)**: error responses never expose absolute
+  filesystem paths. The 409 "file already present" returns a bucket-relative
+  path; `UploadError.details` carries only the exception type name (not
+  `str(e)`, which typically embeds absolute paths); the resume-missing-partial
+  error no longer includes the `partial_file` field. Full diagnostics remain
+  in the server log (`log.error(..., exc_info=True)`).
 
 ## Download (`api/files/download.py:43`)
 
