@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
-- **Path leak on error responses (H7)**: upload error responses no longer
+- **Path leak on error responses**: upload error responses no longer
   expose absolute filesystem paths. The 409 "file already present" returns a
   bucket-relative path; `UploadError.details` exposes only the exception
   type (not `str(e)`, which commonly embeds absolute paths); the
