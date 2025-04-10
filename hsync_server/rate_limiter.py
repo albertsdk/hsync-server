@@ -205,7 +205,6 @@ class TokenBucket:
         self.burst = burst
         self.tokens = float(burst)
         self.last_refill = time.monotonic()
-        self.total_dropped = 0
 
     def acquire(self) -> bool:
         """
@@ -223,7 +222,6 @@ class TokenBucket:
             self.tokens -= 1.0
             return True
 
-        self.total_dropped += 1
         return False
 
 

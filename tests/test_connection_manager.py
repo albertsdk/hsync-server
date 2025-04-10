@@ -30,28 +30,6 @@ class TestConnectionManager:
         ws.send_json = AsyncMock()
         return ws
 
-    @pytest.mark.asyncio
-    async def test_connect(self, manager, mock_websocket):
-        """Test connecting a client."""
-        await manager.connect(mock_websocket, "client1")
-
-        assert "client1" in manager.active_connections
-        assert manager.active_connections["client1"] == mock_websocket
-        mock_websocket.accept.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_connect_multiple_clients(self, manager, mock_websocket):
-        """Test connecting multiple clients."""
-        ws2 = AsyncMock()
-        ws2.accept = AsyncMock()
-
-        await manager.connect(mock_websocket, "client1")
-        await manager.connect(ws2, "client2")
-
-        assert len(manager.active_connections) == 2
-        assert "client1" in manager.active_connections
-        assert "client2" in manager.active_connections
-
     def test_disconnect(self, manager):
         """Test disconnecting a client."""
         manager.active_connections["client1"] = MagicMock()
@@ -159,29 +137,6 @@ class TestBucketConnectionManager:
         manager2 = bucket_manager.get_manager("bucket2")
 
         assert manager1 is not manager2
-
-    def test_get_connection_count_empty(self, bucket_manager):
-        """Connection count is 0 for empty manager."""
-        assert bucket_manager.get_connection_count() == 0
-        assert bucket_manager.get_connection_count("nonexistent") == 0
-
-    def test_get_connection_count_specific_bucket(self, bucket_manager):
-        """Get connection count for specific bucket."""
-        manager = bucket_manager.get_manager("bucket1")
-        manager.active_connections = {"c1": MagicMock(), "c2": MagicMock()}
-
-        assert bucket_manager.get_connection_count("bucket1") == 2
-        assert bucket_manager.get_connection_count("bucket2") == 0
-
-    def test_get_connection_count_total(self, bucket_manager):
-        """Get total connection count across all buckets."""
-        m1 = bucket_manager.get_manager("bucket1")
-        m2 = bucket_manager.get_manager("bucket2")
-
-        m1.active_connections = {"c1": MagicMock(), "c2": MagicMock()}
-        m2.active_connections = {"c3": MagicMock()}
-
-        assert bucket_manager.get_connection_count() == 3
 
 
 class TestConnectionSlots:

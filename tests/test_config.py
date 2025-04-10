@@ -272,17 +272,11 @@ class TestGetterFunctions:
 class TestModuleLevelConstants:
     """Tests for module-level exported constants."""
 
-    def test_hsync_path_is_absolute(self):
-        """Test that HSYNC_PATH is an absolute path."""
-        assert Path(config.HSYNC_PATH).is_absolute()
-
     def test_runtime_getters_are_defined(self):
         """Test that all late-binding getters are exposed by the module."""
         for name in (
-            "get_path",
             "get_port",
             "get_workers",
-            "get_tz",
             "get_api_key",
             "get_buckets_path",
             "get_rate_limit_default",
@@ -297,7 +291,6 @@ class TestModuleLevelConstants:
             "get_log_level",
             "get_log_format",
             "get_log_file",
-            "get_log_rotation_config",
             "get_compression_enabled",
             "get_ssl_enabled",
             "get_ssl_certfile",

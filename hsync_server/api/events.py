@@ -53,7 +53,7 @@ from hsync_server.config import (
     get_ws_heartbeat_interval,
     get_ws_heartbeat_timeout,
 )
-from hsync_server.constants import HSYNC_VERSION
+from hsync_server.constants import HSYNC_VERSION, WS_MSG_TYPE_AUTH
 from hsync_server.rate_limiter import create_ws_message_bucket
 from hsync_server.routers import public_router
 
@@ -144,7 +144,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             )
             auth_message = loads(auth_data)
 
-            if auth_message.get("type") != "auth":
+            if auth_message.get("type") != WS_MSG_TYPE_AUTH:
                 log.warning(f"[WEBSOCKET ] Invalid auth message type from {cid}")
                 await websocket.close(code=4001, reason="Invalid auth message")
                 return

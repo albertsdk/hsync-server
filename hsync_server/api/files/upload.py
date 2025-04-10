@@ -45,6 +45,7 @@ from hsync_server.api.utils import (
 )
 from hsync_server.compression import decompress_file_to_file
 from hsync_server.config import get_buckets_path, get_max_upload_size, get_settings
+from hsync_server.constants import DEFAULT_FILE_PERMISSIONS
 from hsync_server.exceptions import (
     ChecksumMismatchError,
     FileTooLargeError,
@@ -79,7 +80,7 @@ async def upload_file(
     ctime: str = Form(""),
     mtime: str = Form(""),
     sha256sum: str = Form(),
-    permissions: str = Form("664"),
+    permissions: str = Form(DEFAULT_FILE_PERMISSIONS),
     offset: int = Form(0),
     size: int = Form(0),
     compressed: str = Form("false"),

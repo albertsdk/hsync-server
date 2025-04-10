@@ -296,22 +296,8 @@ def get_settings() -> Settings:
 
 
 # =============================================================================
-# Module-level constants
-# =============================================================================
-
-# Application root path - resolved at import time because it is derived from
-# the module location, not from environment variables.
-HSYNC_PATH: str = _HSYNC_PATH
-
-
-# =============================================================================
 # Getter Functions (for late binding after env file loading)
 # =============================================================================
-
-
-def get_path() -> str:
-    """Get application root path (late binding)."""
-    return get_settings().path
 
 
 def get_port() -> int:
@@ -322,11 +308,6 @@ def get_port() -> int:
 def get_workers() -> int:
     """Get number of uvicorn workers from environment (late binding)."""
     return get_settings().workers
-
-
-def get_tz() -> str:
-    """Get timezone from environment (late binding)."""
-    return get_settings().tz
 
 
 def get_log_level() -> str:
@@ -342,16 +323,6 @@ def get_log_format() -> str:
 def get_log_file() -> str:
     """Get optional log file path from environment (late binding)."""
     return get_settings().log_file
-
-
-def get_log_rotation_config() -> dict[str, str | None]:
-    """Get log rotation settings from environment (late binding)."""
-    settings = get_settings()
-    return {
-        "rotation": settings.log_rotation,
-        "retention": settings.log_retention,
-        "compression": settings.log_compression,
-    }
 
 
 def get_api_key() -> str:

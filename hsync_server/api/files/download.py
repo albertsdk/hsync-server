@@ -28,6 +28,7 @@ from hsync_server.compression import (
     should_compress,
 )
 from hsync_server.config import get_compression_enabled
+from hsync_server.constants import CONTENT_TYPE_OCTET_STREAM
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.exceptions import (
     InvalidBucketNameError,
@@ -104,7 +105,7 @@ async def download_file(request: Request, bucket: str, filename: str):
         log.debug(f"Compressed streaming download: {file} ({file_size} bytes)")
         return StreamingResponse(
             async_compress_stream(file),
-            media_type="application/octet-stream",
+            media_type=CONTENT_TYPE_OCTET_STREAM,
             headers={
                 "Content-Encoding": CONTENT_ENCODING_ZSTD,
                 "Content-Disposition": f'attachment; filename="{filename.split("/")[-1]}"',

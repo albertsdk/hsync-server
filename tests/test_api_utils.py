@@ -343,7 +343,6 @@ from hsync_common.path_validation import (
     is_reserved_name,
     is_safe_path_component,
     is_valid_filename,
-    is_valid_path,
     sanitize_filename,
 )
 
@@ -506,22 +505,6 @@ class TestIsSafePathComponent:
         assert is_safe_path_component("..") is False
         assert is_safe_path_component("../../etc") is False
         assert is_safe_path_component("dir/../../../etc") is False
-
-
-class TestIsValidPath:
-    """Tests for is_valid_path function."""
-
-    def test_valid_paths(self, tmp_path):
-        """Valid paths within base directory are accepted."""
-        base = str(tmp_path)
-        assert is_valid_path("subdir", base) is True
-        assert is_valid_path("subdir/nested", base) is True
-
-    def test_traversal_rejected(self, tmp_path):
-        """Path traversal outside base directory is rejected."""
-        base = str(tmp_path)
-        assert is_valid_path("../etc/passwd", base) is False
-        assert is_valid_path("subdir/../../../etc", base) is False
 
 
 class TestSanitizeFilename:

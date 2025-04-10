@@ -68,13 +68,6 @@ class InvalidPermissionFormatError(ValidationError):
     default_message = "Invalid permission format"
 
 
-class InvalidSyncOrderError(ValidationError):
-    """Sync order parameter is invalid."""
-
-    error_code = "HSYNC-1004"
-    default_message = "Invalid sync order"
-
-
 class ChecksumMismatchError(ValidationError):
     """SHA-256 checksum verification failed."""
 
@@ -165,13 +158,6 @@ class UploadError(FileOperationError):
 
     error_code = "HSYNC-4001"
     default_message = "Upload failed"
-
-
-class DownloadError(FileOperationError):
-    """File download failed."""
-
-    error_code = "HSYNC-4002"
-    default_message = "Download failed"
 
 
 class DeleteError(FileOperationError):

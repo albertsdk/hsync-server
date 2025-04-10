@@ -35,17 +35,6 @@ class ConnectionManager:
         """Initialize the ConnectionManager with empty connections dict."""
         self.active_connections: dict[str, WebSocket] = {}
 
-    async def connect(self, websocket: WebSocket, client_id: str) -> None:
-        """
-        Accept and register a new WebSocket connection.
-
-        Args:
-            websocket: The WebSocket connection to accept.
-            client_id: Unique identifier for the connecting client.
-        """
-        await websocket.accept()
-        self.active_connections[client_id] = websocket
-
     def disconnect(self, client_id: str, websocket: WebSocket | None = None) -> None:
         """
         Remove a client's WebSocket connection.
@@ -158,21 +147,6 @@ class BucketConnectionManager:
             self.buckets[bucket] = ConnectionManager()
             log.debug(f"Created ConnectionManager for bucket: {bucket}")
         return self.buckets[bucket]
-
-    def get_connection_count(self, bucket: str | None = None) -> int:
-        """
-        Get the number of active connections.
-
-        Args:
-            bucket: Optional bucket name. If None, returns total across all buckets.
-
-        Returns:
-            Number of active connections.
-        """
-        if bucket:
-            manager = self.buckets.get(bucket)
-            return len(manager.active_connections) if manager else 0
-        return sum(len(m.active_connections) for m in self.buckets.values())
 
 
 # Global bucket connection manager instance for WebSocket connections
