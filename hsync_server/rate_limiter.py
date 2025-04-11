@@ -39,6 +39,7 @@ from starlette.responses import JSONResponse
 
 from hsync_server.config import (
     get_rate_limit_default,
+    get_rate_limit_delta,
     get_rate_limit_download,
     get_rate_limit_upload,
     get_rate_limit_websocket,
@@ -58,6 +59,9 @@ RATE_LIMIT_UPLOAD: str = get_rate_limit_upload()
 
 # Rate limit for download endpoints (more permissive for high-traffic systems)
 RATE_LIMIT_DOWNLOAD: str = get_rate_limit_download()
+
+# Rate limit for delta transfer endpoints (signature/matching is CPU-bound)
+RATE_LIMIT_DELTA: str = get_rate_limit_delta()
 
 # Rate limit for WebSocket connections
 RATE_LIMIT_WEBSOCKET: str = get_rate_limit_websocket()

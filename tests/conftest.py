@@ -50,6 +50,10 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI]:
         patch("hsync_server.api.files.upload.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.list.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.api.files.delta.apply.get_buckets_path", return_value=temp_buckets_dir),
+        patch(
+            "hsync_server.api.files.delta.tokens.get_buckets_path", return_value=temp_buckets_dir
+        ),
         patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.tombstones.get_buckets_path", return_value=temp_buckets_dir),
     ):
@@ -87,10 +91,14 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI]:
         # Import file endpoints from files module
         from hsync_server.api.files import (
             delete_file,
+            delta_apply,
             download_file,
+            get_delta_data,
+            get_delta_signatures,
             get_files,
             get_tombstones,
             get_upload_status,
+            post_delta_signatures,
             upload_file,
         )
 
@@ -114,6 +122,22 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI]:
         )
         test_auth_router.add_api_route(
             "/api/v1/buckets/{bucket}/tombstones", get_tombstones, methods=["GET"]
+        )
+        test_auth_router.add_api_route(
+            "/api/v1/buckets/{bucket}/files/delta/signatures",
+            get_delta_signatures,
+            methods=["GET"],
+        )
+        test_auth_router.add_api_route(
+            "/api/v1/buckets/{bucket}/files/delta/signatures",
+            post_delta_signatures,
+            methods=["POST"],
+        )
+        test_auth_router.add_api_route(
+            "/api/v1/buckets/{bucket}/files/delta/apply", delta_apply, methods=["POST"]
+        )
+        test_auth_router.add_api_route(
+            "/api/v1/buckets/{bucket}/files/delta/data/{token}", get_delta_data, methods=["GET"]
         )
 
         app.include_router(test_public_router)
