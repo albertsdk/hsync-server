@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from os import replace
 from pathlib import Path
 from typing import Any
@@ -62,6 +63,7 @@ from hsync_server.exceptions import (
     UploadError,
     ValidationError,
 )
+from hsync_server.file_lock_manager import get_file_lock_manager
 from hsync_server.hashes import get_sha256_hash, set_sha256_hash
 from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
 from hsync_server.routers import auth_router
@@ -110,6 +112,9 @@ def _validate_instructions(meta: dict[str, Any]) -> tuple[str, str, int, list[De
         )
         for o in ops
     ]
+    # Type narrowing: after validation, these are guaranteed to be the correct types
+    assert isinstance(base_sha256, str)
+    assert isinstance(new_sha256, str)
     return base_sha256, new_sha256, new_size, parsed
 
 
@@ -143,6 +148,8 @@ async def delta_apply(
     file: UploadFile = File(...),
 ) -> JSONResponse:
     """Apply a client-computed delta to the server-side base file."""
+    start_time = time.time()
+
     if not get_delta_enabled():
         return _delta_disabled()
 
@@ -170,110 +177,158 @@ async def delta_apply(
                 message="Invalid permission format", details={"permissions": permissions}
             )
 
-        # 1. Race check: the base file must still be what the client saw.
-        current_base = get_sha256_hash(file_location) or await compute_sha256_async(file_location)
-        if current_base != base_sha256:
-            log.info(f"Delta apply rejected (base changed): {file_location}")
-            return JSONResponse(
-                status_code=409,
-                content={
-                    "detail": "base_file_changed",
-                    "expected_base_sha256": base_sha256,
-                    "actual_base_sha256": current_base,
-                },
+        # Acquire per-file lock to serialize concurrent delta applies on the same file.
+        # This prevents race conditions where multiple applies would write to the same
+        # .delta.part file simultaneously.
+        lock_manager = get_file_lock_manager()
+        async with lock_manager.acquire(file_location):
+            # 1. Race check: the base file must still be what the client saw.
+            # This check MUST be inside the lock to prevent TOCTOU races.
+            current_base = get_sha256_hash(file_location) or await compute_sha256_async(
+                file_location
             )
+            if current_base != base_sha256:
+                log.info(f"Delta apply rejected (base changed): {file_location}")
 
-        # Park the literal payload on disk (streamed, never fully in RAM).
-        file_directory = str(Path(file_location).parent)
-        async with NamedTemporaryFile(
-            delete=False, dir=file_directory, prefix=".hsync-delta-lit-"
-        ) as tmp:
-            literal_tmp = str(tmp.name)
-            total = 0
-            while chunk := await file.read(8192):
-                total += len(chunk)
-                if total > DELTA_MAX_LITERAL_SIZE:
-                    raise ValidationError(
-                        message="Literal payload exceeds maximum size",
-                        details={"max": DELTA_MAX_LITERAL_SIZE},
-                    )
-                await tmp.write(chunk)
-            await _flush_to_disk(tmp)
+                # Record metrics for rejected transfer
+                from hsync_server.metrics import record_delta_transfer, record_transfer_duration
 
-        literal_size = total
-        if meta.get("compressed") is True:
-            # Anti decompression-bomb: expansion is hard-capped.
-            decompressed_tmp = f"{literal_tmp}.decompressed"
-            try:
-                literal_size = await asyncio.to_thread(
-                    decompress_file_to_file,
-                    literal_tmp,
-                    decompressed_tmp,
-                    DELTA_MAX_LITERAL_SIZE,
+                record_delta_transfer("upload", "rejected")
+                record_transfer_duration("upload", "total", time.time() - start_time)
+
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "detail": "base_file_changed",
+                        "expected_base_sha256": base_sha256,
+                        "actual_base_sha256": current_base,
+                    },
                 )
-            except zstd.ZstdError as exc:
-                raise ValidationError(message=f"Invalid compressed payload: {exc}") from exc
-            replace(decompressed_tmp, literal_tmp)
-            decompressed_tmp = None
 
-        # 2. Validate ops against the real bounds before touching anything.
-        base_size = Path(file_location).stat().st_size
-        invalid = _check_ops_bounds(ops, base_size, literal_size, new_size)
-        if invalid is not None:
-            return _unprocessable(invalid)
+            # Park the literal payload on disk (streamed, never fully in RAM).
+            file_directory = str(Path(file_location).parent)
+            async with NamedTemporaryFile(
+                delete=False, dir=file_directory, prefix=".hsync-delta-lit-"
+            ) as tmp:
+                literal_tmp = str(tmp.name)
+                total = 0
+                while chunk := await file.read(8192):
+                    total += len(chunk)
+                    if total > DELTA_MAX_LITERAL_SIZE:
+                        raise ValidationError(
+                            message="Literal payload exceeds maximum size",
+                            details={"max": DELTA_MAX_LITERAL_SIZE},
+                        )
+                    await tmp.write(chunk)
+                await _flush_to_disk(tmp)
 
-        # 3. Rebuild into a .delta.part sibling and verify the final hash.
-        part_path = f"{file_location}{PARTIAL_DELTA_SUFFIX}"
+            literal_size = total
+            if meta.get("compressed") is True:
+                # Anti decompression-bomb: expansion is hard-capped.
+                decompressed_tmp = f"{literal_tmp}.decompressed"
+                try:
+                    literal_size = await asyncio.to_thread(
+                        decompress_file_to_file,
+                        literal_tmp,
+                        decompressed_tmp,
+                        DELTA_MAX_LITERAL_SIZE,
+                    )
+                except zstd.ZstdError as exc:
+                    raise ValidationError(message=f"Invalid compressed payload: {exc}") from exc
+                replace(decompressed_tmp, literal_tmp)
+                decompressed_tmp = None
 
-        def _rebuild() -> int:
-            with open(literal_tmp, "rb") as literal_stream:
-                return apply_delta(file_location, ops, literal_stream, part_path)
+            # 2. Validate ops against the real bounds before touching anything.
+            base_size = Path(file_location).stat().st_size
+            invalid = _check_ops_bounds(ops, base_size, literal_size, new_size)
+            if invalid is not None:
+                return _unprocessable(invalid)
 
-        await asyncio.to_thread(_rebuild)
-        rebuilt_sha256 = await compute_sha256_async(part_path)
-        if rebuilt_sha256 != new_sha256:
-            return _unprocessable(
-                "reconstructed_file_hash_mismatch",
-                expected_sha256=new_sha256,
-                actual_sha256=rebuilt_sha256,
+            # 3. Rebuild into a .delta.part sibling and verify the final hash.
+            part_path = f"{file_location}{PARTIAL_DELTA_SUFFIX}"
+
+            rebuild_start = time.time()
+
+            def _rebuild() -> int:
+                with open(literal_tmp, "rb") as literal_stream:
+                    return apply_delta(file_location, ops, literal_stream, part_path)
+
+            await asyncio.to_thread(_rebuild)
+            rebuild_duration = time.time() - rebuild_start
+
+            rebuilt_sha256 = await compute_sha256_async(part_path)
+            if rebuilt_sha256 != new_sha256:
+                return _unprocessable(
+                    "reconstructed_file_hash_mismatch",
+                    expected_sha256=new_sha256,
+                    actual_sha256=rebuilt_sha256,
+                )
+            if Path(part_path).stat().st_size != new_size:
+                return _unprocessable("reconstructed_file_size_mismatch")
+
+            # 4. Publish: timestamps/permissions, atomic rename, cache, broadcast.
+            update_file_timestamp(part_path, None, str(meta.get("mtime") or ""))
+            if permissions:
+                await set_permissions(part_path, permissions)
+            replace(part_path, file_location)
+            part_path = None
+            set_sha256_hash(file_location, rebuilt_sha256)
+            invalidate_sha256_cache(file_location)
+
+            buckets_path = get_buckets_path()
+            clear_deletion(bucket, f"{buckets_path}/{bucket}", file_location)
+
+            src = None if is_hidden_file(file_location) else LocalFile().get(file_location)
+            if src:
+                manager = bucket_manager.get_manager(bucket)
+                await manager.send_message(
+                    Event(cid, f"{buckets_path}/{bucket}", bucket, EventName.modified, src)
+                )
+
+            # Record metrics for successful transfer
+            from hsync_server.metrics import (
+                record_bytes_saved,
+                record_delta_transfer,
+                record_transfer_duration,
             )
-        if Path(part_path).stat().st_size != new_size:
-            return _unprocessable("reconstructed_file_size_mismatch")
 
-        # 4. Publish: timestamps/permissions, atomic rename, cache, broadcast.
-        update_file_timestamp(part_path, None, str(meta.get("mtime") or ""))
-        if permissions:
-            await set_permissions(part_path, permissions)
-        replace(part_path, file_location)
-        part_path = None
-        set_sha256_hash(file_location, rebuilt_sha256)
-        invalidate_sha256_cache(file_location)
+            record_delta_transfer("upload", "success")
+            record_transfer_duration("upload", "apply", rebuild_duration)
+            record_transfer_duration("upload", "total", time.time() - start_time)
+            # Bytes saved = new file size - literal size (what was actually uploaded)
+            bytes_saved = max(0, new_size - literal_size)
+            record_bytes_saved("upload", bytes_saved)
 
-        buckets_path = get_buckets_path()
-        clear_deletion(bucket, f"{buckets_path}/{bucket}", file_location)
-
-        src = None if is_hidden_file(file_location) else LocalFile().get(file_location)
-        if src:
-            manager = bucket_manager.get_manager(bucket)
-            await manager.send_message(
-                Event(cid, f"{buckets_path}/{bucket}", bucket, EventName.modified, src)
+            log.info(f"Delta apply completed for {path} ({new_size} bytes)")
+            return JSONResponse(
+                status_code=200,
+                content={"status": "ok", "sha256": rebuilt_sha256, "size": new_size},
             )
-
-        log.info(f"Delta apply completed for {path} ({new_size} bytes)")
-        return JSONResponse(
-            status_code=200,
-            content={"status": "ok", "sha256": rebuilt_sha256, "size": new_size},
-        )
     except (
         InvalidBucketNameError,
         InvalidPathError,
         HSyncFileNotFoundError,
         ValidationError,
     ):
+        # Record metrics for failed transfer
+        from hsync_server.metrics import record_delta_transfer, record_transfer_duration
+
+        record_delta_transfer("upload", "failure")
+        record_transfer_duration("upload", "total", time.time() - start_time)
         raise
     except DeltaError as exc:
+        # Record metrics for failed transfer
+        from hsync_server.metrics import record_delta_transfer, record_transfer_duration
+
+        record_delta_transfer("upload", "failure")
+        record_transfer_duration("upload", "total", time.time() - start_time)
         return _unprocessable("delta_apply_failed", error=exc.message)
     except Exception as exc:
+        # Record metrics for failed transfer
+        from hsync_server.metrics import record_delta_transfer, record_transfer_duration
+
+        record_delta_transfer("upload", "failure")
+        record_transfer_duration("upload", "total", time.time() - start_time)
         log.error(f"Delta apply failed for {path}: {exc}", exc_info=True)
         raise UploadError(
             message="Delta apply failed",

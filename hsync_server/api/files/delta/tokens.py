@@ -29,6 +29,10 @@ from hsync_server.config import get_buckets_path, get_delta_token_ttl
 # Hard cap on concurrently live tokens (DoS guard).
 DELTA_MAX_ACTIVE_TOKENS = 1_000
 
+# Hard cap on total temp file storage (10 GB) — prevents disk exhaustion from
+# accumulated literal payloads when tokens are not consumed promptly.
+DELTA_MAX_TEMP_STORAGE_BYTES = 10 * 1024 * 1024 * 1024  # 10 GB
+
 # Subdirectory of the buckets root holding literal payloads. It sits *outside*
 # every bucket, so it is never picked up by sync listings.
 _DELTA_TMP_DIRNAME = ".delta-tokens"
@@ -85,6 +89,12 @@ class DeltaTokenStore:
         self.cleanup()
         if len(self._tokens) >= DELTA_MAX_ACTIVE_TOKENS:
             raise RuntimeError("Too many active delta tokens")
+
+        # Check total temp storage size before issuing new token
+        total_storage = self._get_total_storage_size()
+        if total_storage + len(payload) > DELTA_MAX_TEMP_STORAGE_BYTES:
+            raise RuntimeError("Delta temp storage limit exceeded")
+
         token = uuid.uuid4().hex
         payload_file = str(delta_tmp_dir() / f"delta_{token}.bin")
         with open(payload_file, "wb") as f:
@@ -96,7 +106,24 @@ class DeltaTokenStore:
             compressed=compressed,
             created=time.time(),
         )
+
+        # Update metrics
+        from hsync_server.metrics import update_active_tokens, update_temp_storage
+
+        update_active_tokens(len(self._tokens))
+        update_temp_storage(total_storage + len(payload))
+
         return token
+
+    def _get_total_storage_size(self) -> int:
+        """Calculate total size of all parked payload files."""
+        total = 0
+        for entry in self._tokens.values():
+            try:
+                total += Path(entry.payload_file).stat().st_size
+            except OSError:
+                pass
+        return total
 
     def lookup(self, token: str) -> DeltaTokenEntry | None:
         """Return the entry for *token*, or None when unknown."""

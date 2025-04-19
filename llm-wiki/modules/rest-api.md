@@ -96,6 +96,47 @@ Removes the file, drops its hash (`del_sha256_hash`, `hashes.py:56`), records a
 tombstone (`record_deletion`, `tombstones.py:49`), cleans up now-empty dirs
 (`cleanup_empty_dir`, `api/file_utils.py:67`), and broadcasts a `deleted` event.
 
+## Delta Transfer (`api/files/delta/`)
+
+Delta transfer endpoints (rsync-style block sync) for efficient file updates.
+See `../docs/delta-transfer.md` for user-facing documentation.
+
+| Method + path | Handler | Auth | Rate limit |
+| ------------- | ------- | ---- | ---------- |
+| `GET /buckets/{bucket}/files/delta/signatures` | `delta.signatures.get_signatures` (`delta/signatures.py:50`) | key | delta |
+| `POST /buckets/{bucket}/files/delta/signatures` | `delta.signatures.match_signatures` (`delta/signatures.py:100`) | key | delta |
+| `POST /buckets/{bucket}/files/delta/apply` | `delta.apply.delta_apply` (`delta/apply.py:140`) | key | delta |
+| `GET /buckets/{bucket}/files/delta/data/{token}` | `delta.data.get_delta_data` (`delta/data.py:40`) | key | delta |
+
+**Concurrency**: The `delta_apply` endpoint uses a per-file lock manager
+(`file_lock_manager.py`) to serialize concurrent delta applies on the same file.
+This prevents race conditions where multiple clients would write to the same
+`.delta.part` file simultaneously. The lock is acquired before the base file
+race check and released after the atomic rename, ensuring that the entire
+apply operation is atomic with respect to other delta applies on the same file.
+
+## Delta Transfer (`api/files/delta/`)
+
+Delta transfer endpoints (rsync-style block sync) for efficient file updates.
+See `../docs/delta-transfer.md` for user-facing documentation.
+
+| Method + path | Handler | Auth | Rate limit |
+| ------------- | ------- | ---- | ---------- |
+| `GET /buckets/{bucket}/files/delta/signatures` | `delta.signatures.get_signatures` (`delta/signatures.py:50`) | key | delta |
+| `POST /buckets/{bucket}/files/delta/signatures` | `delta.signatures.match_signatures` (`delta/signatures.py:100`) | key | delta |
+| `POST /buckets/{bucket}/files/delta/apply` | `delta.apply.delta_apply` (`delta/apply.py:140`) | key | delta |
+| `GET /buckets/{bucket}/files/delta/data/{token}` | `delta.data.get_delta_data` (`delta/data.py:40`) | key | delta |
+
+**Caps and limits**:
+- `POST /delta/signatures` body size: max 50 MB (`_MAX_SIGNATURES_BODY_SIZE`)
+- Total temp file storage: max 10 GB (`DELTA_MAX_TEMP_STORAGE_BYTES`)
+- Active tokens: max 1000 (`DELTA_MAX_ACTIVE_TOKENS`)
+- Token TTL: 300s (configurable via `HSYNC_DELTA_TOKEN_TTL`)
+
+**Metrics**: All delta endpoints record Prometheus metrics (see `metrics.py`):
+transfer counts by status, bytes saved, duration by phase, block change ratios,
+active tokens gauge, temp storage gauge.
+
 ## Shared helpers (`api/utils.py`, `api/file_utils.py`)
 
 - `api/utils.py`: bucket validation, `resolve_within_bucket` per-bucket

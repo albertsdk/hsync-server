@@ -16,6 +16,7 @@ The temp file is unlinked after the response has been streamed.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from fastapi import BackgroundTasks, Request
@@ -38,6 +39,8 @@ def _delta_disabled() -> JSONResponse:
 @limiter.limit(RATE_LIMIT_DELTA)
 async def get_delta_data(request: Request, bucket: str, token: str):
     """Stream the parked literal payload for a valid download token."""
+    start_time = time.time()
+
     if not get_delta_enabled():
         return _delta_disabled()
 
@@ -65,6 +68,13 @@ async def get_delta_data(request: Request, bucket: str, token: str):
     }
     if entry.compressed:
         headers["Content-Encoding"] = CONTENT_ENCODING_ZSTD
+
+    # Record metrics for successful data download
+    from hsync_server.metrics import record_delta_transfer, record_transfer_duration
+
+    record_delta_transfer("download", "success")
+    record_transfer_duration("download", "data", time.time() - start_time)
+
     return FileResponse(
         payload_file,
         media_type=CONTENT_TYPE_OCTET_STREAM,

@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Delta transfer endpoints**: four new REST endpoints for rsync-style block
+  synchronization (`/api/v1/buckets/{bucket}/files/delta/`): `GET /signatures`
+  (fetch block signatures of a file), `POST /signatures` (match client signatures
+  and return delta instructions + data URL), `POST /apply` (apply computed delta
+  to rebuild file), `GET /data/{token}` (download literal payload). Delta transfer
+  reduces bandwidth by transferring only changed blocks for large files with small
+  changes. Includes signature cache, token management (single-use, TTL 300s),
+  per-file upload lock, rate limiting (`HSYNC_DELTA_RATE_LIMIT`), and feature flag
+  (`HSYNC_DELTA_ENABLED`).
+- **Delta transfer configuration**: new config fields `delta_min_file_size`
+  (default 256 KB) and `delta_max_change_ratio` (default 0.50 = 50%) to control
+  when delta transfer is attempted. Configurable via `HSYNC_DELTA_MIN_FILE_SIZE`
+  and `HSYNC_DELTA_MAX_CHANGE_RATIO` environment variables.
+- **Delta transfer caps**: hard limits to prevent resource exhaustion:
+  - POST `/delta/signatures` body size: max 50 MB (`_MAX_SIGNATURES_BODY_SIZE`)
+  - Total temp file storage: max 10 GB (`DELTA_MAX_TEMP_STORAGE_BYTES`)
+  - Active tokens: max 1000 (`DELTA_MAX_ACTIVE_TOKENS`)
+- **Prometheus metrics for delta transfer**: comprehensive monitoring metrics
+  exposed via `/metrics` endpoint:
+  - `hsync_delta_transfer_total`: Counter for transfer attempts by status
+  - `hsync_delta_bytes_saved`: Counter for bandwidth savings
+  - `hsync_delta_transfer_duration_seconds`: Histogram of transfer duration by phase
+  - `hsync_delta_block_change_ratio`: Histogram of block change ratios
+  - `hsync_delta_active_tokens`: Gauge for active download tokens
+  - `hsync_delta_temp_storage_bytes`: Gauge for temp storage usage
+
+### Fixed
+- **Delta apply concurrency**: concurrent delta apply operations on the same
+  file are now serialized using a per-file lock manager (`file_lock_manager.py`).
+  This prevents race conditions where multiple clients would write to the same
+  `.delta.part` file simultaneously, which could cause file corruption. The lock
+  is acquired before the base file race check and released after the atomic
+  rename, ensuring the entire apply operation is atomic with respect to other
+  delta applies on the same file.
+
 ### Security
 - **Path leak on error responses**: upload error responses no longer
   expose absolute filesystem paths. The 409 "file already present" returns a
