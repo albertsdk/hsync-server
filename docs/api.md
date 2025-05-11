@@ -46,7 +46,7 @@ Authorization: Bearer {HSYNC_API_KEY}
 ## REST API Endpoints
 
 > Rate limits are per-IP defaults and configurable via environment variables
-> (see [README → Rate Limiting](../README.md#rate-limiting)).
+> (see [README → Environment Variables](README.md#environment-variables)).
 
 ### Buckets
 
@@ -75,20 +75,6 @@ files during a full reconciliation.
 |--------|----------|-------------|------------|
 | `GET` | `/api/v1/buckets/{bucket}/tombstones` | List deletion markers for a bucket | 500/min |
 | `POST` | `/api/v1/buckets/{bucket}/tombstones` | Merge deletion markers pushed by a peer (LWW) | 500/min |
-
-### Delta Transfer
-
-Delta transfer endpoints (rsync-style block sync) for efficient file updates.
-See [Delta Transfer](delta-transfer.md) for detailed documentation.
-
-| Method | Endpoint | Description | Rate Limit |
-|--------|----------|-------------|------------|
-| `GET` | `/api/v1/buckets/{bucket}/files/delta/signatures?path={path}` | Get block signatures of a file | 100/min |
-| `POST` | `/api/v1/buckets/{bucket}/files/delta/signatures` | Match client signatures, get delta instructions | 100/min |
-| `POST` | `/api/v1/buckets/{bucket}/files/delta/apply` | Apply delta to rebuild file | 100/min |
-| `GET` | `/api/v1/buckets/{bucket}/files/delta/data/{token}` | Download literal payload for delta | 1000/min |
-
-**Concurrency**: The `POST /delta/apply` endpoint serializes concurrent delta applies on the same file using a per-file lock. This prevents race conditions where multiple clients would write to the same `.delta.part` file simultaneously. If two clients attempt concurrent applies on the same file, one will succeed and the other will receive a `409 Conflict` response (base file changed), which is the expected behavior for the delta protocol.
 
 ### Delta Transfer
 

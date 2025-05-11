@@ -138,6 +138,7 @@ If you lose the entire server (hardware failure, VM destroyed):
 4. Restore buckets as above
 5. Update DNS to point to the new server's IP
 6. Clients will automatically reconnect (they retry on connection loss)
+
 ---
 
 ## Upgrade Guide
@@ -214,34 +215,6 @@ The `/metrics` endpoint exposes standard FastAPI metrics (request count, latency
 response size) via `prometheus-fastapi-instrumentator`. Integrate with your
 existing Prometheus + Grafana stack.
 
-### Logging
-
-In production, set `HSYNC_LOG_FORMAT=json` for structured logging that integrates
-with log aggregation tools (Loki, ELK, Datadog, etc.):
-
-```json
-{"timestamp":"2026-01-07T15:30:00.123456Z","level":"INFO","module":"hsync_server.api.files.upload","message":"File uploaded","bucket":"mybucket","file":"documents/report.pdf","size":1048576}
-```
-
-### Log rotation
-
-When file logging is enabled (`HSYNC_LOG_FILE`), the server rotates logs
-automatically. Configure rotation with:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HSYNC_LOG_ROTATION` | `10 MB` | Rotate when the log file reaches this size |
-| `HSYNC_LOG_RETENTION` | `7 days` | Keep rotated logs for this duration |
-| `HSYNC_LOG_COMPRESSION` | `xz` | Compression algorithm for rotated logs |
-
----
-
-## Monitoring
-
-HSYNC Server exposes Prometheus metrics at the `/metrics` endpoint (when
-`prometheus-fastapi-instrumentator` is installed). The following metrics are
-available for monitoring server health and performance:
-
 ### Delta Transfer Metrics
 
 Delta transfer operations expose the following Prometheus metrics:
@@ -297,6 +270,28 @@ Consider setting up alerts for:
 - Long transfer duration: `histogram_quantile(0.95, rate(hsync_delta_transfer_duration_seconds_bucket[5m])) > 30`
 - Token leak: `hsync_delta_active_tokens > 900` (approaching 1000 limit)
 - Storage leak: `hsync_delta_temp_storage_bytes > 9 * 1024 * 1024 * 1024` (approaching 10GB limit)
+
+### Logging
+
+In production, set `HSYNC_LOG_FORMAT=json` for structured logging that integrates
+with log aggregation tools (Loki, ELK, Datadog, etc.):
+
+```json
+{"timestamp":"2026-01-07T15:30:00.123456Z","level":"INFO","module":"hsync_server.api.files.upload","message":"File uploaded","bucket":"mybucket","file":"documents/report.pdf","size":1048576}
+```
+
+### Log rotation
+
+When file logging is enabled (`HSYNC_LOG_FILE`), the server rotates logs
+automatically. Configure rotation with:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HSYNC_LOG_ROTATION` | `10 MB` | Rotate when the log file reaches this size |
+| `HSYNC_LOG_RETENTION` | `7 days` | Keep rotated logs for this duration |
+| `HSYNC_LOG_COMPRESSION` | `xz` | Compression algorithm for rotated logs |
+
+---
 
 ## Performance and Limits
 
