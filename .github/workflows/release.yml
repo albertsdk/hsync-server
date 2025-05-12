@@ -9,15 +9,30 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  image:
+  validate:
     runs-on: ubuntu-latest
+    steps:
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || {
+            echo "Invalid release tag: ${RELEASE_TAG}" >&2
+            exit 1
+          }
+
+  image:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v5
         with: { path: hsync-server }
@@ -44,3 +59,23 @@ jobs:
           tags: |
             ghcr.io/albertobasso/hsync-server:${{ github.ref_name }}
             ghcr.io/albertobasso/hsync-server:latest
+  assets:
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Prepare deployment assets
+        run: |
+          sed "s/^readonly DEFAULT_VERSION=.*/readonly DEFAULT_VERSION=\"${GITHUB_REF_NAME}\"/" install.sh > install-${GITHUB_REF_NAME}.sh
+          chmod 755 install-${GITHUB_REF_NAME}.sh
+          sha256sum install-${GITHUB_REF_NAME}.sh compose.yaml > SHA256SUMS
+      - name: Publish GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag \
+            "install-${GITHUB_REF_NAME}.sh" compose.yaml SHA256SUMS

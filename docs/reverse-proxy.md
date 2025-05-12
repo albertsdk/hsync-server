@@ -73,7 +73,7 @@ services:
       - hsync-net
 
   hsync-server:
-    image: ghcr.io/albertobasso/hsync-server:latest
+    image: ghcr.io/albertobasso/hsync-server:v1.0.0
     container_name: hsync-server
     restart: unless-stopped
     expose:

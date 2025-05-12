@@ -16,8 +16,8 @@ all over standard HTTP/HTTPS.
 ---
 
 **Quick navigation:**
-- **New to HSync?** Start with [Why HSYNC Server?](#why-hsync-server) and [Quick Start](#quick-start)
-- **Looking for installation options?** Jump to [Install & quickstart](docs/README.md#install--quickstart)
+- **New to HSYNC?** Start with [Why HSYNC Server?](#why-hsync-server) and the [Getting Started guide](docs/getting-started.md)
+- **Need another installation method?** See [Installation Alternatives](docs/installation-alternatives.md)
 - **Want to contribute?** See [Contributing](CONTRIBUTING.md)
 - **Looking for detailed documentation?** Navigate to [docs/README.md](docs/README.md)
 
@@ -26,7 +26,7 @@ all over standard HTTP/HTTPS.
 - [Why HSYNC Server?](#why-hsync-server)
 - [Architecture Overview](#architecture-overview)
 - [Features](#features)
-- [Quick Start](#quick-start)
+- [Getting Started](#getting-started)
 - [Command Line Options](#command-line-options)
 - [Configuration](#configuration)
 - [Documentation](#documentation)
@@ -106,20 +106,17 @@ flowchart TB
 - 🧩 Delta transfer (rsync-style block sync for large files)
 - 🗜️ Zstandard (zstd) transfer compression
 
-## Quick Start
+## Getting Started
 
-```bash
-cd hsync-server
+For a private LAN installation, use the single
+[Getting Started guide](docs/getting-started.md). It downloads a pinned release,
+generates secrets locally, starts the server with Docker Compose, and verifies
+its health.
 
-# Build the Docker image
-./docker.sh build
-
-# Start the server (requires environment file)
-./docker.sh start --env-file prod.env
-```
-
-See the [Deployment Guide](docs/deployment.md) for production setup with Docker
-Compose, reverse proxy, and systemd.
+For an Internet-facing server, go directly to the
+[Production Deployment Guide](docs/deployment.md). Source builds, direct Docker
+commands, and Poetry are documented separately under
+[Installation Alternatives](docs/installation-alternatives.md).
 
 ## Command Line Options
 
@@ -162,6 +159,8 @@ Key variables:
 | Document | What it covers |
 | -------- | -------------- |
 | [Documentation Index](docs/README.md) | System requirements, env vars, upgrade, client examples |
+| [Getting Started](docs/getting-started.md) | Recommended private-LAN install and first connection |
+| [Installation Alternatives](docs/installation-alternatives.md) | Manual Compose, direct Docker, source build, Poetry |
 | [Deployment Guide](docs/deployment.md) | Docker Compose, reverse proxy, systemd, troubleshooting |
 | [Operations Guide](docs/operations.md) | Backup/restore, upgrade, monitoring, performance |
 | [API Reference](docs/api.md) | Complete REST + WebSocket API reference |
@@ -193,6 +192,8 @@ hsync-server/
 │   └── ...                 # Middleware, hashing, compression, etc.
 ├── docs/                   # Documentation
 ├── tests/                  # Test files
+├── compose.yaml            # Canonical released Compose deployment
+├── install.sh              # Versioned Compose bootstrap
 ├── Dockerfile              # Docker image definition
 ├── docker.sh               # Docker management script
 ├── dev.env                 # Development environment template
