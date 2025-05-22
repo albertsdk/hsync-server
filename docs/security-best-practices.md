@@ -58,11 +58,11 @@ is suspected compromised:
 
 ### Only expose ports 80 and 443
 
-The HSYNC Server itself listens on port `8765` by default. **Never expose this
+The HSYNC Server itself listens on port `9753` by default. **Never expose this
 port directly to the internet.** Instead:
 
 ```
-Internet ──► Reverse Proxy (:443) ──► HSYNC Server (:8765, localhost only)
+Internet ──► Reverse Proxy (:443) ──► HSYNC Server (:9753, localhost only)
 ```
 
 In Docker Compose, use `expose` (not `ports`) for the hsync-server service:
@@ -70,10 +70,10 @@ In Docker Compose, use `expose` (not `ports`) for the hsync-server service:
 ```yaml
 hsync-server:
   expose:
-    - "8765"           # internal only
+    - "9753"           # internal only
   # Do NOT add:
   # ports:
-  #   - "8765:8765"    # this exposes the port publicly
+  #   - "9753:9753"    # this exposes the port publicly
 ```
 
 ### Firewall rules
@@ -89,7 +89,7 @@ sudo ufw allow 443/tcp   # HTTPS
 sudo ufw enable
 ```
 
-> Port `8765` should **not** be opened. Only the reverse proxy (nginx, Caddy,
+> Port `9753` should **not** be opened. Only the reverse proxy (nginx, Caddy,
 > Traefik) on ports 80/443 needs external access.
 
 ### Trusted proxies
@@ -245,7 +245,7 @@ pattern.
 
 - [ ] API key is at least 32 bytes, generated with `openssl rand -base64 32`
 - [ ] API key is stored in `prod.env` (chmod 600), never in version control
-- [ ] Server port 8765 is **not** exposed to the internet
+- [ ] Server port 9753 is **not** exposed to the internet
 - [ ] Reverse proxy terminates TLS with a valid Let's Encrypt certificate
 - [ ] HTTP → HTTPS redirect is configured
 - [ ] Firewall only allows ports 22, 80, 443

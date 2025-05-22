@@ -155,7 +155,7 @@ app.include_router(auth_router)            # HSYNC_API_KEY required
 Each WebSocket connection goes through a defined lifecycle:
 
 ```
-① Client connects    →  ws://host:8765/api/v1/buckets/{bucket}/events/{cid}
+① Client connects    →  ws://host:9753/api/v1/buckets/{bucket}/events/{cid}
 ② Slot acquisition   →  connection_manager.acquire_slot(client_ip)
                            Rejects if max connections per IP or total exceeded
 ③ Auth timeout       →  Client must send {"type": "auth", "api_key": "..."}

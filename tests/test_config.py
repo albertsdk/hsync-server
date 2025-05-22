@@ -65,7 +65,7 @@ class TestSettings:
         try:
             settings = config.Settings()
 
-            assert settings.port == 8765
+            assert settings.port == 9753
             assert settings.workers == 1
             assert settings.tz == "UTC"
             assert settings.log_level == "info"
