@@ -212,6 +212,14 @@ your-domain.com {
 Caddy automatically provisions and renews Let's Encrypt certificates. Replace
 `your-domain.com` with your actual domain.
 
+> **Note**: The container healthcheck above probes `http://127.0.0.1:9753/health`
+> because the reverse proxy terminates TLS and the server listens on plain HTTP
+> (`HSYNC_SSL_ENABLED=false`). If you instead enable the built-in TLS terminator
+> (`HSYNC_SSL_ENABLED=true`), change the probe URL to
+> `https://127.0.0.1:9753/health` and disable certificate verification for the
+> self-signed certificate (e.g. `urllib.request` with an unverified SSL context),
+> otherwise the healthcheck will fail.
+
 ### Environment file (`prod.env`)
 
 ```bash

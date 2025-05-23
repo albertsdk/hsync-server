@@ -71,6 +71,36 @@ graph TB
 > For module structure details and a component reference, see the
 > [Developer Guide](developer.md).
 
+## Transport and TLS
+
+At the wire level the server speaks **HTTP/HTTPS** (REST) and **WS/WSS**
+(WebSocket). TLS on the server itself is **optional** and there are two supported
+topologies:
+
+```mermaid
+flowchart LR
+    Client["Client<br/>https:// / wss://"]
+    Proxy["Reverse Proxy<br/>terminates TLS"]
+    Server["HSYNC Server<br/>HTTP/HTTPS (TLS optional)"]
+
+    Client -->|"HTTPS/WSS (external)"| Proxy
+    Proxy -->|"HTTP (internal)"| Server
+    Client -.->|"HTTPS/WSS direct<br/>(built-in self-signed cert, LAN)"| Server
+```
+
+- **Behind a reverse proxy** (recommended for Internet-facing servers): the proxy
+  terminates HTTPS and forwards to the server over the internal network, so the
+  server listens on plain HTTP with `HSYNC_SSL_ENABLED=false`. Set
+  `HSYNC_TRUSTED_PROXIES` so `X-Forwarded-For` is trusted for per-IP rate limits.
+- **Built-in TLS** (trusted private LAN): with `HSYNC_SSL_ENABLED=true` the server
+  terminates HTTPS/WSS itself using a persistent self-signed certificate, whose
+  fingerprint stays stable across restarts for client TOFU pinning.
+
+Regardless of topology, clients always use `https://`/`wss://` and refuse to send
+the bearer API key over plain HTTP. See
+[Security Best Practices → TLS Configuration](security-best-practices.md#tls-configuration)
+and the [Reverse Proxy Guide](reverse-proxy.md).
+
 ## Data Flow
 
 ### File Upload Flow
