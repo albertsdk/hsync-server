@@ -73,19 +73,22 @@ If the project configures mypy (see `pyproject.toml`), also run
 
 ### Test structure
 
-| Directory | Purpose |
-|-----------|---------|
-| `tests/` | All test files live at the project root |
-| `tests/conftest.py` | Shared fixtures: test client, temp buckets, auth headers |
-| `tests/test_api_*.py` | REST API endpoint tests (files, buckets, health) |
-| `tests/test_websocket.py` | WebSocket connection and event tests |
-| `tests/test_compression.py` | Zstandard compression/decompression unit tests |
-| `tests/test_hashes.py` | SHA-256 hashing and cache tests |
-| `tests/test_config.py` | Configuration loading and validation |
-| `tests/test_middleware.py` | Middleware chain behavior |
-| `tests/test_rate_limiter.py` | Rate limiting logic |
-| `tests/test_openapi_contract.py` | OpenAPI schema contract tests |
-| `tests/test_models*.py` | Data model validation (shared via hsync-common) |
+All tests live at the project root under `tests/`. The suite is organised by
+area; each file name starts with `test_` and groups related functionality.
+
+| Area | Key files | What they cover |
+|------|-----------|-----------------|
+| **REST API** | `test_api_files.py`, `test_api_integration.py`, `test_api_utils.py`, `test_routers.py`, `test_health.py` | File endpoints, integration flows, utilities, router wiring, health |
+| **WebSocket** | `test_websocket.py`, `test_connection_manager.py`, `test_event_handlers.py` | WS connection lifecycle, connection manager, event handlers |
+| **Middleware / security** | `test_middleware.py`, `test_security.py`, `test_rate_limiter.py`, `test_token_bucket.py`, `test_error_handlers.py` | Middleware chain, auth, rate limiting, token bucket, error handlers |
+| **Config / main** | `test_config.py`, `test_main.py`, `test_logger.py` | Config loading, app startup, logging |
+| **File / hash utils** | `test_file_utils.py`, `test_hashes.py`, `test_ssl_utils.py` | File operations, SHA-256 cache, SSL utilities |
+| **Compression** | `test_compression.py` | Zstandard compression/decompression |
+| **Delta transfer** | `test_delta_endpoints.py` | Delta transfer REST endpoints |
+| **Contract / models** | `test_openapi_contract.py`, `test_models.py`, `test_models_sync_action.py` | OpenAPI schema drift, data model validation |
+| **Scripts** | `test_docker_script.py`, `test_install_script.py` | `docker.sh` and `install.sh` script tests |
+| **Other** | `test_coverage_gaps.py` | Coverage gap fillers |
+| **Shared** | `tests/conftest.py` | Shared fixtures: test client, temp buckets, auth headers |
 
 ### Writing new tests
 
@@ -106,6 +109,13 @@ cd ../hsync-common && poetry run pytest && cd ../hsync-server && poetry run pyte
 
 ## Release Process
 
+Releases are **tag-driven**: pushing a `vX.Y.Z` tag triggers the
+`release.yml` GitHub Actions workflow, which builds and pushes the multi-arch
+(amd64 + arm64) Docker image to GHCR, then creates a GitHub Release with
+`install.sh`, `compose.yaml`, and `SHA256SUMS` as assets. The Dockerfile
+depends on `../hsync-common` at build time, so the workflow checks it out
+via a PAT.
+
 ### Version bump
 
 ```bash
@@ -114,31 +124,38 @@ cd ../hsync-common && poetry run pytest && cd ../hsync-server && poetry run pyte
 
 This updates the version in `pyproject.toml` and `hsync_server/__init__.py`.
 
-### Build and publish Docker image
+### Build Docker image (local / manual)
+
+The release workflow builds and pushes automatically. To build locally for
+testing:
 
 ```bash
 # Build multi-arch image (amd64 + arm64)
 ./docker.sh build --multi-arch
-
-# Tag and push to GHCR
-docker tag hsync-server:latest ghcr.io/albertobasso/hsync-server:v1.0.1
-docker push ghcr.io/albertobasso/hsync-server:v1.0.1
-docker tag hsync-server:latest ghcr.io/albertobasso/hsync-server:latest
-docker push ghcr.io/albertobasso/hsync-server:latest
 ```
 
-### Create GitHub Release
+### Create a release
 
-1. Go to [Releases](https://github.com/albertobasso/hsync-server/releases)
-2. Click "Draft a new release"
-3. Tag: `v1.0.1`
-4. Title: `v1.0.1`
-5. Click "Generate release notes" for the auto-generated changelog
-6. Publish
+1. Ensure the working tree is clean and on `main`.
+2. Bump the version (see [Version bump](#version-bump)) and commit the change.
+3. Tag the commit and push the tag:
+
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+4. The `release.yml` workflow runs automatically: it builds and pushes the
+   Docker image to `ghcr.io/albertobasso/hsync-server:vX.Y.Z` and
+   `:latest`, then creates the GitHub Release with auto-generated release
+   notes.
+5. Verify the release on the
+   [Releases page](https://github.com/albertobasso/hsync-server/releases).
 
 ### Post-release checklist
 
-- [ ] Docker image is available on GHCR
+- [ ] Docker image is available on GHCR (`:vX.Y.Z` and `:latest`)
+- [ ] Release assets (`install.sh`, `compose.yaml`, `SHA256SUMS`) are uploaded
 - [ ] Release notes are published on GitHub
 - [ ] `docs/api.md` is up to date with any endpoint changes
 - [ ] Environment variable table in `docs/README.md` is updated
