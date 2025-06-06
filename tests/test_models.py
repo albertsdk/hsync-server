@@ -12,12 +12,23 @@ from hsync_common.models.symlink import Symlink
 
 
 class TestIsHiddenFile:
-    """Tests for is_hidden_file function."""
+    """Tests for is_hidden_file function.
 
-    def test_hidden_dotfile(self):
-        """Dotfiles are hidden."""
-        assert is_hidden_file(".gitignore") is True
-        assert is_hidden_file("/path/to/.hidden") is True
+    Following the industry standard (Syncthing, rsync, Nextcloud, OneDrive),
+    dotfiles in general (.env, .config, .git …) are NOT excluded: only OS
+    cache files and editor/office temporary files are filtered by default.
+    """
+
+    def test_dotfile_not_hidden(self):
+        """Dotfiles are NOT hidden (industry standard)."""
+        assert is_hidden_file(".gitignore") is False
+        assert is_hidden_file("/path/to/.hidden") is False
+        assert is_hidden_file(".env") is False
+
+    def test_os_cache_files(self):
+        """OS cache files are hidden."""
+        assert is_hidden_file(".DS_Store") is True
+        assert is_hidden_file("Thumbs.db") is True
 
     def test_backup_files(self):
         """Backup files are hidden."""
@@ -77,24 +88,31 @@ class TestFileModel:
 
 
 class TestIsHiddenDir:
-    """Tests for is_hidden_dir function."""
+    """Tests for is_hidden_dir function.
 
-    def test_hidden_parent_dir(self):
-        """Directories with hidden parent are hidden."""
-        # is_hidden_dir checks if the PARENT directory starts with .
-        assert is_hidden_dir("/.git/objects") is True
-        assert is_hidden_dir("/path/.hidden/subdir") is True
+    Following the industry standard, dotfile directories in general
+    (.git/, .config/ …) are NOT excluded: only OS cache directories and
+    editor/office temporary files are filtered by default.
+    """
+
+    def test_dotdir_not_hidden(self):
+        """Dotfile directories are NOT hidden (industry standard)."""
+        assert is_hidden_dir("/.git/objects") is False
+        assert is_hidden_dir("/path/.hidden/subdir") is False
+        assert is_hidden_dir("/path/to/.git") is False
+        assert is_hidden_dir(".hidden") is False
+        assert is_hidden_dir("/.config") is False
 
     def test_regular_dir(self):
         """Regular directories are not hidden."""
         assert is_hidden_dir("documents") is False
         assert is_hidden_dir("/path/to/folder") is False
 
-    def test_hidden_dir_by_name(self):
-        """Directories with names starting with '.' are hidden."""
-        assert is_hidden_dir("/path/to/.git") is True
-        assert is_hidden_dir(".hidden") is True
-        assert is_hidden_dir("/.config") is True
+    def test_internal_dir_is_hidden(self):
+        """Engine-owned directories are always hidden."""
+        assert is_hidden_dir(".hsyncignore") is True
+        assert is_hidden_dir(".hsyncstate") is True
+        assert is_hidden_dir(".hsynctombstones") is True
 
 
 class TestDirModel:
