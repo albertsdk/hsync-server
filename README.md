@@ -29,7 +29,6 @@ all over standard HTTP/HTTPS.
 - [Command Line Options](#command-line-options)
 - [Configuration](#configuration)
 - [Documentation](#documentation)
-- [Project Structure](#project-structure)
 - [Version](#version)
 - [License](#license)
 - [Disclaimer](#disclaimer)
@@ -179,50 +178,8 @@ Key variables:
 > **Note:** The desktop GUI (`HSYNC Desktop`) and the Android app (`HSYNC Android`)
 > are still under active development and are not yet ready for production use.
 
-## Project Structure
-
-```
-hsync-server/
-├── hsync_server/           # Main Python package
-│   ├── main.py             # FastAPI application
-│   ├── config.py           # Configuration (pydantic-settings)
-│   ├── api/                # API endpoints
-│   │   ├── files/          # File operations
-│   │   ├── buckets.py      # Bucket management
-│   │   ├── events.py       # WebSocket handler
-│   │   └── health.py       # Health check + time endpoints
-│   └── ...                 # Middleware, hashing, compression, etc.
-├── docs/                   # Documentation
-├── tests/                  # Test files
-├── compose.yaml            # Canonical released Compose deployment
-├── install.sh              # Versioned Compose bootstrap
-├── Dockerfile              # Docker image definition
-├── docker.sh               # Docker management script
-├── dev.env                 # Development environment template
-├── prod.env                # Production environment template
-└── pyproject.toml          # Poetry configuration
-```
-
-## Version
-
-1.0.0
-
-## License
-
-[Mozilla Public License 2.0](LICENSE)
-
 ## Disclaimer
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. Although the author has
-implemented reasonable safety measures, IN NO EVENT SHALL THE AUTHOR OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY —
-including, without limitation, any direct, indirect, incidental, special,
-exemplary, or consequential damages, loss of data, or business interruption —
-WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. Although the author has implemented reasonable safety measures, IN NO EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY — including, without limitation, any direct, indirect, incidental, special, exemplary, or consequential damages, loss of data, or business interruption — WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-This disclaimer supplements, and does not replace, Sections 6 ("Disclaimer of
-Warranty") and 7 ("Limitation of Liability") of the
-[Mozilla Public License 2.0](LICENSE), which govern this software.
+This disclaimer supplements, and does not replace, Sections 6 ("Disclaimer of Warranty") and 7 ("Limitation of Liability") of the [Mozilla Public License 2.0](LICENSE), which govern this software.
