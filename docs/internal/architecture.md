@@ -98,8 +98,8 @@ flowchart LR
 
 Regardless of topology, clients always use `https://`/`wss://` and refuse to send
 the bearer API key over plain HTTP. See
-[Security Best Practices → TLS Configuration](security-best-practices.md#tls-configuration)
-and the [Reverse Proxy Guide](reverse-proxy.md).
+[Security Best Practices → TLS Configuration](../security-best-practices.md#tls-configuration)
+and the [Reverse Proxy Guide](../reverse-proxy.md).
 
 ## Data Flow
 
@@ -133,7 +133,7 @@ sequenceDiagram
 ### WebSocket Event Flow
 
 Once a client has completed the WebSocket handshake (frames and close codes are
-documented in [API → Authentication Flow](api.md#authentication-flow)), the
+documented in [API → Authentication Flow](../api.md#authentication-flow)), the
 server registers it with the bucket manager and fans out subsequent events to the
 other connected clients:
 

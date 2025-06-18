@@ -3,7 +3,7 @@
 This guide covers the test suite for the HSYNC Server: structure, how to run
 tests, how to write new tests, and cross-project testing with `hsync-common`.
 
-> For development setup, see [CONTRIBUTING.md](../CONTRIBUTING.md).
+> For development setup, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## Table of Contents
 
@@ -205,6 +205,6 @@ Model changes that break the server are caught by the server's model tests
 
 ## See also
 
-- [CONTRIBUTING.md](../CONTRIBUTING.md) — development setup and workflow.
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) — development setup and workflow.
 - [Developer Guide](developer.md) — internal implementation details.
-- [API Reference](api.md) — endpoint documentation for writing API tests.
+- [API Reference](../api.md) — endpoint documentation for writing API tests.

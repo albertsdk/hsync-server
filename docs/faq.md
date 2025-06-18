@@ -9,7 +9,7 @@ links to the relevant guide.
 
 - **One container, no database.** The server is a single FastAPI app that stores
   files as plain files in per-bucket directories — there is no database to
-  provision, tune, or back up separately. See [Architecture](architecture.md).
+  provision, tune, or back up separately. See [Architecture](internal/architecture.md).
 - **Run it anywhere.** Pull the prebuilt multi-arch image (`amd64`/`arm64`) from
   GHCR with the [recommended installer](getting-started.md), or choose a source
   or native method from [Installation Alternatives](installation-alternatives.md).
@@ -50,13 +50,13 @@ for the complete list with defaults and descriptions.
 ### Can I put the server behind a reverse proxy?
 
 Yes. Terminate TLS at the proxy and forward to the server; clients connect to the
-proxy's `https://` URL. See [Architecture](architecture.md).
+proxy's `https://` URL. See [Architecture](internal/architecture.md).
 
 ### Where are my files stored?
 
 Under the buckets directory (`/project/buckets` in the container), one
 sub-directory per bucket, as ordinary files — so backing up is just copying that
-directory. See [Architecture](architecture.md).
+directory. See [Architecture](internal/architecture.md).
 
 ## Security
 
@@ -82,7 +82,7 @@ Yes. Two transport modes are supported:
   meant for exposing the server directly to the Internet.
 
 In both cases clients always connect with `https://` / `wss://` and refuse to
-send API keys over plain HTTP. See [Architecture](architecture.md) and
+send API keys over plain HTTP. See [Architecture](internal/architecture.md) and
 [Security Best Practices → TLS Configuration](security-best-practices.md#tls-configuration).
 
 ### How does the server protect against abuse?

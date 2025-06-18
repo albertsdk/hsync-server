@@ -4,7 +4,7 @@ This page covers internal implementation details useful for contributors and
 developers working on the HSYNC Server codebase.
 
 > For the high-level system design, see [Architecture](architecture.md).
-> For the sync protocol and event flow, see [Sync Flow](sync-flow.md).
+> For the sync protocol and event flow, see [Sync Flow](../sync-flow.md).
 
 ## Table of Contents
 
@@ -31,7 +31,7 @@ additional metadata is:
 Neither should exceed a few MB in practice.
 
 For production capacity planning, see
-[System Requirements](deployment.md#system-requirements).
+[System Requirements](../deployment.md#system-requirements).
 
 ## Module Structure
 
@@ -209,7 +209,7 @@ before rate limiting and logging use it.
 ## See also
 
 - [Architecture](architecture.md) — high-level system overview and data flows.
-- [Sync Flow](sync-flow.md) — server-side sync flow.
-- [API Reference](api.md) — complete REST + WebSocket contract.
-- [Contributing](../CONTRIBUTING.md) — development setup and guidelines.
+- [Sync Flow](../sync-flow.md) — server-side sync flow.
+- [API Reference](../api.md) — complete REST + WebSocket contract.
+- [Contributing](../../CONTRIBUTING.md) — development setup and guidelines.
 - [HSYNC Common docs](https://github.com/albertobasso/hsync-common/blob/main/docs/README.md) — shared models and protocol.

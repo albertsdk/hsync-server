@@ -127,10 +127,11 @@ hsync-server [options]
 | `--env-file PATH` | Load environment variables from file | - |
 | `-p, --port PORT` | Server port | `9753` |
 | `--log-level LEVEL` | Log level (debug, info, warning, error) | `info` |
+| `--no-color` | Disable colored log output | `false` |
 | `--ssl` | Enable HTTPS/WSS (auto-generates certs if not provided) | disabled |
 | `--ssl-cert FILE` | Path to SSL certificate (PEM format) | auto-generated |
 | `--ssl-key FILE` | Path to SSL private key (PEM format) | auto-generated |
-| `--ssl-cert-dir DIR` | Directory for auto-generated certificates | `./certs` |
+| `--ssl-cert-dir DIR` | Directory for auto-generated certificates | `{project_dir}/certs` |
 | `-V, --version` | Show version | - |
 
 ## Configuration
@@ -162,7 +163,7 @@ Key variables:
 | [Deployment Guide](docs/deployment.md) | Docker Compose, reverse proxy, systemd, troubleshooting |
 | [Operations Guide](docs/operations.md) | Backup/restore, upgrade, monitoring, performance |
 | [API Reference](docs/api.md) | Complete REST + WebSocket API reference |
-| [Architecture](docs/architecture.md) | Server components and module structure |
+| [Architecture](docs/internal/architecture.md) | Server components and module structure |
 | [Sync Flow](docs/sync-flow.md) | Server-side sync flow: storage, events, tombstones |
 | [FAQ](docs/faq.md) | Frequently asked questions and troubleshooting |
 | [Contributing](CONTRIBUTING.md) | Development setup and contribution guidelines |

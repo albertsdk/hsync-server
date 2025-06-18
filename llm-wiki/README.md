@@ -5,7 +5,7 @@ bucket data, serves the REST file API, and relays real-time sync events over
 WebSocket. It depends on `hsync-common` for models, the wire protocol, and
 utilities.
 
-> End-user / human docs live in [`../docs/`](../docs/architecture.md)
+> End-user / human docs live in [`../docs/`](../docs/internal/architecture.md)
 > (`architecture.md`, `api.md`, `sync-flow.md`, `faq.md`). This wiki is the **first
 > search surface**: start here, follow the `path/to/file.py:line` references to
 > reach code directly.
@@ -19,7 +19,7 @@ utilities.
 | [modules/websocket.md](modules/websocket.md) | WS handshake, event handlers, connection manager, broadcasting |
 | [modules/infrastructure.md](modules/infrastructure.md) | config/Settings, rate limiting, SSL, hashes, compression, errors, logging |
 | [data-models.md](data-models.md) | Server-local state (hash cache, tombstone store) + reuse of common models |
-| [decisions.md](decisions.md) | Pointer to ecosystem ADRs under `../../hsync-common/docs/adr/` |
+| [decisions.md](decisions.md) | Pointer to ecosystem ADRs under `../../hsync-common/docs/internal/adr/` |
 
 ## Quick facts
 

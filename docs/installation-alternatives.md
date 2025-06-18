@@ -76,7 +76,7 @@ repositories. From the `hsync-server` checkout:
 
 `docker.sh start` starts an image that has already been built; it does not pull
 the GHCR image or build automatically. See the
-[Developer Guide](developer.md) for the repository setup.
+[Developer Guide](internal/developer.md) for the repository setup.
 
 ## Poetry and systemd
 
