@@ -247,7 +247,7 @@ same installation directory. It preserves secrets and volumes, updates the
 pinned image, and waits for the upgraded service to become healthy:
 
 ```bash
-./install-v1.1.0.sh --install-dir "$HOME/.local/share/hsync-server"
+./install.sh --install-dir "$HOME/.local/share/hsync-server"
 ```
 
 ### Manual Docker Compose

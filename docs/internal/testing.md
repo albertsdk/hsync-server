@@ -20,32 +20,32 @@ tests, how to write new tests, and cross-project testing with `hsync-common`.
 ## Running tests
 
 ```bash
-# Install dev dependencies (includes pytest, pytest-cov, httpx)
-poetry install --with dev
+# Install dev dependencies (already set up via committed virtualenv)
+# If needed: poetry install
 
 # Run the full suite
-poetry run pytest
+.venv/bin/python -m pytest
 
 # Run a specific file
-poetry run pytest tests/test_api_files.py
+.venv/bin/python -m pytest tests/test_api_files.py
 
 # Run with verbose output
-poetry run pytest -v
+.venv/bin/python -m pytest -v
 
 # Run with coverage
-poetry run pytest --cov=hsync_server --cov-report=term-missing
+.venv/bin/python -m pytest --cov=hsync_server --cov-report=term-missing
 
 # Run only tests matching a pattern
-poetry run pytest -k "upload"
+.venv/bin/python -m pytest -k "upload"
 
 # Run only integration tests
-poetry run pytest -m integration
+.venv/bin/python -m pytest -m integration
 
 # Run unit tests only (exclude integration)
-poetry run pytest -m "not integration"
+.venv/bin/python -m pytest -m "not integration"
 
 # Stop on first failure
-poetry run pytest -x
+.venv/bin/python -m pytest -x
 ```
 
 ## Test structure
@@ -60,12 +60,15 @@ tests/
 ├── test_compression.py           # Zstandard compression unit tests
 ├── test_config.py                # Configuration loading and validation
 ├── test_connection_manager.py    # WebSocket connection pool management
+├── test_coverage_gaps.py         # Coverage gap fillers
+├── test_delta_endpoints.py       # Delta transfer REST endpoints
 ├── test_docker_script.py         # docker.sh script behavior
 ├── test_error_handlers.py        # Global exception handler tests
 ├── test_event_handlers.py        # WebSocket event business logic
 ├── test_file_utils.py            # File system operations and safety checks
 ├── test_hashes.py                # SHA-256 computation and cache
 ├── test_health.py                # Health check endpoint tests
+├── test_install_script.py        # install.sh script tests
 ├── test_logger.py                # Logging configuration
 ├── test_main.py                  # Application lifecycle and startup
 ├── test_middleware.py            # Middleware chain behavior
@@ -74,6 +77,7 @@ tests/
 ├── test_openapi_contract.py      # OpenAPI schema contract tests
 ├── test_rate_limiter.py          # Per-endpoint rate limiting
 ├── test_routers.py               # Router wiring and auth dependencies
+├── test_security.py              # Authentication and security tests
 ├── test_ssl_utils.py             # Certificate generation and SSL context
 ├── test_token_bucket.py          # Token bucket algorithm unit tests
 └── test_websocket.py             # WebSocket endpoint and event flow
@@ -167,25 +171,16 @@ expectations. It ensures:
 When adding a new endpoint:
 
 1. Add the endpoint to the router
-2. Run `python scripts/export_openapi.py` to regenerate the schema
+2. Run `poetry run python scripts/export_openapi.py` to regenerate the schema
 3. Update contract test expectations
 4. Update `docs/api.md` with the new endpoint documentation
 
 ## Performance testing
 
-For performance-sensitive changes (hashing, compression, file I/O), run the
-benchmark tests:
-
-```bash
-poetry run pytest tests/ -k "bench" --benchmark-only
-```
-
-These tests use `pytest-benchmark` and measure:
-
-- SHA-256 computation time for different file sizes
-- Compression/decompression throughput
-- File listing speed with many files
-- WebSocket message fan-out latency
+Performance benchmarks are not currently configured. If you need to measure
+performance-sensitive changes (hashing, compression, file I/O), consider using
+`pytest-benchmark` or dedicated profiling tools. The test suite focuses on
+correctness and contract validation rather than microbenchmarks.
 
 ## Cross-project testing
 
@@ -194,10 +189,10 @@ The server depends on `hsync-common` models. When changing models in
 
 ```bash
 # From hsync-common
-cd ../hsync-common && poetry run pytest
+cd ../hsync-common && .venv/bin/python -m pytest
 
 # From hsync-server
-cd ../hsync-server && poetry run pytest
+cd ../hsync-server && .venv/bin/python -m pytest
 ```
 
 Model changes that break the server are caught by the server's model tests
@@ -208,3 +203,4 @@ Model changes that break the server are caught by the server's model tests
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — development setup and workflow.
 - [Developer Guide](developer.md) — internal implementation details.
 - [API Reference](../api.md) — endpoint documentation for writing API tests.
+- [Architecture](../architecture.md) — system overview and request lifecycle.
