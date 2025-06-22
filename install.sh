@@ -4,6 +4,7 @@ set -euo pipefail
 
 readonly DEFAULT_VERSION="v1.0.0"
 readonly DEFAULT_INSTALL_DIR="${HOME}/.local/share/hsync-server"
+readonly REPO="albertobasso/hsync-server"
 
 INSTALL_DIR="${DEFAULT_INSTALL_DIR}"
 VERSION="${DEFAULT_VERSION}"
@@ -21,7 +22,8 @@ Install HSYNC Server with Docker Compose.
 Usage: ./install.sh [options]
 
 Options:
-  --version VERSION       Image version to install (default: ${DEFAULT_VERSION})
+  --version VERSION       Image version to install, or 'latest' to resolve the
+                          latest stable release automatically (default: ${DEFAULT_VERSION})
   --install-dir PATH      Configuration directory
   --bind-address ADDRESS  Concrete host IPv4 address (default: 127.0.0.1)
   --port PORT             Host port (default: 9753)
@@ -46,7 +48,18 @@ require_command() {
 
 validate_version() {
     [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] ||
-        fail "invalid version '$1'; expected vX.Y.Z"
+        fail "invalid version '$1'; expected vX.Y.Z or 'latest'"
+}
+
+resolve_latest_version() {
+    local url effective tag
+    url="https://github.com/${REPO}/releases/latest"
+    effective="$(curl -fsSIL -o /dev/null -w '%{url_effective}' "${url}")" ||
+        fail "could not resolve the latest release from ${url}"
+    tag="${effective##*/}"
+    [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] ||
+        fail "unexpected latest release tag '${tag}' from ${url}"
+    printf '%s' "${tag}"
 }
 
 validate_ipv4() {
@@ -249,6 +262,10 @@ main() {
         fi
     fi
 
+    if [[ "${VERSION}" == "latest" ]]; then
+        require_command curl
+        VERSION="$(resolve_latest_version)"
+    fi
     validate_version "${VERSION}"
     validate_ipv4 "${BIND_ADDRESS}"
     validate_port "${PUBLIC_PORT}"

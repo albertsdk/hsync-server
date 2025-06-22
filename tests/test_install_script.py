@@ -22,18 +22,32 @@ def _write_fake_commands(tmp_path: Path) -> Path:
     openssl = tmp_path / "openssl"
     openssl.write_text("#!/usr/bin/env bash\nprintf '0123456789abcdef%.0s' {1..4}\nprintf '\\n'\n")
     openssl.chmod(0o755)
+
+    # Fake curl only answers the latest-release resolution; HSYNC_FAKE_CURL_FAIL
+    # simulates a network error, HSYNC_FAKE_LATEST_TAG overrides the tag.
+    curl = tmp_path / "curl"
+    curl.write_text(
+        "#!/usr/bin/env bash\n"
+        '[[ -z "${HSYNC_FAKE_CURL_FAIL:-}" ]] || exit 22\n'
+        "printf 'https://github.com/albertobasso/hsync-server/releases/tag/%s\\n' "
+        '"${HSYNC_FAKE_LATEST_TAG:-v9.9.9}"\n'
+    )
+    curl.chmod(0o755)
     return docker_args
 
 
 def _run_installer(
     tmp_path: Path,
     *args: str,
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], Path, list[str]]:
     docker_args = _write_fake_commands(tmp_path)
     install_dir = tmp_path / "installation"
     env = os.environ.copy()
     env["PATH"] = f"{tmp_path}{os.pathsep}{env['PATH']}"
     env["HSYNC_FAKE_DOCKER_ARGS"] = str(docker_args)
+    if extra_env:
+        env.update(extra_env)
     result = subprocess.run(
         [str(INSTALL_SCRIPT), "--install-dir", str(install_dir), *args],
         cwd=PROJECT_ROOT,
@@ -175,3 +189,57 @@ def test_rerun_rejects_bind_change_that_would_invalidate_persisted_certificate(
     assert second.returncode == 1
     assert "cannot change the bind address" in second.stderr
     assert "HSYNC_BIND_ADDRESS=192.168.1.20" in (install_dir / ".env").read_text()
+
+
+def test_latest_resolves_to_the_stable_release_tag(tmp_path: Path):
+    result, install_dir, _ = _run_installer(tmp_path, "--version", "latest", "--no-start")
+
+    assert result.returncode == 0, result.stderr
+    assert "Image: ghcr.io/albertobasso/hsync-server:v9.9.9" in result.stdout
+    env_contents = (install_dir / ".env").read_text()
+    assert "HSYNC_IMAGE=ghcr.io/albertobasso/hsync-server:v9.9.9" in env_contents
+
+
+def test_latest_rerun_updates_existing_installation_to_the_resolved_tag(tmp_path: Path):
+    first, install_dir, _ = _run_installer(
+        tmp_path,
+        "--version",
+        "v1.2.3",
+        "--no-start",
+    )
+    assert first.returncode == 0, first.stderr
+
+    second, _, _ = _run_installer(tmp_path, "--version", "latest", "--no-start")
+
+    assert second.returncode == 0, second.stderr
+    env_contents = (install_dir / ".env").read_text()
+    assert "HSYNC_IMAGE=ghcr.io/albertobasso/hsync-server:v9.9.9" in env_contents
+
+
+def test_latest_resolution_failure_writes_nothing(tmp_path: Path):
+    result, install_dir, recorded = _run_installer(
+        tmp_path,
+        "--version",
+        "latest",
+        "--no-start",
+        extra_env={"HSYNC_FAKE_CURL_FAIL": "1"},
+    )
+
+    assert result.returncode == 1
+    assert "could not resolve the latest release" in result.stderr
+    assert not install_dir.exists()
+    assert recorded == []
+
+
+def test_latest_rejects_an_unexpected_tag_format(tmp_path: Path):
+    result, install_dir, _ = _run_installer(
+        tmp_path,
+        "--version",
+        "latest",
+        "--no-start",
+        extra_env={"HSYNC_FAKE_LATEST_TAG": "not-a-version"},
+    )
+
+    assert result.returncode == 1
+    assert "unexpected latest release tag" in result.stderr
+    assert not install_dir.exists()

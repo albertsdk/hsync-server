@@ -250,6 +250,14 @@ pinned image, and waits for the upgraded service to become healthy:
 ./install.sh --install-dir "$HOME/.local/share/hsync-server"
 ```
 
+To upgrade to the newest stable release without looking up its tag, pass
+`--version latest`: the installer resolves the latest GitHub Release and pins
+the resolved `vX.Y.Z` image in `.env`:
+
+```bash
+./install.sh --install-dir "$HOME/.local/share/hsync-server" --version latest
+```
+
 ### Manual Docker Compose
 
 ```bash
