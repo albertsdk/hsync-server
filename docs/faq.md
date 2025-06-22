@@ -58,6 +58,12 @@ Under the buckets directory (`/project/buckets` in the container), one
 sub-directory per bucket, as ordinary files — so backing up is just copying that
 directory. See [Architecture](internal/architecture.md).
 
+When clients sync with `--ignore-delete` (pure backup mode), the bucket
+accumulates append-only history: files removed on the client stay on the
+server, and copying the buckets directory captures all of it — no special
+server configuration is needed. See the
+[client backup examples](https://github.com/albertobasso/hsync-client/blob/main/docs/examples.md#13-push-only-backup-to-a-remote-server).
+
 ## Security
 
 ### How is access controlled?
@@ -102,6 +108,26 @@ according to their sync direction and mode. See [Sync Flow](sync-flow.md).
 Through **tombstones**: deletion markers (merged last-write-wins) let peers that
 were offline at deletion time avoid resurrecting files during a full
 reconciliation. See [API → Tombstones](api.md#tombstones).
+
+### Does the server protect against mass deletion?
+
+No — the mass-deletion guard lives in the **client**, not the server. The
+server faithfully applies every deletion requested by an authenticated
+client: a client started with `--no-mass-delete-guard`, or anyone holding
+the API key, can empty a bucket without any server-side obstacle.
+
+The server-side defences are:
+
+- **API-key hygiene** — the key grants full read/write authority over every
+  bucket; treat it accordingly and rotate it if it may have leaked.
+- **Periodic volume backups / snapshots** — the last line of defence
+  against a propagated mass deletion, letting you roll the bucket back to a
+  known-good state. See
+  [Operations → Backup and Restore](operations.md#backup-and-restore).
+
+See the
+[client mass-deletion safety guard](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration.md#mass-deletion-safety-guard)
+for the client-side protection.
 
 ### What happens if a client disconnects mid-upload?
 

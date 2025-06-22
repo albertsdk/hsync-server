@@ -58,6 +58,14 @@ recovery of the recommended installer deployment must also preserve:
 Losing either the certificate volume or its password changes the server TLS
 identity and requires every client to establish trust again.
 
+> **Why back up periodically, not only before upgrades**: the server applies
+> every deletion requested by an authenticated client — the mass-deletion
+> guard is a client-side feature. A misconfigured client (for example one
+> started with `--no-mass-delete-guard`) or a leaked API key can therefore
+> empty a bucket, and a recent volume backup is the only server-side way to
+> roll back. Because the backup also includes the tombstones, a restore does
+> not resurrect files that were legitimately deleted.
+
 ### Compose installer backup
 
 Stop the canonical Compose deployment and archive both named volumes plus its
