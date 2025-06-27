@@ -203,4 +203,4 @@ Model changes that break the server are caught by the server's model tests
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — development setup and workflow.
 - [Developer Guide](developer.md) — internal implementation details.
 - [API Reference](../api.md) — endpoint documentation for writing API tests.
-- [Architecture](../architecture.md) — system overview and request lifecycle.
+- [Architecture](architecture.md) — system overview and request lifecycle.
