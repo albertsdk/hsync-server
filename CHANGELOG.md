@@ -159,6 +159,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `install-<version>.sh`) since the version is already in the release URL
   path. The `release.yml` workflow and all documentation URLs have been
   updated accordingly.
+- **Release**: the `release.yml` workflow now overwrites existing release
+  assets when a tag is re-pushed, using `gh release upload --clobber` (the
+  `gh release create` step no longer aborts if a release for the tag already
+  exists).
 
 ## [1.0.0] — 2025-12-xx
 
