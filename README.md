@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/hsync-logo-horizontal.svg" alt="HSYNC logo" width="480">
+</p>
+
 # HSYNC Server
 
 **HSYNC Server** is the central hub that keeps your files in sync across all your
