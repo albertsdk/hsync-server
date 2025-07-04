@@ -50,7 +50,7 @@ graph LR
 
         subgraph Api["② api/"]
             events[events.py]
-            event_handlers[event_handlers.py]
+            event_handlers[events_handlers/]
             buckets[buckets.py]
             health[health.py]
             connmgr[connection_manager.py]
@@ -62,6 +62,7 @@ graph LR
                 fupload[upload.py]
                 fdownload[download.py]
                 fdelete[delete.py]
+                fdelta[delta/]
             end
         end
 
@@ -113,7 +114,7 @@ graph LR
 | Compression | `compression.py` | Zstandard (zstd) transfer encoding support |
 | Tombstones | `tombstones.py` | Deletion marker store per bucket |
 | WebSocket | `api/events.py` | WebSocket endpoint, auth, and message dispatch |
-| Event handlers | `api/event_handlers.py` | Business logic for each WebSocket event type |
+| Event handlers | `api/events_handlers/` | Business logic for each WebSocket event type |
 | Bucket management | `api/buckets.py` | Bucket CRUD endpoints |
 | Health | `api/health.py` | `/health`, `/metrics`, `/api/v1/time` |
 | Connection mgr | `api/connection_manager.py` | Per-bucket WebSocket connection tracking |
@@ -121,8 +122,11 @@ graph LR
 | File upload | `api/files/upload.py` | Upload with resumable support |
 | File download | `api/files/download.py` | File download with range support |
 | File deletion | `api/files/delete.py` | File deletion + tombstone creation |
+| Delta transfer | `api/files/delta/` | Rsync-style block-level delta transfer endpoints |
 | Utilities | `api/utils.py` | Request helpers |
 | File utilities | `api/file_utils.py` | Path safety, disk space checks |
+| File locks | `file_lock_manager.py` | Per-file asyncio lock manager for concurrent operations |
+| Metrics | `metrics.py` | Prometheus metrics for delta transfer operations |
 | Logging | `logger.py` | Loguru configuration, intercept handler, rotation |
 | Exceptions | `exceptions.py` | Custom exception hierarchy (`HSyncError` base) |
 | Constants | `constants.py` | Server-side constants |
@@ -136,8 +140,8 @@ endpoints:
 
 | Router | Prefix | Auth | Endpoints |
 |--------|--------|------|-----------|
-| `auth_router` | `/api/v1` | Requires `Authorization: Bearer <HSYNC_API_KEY>` | Buckets, files, events, tombstones |
-| `public_router` | (root) | None | `/health`, `/metrics`, `/api/v1/time` |
+| `auth_router` | `/api/v1` | Requires `Authorization: Bearer <HSYNC_API_KEY>` | Buckets, files, tombstones, delta transfer |
+| `public_router` | (root) | None | `/health`, `/metrics`, `/api/v1/time`, WebSocket events |
 
 The `auth_router` dependency chain enforces API key validation on every request.
 The `public_router` carries no auth dependency, making health checks and
@@ -158,7 +162,7 @@ Each WebSocket connection goes through a defined lifecycle:
 ① Client connects    →  ws://host:9753/api/v1/buckets/{bucket}/events/{cid}
 ② Slot acquisition   →  connection_manager.acquire_slot(client_ip)
                            Rejects if max connections per IP or total exceeded
-③ Auth timeout       →  Client must send {"type": "auth", "api_key": "..."}
+③ Auth timeout       →  Client must send {"type": "auth", "token": "..."}
                            within HSYNC_WS_AUTH_TIMEOUT seconds (default 10)
 ④ Authentication     →  API key validated against HSYNC_API_KEY
 ⑤ Registration       →  Client registered to bucket's connection pool
@@ -182,13 +186,14 @@ automatically released on disconnect or heartbeat timeout.
 ### Capabilities negotiation
 
 During the WebSocket handshake, the server and client exchange capabilities
-via HTTP headers. The server advertises:
+via the auth message JSON payload. The client sends its capabilities in the
+`capabilities` field of the auth frame; the server replies with the
+capabilities it supports for the session (e.g., `compression` when
+`HSYNC_COMPRESSION_ENABLED=true`). A `protocol_version` mismatch is a hard
+failure (close code `4002`).
 
-- `X-HSync-Compression: zstd` — compression support
-- `X-HSync-Protocol-Version: 1` — protocol version
-
-The client can use these to adapt its behavior (e.g., enable compression for
-transfers).
+The client can use the advertised capabilities to adapt its behavior (e.g.,
+enable compression for transfers).
 
 ## Middleware Chain
 
@@ -196,15 +201,18 @@ The server applies middleware in this order:
 
 | Order | Middleware | Purpose |
 |-------|-----------|---------|
-| 1 | Trusted proxy | Parse `X-Forwarded-For` from trusted proxy IPs for correct client IP logging and rate limiting |
+| 1 | Version | Enforce wire-protocol version (hard-fail 426 on mismatch); stamp `X-Server-Version`/`X-Protocol-Version` |
 | 2 | Request ID | Assign a unique `X-Request-ID` to every request for log correlation |
 | 3 | CORS | Cross-Origin Resource Sharing headers (when `HSYNC_CORS_ENABLED=true`) |
-| 4 | Logging | Log method, path, status, duration for every request |
+| 4 | GZip | Compress responses larger than 1000 bytes |
 | 5 | Rate limiter | Apply per-endpoint rate limits (slowapi) |
 
 Middleware is registered in `main.py` during application startup. The order
-matters: trusted proxy must run first so the client IP is correctly resolved
-before rate limiting and logging use it.
+matters: `VersionMiddleware` runs first so protocol-version mismatches are
+rejected before any other processing, and `RequestIdMiddleware` assigns the
+correlation ID before downstream middleware and handlers use it. Trusted-proxy
+handling for `X-Forwarded-For` is performed inside the rate limiter's client-IP
+resolution (`rate_limiter.py`), not as a separate middleware.
 
 ## See also
 
