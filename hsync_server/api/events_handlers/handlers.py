@@ -37,6 +37,7 @@ from hsync_server.api.file_utils import (
     is_sentinel_file,
 )
 from hsync_server.api.utils import set_directory_permissions
+from hsync_server.constants import ActionLabel
 from hsync_server.hashes import del_sha256_hash
 from hsync_server.tombstones import clear_deletion, record_deletion
 
@@ -67,10 +68,10 @@ async def handle_added_event(
         dir_obj = Dir().from_dict(src, bucket_dir)
         # Validate path to prevent traversal attacks
         if not dir_obj.path or not is_path_within_bucket(dir_obj.path, bucket_dir):
-            log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dir_obj.path}"')
+            log.warning(f"{ActionLabel.SECURITY} Rejected path traversal attempt: {dir_obj.path!r}")
             return None
         if dir_obj.path and dir_obj.permissions:
-            log.info(f'[WEBSOCKET ] Added dir "{dir_obj.path}" (CID: {cid})')
+            log.info(f'{ActionLabel.CREATE} Added dir "{dir_obj.path}" (CID: {cid})')
             Path(dir_obj.path).mkdir(parents=True, exist_ok=True)
             await set_directory_permissions(dir_obj.path, dir_obj.permissions)
             return Event(cid, bucket_dir, bucket, EventName.added, dir_obj)
@@ -80,9 +81,11 @@ async def handle_added_event(
         file_obj = File().from_dict(src, bucket_dir, False)
         # Validate path to prevent traversal attacks
         if file_obj.filepath is None or not is_path_within_bucket(file_obj.filepath, bucket_dir):
-            log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
+            log.warning(
+                f"{ActionLabel.SECURITY} Rejected path traversal attempt: {file_obj.filepath!r}"
+            )
             return None
-        log.info(f'[WEBSOCKET ] Added file "{file_obj.filepath}" (CID: {cid})')
+        log.info(f'{ActionLabel.CREATE} Added file "{file_obj.filepath}" (CID: {cid})')
         # A (re-)created file invalidates any prior deletion marker so peers
         # do not delete the freshly added file on their next full sync.
         if not is_sentinel_file(file_obj.filepath):
@@ -118,10 +121,10 @@ async def handle_modified_event(
         dir_obj = Dir().from_dict(src, bucket_dir)
         # Validate path to prevent traversal attacks
         if dir_obj.path is None or not is_path_within_bucket(dir_obj.path, bucket_dir):
-            log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dir_obj.path}"')
+            log.warning(f"{ActionLabel.SECURITY} Rejected path traversal attempt: {dir_obj.path!r}")
             return None
         if dir_obj.path and dir_obj.permissions:
-            log.info(f'[WEBSOCKET ] Modified dir "{dir_obj.path}" (CID: {cid})')
+            log.info(f'{ActionLabel.MODIFY} Modified dir "{dir_obj.path}" (CID: {cid})')
             await set_directory_permissions(dir_obj.path, dir_obj.permissions)
             return Event(cid, bucket_dir, bucket, EventName.modified, dir_obj)
 
@@ -130,9 +133,11 @@ async def handle_modified_event(
         file_obj = File().from_dict(src, bucket_dir, False)
         # Validate path to prevent traversal attacks
         if file_obj.filepath is None or not is_path_within_bucket(file_obj.filepath, bucket_dir):
-            log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
+            log.warning(
+                f"{ActionLabel.SECURITY} Rejected path traversal attempt: {file_obj.filepath!r}"
+            )
             return None
-        log.info(f'[WEBSOCKET ] Modified file "{file_obj.filepath}" (CID: {cid})')
+        log.info(f'{ActionLabel.MODIFY} Modified file "{file_obj.filepath}" (CID: {cid})')
         if not is_sentinel_file(file_obj.filepath):
             clear_deletion(bucket, bucket_dir, file_obj.filepath)
         return Event(cid, bucket_dir, bucket, EventName.modified, file_obj)
@@ -170,13 +175,13 @@ async def handle_deleted_event(
         if dir_obj.path is None or not is_path_within_bucket(
             dir_obj.path, bucket_dir, allow_root=False
         ):
-            log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dir_obj.path}"')
+            log.warning(f"{ActionLabel.SECURITY} Rejected path traversal attempt: {dir_obj.path!r}")
             return None
         if dir_obj.path:
             if not Path(dir_obj.path).exists():
-                log.warning(f'[WEBSOCKET ] Dir: "{dir_obj.path}" not found.')
+                log.warning(f'{ActionLabel.DELETE} Dir: "{dir_obj.path}" not found.')
             else:
-                log.info(f'[WEBSOCKET ] Deleted dir "{dir_obj.path}" (CID: {cid})')
+                log.info(f'{ActionLabel.DELETE} Deleted dir "{dir_obj.path}" (CID: {cid})')
                 rmtree(dir_obj.path, ignore_errors=False)
             return Event(cid, bucket_dir, bucket, EventName.deleted, dir_obj)
 
@@ -185,13 +190,15 @@ async def handle_deleted_event(
         file_obj = File().from_dict(src, bucket_dir, False)
         # Validate path to prevent traversal attacks
         if file_obj.filepath is None or not is_path_within_bucket(file_obj.filepath, bucket_dir):
-            log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
+            log.warning(
+                f"{ActionLabel.SECURITY} Rejected path traversal attempt: {file_obj.filepath!r}"
+            )
             return None
         if file_obj.filepath:
             if not Path(file_obj.filepath).exists():
-                log.warning(f'[WEBSOCKET ] File: "{file_obj.filepath}" not found.')
+                log.warning(f'{ActionLabel.DELETE} File: "{file_obj.filepath}" not found.')
             else:
-                log.info(f'[WEBSOCKET ] Deleted file "{file_obj.filepath}" (CID: {cid})')
+                log.info(f'{ActionLabel.DELETE} Deleted file "{file_obj.filepath}" (CID: {cid})')
                 remove(file_obj.filepath)
                 parent = str(Path(file_obj.filepath).parent)
                 if is_sentinel_file(file_obj.filepath):
@@ -246,13 +253,15 @@ async def handle_renamed_event(
         dst_dir = Dir().from_dict(dst, bucket_dir)
         # Validate both paths to prevent traversal attacks
         if src_dir.path is None or not is_path_within_bucket(src_dir.path, bucket_dir):
-            log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{src_dir.path}"')
+            log.warning(f"{ActionLabel.SECURITY} Rejected path traversal attempt: {src_dir.path!r}")
             return None
         if dst_dir.path is None or not is_path_within_bucket(dst_dir.path, bucket_dir):
-            log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dst_dir.path}"')
+            log.warning(f"{ActionLabel.SECURITY} Rejected path traversal attempt: {dst_dir.path!r}")
             return None
         if src_dir.path and dst_dir.path:
-            log.info(f'[WEBSOCKET ] Renamed "{src_dir.path}" -> "{dst_dir.path}" (CID: {cid})')
+            log.info(
+                f'{ActionLabel.RENAME} Renamed "{src_dir.path}" -> "{dst_dir.path}" (CID: {cid})'
+            )
             rename(src_dir.path, dst_dir.path)
             return Event(cid, bucket_dir, bucket, EventName.renamed, src_dir, dst_dir)
 
@@ -262,14 +271,18 @@ async def handle_renamed_event(
         dst_file = File().from_dict(dst, bucket_dir, False)
         # Validate both paths to prevent traversal attacks
         if src_file.filepath is None or not is_path_within_bucket(src_file.filepath, bucket_dir):
-            log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{src_file.filepath}"')
+            log.warning(
+                f"{ActionLabel.SECURITY} Rejected path traversal attempt: {src_file.filepath!r}"
+            )
             return None
         if dst_file.filepath is None or not is_path_within_bucket(dst_file.filepath, bucket_dir):
-            log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dst_file.filepath}"')
+            log.warning(
+                f"{ActionLabel.SECURITY} Rejected path traversal attempt: {dst_file.filepath!r}"
+            )
             return None
         if src_file.filepath and dst_file.filepath:
             log.info(
-                f'[WEBSOCKET ] Renamed "{src_file.filepath}" -> "{dst_file.filepath}" (CID: {cid})'
+                f'{ActionLabel.RENAME} Renamed "{src_file.filepath}" -> "{dst_file.filepath}" (CID: {cid})'
             )
             rename(src_file.filepath, dst_file.filepath)
             return Event(cid, bucket_dir, bucket, EventName.renamed, src_file, dst_file)
@@ -307,18 +320,20 @@ async def handle_symlink_event(
         if link.filepath and target:
             # Validate symlink path to prevent path traversal attacks
             if not is_path_within_bucket(link.filepath, bucket_dir):
-                log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{link.filepath}"')
+                log.warning(
+                    f"{ActionLabel.SECURITY} Rejected path traversal attempt: {link.filepath!r}"
+                )
                 return None
 
             # Validate symlink target to prevent path traversal attacks
             if not is_safe_symlink_target(link.filepath, target, bucket_dir):
                 log.warning(
-                    f'[WEBSOCKET ] Rejected unsafe symlink "{link.filepath}" -> "{target}" '
+                    f"{ActionLabel.SECURITY} Rejected unsafe symlink {link.filepath!r} -> {target!r} "
                     f"(target escapes bucket directory)"
                 )
                 return None
 
-            log.info(f'[WEBSOCKET ] Symlink "{link.filepath}" -> "{target}" (CID: {cid})')
+            log.info(f'{ActionLabel.SYMLINK} Symlink "{link.filepath}" -> "{target}" (CID: {cid})')
             # Ensure parent directory exists
             parent_dir = str(Path(link.filepath).parent)
             if not Path(parent_dir).exists():

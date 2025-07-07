@@ -29,6 +29,7 @@ from hsync_server.api.file_utils import (
 )
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
 from hsync_server.config import get_buckets_path
+from hsync_server.constants import ActionLabel
 from hsync_server.exceptions import (
     BucketNotFoundError,
     DeleteError,
@@ -97,7 +98,7 @@ async def delete_file(
         # Remove the file
         remove(file)
         invalidate_sha256_cache(file)
-        log.info(f'File: "{file}" deleted successfully')
+        log.info(f'{ActionLabel.DELETE} File: "{file}" deleted successfully')
 
         # Record a tombstone so peers offline at deletion time do not
         # resurrect the file on their next full sync. Sentinel files are
@@ -114,7 +115,7 @@ async def delete_file(
         backup_file = f"{file}.backup"
         if Path(backup_file).exists():
             remove(backup_file)
-            log.info(f'Backup file: "{backup_file}" deleted successfully')
+            log.info(f'{ActionLabel.DELETE} Backup file: "{backup_file}" deleted successfully')
 
         parent = str(Path(file).parent)
         if is_sentinel_file(file):

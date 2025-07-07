@@ -45,7 +45,7 @@ from hsync_server.api.utils import (
 )
 from hsync_server.compression import decompress_file_to_file
 from hsync_server.config import get_buckets_path, get_max_upload_size, get_settings
-from hsync_server.constants import DEFAULT_FILE_PERMISSIONS
+from hsync_server.constants import DEFAULT_FILE_PERMISSIONS, ActionLabel
 from hsync_server.exceptions import (
     ChecksumMismatchError,
     FileTooLargeError,
@@ -460,6 +460,7 @@ async def upload_file(
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))
 
         upload_successful = True
+        log.info(f'{ActionLabel.UPLOAD} "{bucket}/{path}/{file.filename}"')
         return JSONResponse(
             status_code=201,
             content={
