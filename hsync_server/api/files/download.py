@@ -41,7 +41,7 @@ from hsync_server.routers import auth_router
 
 @auth_router.get("/api/v1/buckets/{bucket}/files/download")
 @limiter.limit(RATE_LIMIT_DOWNLOAD)
-async def download_file(request: Request, bucket: str, filename: str):
+async def download_file(request: Request, bucket: str, filename: str, cid: str = ""):
     """
     Download a file from a bucket with optional zstd compression.
 
@@ -102,7 +102,10 @@ async def download_file(request: Request, bucket: str, filename: str):
         # Streaming compression: reads and compresses the file in chunks and
         # streams the single zstd frame to the client, so neither the file nor
         # its compressed form is ever fully buffered in memory (memory-bomb DoS).
-        log.info(f'{ActionLabel.DOWNLOAD} "{bucket}/{filename}" ({file_size} bytes, zstd)')
+        cid_suffix = f" (CID: {cid})" if cid else ""
+        log.info(
+            f'{ActionLabel.DOWNLOAD} "{bucket}/{filename}" ({file_size} bytes, zstd){cid_suffix}'
+        )
         log.debug(f"Compressed streaming download: {file} ({file_size} bytes)")
         return StreamingResponse(
             async_compress_stream(file),
@@ -115,5 +118,6 @@ async def download_file(request: Request, bucket: str, filename: str):
         )
 
     # Standard download (streaming, supports Range requests)
-    log.info(f'{ActionLabel.DOWNLOAD} "{bucket}/{filename}" ({file_size} bytes)')
+    cid_suffix = f" (CID: {cid})" if cid else ""
+    log.info(f'{ActionLabel.DOWNLOAD} "{bucket}/{filename}" ({file_size} bytes){cid_suffix}')
     return FileResponse(file, filename=filename, headers=checksum_header)

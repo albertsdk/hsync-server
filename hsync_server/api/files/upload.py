@@ -460,7 +460,7 @@ async def upload_file(
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))
 
         upload_successful = True
-        log.info(f'{ActionLabel.UPLOAD} "{bucket}/{path}/{file.filename}"')
+        log.info(f'{ActionLabel.UPLOAD} "{bucket}/{path}/{file.filename}" (CID: {cid})')
         return JSONResponse(
             status_code=201,
             content={
