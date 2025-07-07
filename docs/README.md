@@ -77,6 +77,7 @@ instructions cannot drift between this index and the project README.
 | [operations.md](operations.md) | Backup/restore, upgrade, monitoring, performance. |
 | [security-best-practices.md](security-best-practices.md) | Hardening checklist: API keys, firewall, TLS, rate limiting, logging. |
 | [faq.md](faq.md) | Frequently asked questions, troubleshooting, and why to choose HSYNC. |
+| [log-labels.md](log-labels.md) | Every action label that can appear in the server logs and what it means. |
 
 ### Technical Reference
 
