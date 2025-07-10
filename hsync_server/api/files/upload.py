@@ -20,12 +20,14 @@ import hmac
 from os import fsync, remove, replace
 from pathlib import Path
 from shutil import copy2
+from time import monotonic
 
 import zstandard as zstd
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
+from hsync_common.format import format_duration
 from hsync_common.hashing import compute_sha256_async, is_sha256_hex
 from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
@@ -126,6 +128,7 @@ async def upload_file(
     is_resumable = offset > 0
     is_compressed = compressed.lower() == "true"
     upload_successful = False
+    t0 = monotonic()
     try:
         max_upload_size = get_max_upload_size()
         buckets_path = get_buckets_path()
@@ -460,7 +463,10 @@ async def upload_file(
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))
 
         upload_successful = True
-        log.info(f'{ActionLabel.UPLOAD} "{bucket}/{path}/{file.filename}" (CID: {cid})')
+        log.info(
+            f'{ActionLabel.UPLOAD} "{bucket}/{path}/{file.filename}" (CID: {cid}) '
+            f"in {format_duration(monotonic() - t0, subsecond=True)}"
+        )
         return JSONResponse(
             status_code=201,
             content={
