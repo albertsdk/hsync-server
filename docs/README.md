@@ -84,6 +84,7 @@ instructions cannot drift between this index and the project README.
 | Document | What it covers |
 | -------- | -------------- |
 | [api.md](api.md) | Complete REST + WebSocket API reference. |
+| [authentication.md](authentication.md) | Server-mode authentication flow: WebSocket handshake, API key validation, CID registration. |
 | [sync-flow.md](sync-flow.md) | Server-side sync flow: file storage, event broadcast, tombstones. |
 | [delta-transfer.md](delta-transfer.md) | Rsync-style block sync protocol — algorithm, endpoints, and configuration. |
 
