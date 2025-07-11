@@ -638,6 +638,100 @@ class TestFileListValidation:
         assert any(".gitignore" in f for f in filenames)
 
 
+class TestSymlinkSafety:
+    """Symlinks inside a bucket must never dereference out-of-bucket targets.
+
+    ``/files`` (list) and ``/files/download`` must never follow a symlink whose
+    target escapes the bucket: the listing must not expose the target's
+    metadata/hash and the download must not serve its content.
+    """
+
+    @pytest.mark.asyncio
+    async def test_list_skips_escaping_symlink(self, client: AsyncClient, temp_buckets_dir: str):
+        """A file-symlink whose target escapes the bucket is not listed."""
+        bucket_path = os.path.join(temp_buckets_dir, "symlinkbucket")
+        os.makedirs(bucket_path)
+
+        visible = os.path.join(bucket_path, "visible.txt")
+        with open(visible, "w") as f:
+            f.write("visible")
+
+        outside = os.path.join(temp_buckets_dir, "outside_secret.txt")
+        with open(outside, "w") as f:
+            f.write("top-secret")
+        os.symlink(outside, os.path.join(bucket_path, "secret"))
+
+        response = await client.get("/api/v1/buckets/symlinkbucket/files")
+        assert response.status_code == 200
+        data = response.json()
+        filenames = [f["filepath"] for f in data]
+        assert any("visible.txt" in f for f in filenames)
+        assert not any("secret" in f for f in filenames)
+        # The escaping target's content hash must never leak through the listing.
+        assert not any(
+            f.get("sha256sum") == hashlib.sha256(b"top-secret").hexdigest() for f in data
+        )
+
+    @pytest.mark.asyncio
+    async def test_list_keeps_in_bucket_symlink(self, client: AsyncClient, temp_buckets_dir: str):
+        """A symlink whose target stays inside the bucket is still listed."""
+        bucket_path = os.path.join(temp_buckets_dir, "symlinkinbucket")
+        os.makedirs(bucket_path)
+
+        real = os.path.join(bucket_path, "real.txt")
+        with open(real, "w") as f:
+            f.write("inside")
+        os.symlink("real.txt", os.path.join(bucket_path, "alias"))
+
+        response = await client.get("/api/v1/buckets/symlinkinbucket/files")
+        assert response.status_code == 200
+        data = response.json()
+        filenames = [f["filepath"] for f in data]
+        assert any("alias" in f for f in filenames)
+
+    @pytest.mark.asyncio
+    async def test_download_refuses_escaping_symlink(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """Downloading an escaping file-symlink never serves the target content."""
+        bucket_path = os.path.join(temp_buckets_dir, "symlinkdlbucket")
+        os.makedirs(bucket_path)
+
+        outside = os.path.join(temp_buckets_dir, "outside_dl_secret.txt")
+        with open(outside, "w") as f:
+            f.write("top-secret-content")
+        os.symlink(outside, os.path.join(bucket_path, "secret"))
+
+        response = await client.get(
+            "/api/v1/buckets/symlinkdlbucket/files/download", params={"filename": "secret"}
+        )
+        # Either the path confinement rejects it (400) or the symlink guard
+        # refuses to serve it (404) — in no case is the target content leaked.
+        assert response.status_code in (400, 404)
+        assert b"top-secret-content" not in response.content
+
+    @pytest.mark.asyncio
+    async def test_download_serves_in_bucket_symlink_target(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """A symlink whose target stays inside the bucket is downloadable (its
+        dereferenced content) — consistent with the listing treating the link
+        as a regular file."""
+        bucket_path = os.path.join(temp_buckets_dir, "symlinkdlin")
+        os.makedirs(bucket_path)
+
+        real = os.path.join(bucket_path, "real.txt")
+        with open(real, "w") as f:
+            f.write("inside-content")
+        os.symlink("real.txt", os.path.join(bucket_path, "alias"))
+
+        response = await client.get(
+            "/api/v1/buckets/symlinkdlin/files/download", params={"filename": "alias"}
+        )
+        assert response.status_code == 200
+        assert response.content == b"inside-content"
+
+
 class TestFileDeleteValidation:
     """Tests for file delete validation."""
 

@@ -13,6 +13,7 @@ This module provides the REST API endpoints for:
 """
 
 import hmac
+import os
 from os import remove, walk
 from pathlib import Path
 
@@ -23,9 +24,13 @@ from hsync_common.hashing import is_sha256_hex
 from hsync_common.models.dir import is_hidden_dir
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
+from hsync_common.models.symlink import Symlink
+from hsync_common.path_validation import is_safe_symlink_target
+from loguru import logger as log
 
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
 from hsync_server.config import get_buckets_path
+from hsync_server.constants import ActionLabel
 from hsync_server.exceptions import (
     BucketNotFoundError,
     InvalidBucketNameError,
@@ -182,12 +187,67 @@ async def get_files(
             if file.endswith(".backup"):
                 continue
 
+            # Symlinks are emitted as symlink entries (never dereferenced).
+            # A peer will recreate the link structurally from the target field,
+            # and a escaping symlink is skipped entirely.
+            if Path(file_path).is_symlink():
+                from hsync_common.models.symlink import Symlink
+                from hsync_common.path_validation import is_safe_symlink_target
+
+                try:
+                    link = Symlink.get(file_path)
+                except OSError:
+                    link = None
+                bucket_root = f"{buckets_path}/{bucket}"
+                if link is not None and not is_safe_symlink_target(
+                    file_path, link.target, bucket_root
+                ):
+                    log.warning(
+                        f"{ActionLabel.SECURITY} Symlink target escapes bucket, "
+                        f'skipping: "{file_path}" -> "{link.target}"'
+                    )
+                    continue
+                if link is not None:
+                    # Normalize to bucket-relative filepath (mirror File.from_dict).
+                    rel = os.path.relpath(file_path, bucket_root)
+                    entry = link.to_dict()
+                    entry["filepath"] = rel
+                    file_list.append(entry)
+                continue
+
             # Get file info and normalize path relative to bucket
             file_obj = LocalFile().get(file, root)
             if file_obj:
                 file_info = file_obj.to_dict()
                 file_data = LocalFile().from_dict(file_info, f"{buckets_path}/{bucket}").to_dict()
                 file_list.append(file_data)
+
+        # Emit dir-symlink entries: os.walk (followlinks=False) lists them in
+        # ``dirs`` but never descends into them. Emit a symlink entry for each.
+        for d in dirs:
+            d_path = f"{root}/{d}"
+            if Path(d_path).is_symlink():
+                from hsync_common.models.symlink import Symlink
+                from hsync_common.path_validation import is_safe_symlink_target
+
+                try:
+                    link = Symlink.get(d_path)
+                except OSError:
+                    link = None
+                bucket_root = f"{buckets_path}/{bucket}"
+                if link is not None and not is_safe_symlink_target(
+                    d_path, link.target, bucket_root
+                ):
+                    log.warning(
+                        f"{ActionLabel.SECURITY} Symlink target escapes bucket, "
+                        f'skipping: "{d_path}" -> "{link.target}"'
+                    )
+                    continue
+                if link is not None:
+                    rel = os.path.relpath(d_path, bucket_root)
+                    entry = link.to_dict()
+                    entry["filepath"] = rel
+                    file_list.append(entry)
 
     # Sort by mtime ascending (oldest first) to prioritize updating older files
     file_list.sort(key=lambda x: x.get("mtime", 0))

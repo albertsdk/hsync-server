@@ -29,7 +29,7 @@ from hsync_server.compression import (
     async_compress_stream,
     should_compress,
 )
-from hsync_server.config import get_compression_enabled
+from hsync_server.config import get_buckets_path, get_compression_enabled
 from hsync_server.constants import CONTENT_TYPE_OCTET_STREAM, ActionLabel
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.exceptions import (
@@ -84,6 +84,12 @@ async def download_file(
     # This ensures clients always download a complete, valid file
     if Path(backup_file).exists():
         file = backup_file
+
+    # Symlinks are synced as symlinks (structurally, never as file content).
+    # Downloading a symlink path is refused so a peer never dereferences it.
+    if Path(file).is_symlink():
+        log.debug(f'Download refused for symlink path: "{file}" (synced as symlink, not content)')
+        raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
 
     if not await isfile(file):
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})

@@ -81,7 +81,10 @@ Multipart form fields: `cid, file, path, ctime, mtime, sha256sum, permissions`
 Streams the file; supports zstd via `compression.async_compress_stream`
 (`compression.py:53`) when `get_compression_enabled()` (`config.py:437`). The
 `filename` is confined with `resolve_within_bucket` (rejects cross-bucket and
-internal-engine paths). Missing file → `FileNotFoundError` (`exceptions.py:118`).
+internal-engine paths). A file-symlink inside the bucket whose target escapes
+it is refused (`is_safe_symlink_target`) — `FileResponse` would otherwise
+follow it and serve the out-of-bucket target (e.g. `secret -> /etc/passwd`).
+Missing file → `FileNotFoundError` (`exceptions.py:118`).
 Accepts an optional `cid` query parameter (sent by the client) that is included
 in the `[DOWNLOAD]` log line for request attribution. The log is deferred to a
 `BackgroundTasks` callback so it can include the actual transfer duration
@@ -92,8 +95,11 @@ in the `[DOWNLOAD]` log line for request attribution. The log is deferred to a
 ## List / upload-status / tombstones (`api/files/list.py`)
 
 - `get_files` (`list.py:124`) walks the bucket, skips hidden/sentinel/`.part`
-  files (`is_hidden_file`, `is_hidden_dir`, `PARTIAL_DOWNLOAD_SUFFIX`), attaches
-  cached hashes (`get_sha256_hash`, `hashes.py:42`), returns `File` dicts.
+  files (`is_hidden_file`, `is_hidden_dir`, `PARTIAL_DOWNLOAD_SUFFIX`), skips
+  file-symlinks whose target escapes the bucket (`is_safe_symlink_target`,
+  so `secret -> /etc/passwd` never leaks its hash/metadata through the
+  listing), attaches cached hashes (`get_sha256_hash`, `hashes.py:42`),
+  returns `File` dicts.
 - `get_upload_status` (`list.py:40`) reports existing `.part` size for resume.
 - `get_tombstones` (`list.py:194`) returns the bucket's tombstone entries from
   `get_tombstone_store` (`tombstones.py:38`); the `POST` counterpart records
