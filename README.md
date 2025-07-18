@@ -27,10 +27,6 @@ all over standard HTTP/HTTPS.
 
 ---
 
-<!-- GitHub auto-generates the table of contents from the section headings above. -->
-
----
-
 ## Why HSYNC Server?
 
 HSYNC is designed to synchronize files using **only the HTTP/HTTPS protocol**.
