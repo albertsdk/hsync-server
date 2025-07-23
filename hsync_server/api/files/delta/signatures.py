@@ -169,9 +169,7 @@ async def get_delta_signatures(request: Request, bucket: str, path: str) -> JSON
 
 @auth_router.post("/api/v1/buckets/{bucket}/files/delta/signatures")
 @limiter.limit(RATE_LIMIT_DELTA)
-async def post_delta_signatures(
-    request: Request, bucket: str, body: DeltaSignaturesRequest
-) -> JSONResponse:
+async def post_delta_signatures(request: Request, bucket: str) -> JSONResponse:
     """Match client base signatures against the server file (download delta).
 
     Returns ``{delta: true, ...}`` with instructions and a token URL for the
@@ -180,13 +178,20 @@ async def post_delta_signatures(
     """
     start_time = time.time()
 
-    # Check body size limit (50 MB) before parsing
-    content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > _MAX_SIGNATURES_BODY_SIZE:
+    # Read and validate body size before Pydantic parsing, regardless
+    # of whether Content-Length is present or the client uses chunked
+    # encoding — without this an attacker could bypass the 50 MB cap.
+    body_bytes = await request.body()
+    if len(body_bytes) > _MAX_SIGNATURES_BODY_SIZE:
         raise ValidationError(
             message="Request body too large",
-            details={"max_size": _MAX_SIGNATURES_BODY_SIZE},
+            details={
+                "max_size": _MAX_SIGNATURES_BODY_SIZE,
+                "received_size": len(body_bytes),
+            },
         )
+
+    body = DeltaSignaturesRequest.model_validate_json(body_bytes)
 
     if not get_delta_enabled():
         return _delta_disabled()

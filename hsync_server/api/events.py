@@ -24,6 +24,7 @@ import hmac
 from json import JSONDecodeError, loads
 
 from fastapi import WebSocket, WebSocketDisconnect
+from hsync_common.constants import WS_MAX_MESSAGE_BYTES
 from hsync_common.models.event import EventName, is_valid_cid
 from hsync_common.path_validation import validate_remote_relpath, wire_relpaths
 from hsync_common.protocol.handshake import (
@@ -49,6 +50,8 @@ from hsync_server.config import (
     get_api_key,
     get_buckets_path,
     get_compression_enabled,
+    get_cors_enabled,
+    get_cors_origins,
     get_ws_auth_timeout,
     get_ws_heartbeat_interval,
     get_ws_heartbeat_timeout,
@@ -118,6 +121,16 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             await websocket.close(code=4000, reason="Invalid client ID")
             return
 
+        # Reject cross-origin WS connections from untrusted origins when CORS
+        # is configured, preventing CSWSH from browser-hosted attackers.
+        if get_cors_enabled():
+            origin = websocket.headers.get("origin", "")
+            allowed = get_cors_origins()
+            if origin and origin not in allowed:
+                log.warning(f"{ActionLabel.WS} Rejecting cross-origin WS from {origin!r}")
+                await websocket.close(code=4000, reason="Origin not allowed")
+                return
+
         # The bucket comes from the URL path too and is used to build
         # filesystem paths (`bucket_dir`): a segment like `..` (reachable via
         # `%2e%2e`) would escape the storage root and turn delete/rename/
@@ -142,7 +155,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         # never sends the auth frame cannot hold the connection open indefinitely.
         try:
             auth_data = await asyncio.wait_for(
-                websocket.receive_text(), timeout=get_ws_auth_timeout()
+                websocket.receive_text(max_size=WS_MAX_MESSAGE_BYTES), timeout=get_ws_auth_timeout()
             )
             auth_message = loads(auth_data)
 
@@ -247,7 +260,8 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                 try:
                     # Use wait_for to implement timeout
                     data = await asyncio.wait_for(
-                        websocket.receive_text(), timeout=heartbeat_interval + heartbeat_timeout
+                        websocket.receive_text(max_size=WS_MAX_MESSAGE_BYTES),
+                        timeout=heartbeat_interval + heartbeat_timeout,
                     )
                 except TimeoutError:
                     log.warning(f"{ActionLabel.WS} Heartbeat timeout for {cid}")
