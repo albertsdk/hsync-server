@@ -142,6 +142,43 @@ class TestWsRelay:
             await first.close()
             raise
 
+    async def test_fan_out_survives_one_client_disconnect(
+        self, live_server: tuple[str, str], bb_bucket: str, bb_upload
+    ):
+        """When one subscriber disconnects during broadcast, the others still
+        receive the event — the faulty connection must never abort delivery."""
+        ws_base, api_key = _ws_base(live_server), live_server[1]
+        bb_http = httpx.Client(
+            base_url=live_server[0],
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=15.0,
+        )
+        try:
+            # Three subscribers: A (uploader), B (stays), C (leaves early)
+            sub_a, _ = await _connect_auth(ws_base, bb_bucket, "fanA", api_key)
+            sub_b, _ = await _connect_auth(ws_base, bb_bucket, "fanB", api_key)
+            sub_c, _ = await _connect_auth(ws_base, bb_bucket, "fanC", api_key)
+
+            # Subscriber C disconnects cleanly before the event is sent
+            await sub_c.close()
+
+            # When subscriber A uploads a file
+            bb_upload(bb_http, bb_bucket, "fanout.bin", b"fan-out", cid="fanA")
+
+            # Then subscriber B still receives the broadcast
+            msg = json.loads(await asyncio.wait_for(sub_b.recv(), timeout=5))
+            assert msg["name"] == "added"
+            assert msg["cid"] == "fanA"
+            assert msg["src"]["name"] == "fanout.bin"
+
+            # And subscriber A is not echoed
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(sub_a.recv(), timeout=1.5)
+        finally:
+            for ws in (sub_a, sub_b):
+                await ws.close()
+            bb_http.close()
+
 
 class TestWsNegative:
     async def test_bad_token_closes_connection(self, live_server: tuple[str, str], bb_bucket: str):

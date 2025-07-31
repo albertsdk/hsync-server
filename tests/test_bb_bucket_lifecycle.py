@@ -70,6 +70,28 @@ class TestBucketLifecycle:
         # Then the request is rejected as a bad name
         assert r.status_code == 400
 
+    def test_name_too_long_rejected(self, bb_http: httpx.Client):
+        """A bucket name longer than 63 characters must be rejected.
+
+        The limit is enforced by ``MAX_BUCKET_NAME_LENGTH`` in
+        ``hsync_common.path_validation``. A name that exceeds it must not
+        create a directory on the server filesystem.
+        """
+        too_long = "a" * 64
+        r = bb_http.post("/api/v1/buckets", params={"bucket": too_long})
+        assert r.status_code == 400, (
+            f"expected 400 for {len(too_long)}-char name, got {r.status_code}"
+        )
+
+    def test_name_exactly_max_length_accepted(self, bb_http: httpx.Client):
+        """A 63-character bucket name is accepted (the maximum allowed)."""
+        max_name = "a" * 63
+        r = bb_http.post("/api/v1/buckets", params={"bucket": max_name})
+        assert r.status_code == 201, (
+            f"expected 201 for {len(max_name)}-char name, got {r.status_code}"
+        )
+        bb_http.delete(f"/api/v1/buckets/{max_name}")
+
     def test_leading_hyphen_name_rejected(self, bb_http: httpx.Client):
         # Given a name starting with a hyphen (forbidden by the contract)
         # When creating it

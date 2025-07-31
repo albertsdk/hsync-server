@@ -164,6 +164,57 @@ class TestUploadCompressed:
         assert dl.content == original
 
 
+class TestUploadOverwrite:
+    def test_overwrite_with_correct_checksum_replaces_content(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        """Uploading a new version of an existing file must replace its content."""
+        old = b"version one data"
+        new = b"version two - updated content"
+        bb_upload(bb_http, bb_bucket, "over.bin", old)
+
+        # Overwrite with new content
+        r = bb_upload(bb_http, bb_bucket, "over.bin", new)
+        assert r.status_code == 201
+
+        dl = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download", params={"filename": "over.bin"}
+        )
+        assert dl.status_code == 200
+        assert dl.content == new
+        assert dl.content != old
+
+    def test_overwrite_with_wrong_checksum_preserves_original(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        """When an overwrite upload fails due to a checksum mismatch, the original
+        file must remain intact — the new content must never be visible."""
+        original = b"precious original data"
+        bb_upload(bb_http, bb_bucket, "precious.bin", original)
+        original_sha = hashlib.sha256(original).hexdigest()
+
+        # Attempt overwrite with wrong checksum
+        new_content = b"corrupted overwrite attempt"
+        bad_sha = "0" * 64
+        r = bb_upload(bb_http, bb_bucket, "precious.bin", new_content, sha256sum=bad_sha)
+        assert r.status_code == 400
+
+        # The original file must still be downloadable with its original content
+        dl = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download", params={"filename": "precious.bin"}
+        )
+        assert dl.status_code == 200
+        assert dl.content == original
+        assert dl.headers.get("X-Checksum-SHA256") == original_sha
+
+        # The file listing must still show the original metadata
+        listed = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json()
+        match = [e for e in listed if e["name"] == "precious.bin"]
+        assert len(match) == 1
+        assert match[0]["size"] == len(original)
+        assert match[0]["sha256sum"] == original_sha
+
+
 class TestUploadNegative:
     def test_wrong_checksum_rejected(self, bb_upload, bb_http: httpx.Client, bb_bucket: str):
         # Given content and a checksum that does not match it
