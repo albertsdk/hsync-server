@@ -302,7 +302,7 @@ async def delta_apply(
 
             log.info(
                 f"Delta apply completed for {path} ({new_size} bytes) "
-                f"in {format_duration(time.time() - start_time, subsecond=True)}"
+                f"{format_duration(time.time() - start_time, subsecond=True)}"
             )
             return JSONResponse(
                 status_code=200,

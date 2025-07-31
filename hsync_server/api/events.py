@@ -155,7 +155,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         # never sends the auth frame cannot hold the connection open indefinitely.
         try:
             auth_data = await asyncio.wait_for(
-                websocket.receive_text(max_size=WS_MAX_MESSAGE_BYTES), timeout=get_ws_auth_timeout()
+                websocket.receive_text(), timeout=get_ws_auth_timeout()
             )
             auth_message = loads(auth_data)
 
@@ -260,7 +260,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                 try:
                     # Use wait_for to implement timeout
                     data = await asyncio.wait_for(
-                        websocket.receive_text(max_size=WS_MAX_MESSAGE_BYTES),
+                        websocket.receive_text(),
                         timeout=heartbeat_interval + heartbeat_timeout,
                     )
                 except TimeoutError:
