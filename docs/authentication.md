@@ -18,7 +18,7 @@ attribution and echo suppression.
 Client                              HSYNC Server
   │                                       │
   │── WSS connect ───────────────────────▶│
-  │     /api/v1/events/{cid}              │
+  │     /api/v1/buckets/{bucket}/events/{cid} │
   │                                       │
   │── {"type": "auth",                    │
   │    "token": "<HSYNC_API_KEY>",        │
@@ -52,7 +52,7 @@ Client                              HSYNC Server
 ## Key points
 
 1. **WSS only**: there is no plain-WS fallback. The transport is encrypted end-to-end.
-2. **CID in the URL path**: the client's CID is part of the WebSocket URL (`/api/v1/events/{cid}`). The server extracts it from the path and validates it with `is_valid_cid()` before accepting the connection.
+2. **CID in the URL path**: the client's CID is part of the WebSocket URL (`/api/v1/buckets/{bucket}/events/{cid}`). The server extracts it from the path and validates it with `is_valid_cid()` before accepting the connection.
 3. **API key as bearer token**: the `token` field carries the server's API key (`HSYNC_API_KEY`). No key → no connection.
 4. **Protocol version enforcement**: a `protocol_version` mismatch between client and server is a hard disconnect. There is no fallback to an older protocol.
 5. **Capability negotiation**: the server advertises its capabilities (`compression`, `delta`) in the auth reply. The client must respect the server's advertised capabilities.
