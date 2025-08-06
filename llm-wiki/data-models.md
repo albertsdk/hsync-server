@@ -1,4 +1,4 @@
-# hsync-server — Data & state
+# HSYNC Server — Data & state
 
 The server owns **no** sync data types — those come from `hsync_common.models`
 (see [common data-models](../../hsync-common/llm-wiki/data-models.md)). It only adds

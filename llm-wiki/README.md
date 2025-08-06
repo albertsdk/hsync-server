@@ -1,4 +1,4 @@
-# hsync-server — LLM Wiki (Index)
+# HSYNC Server — LLM Wiki (Index)
 
 Agent-optimized knowledge base for `hsync-server`, the FastAPI process that stores
 bucket data, serves the REST file API, and relays real-time sync events over

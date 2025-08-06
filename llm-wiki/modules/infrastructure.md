@@ -1,4 +1,4 @@
-# hsync-server — Infrastructure & cross-cutting
+# HSYNC Server — Infrastructure & cross-cutting
 
 Config, security, rate limiting, hashing, compression, errors, logging. Most leaf
 helpers are thin wrappers over `hsync_common`; check there first (DRY, `CLAUDE.md`).
