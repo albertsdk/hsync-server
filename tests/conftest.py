@@ -209,6 +209,7 @@ async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGener
 
 # A fixed, strong API key for every black-box run (>= 16 chars per Settings).
 BB_API_KEY = "test-bb-api-key-0123456789abcdef"
+BB_CLIENT_CID = "TestClientX1234567890"  # exactly 21 alphanumeric chars per CID_PATTERN
 
 
 def _free_port() -> int:
@@ -368,7 +369,7 @@ def bb_upload():
         offset: int = 0,
         size: int = 0,
         compressed: str = "false",
-        cid: str = "bbclient0001bbcltBB1",
+        cid: str = BB_CLIENT_CID,
     ) -> httpx.Response:
         return client.post(
             f"/api/v1/buckets/{bucket}/files",
