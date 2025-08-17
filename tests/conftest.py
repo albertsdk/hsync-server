@@ -368,7 +368,7 @@ def bb_upload():
         offset: int = 0,
         size: int = 0,
         compressed: str = "false",
-        cid: str = "bbclient0001",
+        cid: str = "bbclient0001bbcltBB1",
     ) -> httpx.Response:
         return client.post(
             f"/api/v1/buckets/{bucket}/files",

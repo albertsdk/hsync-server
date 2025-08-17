@@ -462,7 +462,7 @@ class TestConcurrency:
         sigs = [BlockSignature(**s) for s in sig_body["signatures"]]
         ops1, literals1 = find_matches(bytes(new1), sigs, sig_body["block_size"])
         metadata1 = {
-            "cid": "client1",
+            "cid": "TestClientXY1k1234567",
             "base_sha256": sig_body["sha256"],
             "new_sha256": sha256(bytes(new1)).hexdigest(),
             "new_size": len(new1),

@@ -18,7 +18,7 @@ import pytest
 
 pytestmark = pytest.mark.usefixtures("bb_http")
 
-_CID = "bbclient0001"
+_CID = "bbclient0001bbcltBB1"
 
 
 def _delete(client: httpx.Client, bucket: str, filename: str, cid: str = _CID) -> httpx.Response:

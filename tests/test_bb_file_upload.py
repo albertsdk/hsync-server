@@ -54,7 +54,7 @@ class TestUploadHappy:
         bb_upload(bb_http, bb_bucket, "rt.bin", content)
         dl = bb_http.get(
             f"/api/v1/buckets/{bb_bucket}/files/download",
-            params={"filename": "rt.bin", "cid": "bbclient0001"},
+            params={"filename": "rt.bin", "cid": "bbclient0001bbcltBB1"},
         )
 
         # Then the downloaded bytes match the original and a checksum header is set
@@ -232,7 +232,7 @@ class TestUploadNegative:
         # When uploading
         r = bb_http.post(
             f"/api/v1/buckets/{bb_bucket}/files",
-            data={"cid": "bbclient0001", "path": "", "permissions": "644"},
+            data={"cid": "bbclient0001bbcltBB1", "path": "", "permissions": "644"},
             files={"file": ("nobytes.bin", b"x", "application/octet-stream")},
         )
 
@@ -295,7 +295,7 @@ class TestUploadNegative:
                 r = c.post(
                     f"/api/v1/buckets/{bucket}/files",
                     data={
-                        "cid": "bbclient0001",
+                        "cid": "bbclient0001bbcltBB1",
                         "path": "",
                         "sha256sum": _sha(b"x" * 100),
                         "permissions": "644",
@@ -308,3 +308,43 @@ class TestUploadNegative:
 
                 # Then the upload is rejected before any data is accepted
                 assert r.status_code == 400
+
+    def test_upload_too_short_cid_rejected(self, bb_http: httpx.Client, bb_bucket: str):
+        # Given a CID with only 12 characters (valid under old {1,64}, invalid under {21})
+        # When uploading with that CID
+        r = bb_http.post(
+            f"/api/v1/buckets/{bb_bucket}/files",
+            data={
+                "cid": "tooshort12345",
+                "path": "",
+                "sha256sum": _sha(b"x"),
+                "permissions": "644",
+                "offset": "0",
+                "size": "0",
+                "compressed": "false",
+            },
+            files={"file": ("x.bin", b"x", "application/octet-stream")},
+        )
+
+        # Then the upload is rejected with a validation error
+        assert r.status_code == 400
+
+    def test_upload_too_long_cid_rejected(self, bb_http: httpx.Client, bb_bucket: str):
+        # Given a CID with 64 characters (valid under old {1,64}, invalid under {21})
+        # When uploading with that CID
+        r = bb_http.post(
+            f"/api/v1/buckets/{bb_bucket}/files",
+            data={
+                "cid": "A" * 64,
+                "path": "",
+                "sha256sum": _sha(b"x"),
+                "permissions": "644",
+                "offset": "0",
+                "size": "0",
+                "compressed": "false",
+            },
+            files={"file": ("x.bin", b"x", "application/octet-stream")},
+        )
+
+        # Then the upload is rejected with a validation error
+        assert r.status_code == 400

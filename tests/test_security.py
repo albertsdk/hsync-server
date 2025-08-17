@@ -32,7 +32,7 @@ def _sha(content: bytes) -> str:
 
 
 def _upload_data(content: bytes, **extra) -> dict:
-    data = {"cid": "TestClient1", "path": "", "permissions": "644"}
+    data = {"cid": "TestClientX1234567890", "path": "", "permissions": "644"}
     data["sha256sum"] = _sha(content)
     data.update(extra)
     return data
@@ -77,7 +77,7 @@ class TestCrossBucketConfinement:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/A/files",
-            data={"cid": "TestClient1", "filename": "../B/keep.txt"},
+            data={"cid": "TestClientX1234567890", "filename": "../B/keep.txt"},
         )
         assert response.status_code == 400
         assert os.path.exists(victim)
@@ -145,7 +145,7 @@ class TestUploadIntegrity:
         response = await client.post(
             "/api/v1/buckets/intbucket/files",
             files={"file": ("f.txt", io.BytesIO(b"data"), "text/plain")},
-            data={"cid": "TestClient1", "path": "", "permissions": "644"},
+            data={"cid": "TestClientX1234567890", "path": "", "permissions": "644"},
         )
         assert response.status_code == 422  # required form field (FastAPI)
         assert not os.path.exists(os.path.join(temp_buckets_dir, "intbucket", "f.txt"))
@@ -158,7 +158,12 @@ class TestUploadIntegrity:
         response = await client.post(
             "/api/v1/buckets/intbucket2/files",
             files={"file": ("f.txt", io.BytesIO(b"data"), "text/plain")},
-            data={"cid": "TestClient1", "path": "", "permissions": "644", "sha256sum": ""},
+            data={
+                "cid": "TestClientX1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": "",
+            },
         )
         assert response.status_code in (400, 422)
         assert not os.path.exists(os.path.join(temp_buckets_dir, "intbucket2", "f.txt"))
@@ -233,7 +238,7 @@ class TestDecompressionBomb:
             "/api/v1/buckets/bombbucket/files",
             files={"file": ("bomb.txt", io.BytesIO(compressed), "application/octet-stream")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "",
                 "permissions": "644",
                 "compressed": "true",
@@ -259,7 +264,7 @@ class TestDecompressionBomb:
             "/api/v1/buckets/bombbucket2/files",
             files={"file": ("f.txt", io.BytesIO(compressed), "application/octet-stream")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "",
                 "permissions": "644",
                 "compressed": "true",

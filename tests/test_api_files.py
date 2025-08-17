@@ -26,7 +26,7 @@ class TestFileUpload:
             "/api/v1/buckets/uploadbucket/files",
             files={"file": ("test.txt", io.BytesIO(file_content), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(file_content).hexdigest(),
@@ -53,7 +53,7 @@ class TestFileUpload:
             "/api/v1/buckets/uploadbucket2/files",
             files={"file": ("nested.txt", io.BytesIO(b"nested"), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "subdir/deep",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(b"nested").hexdigest(),
@@ -74,7 +74,7 @@ class TestFileUpload:
             "/api/v1/buckets/newbucket/files",
             files={"file": ("test.txt", io.BytesIO(b"test"), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "subdir",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(b"test").hexdigest(),
@@ -198,7 +198,7 @@ class TestFileDelete:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/deletebucket/files",
-            data={"cid": "TestClient1", "filename": "todelete.txt"},
+            data={"cid": "TestClientX1234567890", "filename": "todelete.txt"},
         )
 
         assert response.status_code == 200
@@ -213,7 +213,7 @@ class TestFileDelete:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/deletebucket2/files",
-            data={"cid": "TestClient1", "filename": "missing.txt"},
+            data={"cid": "TestClientX1234567890", "filename": "missing.txt"},
         )
 
         assert response.status_code == 404
@@ -229,7 +229,7 @@ class TestFileUploadValidation:
             "/api/v1/buckets/invalid..bucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(b"content").hexdigest(),
@@ -248,7 +248,7 @@ class TestFileUploadValidation:
             "/api/v1/buckets/securitybucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "../../../tmp",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(b"content").hexdigest(),
@@ -267,7 +267,7 @@ class TestFileUploadValidation:
             "/api/v1/buckets/permbucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "",
                 "permissions": "invalid",
                 "sha256sum": hashlib.sha256(b"content").hexdigest(),
@@ -292,7 +292,7 @@ class TestFileUploadValidation:
             "/api/v1/buckets/dupbucket/files",
             files={"file": ("dup.txt", io.BytesIO(file_content), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "",
                 "permissions": "644",
                 "sha256sum": sha256sum,
@@ -305,7 +305,7 @@ class TestFileUploadValidation:
             "/api/v1/buckets/dupbucket/files",
             files={"file": ("dup.txt", io.BytesIO(file_content), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "",
                 "permissions": "644",
                 "sha256sum": sha256sum,
@@ -336,7 +336,7 @@ class TestFileUploadValidation:
             "/api/v1/buckets/dupbucket2/files",
             files={"file": ("dup.txt", io.BytesIO(file_content), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "sub",
                 "permissions": "644",
                 "sha256sum": sha256sum,
@@ -348,7 +348,7 @@ class TestFileUploadValidation:
             "/api/v1/buckets/dupbucket2/files",
             files={"file": ("dup.txt", io.BytesIO(file_content), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "sub",
                 "permissions": "644",
                 "sha256sum": sha256sum,
@@ -369,7 +369,7 @@ class TestFileUploadValidation:
             "/api/v1/buckets/checksumbucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "",
                 "permissions": "644",
                 # Well-formed but wrong digest (a malformed one is rejected
@@ -400,7 +400,7 @@ class TestFileSizeLimit:
                 "/api/v1/buckets/sizelimitbucket/files",
                 files={"file": ("large.txt", io.BytesIO(large_content), "text/plain")},
                 data={
-                    "cid": "TestClient1",
+                    "cid": "TestClientX1234567890",
                     "path": "",
                     "permissions": "644",
                     "sha256sum": hashlib.sha256(large_content).hexdigest(),
@@ -425,7 +425,7 @@ class TestFileSizeLimit:
                 "/api/v1/buckets/sizelimitbucket2/files",
                 files={"file": ("small.txt", io.BytesIO(small_content), "text/plain")},
                 data={
-                    "cid": "TestClient1",
+                    "cid": "TestClientX1234567890",
                     "path": "",
                     "permissions": "644",
                     "sha256sum": hashlib.sha256(small_content).hexdigest(),
@@ -449,7 +449,7 @@ class TestFileSizeLimit:
                 "/api/v1/buckets/nolimitbucket/files",
                 files={"file": ("file.txt", io.BytesIO(content), "text/plain")},
                 data={
-                    "cid": "TestClient1",
+                    "cid": "TestClientX1234567890",
                     "path": "",
                     "permissions": "644",
                     "sha256sum": hashlib.sha256(content).hexdigest(),
@@ -489,7 +489,7 @@ class TestFileDiskSpace:
                 "/api/v1/buckets/diskbucket/files",
                 files={"file": ("disk.txt", io.BytesIO(content), "text/plain")},
                 data={
-                    "cid": "TestClient1",
+                    "cid": "TestClientX1234567890",
                     "path": "",
                     "permissions": "644",
                     "size": str(len(content)),
@@ -526,7 +526,7 @@ class TestFileDiskSpace:
                 "/api/v1/buckets/diskbucket2/files",
                 files={"file": ("disk.txt", io.BytesIO(content), "text/plain")},
                 data={
-                    "cid": "TestClient1",
+                    "cid": "TestClientX1234567890",
                     "path": "",
                     "permissions": "644",
                     "size": str(len(content)),
@@ -741,7 +741,7 @@ class TestFileDeleteValidation:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/invalid..bucket/files",
-            data={"cid": "TestClient1", "filename": "test.txt"},
+            data={"cid": "TestClientX1234567890", "filename": "test.txt"},
         )
         assert response.status_code == 400
         assert "HSYNC-1001" in response.text
@@ -752,7 +752,7 @@ class TestFileDeleteValidation:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/nonexistentbucket/files",
-            data={"cid": "TestClient1", "filename": "test.txt"},
+            data={"cid": "TestClientX1234567890", "filename": "test.txt"},
         )
         assert response.status_code == 404
         assert "HSYNC-2001" in response.text
@@ -766,7 +766,7 @@ class TestFileDeleteValidation:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/deletebucket3/files",
-            data={"cid": "TestClient1", "filename": "../../../etc/passwd"},
+            data={"cid": "TestClientX1234567890", "filename": "../../../etc/passwd"},
         )
         assert response.status_code == 400
         assert "HSYNC-1002" in response.text
@@ -786,7 +786,7 @@ class TestFileDeleteValidation:
             response = await client.request(
                 "DELETE",
                 "/api/v1/buckets/deletebucket4/files",
-                data={"cid": "TestClient1", "filename": "test.txt"},
+                data={"cid": "TestClientX1234567890", "filename": "test.txt"},
             )
 
         assert response.status_code == 500
@@ -812,7 +812,7 @@ class TestTombstones:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/tombbucket/files",
-            data={"cid": "TestClient1", "filename": "gone.txt"},
+            data={"cid": "TestClientX1234567890", "filename": "gone.txt"},
         )
         assert response.status_code == 200
 
@@ -838,7 +838,7 @@ class TestTombstones:
         await client.request(
             "DELETE",
             "/api/v1/buckets/reusebucket/files",
-            data={"cid": "TestClient1", "filename": "reuse.txt"},
+            data={"cid": "TestClientX1234567890", "filename": "reuse.txt"},
         )
 
         # Tombstone present after deletion
@@ -850,7 +850,7 @@ class TestTombstones:
             "/api/v1/buckets/reusebucket/files",
             files={"file": ("reuse.txt", io.BytesIO(b"new content"), "text/plain")},
             data={
-                "cid": "TestClient1",
+                "cid": "TestClientX1234567890",
                 "path": "",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(b"new content").hexdigest(),
@@ -992,7 +992,7 @@ class TestResumableUpload:
             "/api/v1/buckets/chunkbucket/files",
             files={"file": ("c.txt", io.BytesIO(b"12345"), "text/plain")},
             data={
-                "cid": "c1",
+                "cid": "TestClientXY1k4567890",
                 "path": "",
                 "permissions": "644",
                 "size": "100",
@@ -1017,7 +1017,7 @@ class TestResumableUpload:
             "/api/v1/buckets/resumebucket/files",
             files={"file": ("r.txt", io.BytesIO(b"BBBBB"), "text/plain")},
             data={
-                "cid": "c1",
+                "cid": "TestClientXY1k4567890",
                 "path": "",
                 "permissions": "644",
                 "offset": "5",
@@ -1042,7 +1042,7 @@ class TestResumableUpload:
             "/api/v1/buckets/mismatchbucket/files",
             files={"file": ("m.txt", io.BytesIO(b"BB"), "text/plain")},
             data={
-                "cid": "c1",
+                "cid": "TestClientXY1k4567890",
                 "path": "",
                 "offset": "10",
                 "size": "20",
@@ -1058,7 +1058,7 @@ class TestResumableUpload:
             "/api/v1/buckets/nopartbucket/files",
             files={"file": ("n.txt", io.BytesIO(b"BB"), "text/plain")},
             data={
-                "cid": "c1",
+                "cid": "TestClientXY1k4567890",
                 "path": "",
                 "offset": "5",
                 "size": "20",
