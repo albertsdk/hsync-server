@@ -297,3 +297,54 @@ async def get_tombstones(
         status_code=200,
         content=store.to_payload(),
     )
+
+
+@auth_router.post("/api/v1/buckets/{bucket}/tombstones")
+@limiter.limit(RATE_LIMIT_DEFAULT)
+async def post_tombstones(
+    request: Request,  # Required by rate limiter
+    bucket: str,
+) -> JSONResponse:
+    """
+    Merge deletion markers (tombstones) pushed by a client.
+
+    A client that deleted files while offline pushes its accumulated markers
+    at the start of each sync cycle so the server converges to the union of
+    all known deletions and other peers do not resurrect those files. The
+    merge is last-writer-wins per marker; entries are validated and the store
+    size is capped (see ``TombstoneStore.merge``).
+
+    Args:
+        request: The incoming FastAPI request; the body is the JSON tombstone
+            payload (mapping of hashed path to ``{"ts": ..., "sha256": ...}``).
+        bucket: Name of the bucket to merge markers into.
+
+    Returns:
+        JSON response with the number of markers accepted/changed.
+
+    Raises:
+        InvalidBucketNameError: If bucket name is invalid.
+        BucketNotFoundError: If bucket does not exist.
+        InvalidPathError: If the body is not a JSON object.
+    """
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
+
+    bucket_dir = f"{get_buckets_path()}/{bucket}"
+    if not Path(bucket_dir).exists():
+        raise BucketNotFoundError(details={"bucket": bucket})
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise InvalidPathError(details={"reason": "invalid JSON body"})
+    if not isinstance(payload, dict):
+        raise InvalidPathError(details={"reason": "tombstone payload must be a JSON object"})
+
+    store = get_tombstone_store(bucket)
+    changed = store.merge(payload)
+    if changed:
+        store.prune()
+        store.save()
+
+    return JSONResponse(status_code=200, content={"merged": changed})

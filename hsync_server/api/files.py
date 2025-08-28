@@ -27,6 +27,7 @@ from hsync_server.api.files.list import (  # noqa: F401
     get_files,
     get_tombstones,
     get_upload_status,
+    post_tombstones,
 )
 
 # Re-export from submodules for backward compatibility
