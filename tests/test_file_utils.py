@@ -146,19 +146,24 @@ class TestUpdateFileTimestamp:
 
         file_utils.update_file_timestamp(str(test_file), mtime="1609459200")
 
-        # Check that file was modified (atime and mtime should be set)
+        # Check that file was modified to the expected timestamp
         stat = test_file.stat()
-        assert stat.st_mtime > 0
+        assert abs(stat.st_mtime - 1609459200) < 1
 
     def test_update_mtime_iso_format(self, tmp_path):
-        """Update mtime with ISO format timestamp."""
+        """Update mtime with ISO format timestamp (interpreted in local time)."""
+        from datetime import datetime
+
         test_file = tmp_path / "test.txt"
         test_file.write_text("content")
 
         file_utils.update_file_timestamp(str(test_file), mtime="2021-01-01T00:00:00")
 
         stat = test_file.stat()
-        assert stat.st_mtime > 0
+        # ISO timestamps without timezone are interpreted as local time,
+        # matching the implementation's datetime.fromisoformat() behaviour.
+        expected = datetime.fromisoformat("2021-01-01T00:00:00").timestamp()
+        assert abs(stat.st_mtime - expected) < 1
 
     def test_ctime_not_written_into_atime(self, tmp_path):
         """ctime is accepted but never applied; atime mirrors mtime."""

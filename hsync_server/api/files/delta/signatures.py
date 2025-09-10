@@ -118,8 +118,8 @@ class DeltaSignaturesRequest(BaseModel):
 
 
 def _delta_disabled() -> JSONResponse:
-    """404 response when the feature is off — same as a pre-delta peer."""
-    return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    """404 response when the feature is off."""
+    return JSONResponse(status_code=404, content={"detail": "delta_disabled"})
 
 
 @auth_router.get("/api/v1/buckets/{bucket}/files/delta/signatures")

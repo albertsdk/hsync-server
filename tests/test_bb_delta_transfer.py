@@ -113,4 +113,4 @@ class TestDeltaNegative:
                 # Then the endpoint reports not found with the delta-disabled
                 # detail (not a missing-file 404)
                 assert r.status_code == 404
-                assert r.json().get("detail") == "Not Found"
+                assert r.json().get("detail") == "delta_disabled"
