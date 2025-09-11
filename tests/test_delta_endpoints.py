@@ -262,7 +262,7 @@ def _apply_multipart(
     sigs = compute_signatures(str(base_path), block_size)
     ops, literals = find_matches(new, sigs, block_size)
     metadata = {
-        "cid": "testclient",
+        "cid": "TestClientABCDEFGHIJK",
         "base_sha256": sha256(base).hexdigest(),
         "new_sha256": sha256(new).hexdigest(),
         "new_size": len(new),
@@ -382,7 +382,7 @@ class TestRoundTrips:
         sigs = [BlockSignature(**s) for s in sig_body["signatures"]]
         ops, literals = find_matches(bytes(new), sigs, sig_body["block_size"])
         metadata = {
-            "cid": "testclient",
+            "cid": "TestClientABCDEFGHIJK",
             "base_sha256": sig_body["sha256"],
             "new_sha256": sha256(bytes(new)).hexdigest(),
             "new_size": len(new),
@@ -475,7 +475,7 @@ class TestConcurrency:
         new2[50:110] = b"B" * 60
         ops2, literals2 = find_matches(bytes(new2), sigs, sig_body["block_size"])
         metadata2 = {
-            "cid": "client2",
+            "cid": "TestClientBDFHJKMNPR2",
             "base_sha256": sig_body["sha256"],
             "new_sha256": sha256(bytes(new2)).hexdigest(),
             "new_size": len(new2),

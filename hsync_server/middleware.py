@@ -14,9 +14,9 @@ This module provides middleware for request processing, including:
 
 import uuid
 
+from fastapi import Request
 from loguru import logger as log
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from .constants import (
@@ -38,25 +38,24 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     3. Sets the request ID in the context for logging
     4. Adds the X-Request-ID header to the response
 
+    For unhandled exceptions (which bypass ``BaseHTTPMiddleware.dispatch``
+    because of Starlette's ``ServerErrorMiddleware``), the companion
+    ``register_unhandled_exception_handler`` function registers a global
+    exception handler that still injects the ``X-Request-ID`` header.
+
     Usage:
         app.add_middleware(RequestIdMiddleware)
     """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        """
-        Process the request, ensuring a request ID is set for tracing.
-
-        Args:
-            request: The incoming HTTP request.
-            call_next: The next middleware or route handler.
-
-        Returns:
-            The HTTP response with X-Request-ID header.
-        """
         # Get existing request ID from header or generate a new one
         request_id = request.headers.get("X-Request-ID")
         if not request_id:
             request_id = str(uuid.uuid4())
+
+        # Store on request state so exception handlers can retrieve it
+        # even after the context-local is cleared by this finally block.
+        request.state.request_id = request_id
 
         # Set request ID in context for logging
         set_request_id(request_id)

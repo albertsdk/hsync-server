@@ -17,12 +17,15 @@ class TestCompression:
     """Tests for compression module functions."""
 
     def test_compress_data(self):
-        """Test data compression."""
+        """Test data compression round-trip."""
         # Use larger data to benefit from compression
         original_data = b"Hello, World! " * 100
         compressed = compression.compress_data(original_data)
         assert compressed != original_data
         assert len(compressed) < len(original_data)
+        # Verify round-trip: decompress must restore original data
+        decompressed = compression.decompress_data(compressed)
+        assert decompressed == original_data
 
     def test_decompress_data(self):
         """Test data decompression."""
@@ -58,7 +61,7 @@ class TestCompression:
             list(compression.decompress_stream(io.BytesIO(compressed), max_output_size=100))
 
     def test_compress_file(self, tmp_path):
-        """Test file compression."""
+        """Test file compression round-trip."""
         test_file = tmp_path / "test.txt"
         # Use larger content to benefit from compression
         test_content = b"Test content for compression " * 50
@@ -67,6 +70,9 @@ class TestCompression:
         compressed = compression.compress_file(str(test_file))
         assert compressed != test_content
         assert len(compressed) < len(test_content)
+        # Verify round-trip: decompress must restore original content
+        decompressed = compression.decompress_data(compressed)
+        assert decompressed == test_content
 
     def test_async_compress_file(self, tmp_path):
         """Test async streaming file compression produces single decompressible frame."""

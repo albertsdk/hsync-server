@@ -205,6 +205,12 @@ async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGener
 # live server runs as a **subprocess** with its own process state. No internal
 # logic is mocked: only the filesystem (a temp buckets dir) and the API key are
 # test fixtures. See ``.kilo/plans/1786000181361-blackbox-test-suite.md``.
+#
+# CI strategy note (deliberately divergent from hsync-client): the client
+# excludes its bb suite from CI (--ignore-glob='*test_bb*') because its
+# watcher/inotify timing races make it flaky; every test in THIS suite drives
+# a deterministic request/response surface, so it runs in CI. Do not
+# "harmonize" the two without understanding that difference.
 # =============================================================================
 
 # A fixed, strong API key for every black-box run (>= 16 chars per Settings).
@@ -222,13 +228,40 @@ def _free_port() -> int:
         sock.close()
 
 
+def _log_tail(log_path: str, limit: int = 8192) -> str:
+    """Return the last ``limit`` bytes of the server log (for failure reports)."""
+    try:
+        with open(log_path, "rb") as f:
+            f.seek(0, 2)  # SEEK_END
+            size = f.tell()
+            f.seek(max(0, size - limit))
+            return f.read().decode("utf-8", errors="replace")
+    except OSError:
+        return "<server log unavailable>"
+
+
+def _discard_file(path: str) -> None:
+    """Best-effort removal of the server log file."""
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def _start_live_server(
     env_overrides: dict[str, str] | None = None,
-) -> tuple[subprocess.Popen, int, str]:
+) -> tuple[subprocess.Popen, int, str, str]:
     """Start the real hsync-server on an ephemeral loopback port.
 
-    Returns (process, port, buckets_dir). The caller owns termination and
-    cleanup. Raises ``RuntimeError`` if the server does not become healthy.
+    Returns ``(process, port, buckets_dir, log_path)``. The caller owns
+    termination and cleanup (of both the buckets dir and the log file).
+    Raises ``RuntimeError`` if the server does not become healthy.
+
+    The server log goes to a temp file, never a pipe: a ``PIPE`` that nobody
+    drains after startup would fill its ~64 KB kernel buffer over a session
+    (every intentionally-triggered 4xx logs a warning line, every 5xx a full
+    traceback) and then *block the subprocess on write*, hanging the whole
+    suite with no per-test timeout to catch it.
     """
     buckets_dir = tempfile.mkdtemp(prefix="hsync_bb_buckets_")
     port = _free_port()
@@ -253,13 +286,19 @@ def _start_live_server(
     if env_overrides:
         env.update(env_overrides)
 
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "hsync_server", "--port", str(port), "--log-level", "warning"],
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+    log_fd, log_path = tempfile.mkstemp(prefix="hsync_bb_server_", suffix=".log")
+    log_file = os.fdopen(log_fd, "wb")
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "hsync_server", "--port", str(port), "--log-level", "warning"],
+            env=env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+    finally:
+        # The subprocess holds its own duplicate of the fd; the parent's copy
+        # must be closed so the log can be read and removed later.
+        log_file.close()
 
     import httpx
 
@@ -268,19 +307,24 @@ def _start_live_server(
     last_exc: Exception | None = None
     while time.time() < deadline:
         if proc.poll() is not None:
-            out = proc.stdout.read() if proc.stdout else ""
+            tail = _log_tail(log_path)
             shutil.rmtree(buckets_dir, ignore_errors=True)
-            raise RuntimeError(f"hsync-server exited early (code {proc.returncode}):\n{out}")
+            _discard_file(log_path)
+            raise RuntimeError(f"hsync-server exited early (code {proc.returncode}):\n{tail}")
         try:
             r = httpx.get(f"{base_url}/health", timeout=1.0)
             if r.status_code == 200:
-                return proc, port, buckets_dir
+                return proc, port, buckets_dir, log_path
         except Exception as exc:  # noqa: BLE001 - startup not ready yet
             last_exc = exc
         time.sleep(0.15)
     _stop_proc(proc)
+    tail = _log_tail(log_path)
     shutil.rmtree(buckets_dir, ignore_errors=True)
-    raise RuntimeError(f"hsync-server did not become healthy on port {port}: {last_exc}")
+    _discard_file(log_path)
+    raise RuntimeError(
+        f"hsync-server did not become healthy on port {port}: {last_exc}\nserver log tail:\n{tail}"
+    )
 
 
 def _stop_proc(proc: subprocess.Popen) -> None:
@@ -296,12 +340,13 @@ def _stop_proc(proc: subprocess.Popen) -> None:
 @pytest.fixture(scope="session")
 def live_server() -> Generator[tuple[str, str]]:
     """Session-scoped real loopback server: yields (base_url, api_key)."""
-    proc, port, buckets_dir = _start_live_server()
+    proc, port, buckets_dir, log_path = _start_live_server()
     try:
         yield f"http://127.0.0.1:{port}", BB_API_KEY
     finally:
         _stop_proc(proc)
         shutil.rmtree(buckets_dir, ignore_errors=True)
+        _discard_file(log_path)
 
 
 @pytest.fixture
@@ -316,12 +361,13 @@ def start_live_server():
 
     @contextlib.contextmanager
     def _start(env_overrides: dict[str, str] | None = None):
-        proc, port, buckets_dir = _start_live_server(env_overrides)
+        proc, port, buckets_dir, log_path = _start_live_server(env_overrides)
         try:
             yield f"http://127.0.0.1:{port}", BB_API_KEY
         finally:
             _stop_proc(proc)
             shutil.rmtree(buckets_dir, ignore_errors=True)
+            _discard_file(log_path)
 
     return _start
 

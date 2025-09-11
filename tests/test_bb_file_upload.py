@@ -54,7 +54,7 @@ class TestUploadHappy:
         bb_upload(bb_http, bb_bucket, "rt.bin", content)
         dl = bb_http.get(
             f"/api/v1/buckets/{bb_bucket}/files/download",
-            params={"filename": "rt.bin", "cid": "bbclient0001bbcltBB1"},
+            params={"filename": "rt.bin", "cid": "bbclient0001bbcltBB10"},
         )
 
         # Then the downloaded bytes match the original and a checksum header is set
@@ -232,7 +232,7 @@ class TestUploadNegative:
         # When uploading
         r = bb_http.post(
             f"/api/v1/buckets/{bb_bucket}/files",
-            data={"cid": "bbclient0001bbcltBB1", "path": "", "permissions": "644"},
+            data={"cid": "bbclient0001bbcltBB10", "path": "", "permissions": "644"},
             files={"file": ("nobytes.bin", b"x", "application/octet-stream")},
         )
 
@@ -295,7 +295,7 @@ class TestUploadNegative:
                 r = c.post(
                     f"/api/v1/buckets/{bucket}/files",
                     data={
-                        "cid": "bbclient0001bbcltBB1",
+                        "cid": "bbclient0001bbcltBB10",
                         "path": "",
                         "sha256sum": _sha(b"x" * 100),
                         "permissions": "644",

@@ -17,7 +17,7 @@ import pytest
 
 pytestmark = pytest.mark.usefixtures("bb_http")
 
-_CID = "bbclient0001bbcltBB1"
+_CID = "bbclient0001bbcltBB10"
 
 
 class TestTombstones:

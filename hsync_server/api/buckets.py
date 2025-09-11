@@ -101,8 +101,12 @@ async def create_bucket(bucket: str) -> JSONResponse:
 
     bucket_directory = f"{get_buckets_path()}/{bucket}"
 
-    # Check if bucket already exists
-    if Path(bucket_directory).exists():
+    # Use atomic mkdir to avoid TOCTOU race: exist_ok=False ensures that
+    # two concurrent requests cannot both observe the directory missing and
+    # both return 201.
+    try:
+        Path(bucket_directory).mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
         log.warning(f"Bucket already exists: {bucket_directory}")
         return JSONResponse(
             status_code=409,
@@ -112,7 +116,6 @@ async def create_bucket(bucket: str) -> JSONResponse:
             },
         )
 
-    Path(bucket_directory).mkdir(parents=True, exist_ok=True)
     log.info(f'Bucket: "{bucket}" created')
 
     return JSONResponse(

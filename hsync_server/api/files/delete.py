@@ -88,17 +88,21 @@ async def delete_file(
     try:
         from os import remove
 
-        # Broadcast "deleted" event to other clients before deletion
+        # Collect file metadata before deletion (needed for the event and tombstone)
         src = LocalFile().get(file)
         local_bucket = f"{get_buckets_path()}/{bucket}"
-        if src:
-            manager = bucket_manager.get_manager(bucket)
-            await manager.send_message(Event(cid, local_bucket, bucket, EventName.deleted, src))
 
-        # Remove the file
+        # Remove the file first, then broadcast the event. This ensures that
+        # a deletion failure never leaves peers believing the file is gone
+        # while it is still on disk.
         remove(file)
         invalidate_sha256_cache(file)
         log.info(f'{ActionLabel.DELETE} File: "{file}" deleted successfully (CID: {cid})')
+
+        # Broadcast "deleted" event to other clients after successful removal
+        if src:
+            manager = bucket_manager.get_manager(bucket)
+            await manager.send_message(Event(cid, local_bucket, bucket, EventName.deleted, src))
 
         # Record a tombstone so peers offline at deletion time do not
         # resurrect the file on their next full sync. Sentinel files are
@@ -127,11 +131,13 @@ async def delete_file(
             # Regular file removed — preserve directory with sentinel
             ensure_sentinel_in_dir(parent)
 
+        # Return only the relative path to avoid leaking server-side
+        # filesystem layout to the caller.
         return JSONResponse(
             status_code=200,
             content={
                 "info": "File deleted successfully",
-                "file": file,
+                "file": filename,
             },
         )
     except OSError as e:

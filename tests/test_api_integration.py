@@ -13,20 +13,19 @@ class TestHealthEndpoint:
 
     @pytest.mark.asyncio
     async def test_health_check(self, client_no_auth: AsyncClient):
-        """Health endpoint returns OK status."""
+        """Health endpoint returns OK status with empty body."""
         response = await client_no_auth.get("/health")
         assert response.status_code == 200
-        # Health endpoint returns empty string (may be JSON encoded as "")
-        assert response.text in ["", '""']
+        # Health endpoint returns an empty body (may be JSON-encoded as '""')
+        assert response.content in (b"", b'""')
 
     @pytest.mark.asyncio
     async def test_health_check_no_auth_required(self, client_no_auth: AsyncClient):
-        """Health endpoint does not require authentication."""
+        """Health endpoint does not require authentication (explicit test)."""
         response = await client_no_auth.get("/health")
-        # Should not return 401 or 403
         assert response.status_code == 200
-        # Health endpoint returns empty body
-        assert response.text in ["", '""']
+        # Double-check: must not receive an auth challenge
+        assert response.status_code not in (401, 403)
 
     @pytest.mark.asyncio
     async def test_health_check_content_type(self, client_no_auth: AsyncClient):

@@ -28,6 +28,17 @@ def _ws_base(live_server: tuple[str, str]) -> str:
     return base.replace("http://", "ws://")
 
 
+def _cid(tag: str) -> str:
+    """Build a wire-valid cid (exactly 21 alphanumeric chars) from a short tag.
+
+    The server rejects any other shape at accept time (``is_valid_cid``), so
+    short readable tags like "subA" would be refused with 4000 before any
+    token/protocol check ever runs.
+    """
+    base = f"bb{tag}"
+    return base + "0" * (21 - len(base))
+
+
 async def _open(
     ws_base: str,
     bucket: str,
@@ -80,7 +91,7 @@ class TestWsHandshake:
         ws_base, api_key = _ws_base(live_server), live_server[1]
 
         # When authenticating over WebSocket
-        ws, reply = await _connect_auth(ws_base, bb_bucket, "subA", api_key)
+        ws, reply = await _connect_auth(ws_base, bb_bucket, _cid("subA"), api_key)
 
         # Then the server replies with an auth-ok frame advertising protocol + caps
         try:
@@ -103,16 +114,17 @@ class TestWsRelay:
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=15.0,
         )
-        sub_a, _ = await _connect_auth(ws_base, bb_bucket, "subA", api_key)
-        sub_b, _ = await _connect_auth(ws_base, bb_bucket, "subB", api_key)
+        cid_a, cid_b = _cid("subA"), _cid("subB")
+        sub_a, _ = await _connect_auth(ws_base, bb_bucket, cid_a, api_key)
+        sub_b, _ = await _connect_auth(ws_base, bb_bucket, cid_b, api_key)
         try:
-            # When subscriber A uploads a file (REST cid=subA matches A's WS cid)
-            bb_upload(bb_http, bb_bucket, "relay.bin", b"relayed", cid="subA")
+            # When subscriber A uploads a file (REST cid=cid_a matches A's WS cid)
+            bb_upload(bb_http, bb_bucket, "relay.bin", b"relayed", cid=cid_a)
 
             # Then subscriber B receives the added event originated by A
             msg = json.loads(await asyncio.wait_for(sub_b.recv(), timeout=5))
             assert msg["name"] == "added"
-            assert msg["cid"] == "subA"
+            assert msg["cid"] == cid_a
             assert msg["src"]["name"] == "relay.bin"
 
             # And subscriber A does NOT receive its own event (echo suppression)
@@ -128,10 +140,10 @@ class TestWsRelay:
     ):
         # Given an already-connected cid
         ws_base, api_key = _ws_base(live_server), live_server[1]
-        first, _ = await _connect_auth(ws_base, bb_bucket, "dup", api_key)
+        first, _ = await _connect_auth(ws_base, bb_bucket, _cid("dup"), api_key)
         try:
             # When a second connection reuses the same cid
-            second, _ = await _connect_auth(ws_base, bb_bucket, "dup", api_key)
+            second, _ = await _connect_auth(ws_base, bb_bucket, _cid("dup"), api_key)
             try:
                 # Then the first connection is closed by the server
                 with pytest.raises(ConnectionClosed):
@@ -153,22 +165,23 @@ class TestWsRelay:
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=15.0,
         )
+        cid_a = _cid("fanA")
         try:
             # Three subscribers: A (uploader), B (stays), C (leaves early)
-            sub_a, _ = await _connect_auth(ws_base, bb_bucket, "fanA", api_key)
-            sub_b, _ = await _connect_auth(ws_base, bb_bucket, "fanB", api_key)
-            sub_c, _ = await _connect_auth(ws_base, bb_bucket, "fanC", api_key)
+            sub_a, _ = await _connect_auth(ws_base, bb_bucket, cid_a, api_key)
+            sub_b, _ = await _connect_auth(ws_base, bb_bucket, _cid("fanB"), api_key)
+            sub_c, _ = await _connect_auth(ws_base, bb_bucket, _cid("fanC"), api_key)
 
             # Subscriber C disconnects cleanly before the event is sent
             await sub_c.close()
 
             # When subscriber A uploads a file
-            bb_upload(bb_http, bb_bucket, "fanout.bin", b"fan-out", cid="fanA")
+            bb_upload(bb_http, bb_bucket, "fanout.bin", b"fan-out", cid=cid_a)
 
             # Then subscriber B still receives the broadcast
             msg = json.loads(await asyncio.wait_for(sub_b.recv(), timeout=5))
             assert msg["name"] == "added"
-            assert msg["cid"] == "fanA"
+            assert msg["cid"] == cid_a
             assert msg["src"]["name"] == "fanout.bin"
 
             # And subscriber A is not echoed
@@ -182,15 +195,18 @@ class TestWsRelay:
 
 class TestWsNegative:
     async def test_bad_token_closes_connection(self, live_server: tuple[str, str], bb_bucket: str):
-        # Given a wrong API key
+        # Given a wrong API key (and a *valid* cid, so the rejection must come
+        # from the token gate, not the cid gate)
         ws_base, _ = _ws_base(live_server), live_server[1]
 
         # When authenticating with it
-        ws = await _open(ws_base, bb_bucket, "bad", "wrong-key")
+        ws = await _open(ws_base, bb_bucket, _cid("badtoken"), "wrong-key")
 
-        # Then the server closes the connection (no auth reply)
-        with pytest.raises(ConnectionClosed):
+        # Then the server closes the connection with 4003 Invalid API key
+        # (4000 would mean the cid was rejected instead — a different gate)
+        with pytest.raises(ConnectionClosed) as exc_info:
             await asyncio.wait_for(ws.recv(), timeout=5)
+        assert exc_info.value.code == 4003
         await ws.close()
 
     async def test_protocol_mismatch_rejected(self, live_server: tuple[str, str], bb_bucket: str):
@@ -199,7 +215,7 @@ class TestWsNegative:
 
         # When authenticating with protocol_version=ws/999
         ws, reply = await _connect_auth(
-            ws_base, bb_bucket, "proto", api_key, protocol_version="ws/999"
+            ws_base, bb_bucket, _cid("proto"), api_key, protocol_version="ws/999"
         )
 
         # Then the server replies with an auth error and closes the connection
@@ -218,14 +234,15 @@ class TestWsNegative:
         ws_base, api_key = _ws_base(live_server), live_server[1]
         sibling = "bb-sibling-keep"
         assert bb_http.post("/api/v1/buckets", params={"bucket": sibling}).status_code == 201
-        ws, _ = await _connect_auth(ws_base, bb_bucket, "evil", api_key)
+        evil_cid = _cid("evil")
+        ws, _ = await _connect_auth(ws_base, bb_bucket, evil_cid, api_key)
         try:
             # When the client sends an "added" event with a traversal src path
             await ws.send(
                 json.dumps(
                     {
                         "name": "added",
-                        "cid": "evil",
+                        "cid": evil_cid,
                         "bucket": bb_bucket,
                         "src": {
                             "filepath": f"../{sibling}/evil.txt",
