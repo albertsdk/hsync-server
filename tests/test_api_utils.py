@@ -3,7 +3,6 @@ Tests for API utility functions.
 """
 
 import os
-import tempfile
 from datetime import datetime
 from unittest.mock import patch
 
@@ -58,93 +57,73 @@ class TestIsValidPermissionFormat:
 class TestUpdateFileTimestamp:
     """Tests for update_file_timestamp function."""
 
-    def test_update_with_unix_timestamps(self):
+    def test_update_with_unix_timestamps(self, tmp_path):
         """Update file with Unix timestamp strings."""
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(b"test")
-            temp_path = f.name
+        temp_path = tmp_path / "test.txt"
+        temp_path.write_bytes(b"test")
 
-        try:
-            # Use Unix timestamps as strings (ctime differs from mtime on purpose)
-            ctime = "1705320600"
-            mtime = "1705320700"
+        # Use Unix timestamps as strings (ctime differs from mtime on purpose)
+        ctime = "1705320600"
+        mtime = "1705320700"
 
-            update_file_timestamp(temp_path, ctime, mtime)
+        update_file_timestamp(str(temp_path), ctime, mtime)
 
-            stat = os.stat(temp_path)
-            # mtime is restored from the mtime argument
-            assert abs(stat.st_mtime - 1705320700) < 1
-            # atime mirrors mtime; ctime must NOT be written into atime
-            assert abs(stat.st_atime - 1705320700) < 1
-        finally:
-            os.unlink(temp_path)
+        stat = os.stat(str(temp_path))
+        # mtime is restored from the mtime argument
+        assert abs(stat.st_mtime - 1705320700) < 1
+        # atime mirrors mtime; ctime must NOT be written into atime
+        assert abs(stat.st_atime - 1705320700) < 1
 
-    def test_update_with_iso_format(self):
+    def test_update_with_iso_format(self, tmp_path):
         """Update file with ISO format strings."""
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(b"test")
-            temp_path = f.name
+        temp_path = tmp_path / "test.txt"
+        temp_path.write_bytes(b"test")
 
-        try:
-            iso_time = "2024-01-15T12:30:00+00:00"
+        iso_time = "2024-01-15T12:30:00+00:00"
 
-            update_file_timestamp(temp_path, ctime=iso_time, mtime=iso_time)
+        update_file_timestamp(str(temp_path), ctime=iso_time, mtime=iso_time)
 
-            expected_ts = datetime.fromisoformat(iso_time).timestamp()
-            stat = os.stat(temp_path)
-            assert abs(stat.st_mtime - expected_ts) < 1
-        finally:
-            os.unlink(temp_path)
+        expected_ts = datetime.fromisoformat(iso_time).timestamp()
+        stat = os.stat(str(temp_path))
+        assert abs(stat.st_mtime - expected_ts) < 1
 
-    def test_update_only_mtime(self):
+    def test_update_only_mtime(self, tmp_path):
         """Update only modification time."""
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(b"test")
-            temp_path = f.name
+        temp_path = tmp_path / "test.txt"
+        temp_path.write_bytes(b"test")
 
-        try:
-            mtime = "1705320700"
+        mtime = "1705320700"
 
-            update_file_timestamp(temp_path, mtime=mtime)
+        update_file_timestamp(str(temp_path), mtime=mtime)
 
-            stat = os.stat(temp_path)
-            assert abs(stat.st_mtime - 1705320700) < 1
-        finally:
-            os.unlink(temp_path)
+        stat = os.stat(str(temp_path))
+        assert abs(stat.st_mtime - 1705320700) < 1
 
-    def test_update_no_timestamps(self):
+    def test_update_no_timestamps(self, tmp_path):
         """No update when both timestamps are None."""
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(b"test")
-            temp_path = f.name
+        temp_path = tmp_path / "test.txt"
+        temp_path.write_bytes(b"test")
 
-        try:
-            original_mtime = os.stat(temp_path).st_mtime
+        original_mtime = os.stat(str(temp_path)).st_mtime
 
-            update_file_timestamp(temp_path, ctime=None, mtime=None)
+        update_file_timestamp(str(temp_path), ctime=None, mtime=None)
 
-            # Timestamp should be unchanged
-            assert os.stat(temp_path).st_mtime == original_mtime
-        finally:
-            os.unlink(temp_path)
+        # Timestamp should be unchanged
+        assert os.stat(str(temp_path)).st_mtime == original_mtime
 
 
 class TestGetPermissions:
     """Tests for get_permissions function."""
 
     @pytest.mark.asyncio
-    async def test_get_file_permissions(self):
+    async def test_get_file_permissions(self, tmp_path):
         """Get permissions of a file."""
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(b"test")
-            temp_path = f.name
+        temp_path = tmp_path / "test.txt"
+        temp_path.write_bytes(b"test")
 
-        try:
-            os.chmod(temp_path, 0o644)
-            permissions = await get_permissions(temp_path)
-            assert permissions == "644"
-        finally:
-            os.unlink(temp_path)
+        os.chmod(str(temp_path), 0o644)
+        permissions = await get_permissions(str(temp_path))
+        assert permissions == "644"
 
     @pytest.mark.asyncio
     async def test_get_directory_permissions(self, tmp_path):
@@ -157,18 +136,14 @@ class TestGetPermissions:
         assert permissions == "755"
 
     @pytest.mark.asyncio
-    async def test_get_executable_permissions(self):
+    async def test_get_executable_permissions(self, tmp_path):
         """Get permissions of an executable file."""
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(b"#!/bin/bash")
-            temp_path = f.name
+        temp_path = tmp_path / "test.sh"
+        temp_path.write_text("#!/bin/bash")
 
-        try:
-            os.chmod(temp_path, 0o755)
-            permissions = await get_permissions(temp_path)
-            assert permissions == "755"
-        finally:
-            os.unlink(temp_path)
+        os.chmod(str(temp_path), 0o755)
+        permissions = await get_permissions(str(temp_path))
+        assert permissions == "755"
 
 
 class TestSetPermissions:
@@ -185,46 +160,34 @@ class TestSetPermissions:
         assert octal_to_mode("4755") == 0o4755
 
     @pytest.mark.asyncio
-    async def test_set_file_permissions(self):
+    async def test_set_file_permissions(self, tmp_path):
         """Set permissions on a file."""
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(b"test")
-            temp_path = f.name
+        temp_path = tmp_path / "test.txt"
+        temp_path.write_bytes(b"test")
 
-        try:
-            await set_permissions(temp_path, "664")
-            stat = os.stat(temp_path)
-            assert stat.st_mode & 0o777 == 0o664
-        finally:
-            os.unlink(temp_path)
+        await set_permissions(str(temp_path), "664")
+        stat = os.stat(str(temp_path))
+        assert stat.st_mode & 0o777 == 0o664
 
     @pytest.mark.asyncio
-    async def test_set_executable_permissions(self):
+    async def test_set_executable_permissions(self, tmp_path):
         """Set executable permissions on a file."""
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(b"test")
-            temp_path = f.name
+        temp_path = tmp_path / "test.txt"
+        temp_path.write_bytes(b"test")
 
-        try:
-            await set_permissions(temp_path, "755")
-            stat = os.stat(temp_path)
-            assert stat.st_mode & 0o777 == 0o755
-        finally:
-            os.unlink(temp_path)
+        await set_permissions(str(temp_path), "755")
+        stat = os.stat(str(temp_path))
+        assert stat.st_mode & 0o777 == 0o755
 
     @pytest.mark.asyncio
-    async def test_set_numeric_permissions(self):
+    async def test_set_numeric_permissions(self, tmp_path):
         """Numeric permissions do not collapse to chmod 000."""
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(b"test")
-            temp_path = f.name
+        temp_path = tmp_path / "test.txt"
+        temp_path.write_bytes(b"test")
 
-        try:
-            await set_permissions(temp_path, "644")
-            stat = os.stat(temp_path)
-            assert stat.st_mode & 0o777 == 0o644
-        finally:
-            os.unlink(temp_path)
+        await set_permissions(str(temp_path), "644")
+        stat = os.stat(str(temp_path))
+        assert stat.st_mode & 0o777 == 0o644
 
     @pytest.mark.asyncio
     async def test_set_directory_permissions_keeps_owner_access(self, tmp_path):
