@@ -33,6 +33,11 @@ from hsync_server.exceptions import (
 from hsync_server.routers import auth_router
 
 
+def _bucket_path(bucket: str) -> str:
+    """Return the filesystem path for *bucket* inside the configured storage root."""
+    return f"{get_buckets_path()}/{bucket}"
+
+
 @auth_router.get(
     "/api/v1/buckets/{bucket}",
     name="Get bucket information",
@@ -59,7 +64,7 @@ async def get_bucket(bucket: str) -> JSONResponse:
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
 
-    bucket_dir = f"{get_buckets_path()}/{bucket}"
+    bucket_dir = _bucket_path(bucket)
 
     if not Path(bucket_dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket})
@@ -99,7 +104,7 @@ async def create_bucket(bucket: str) -> JSONResponse:
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
 
-    bucket_directory = f"{get_buckets_path()}/{bucket}"
+    bucket_directory = _bucket_path(bucket)
 
     # Use atomic mkdir to avoid TOCTOU race: exist_ok=False ensures that
     # two concurrent requests cannot both observe the directory missing and
@@ -149,7 +154,7 @@ async def delete_bucket(bucket: str) -> JSONResponse:
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
 
-    bucket_dir = f"{get_buckets_path()}/{bucket}"
+    bucket_dir = _bucket_path(bucket)
 
     if not Path(bucket_dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket})
