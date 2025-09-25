@@ -135,7 +135,7 @@ async def ws_events(
                         elif src and "filepath" in src:
                             file = File().from_dict(src, bucket_dir, False)
                             if not exists(file.filepath):
-                                LOG.warning(f'[WS] File: "{dir.path}" not found.')
+                                LOG.warning(f'[WS] File: "{file.filepath}" not found.')
                             else:
                                 LOG.info(f'[WS] Deleted file "{file.filepath}"')
                                 remove(file.filepath)
