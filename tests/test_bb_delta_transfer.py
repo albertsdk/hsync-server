@@ -12,15 +12,22 @@ client uses) — no server internals are imported or mocked.
 """
 
 import hashlib
+import os
 from pathlib import Path
 
 import httpx
 import pytest
+
+_BB_SERVER_ENABLED = os.environ.get("HSYNC_BB_SERVER") == "1"
+_BB_SERVER_REASON = "Black-box server-mode tests require HSYNC_BB_SERVER=1"
+
+pytestmark = [
+    pytest.mark.skipif(not _BB_SERVER_ENABLED, reason=_BB_SERVER_REASON),
+    pytest.mark.usefixtures("bb_http"),
+]
 import zstandard as zstd
 from hsync_common.delta import apply_delta, compute_signatures, optimal_block_size
 from hsync_common.models.delta import DeltaOp
-
-pytestmark = pytest.mark.usefixtures("bb_http")
 
 
 def _sha(data: bytes) -> str:

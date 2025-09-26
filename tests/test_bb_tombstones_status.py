@@ -11,11 +11,18 @@ deletion-marker and resume-status endpoints without touching internals.
 """
 
 import hashlib
+import os
 
 import httpx
 import pytest
 
-pytestmark = pytest.mark.usefixtures("bb_http")
+_BB_SERVER_ENABLED = os.environ.get("HSYNC_BB_SERVER") == "1"
+_BB_SERVER_REASON = "Black-box server-mode tests require HSYNC_BB_SERVER=1"
+
+pytestmark = [
+    pytest.mark.skipif(not _BB_SERVER_ENABLED, reason=_BB_SERVER_REASON),
+    pytest.mark.usefixtures("bb_http"),
+]
 
 _CID = "bbclient0001bbcltBB10"
 

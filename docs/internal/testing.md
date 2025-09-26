@@ -191,6 +191,32 @@ performance-sensitive changes (hashing, compression, file I/O), consider using
 `pytest-benchmark` or dedicated profiling tools. The test suite focuses on
 correctness and contract validation rather than microbenchmarks.
 
+## Black‑box tests (`test_bb_*.py`)
+
+The `test_bb_*.py` files are **behavioural, use‑case‑driven** tests that
+drive the **real** server over loopback HTTP and WebSocket. No internal
+logic is mocked — only the filesystem (temp buckets directory) and the
+API key are test fixtures.
+
+**These tests are disabled by default** (opt‑in via ``HSYNC_BB_SERVER=1``),
+because they spin up a live server subprocess and require more resources
+than unit tests.
+
+| File | What it covers |
+|------|---------------|
+| `test_bb_auth_protocol_limits.py` | Authentication, protocol‑version mismatch, rate‑limit enforcement. |
+| `test_bb_bucket_lifecycle.py` | Bucket create / read / list / delete lifecycle. |
+| `test_bb_delta_transfer.py` | Delta transfer use case (signatures, tokens, apply). |
+| `test_bb_file_download_delete.py` | File download and delete use cases. |
+| `test_bb_file_upload.py` | File upload use case (resume, compression, overwrite, validation). |
+| `test_bb_tombstones_status.py` | Tombstone listing and resumable upload‑status. |
+| `test_bb_websocket_relay.py` | WebSocket event‑relay (handshake, fan‑out, echo suppression, rejection). |
+
+To opt in:
+```bash
+HSYNC_BB_SERVER=1 .venv/bin/python -m pytest tests/test_bb_*.py
+```
+
 ## Cross-project testing
 
 The server depends on `hsync-common` models. When changing models in

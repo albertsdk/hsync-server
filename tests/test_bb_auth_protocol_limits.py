@@ -8,13 +8,23 @@
 
 Drives the real server over HTTP only. Verifies the public auth/protocol/limit
 behaviour without touching internals.
+
+Requires HSYNC_BB_SERVER=1 to run.
 """
+
+import os
 
 import httpx
 import pytest
 from hsync_common.protocol.handshake import PROTOCOL_VERSION_REST
 
-pytestmark = pytest.mark.usefixtures("bb_http")
+_BB_SERVER_ENABLED = os.environ.get("HSYNC_BB_SERVER") == "1"
+_BB_SERVER_REASON = "Black-box server-mode tests require HSYNC_BB_SERVER=1"
+
+pytestmark = [
+    pytest.mark.usefixtures("bb_http"),
+    pytest.mark.skipif(not _BB_SERVER_ENABLED, reason=_BB_SERVER_REASON),
+]
 
 
 class TestAuthAndProtocol:
