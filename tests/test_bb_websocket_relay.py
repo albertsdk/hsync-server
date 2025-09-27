@@ -147,19 +147,20 @@ class TestWsRelay:
     ):
         # Given an already-connected cid
         ws_base, api_key = _ws_base(live_server), live_server[1]
-        first, _ = await _connect_auth(ws_base, bb_bucket, _cid("dup"), api_key)
+        first = None
+        second = None
         try:
+            first, _ = await _connect_auth(ws_base, bb_bucket, _cid("dup"), api_key)
             # When a second connection reuses the same cid
             second, _ = await _connect_auth(ws_base, bb_bucket, _cid("dup"), api_key)
-            try:
-                # Then the first connection is closed by the server
-                with pytest.raises(ConnectionClosed):
-                    await asyncio.wait_for(first.recv(), timeout=5)
-            finally:
+            # Then the first connection is closed by the server
+            with pytest.raises(ConnectionClosed):
+                await asyncio.wait_for(first.recv(), timeout=5)
+        finally:
+            if second is not None:
                 await second.close()
-        except Exception:
-            await first.close()
-            raise
+            if first is not None:
+                await first.close()
 
     async def test_fan_out_survives_one_client_disconnect(
         self, live_server: tuple[str, str], bb_bucket: str, bb_upload
@@ -173,6 +174,7 @@ class TestWsRelay:
             timeout=15.0,
         )
         cid_a = _cid("fanA")
+        sub_a = sub_b = sub_c = None
         try:
             # Three subscribers: A (uploader), B (stays), C (leaves early)
             sub_a, _ = await _connect_auth(ws_base, bb_bucket, cid_a, api_key)
@@ -196,7 +198,8 @@ class TestWsRelay:
                 await asyncio.wait_for(sub_a.recv(), timeout=1.5)
         finally:
             for ws in (sub_a, sub_b):
-                await ws.close()
+                if ws is not None:
+                    await ws.close()
             bb_http.close()
 
 

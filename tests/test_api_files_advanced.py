@@ -266,7 +266,7 @@ class TestResumableUpload:
                 "sha256sum": hashlib.sha256(b"BB").hexdigest(),
             },
         )
-        assert response.status_code == 500
+        assert response.status_code == 400
 
     @pytest.mark.asyncio
     async def test_resume_without_partial_file(self, client: AsyncClient, temp_buckets_dir):
@@ -282,7 +282,7 @@ class TestResumableUpload:
                 "sha256sum": hashlib.sha256(b"BB").hexdigest(),
             },
         )
-        assert response.status_code == 500
+        assert response.status_code == 400
         # Error details must never embed the absolute partial-file path.
         body = response.json()
         body_str = str(body)
