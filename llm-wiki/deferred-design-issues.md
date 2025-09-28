@@ -10,73 +10,41 @@ Once a decision is made, convert the chosen option into an ADR under
 
 ---
 
-## DI-01: No Conflict Detection — Silent Last Writer Wins
+## ~~DI-01~~ → RESOLVED (Option C — Conflicted Copy, 2026-08-11)
 
-### Current behaviour
+### Resolution
 
-`hsync_server/api/files/upload.py:234-267`
+Adopted **Option C — Conflicted Copy (Dropbox-style)**. See
+[ADR-0021](../../hsync-common/docs/internal/adr/0021-server-conflicted-copy.md)
+for the full decision rationale.
 
-When two clients upload different content for the same file path, the last
-one to arrive overwrites the earlier one silently. A `.backup` file is created
-before the overwrite (`upload.py:265-267`), but it only protects against a
-**crash during the upload itself** — it is deleted on success (`:450-451`). It
-does NOT serve as a conflicted-copy mechanism.
+### What changed
 
-There is no version field, vector clock, or modification-timestamp comparison
-to detect that the file was changed concurrently.
+`hsync_server/api/files/upload.py:451-476`: when an upload overwrites a file
+with **different content** (different SHA-256), the server now renames the
+previous version to `filename_conflicted_copy_<ISO8601>_<cid>.ext` instead of
+silently deleting it. The existing `.backup` mechanism (created for crash
+protection at `upload.py:267`) is repurposed for this.
 
-### Why this matters (file sync domain)
+- **No change to the wire protocol** — the HTTP API is unchanged.
+- **No change to client code required** — the conflicted copy appears as a new
+  file in the bucket listing and is synced to all peers normally.
+- **Server-only change** — the client retains the existing `mtime`-based
+  reconciliation (ADR-0006 already defines `resolve_three_way` for the client
+  side; the server side was the missing piece).
 
-- **Dropbox**: generates `filename (Conflicted Copy yyyy-mm-dd).ext` when two
-  peers modify the same file concurrently.
-- **Syncthing**: uses block-level version vectors; conflicts produce a
-  `.sync-conflict-<date>-<time>` copy.
-- **Nextcloud**: uses `oc_filecache` versioning; conflicts are flagged and
-  both versions are kept.
-- **rsync/rclone**: no built-in conflict resolution; conflict handling is the
-  caller's responsibility.
+### Original analysis (pre-resolution)
 
-Silent data loss on concurrent modification is a known anti-pattern in
-multi-device sync systems.
+When two clients uploaded different content for the same file path, the last
+writer overwrote the earlier one silently. The `.backup` file protected only
+against a crash during upload and was deleted on success.
 
-### Options
-
-| # | Strategy | Server change | Client change | Complexity |
-|---|----------|--------------|---------------|------------|
-| A | **Document LWW** — accept the current behaviour as a conscious choice, document it clearly | None | None | None |
-| B | **Conflict Detection (version/mtime)** — client sends expected `mtime`/`version`; server rejects upload (409 + current metadata) if server-side is newer; client resolves | Add optional `expected_mtime` form field; compare before overwrite | Send expected mtime; handle 409 with reconciliation | Low-Medium |
-| C | **Conflicted Copy (Dropbox-style)** — server renames existing file to `file_conflicted_copy_<timestamp>.ext` and accepts new upload; both survive | Rename existing before overwrite; never delete backup on success | None required (transparent) | Medium |
-| D | **Vector Clocks / CRDT** — full distributed versioning; causal ordering | Major: new `version` model, merge logic, tombstone integration | Major: vector clock tracking, merge resolution | High |
-
-### Client-side impact (hsync-client audit — 2026-08-11)
-
-The client's reconciliation engine shares the same LWW vulnerability:
-
-- **`hsync_client/sync.py:916-929`** (`get_sync_actions`): uses `mtime` as the
-  primary tiebreaker to decide upload vs. download direction (2-second tolerance
-  for FAT32 precision). No version clock or causal ordering.
-- **`hsync_client/sync_state.py`**: persists merge-base hashes (three-way merge
-  state) but these are content-hash snapshots, not version vectors — they detect
-  *what* changed, not *when* relative to other peers.
-- **`hsync_client/tombstones.py`**: uses LWW merge via `TombstoneStore.merge()`
-  — identical to the server.
-
-**Implication:** Any conflict-resolution strategy chosen for the server MUST be
-implemented in the client simultaneously. The two sides negotiate sync direction
-together; a version-aware server with a version-unaware client would still
-silently lose data on concurrent modification.
-
-### Decision needed
-
-1. Choose one strategy (A, B, C, D).
-2. If not A: write an ADR under `hsync-common/docs/internal/adr/`.
-3. Implement server-side changes **and** client-side changes atomically:
-   - Server: wire contract (new field/header), conflict detection/response.
-   - Client (`hsync-client`): send version metadata, handle conflict responses,
-     update `get_sync_actions()` to use version clocks instead of wall-clock mtime.
-   - Android (`hsync-android`): mirror client changes.
-4. Add black-box tests for the new conflict behaviour on both sides.
-5. Update `docs/` (user-facing) and `llm-wiki/` (agent docs).
+| Option | Chosen |
+|--------|--------|
+| A — Document LWW | No |
+| B — Conflict Detection (mtime-based) | No |
+| **C — Conflicted Copy (Dropbox-style)** | **Yes ✅** |
+| D — Vector Clocks / CRDT | No |
 ---
 
 ## DI-02: Compressed Download Lacks `Content-Length`
