@@ -426,6 +426,11 @@ async def upload_file(
                 details={"expected": sha256sum, "actual": sha256sum_tmp},
             )
 
+        # Snapshot the previous content hash BEFORE overwriting the cache so
+        # the conflicted-copy gate below can compare against the real old value.
+        # set_sha256_hash immediately below replaces it.
+        old_sha = get_sha256_hash(file_location) if backup_path else None
+
         # Store SHA-256 hash for future duplicate detection
         set_sha256_hash(file_location, sha256sum_tmp)
 
@@ -457,8 +462,6 @@ async def upload_file(
         # Identical-content overrides (duplicate uploads) are already gated
         # above with a 409, so we only reach here on genuine overwrites.
         if backup_path and Path(backup_path).exists():
-            # Compute the previous file's SHA-256 to confirm it truly differs
-            old_sha = get_sha256_hash(file_location)
             if old_sha and not hmac.compare_digest(sha256sum_tmp, old_sha):
                 # Different content — preserve as conflicted copy
                 ts = datetime.now(UTC).strftime("%Y-%m-%dT%H%M%SZ")
