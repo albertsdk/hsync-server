@@ -352,7 +352,7 @@ class TestConflictedCopy:
         ]
         assert len(conflicted_files) == 1, f"expected 1 conflicted copy, found {conflicted_files}"
         match = re.match(
-            r"doc_conflicted_copy_\d{4}-\d{2}-\d{2}T\d{6}Z_TestClientX1234567890\.txt",
+            r"doc_conflicted_copy_\d{8}T\d{6}Z_TestClientX1234567890\.txt",
             conflicted_files[0],
         )
         assert match is not None, (

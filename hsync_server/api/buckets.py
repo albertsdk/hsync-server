@@ -15,12 +15,12 @@ This module provides REST API endpoints for bucket management:
 All endpoints require API key authentication via Bearer token.
 """
 
-from datetime import UTC, datetime
 from pathlib import Path
 from shutil import rmtree
 
 from fastapi import status
 from fastapi.responses import JSONResponse
+from hsync_common.time_utils import to_iso
 from loguru import logger as log
 
 from hsync_server.api.utils import is_valid_bucket
@@ -76,9 +76,7 @@ async def get_bucket(bucket: str) -> JSONResponse:
         "cdate": bucket_stat.st_ctime,
         "mdate": bucket_stat.st_mtime,
     }
-    formatted_times = {
-        key: datetime.fromtimestamp(value, tz=UTC).isoformat() for key, value in times.items()
-    }
+    formatted_times = {key: to_iso(value) for key, value in times.items()}
 
     return JSONResponse(status_code=status.HTTP_200_OK, content={"name": bucket, **formatted_times})
 
