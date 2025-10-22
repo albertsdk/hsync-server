@@ -42,7 +42,7 @@ def _bucket_path(bucket: str) -> str:
     "/api/v1/buckets/{bucket}",
     name="Get bucket information",
     summary="Get bucket information",
-    description="""Get bucket information including timestamps.""",
+    description="""Get bucket information including timestamps in ISO 8601 UTC with Z suffix (e.g. 2025-01-15T08:30:00.000Z).""",
 )
 async def get_bucket(bucket: str) -> JSONResponse:
     """

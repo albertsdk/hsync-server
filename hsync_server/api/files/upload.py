@@ -103,8 +103,10 @@ async def upload_file(
         cid: Client ID for event broadcasting.
         file: The file to upload.
         path: Subdirectory path within the bucket.
-        ctime: Creation time (Unix timestamp or ISO string).
-        mtime: Modification time (Unix timestamp or ISO string).
+        ctime: Creation time as Unix epoch seconds (int) or ISO 8601 string
+            (e.g. ``2025-01-15T08:30:00Z``). Naive strings are treated as UTC.
+        mtime: Modification time as Unix epoch seconds (int) or ISO 8601 string
+            (e.g. ``2025-01-15T08:30:00Z``). Naive strings are treated as UTC.
         sha256sum: Expected SHA-256 checksum for integrity verification.
         permissions: File permissions as an octal string (e.g., '644').
         offset: Byte offset for resumable uploads (0 for new uploads).
