@@ -39,12 +39,14 @@ This makes it the ideal choice in environments where HTTP is the only protocol
 allowed through firewalls, proxies, or network policies — a common constraint in
 corporate networks, cloud environments, and restricted infrastructures.
 
-| Tool | Required Protocol | Works over HTTP only? |
-|------|-------------------|-----------------------|
-| **HSYNC Server** | HTTP / HTTPS | ✅ **Yes** |
-| rsync | SSH or rsync daemon | ❌ No |
-| Syncthing | BEP (custom protocol) | ❌ No |
-| FTP / FTPS | FTP | ❌ No |
+| Tool | Protocol | HTTP | Real-Time | Architecture |
+|------|----------|:---:|:---:|------|
+| **HSYNC Server** | HTTP / HTTPS | ✅ | ✅ | Server + P2P |
+| rsync | SSH or rsync daemon | ❌ | ❌ | Client-Server |
+| Syncthing | BEP (custom) | ❌ | ✅ | P2P |
+| scp / sftp | SSH | ❌ | ❌ | Client-Server |
+| Unison | SSH or direct socket | ❌ | ❌ | P2P |
+| Rclone | S3, SFTP, etc. | ⚠️ Partial | ❌ | Client-Server |
 
 **When to choose HSYNC Server:**
 - 🏢 **Corporate networks** — only ports 80/443 are open through the firewall
