@@ -266,6 +266,39 @@ def _discard_file(path: str) -> None:
         pass
 
 
+def _wait_for_server_ready(
+    proc: subprocess.Popen,
+    port: int,
+    log_path: str,
+    timeout: float = 30.0,
+) -> None:
+    """Poll the server's ``/health`` endpoint until it responds 200.
+
+    Raises ``RuntimeError`` if the server exits prematurely or does not
+    become healthy within *timeout* seconds.
+    """
+    import httpx
+
+    base_url = f"http://127.0.0.1:{port}"
+    deadline = time.time() + timeout
+    last_exc: Exception | None = None
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            tail = _log_tail(log_path)
+            raise RuntimeError(f"hsync-server exited early (code {proc.returncode}):\n{tail}")
+        try:
+            r = httpx.get(f"{base_url}/health", timeout=1.0)
+            if r.status_code == 200:
+                return
+        except Exception as exc:  # noqa: BLE001 - startup not ready yet
+            last_exc = exc
+        time.sleep(0.15)
+    tail = _log_tail(log_path)
+    raise RuntimeError(
+        f"hsync-server did not become healthy on port {port}: {last_exc}\nserver log tail:\n{tail}"
+    )
+
+
 def _start_live_server(
     env_overrides: dict[str, str] | None = None,
 ) -> tuple[subprocess.Popen, int, str, str]:
@@ -318,31 +351,16 @@ def _start_live_server(
         # must be closed so the log can be read and removed later.
         log_file.close()
 
-    import httpx
+    try:
+        _wait_for_server_ready(proc, port, log_path)
+    except RuntimeError:
+        # Clean up resources on failure — the caller won't see them.
+        _stop_proc(proc)
+        shutil.rmtree(buckets_dir, ignore_errors=True)
+        _discard_file(log_path)
+        raise
 
-    base_url = f"http://127.0.0.1:{port}"
-    deadline = time.time() + 30
-    last_exc: Exception | None = None
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            tail = _log_tail(log_path)
-            shutil.rmtree(buckets_dir, ignore_errors=True)
-            _discard_file(log_path)
-            raise RuntimeError(f"hsync-server exited early (code {proc.returncode}):\n{tail}")
-        try:
-            r = httpx.get(f"{base_url}/health", timeout=1.0)
-            if r.status_code == 200:
-                return proc, port, buckets_dir, log_path
-        except Exception as exc:  # noqa: BLE001 - startup not ready yet
-            last_exc = exc
-        time.sleep(0.15)
-    _stop_proc(proc)
-    tail = _log_tail(log_path)
-    shutil.rmtree(buckets_dir, ignore_errors=True)
-    _discard_file(log_path)
-    raise RuntimeError(
-        f"hsync-server did not become healthy on port {port}: {last_exc}\nserver log tail:\n{tail}"
-    )
+    return proc, port, buckets_dir, log_path
 
 
 def _stop_proc(proc: subprocess.Popen) -> None:
