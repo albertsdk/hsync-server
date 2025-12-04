@@ -135,9 +135,7 @@ WebSocket tests use FastAPI's `TestClient.websocket_connect()`:
 
 ```python
 def test_websocket_event_broadcast(test_client, auth_headers):
-    with test_client.websocket_connect(
-        "/api/v1/buckets/test-bucket/events/test-cid"
-    ) as ws:
+    with test_client.websocket_connect("/api/v1/buckets/test-bucket/events/test-cid") as ws:
         # Send auth message first
         ws.send_json({"type": "auth", "api_key": "test-key"})
         response = ws.receive_json()

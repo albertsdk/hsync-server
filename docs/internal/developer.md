@@ -150,8 +150,8 @@ metrics accessible to load balancers and monitoring tools without credentials.
 ```python
 # Simplified wiring from main.py
 app = FastAPI()
-app.include_router(public_router)          # no auth
-app.include_router(auth_router)            # HSYNC_API_KEY required
+app.include_router(public_router)  # no auth
+app.include_router(auth_router)  # HSYNC_API_KEY required
 ```
 
 ## WebSocket Lifecycle
