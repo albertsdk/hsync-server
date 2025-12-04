@@ -115,6 +115,14 @@ Every bug fix needs a regression test that fails before and passes after the fix
 * If the internal implementation were completely rewritten while keeping the same contract, would the test still pass?
 * Does the test verify a behavior that the end user or a remote client can actually observe?
 
+Black-box tests that spawn the server must go through the shared harness
+helpers (`_start_live_server` / `live_server` / `start_live_server` in
+`tests/conftest.py`) — never a hand-rolled `subprocess.Popen` with an
+unscrubbed environment (pre-existing `HSYNC_*` variables are stripped before
+test overrides are applied). Readiness is probed via `GET /health` until 200,
+and the server log goes to a temp file (never a pipe) so its tail can be
+included in failure reports.
+
 ### 4-bis. Test Environment Isolation
 
 * **Clean start**: every test or fixture must verify that the starting
