@@ -144,9 +144,23 @@ objects, created on-demand and reused. The `acquire` async context manager
 critical section for a given file path at a time.
 
 The singleton is accessed via `get_file_lock_manager()` (`file_lock_manager.py:86`).
-Currently used by the delta apply endpoint (`api/files/delta/apply.py`) to prevent
-race conditions when multiple clients attempt concurrent delta applies on the same
-file (which would otherwise write to the same `.delta.part` file simultaneously).
+Used by the upload endpoint (`api/files/upload.py`) and the delta apply endpoint
+(`api/files/delta/apply.py`) to serialize the causal arbitration critical
+section (read store → decide → write file → record) per path, so concurrent
+uploads for the same file are ordered (ADR-0022).
+
+## Version store & arbitration (`versions.py`, `arbitration.py`)
+
+- `versions.py` wraps `hsync_common.models.version.SyncStateStore` per bucket
+  (side-car `.hsyncstate` at the bucket root, excluded from sync via
+  `is_internal_name`). `record_version`/`clear_version`/`move_version` maintain
+  the store; `server_version_info` produces the wire `VersionInfo` for listings.
+  `get_server_cid` mints and persists a reserved 21-char server node id for
+  self-recording out-of-band edits detected at arbitration (ADR-0022 §3.4.7).
+- `arbitration.py` exposes `arbitrate_upload` — the shared causal arbitration
+  used by both the REST upload and the delta apply endpoint (DRY). Returns an
+  `ArbitrationResult` (outcome + record clock + loser cid for conflict-copy
+  naming). `conflicted_copy_name` builds the canonical `_conflicted_copy_` path.
 
 > User-facing config reference (env vars, defaults): `../docs/` (architecture +
 > deployment sections).

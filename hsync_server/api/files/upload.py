@@ -45,24 +45,33 @@ from hsync_server.api.utils import (
     resolve_within_bucket,
     set_permissions,
 )
+from hsync_server.arbitration import (
+    ArbitrationOutcome,
+    arbitrate_upload,
+    conflicted_copy_name,
+)
 from hsync_server.compression import decompress_file_to_file
 from hsync_server.config import get_buckets_path, get_max_upload_size, get_settings
 from hsync_server.constants import DEFAULT_FILE_PERMISSIONS, ActionLabel
 from hsync_server.exceptions import (
     ChecksumMismatchError,
+    ConflictLostError,
     FileTooLargeError,
     InsufficientStorageError,
     InvalidBucketNameError,
     InvalidFilenameError,
     InvalidPathError,
     InvalidPermissionFormatError,
+    SupersededError,
     UploadError,
     ValidationError,
 )
+from hsync_server.file_lock_manager import get_file_lock_manager
 from hsync_server.hashes import get_sha256_hash, set_sha256_hash
 from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import clear_deletion
+from hsync_server.versions import record_version, server_version_info
 
 
 async def _flush_to_disk(handle) -> None:
@@ -87,6 +96,8 @@ async def upload_file(
     size: int = Form(0),
     compressed: str = Form("false"),
     compressed_size: int = Form(0),  # Reserved for future use
+    vclock: str = Form(""),  # JSON-encoded causal vector clock (ADR-0022)
+    version_id: str = Form(""),  # opaque version lineage id from the uploader
 ) -> JSONResponse:
     """
     Upload a file to a bucket with resumable upload support.
@@ -427,63 +438,125 @@ async def upload_file(
                 details={"expected": sha256sum, "actual": sha256sum_tmp},
             )
 
-        # Snapshot the previous content hash BEFORE overwriting the cache so
-        # the conflicted-copy gate below can compare against the real old value.
-        # set_sha256_hash immediately below replaces it.
-        old_sha = get_sha256_hash(file_location) if backup_path else None
+        # Parse the incoming causal vector clock (JSON form field; malformed ⇒
+        # empty clock, handled natively by the arbitration matrix).
+        import json as _json
 
-        # Store SHA-256 hash for future duplicate detection
-        set_sha256_hash(file_location, sha256sum_tmp)
+        try:
+            incoming_vclock_raw = _json.loads(vclock) if vclock else None
+        except (ValueError, TypeError):
+            incoming_vclock_raw = None
 
-        # Atomically move file to final destination (same-filesystem rename) so a
-        # partially written file is never visible at the target path
-        replace(file_location_tmp, file_location)
-        file_location_tmp = None  # Don't clean up - it's been moved
+        local_bucket = f"{buckets_path}/{bucket}"
+        # The per-path lock serializes the arbitration critical section: read
+        # store → decide → write file → record. Two concurrent uploads for the
+        # same path are ordered, so the second sees the version the first
+        # registered (ADR-0022 §3.4.6).
+        lock_manager = get_file_lock_manager()
+        async with lock_manager.acquire(file_location):
+            from hsync_common.models.version import relpath_in_bucket
 
-        # Set timestamps and permissions on the *final* file after the atomic
-        # rename — metadata is only applied to content that passed integrity
-        # verification.
-        update_file_timestamp(file_location, ctime, mtime)
+            relpath = relpath_in_bucket(file_location, local_bucket) or ""
+            disk_hash = get_sha256_hash(file_location) if Path(file_location).exists() else None
 
-        if permissions:
-            await set_permissions(file_location, permissions)
+            result = arbitrate_upload(
+                bucket=bucket,
+                bucket_dir=local_bucket,
+                relpath=relpath,
+                incoming_hash=sha256sum_tmp,
+                incoming_vclock_raw=incoming_vclock_raw,
+                incoming_version_id=version_id,
+                incoming_origin_cid=cid if is_valid_cid(cid) else None,
+                disk_hash=disk_hash,
+            )
 
-        # Invalidate SHA-256 cache for this file (content has changed)
-        invalidate_sha256_cache(file_location)
+            if result.outcome is ArbitrationOutcome.superseded:
+                # Stale upload (causally dominated): discard the temp file,
+                # no conflicted copy (the ancestor's data is in the winner).
+                remove(file_location_tmp)
+                file_location_tmp = None
+                if backup_path and Path(backup_path).exists():
+                    remove(backup_path)
+                raise SupersededError(
+                    message="Upload superseded by a newer version on the server",
+                    details={"sha256sum": sha256sum_tmp[:12]},
+                )
 
-        # A successful upload (re-)creates the file: drop any deletion marker
-        # so peers do not delete it on their next full sync.
-        clear_deletion(bucket, f"{buckets_path}/{bucket}", file_location)
-
-        # When overwriting a file with different content (different SHA-256),
-        # preserve the previous version as a conflicted copy so no data is
-        # silently lost. The backup (created above at copy2) is repurposed:
-        # instead of being deleted, it is renamed to a Dropbox-style
-        # "filename_conflicted_copy_<ISO8601>_<cid>.ext" and left on disk.
-        # Identical-content overrides (duplicate uploads) are already gated
-        # above with a 409, so we only reach here on genuine overwrites.
-        if backup_path and Path(backup_path).exists():
-            if old_sha and not hmac.compare_digest(sha256sum_tmp, old_sha):
-                # Different content — preserve as conflicted copy
+            if result.outcome is ArbitrationOutcome.conflict_lost:
+                # Incoming loses the tie-break: preserve its bytes as a
+                # conflicted copy, keep the winner on disk, reject the upload.
                 from hsync_common.time_utils import conflict_timestamp
 
                 ts = conflict_timestamp()
-                safe_cid = "".join(c for c in cid if c.isalnum() or c in "-_.")[:32]
-                stem = Path(file_location).stem
-                suffix = Path(file_location).suffix
-                parent = str(Path(file_location).parent)
-                conflicted = f"{parent}/{stem}_conflicted_copy_{ts}_{safe_cid}{suffix}"
+                conflicted = conflicted_copy_name(file_location, result.loser_cid, ts)
+                replace(file_location_tmp, conflicted)
+                file_location_tmp = None
+                if backup_path and Path(backup_path).exists():
+                    remove(backup_path)
+                raise ConflictLostError(
+                    message="Upload lost a conflict tie-break; content preserved as conflicted copy",
+                    details={
+                        "sha256sum": sha256sum_tmp[:12],
+                        "conflicted_copy": Path(conflicted).name,
+                    },
+                )
+
+            # accepted or accepted_conflict_won: write the incoming content.
+            # On accepted_conflict_won, preserve the previous (losing) content
+            # as a conflicted copy using the backup created earlier.
+            resolution = result.outcome.value
+            if (
+                result.outcome is ArbitrationOutcome.accepted_conflict_won
+                and backup_path
+                and Path(backup_path).exists()
+            ):
+                from hsync_common.time_utils import conflict_timestamp
+
+                ts = conflict_timestamp()
+                conflicted = conflicted_copy_name(file_location, result.loser_cid, ts)
                 replace(backup_path, conflicted)
-                _prev_sha = old_sha[:12]
+                _prev_sha = (disk_hash or "")[:12]
                 _new_sha = sha256sum_tmp[:12]
                 log.warning(
                     f'{ActionLabel.UPLOAD} Conflict detected on "{bucket}/{path}/{file.filename}" '
                     f"(prev SHA {_prev_sha}…, new SHA {_new_sha}…): "
-                    f'previous version preserved as "{conflicted}"'
+                    f'previous version preserved as "{Path(conflicted).name}"'
                 )
-            else:
-                # Same content (hash match) — safe to delete the backup
+            elif backup_path and Path(backup_path).exists():
                 remove(backup_path)
+
+            # Store SHA-256 hash for future duplicate detection
+            set_sha256_hash(file_location, sha256sum_tmp)
+
+            # Atomically move file to final destination (same-filesystem rename)
+            replace(file_location_tmp, file_location)
+            file_location_tmp = None  # Don't clean up - it's been moved
+
+            # Set timestamps and permissions on the *final* file after the
+            # atomic rename — metadata is only applied to content that passed
+            # integrity verification.
+            update_file_timestamp(file_location, ctime, mtime)
+
+            if permissions:
+                await set_permissions(file_location, permissions)
+
+            # Invalidate SHA-256 cache for this file (content has changed)
+            invalidate_sha256_cache(file_location)
+
+            # A successful upload (re-)creates the file: drop any deletion marker
+            # so peers do not delete it on their next full sync.
+            clear_deletion(bucket, local_bucket, file_location)
+
+            # Record the agreed version (merge of incoming + stored clocks, D11).
+            record_version(
+                bucket,
+                local_bucket,
+                file_location,
+                base_hash=sha256sum_tmp,
+                vclock=result.record_vclock,
+                version_id=version_id or None,
+                origin_cid=cid if is_valid_cid(cid) else None,
+            )
 
         # Broadcast "added" event to other connected clients. Hidden files
         # are excluded (as they are from the /files listing): peers syncing
@@ -491,7 +564,8 @@ async def upload_file(
         # reconciliation, and a peer cannot push dotfiles onto clients that
         # never asked for them.
         src = None if is_hidden_file(file_location) else LocalFile().get(file_location)
-        local_bucket = f"{buckets_path}/{bucket}"
+        if src is not None:
+            src.version = server_version_info(bucket, local_bucket, file_location)
         if src:
             manager = bucket_manager.get_manager(bucket)
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))
@@ -506,6 +580,7 @@ async def upload_file(
             content={
                 "info": "File uploaded successfully",
                 "file": f"{bucket}/{path}/{file.filename}",
+                "resolution": resolution,
             },
         )
     except (
@@ -516,6 +591,8 @@ async def upload_file(
         ChecksumMismatchError,
         FileTooLargeError,
         InsufficientStorageError,
+        SupersededError,
+        ConflictLostError,
         ValidationError,
     ):
         # Re-raise custom exceptions - they'll be handled by global handler

@@ -305,6 +305,7 @@ class TestConflictedCopy:
         """Overwriting with different content preserves the old version."""
         import hashlib
         import io
+        import json
         import os
         import re
 
@@ -314,54 +315,72 @@ class TestConflictedCopy:
         original = b"version one -- original content"
         replacement = b"version two -- completely different"
 
-        # Upload original
+        # Upload original with a vector clock from client A.
         r1 = await client.post(
             "/api/v1/buckets/conflictbucket/files",
             files={"file": ("doc.txt", io.BytesIO(original), "text/plain")},
             data={
-                "cid": "TestClientX1234567890",
+                "cid": "TestClientA1234567890",
                 "path": "",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(original).hexdigest(),
+                "vclock": json.dumps({"TestClientA1234567890": 1}),
+                "version_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
             },
         )
         assert r1.status_code == 201
 
-        # Upload replacement (different content, different SHA-256)
+        # Upload replacement from client B with a concurrent (non-dominating)
+        # vector clock — a true divergence, so the tie-break decides and the
+        # loser is preserved as a conflicted copy. The tie-break is by highest
+        # SHA-256: the outcome (201 accepted_conflict_won vs 409 conflict_lost)
+        # depends on which content hash wins.
         r2 = await client.post(
             "/api/v1/buckets/conflictbucket/files",
             files={"file": ("doc.txt", io.BytesIO(replacement), "text/plain")},
             data={
-                "cid": "TestClientX1234567890",
+                "cid": "TestClientB1234567890",
                 "path": "",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(replacement).hexdigest(),
+                "vclock": json.dumps({"TestClientB1234567890": 1}),
+                "version_id": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7",
             },
         )
-        assert r2.status_code == 201
+        assert r2.status_code in (201, 409), f"unexpected status {r2.status_code}: {r2.json()}"
 
-        # The original path now has the new content
+        # Determine which content won the tie-break.
+        orig_hash = hashlib.sha256(original).hexdigest()
+        repl_hash = hashlib.sha256(replacement).hexdigest()
+        # Original wins (kept at canonical path) iff its hash is higher;
+        # the other content is preserved as the conflicted copy.
+        winner_content = original if orig_hash > repl_hash else replacement
+
+        # The original path has the winning content
         final_path = os.path.join(bucket_path, "doc.txt")
         assert os.path.exists(final_path)
         with open(final_path, "rb") as f:
-            assert f.read() == replacement
+            assert f.read() == winner_content
 
-        # A conflicted copy exists with the original content
+        # A conflicted copy exists with the losing content
         conflicted_files = [
             f for f in os.listdir(bucket_path) if f.startswith("doc") and "conflicted_copy" in f
         ]
         assert len(conflicted_files) == 1, f"expected 1 conflicted copy, found {conflicted_files}"
+        # The cid in the name is the author of the losing content.
+        loser_cid = "TestClientB1234567890" if orig_hash > repl_hash else "TestClientA1234567890"
         match = re.match(
-            r"doc_conflicted_copy_\d{8}T\d{6}Z_TestClientX1234567890\.txt",
+            rf"doc_conflicted_copy_\d{{8}}T\d{{6}}Z_{loser_cid}\.txt",
             conflicted_files[0],
         )
         assert match is not None, (
             f"conflicted copy name does not match expected pattern: {conflicted_files[0]}"
         )
 
+        loser_content = replacement if orig_hash > repl_hash else original
         conflicted_path = os.path.join(bucket_path, conflicted_files[0])
         with open(conflicted_path, "rb") as f:
-            assert f.read() == original
+            assert f.read() == loser_content
 
     @pytest.mark.asyncio
     async def test_overwrite_identical_content_no_conflicted_copy(
@@ -449,6 +468,7 @@ class TestConflictedCopy:
         """The conflicted copy is listed as a regular file for sync to all peers."""
         import hashlib
         import io
+        import json
         import os
 
         bucket_path = os.path.join(temp_buckets_dir, "listingbucket")
@@ -457,27 +477,31 @@ class TestConflictedCopy:
         original = b"first version"
         replacement = b"second version"
 
-        # Upload v1
+        # Upload v1 from client A with a vector clock.
         await client.post(
             "/api/v1/buckets/listingbucket/files",
             files={"file": ("data.csv", io.BytesIO(original), "text/csv")},
             data={
-                "cid": "TestClientX1234567890",
+                "cid": "TestClientA1234567890",
                 "path": "",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(original).hexdigest(),
+                "vclock": json.dumps({"TestClientA1234567890": 1}),
+                "version_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
             },
         )
 
-        # Upload v2
+        # Upload v2 from client B with a concurrent (non-dominating) clock.
         await client.post(
             "/api/v1/buckets/listingbucket/files",
             files={"file": ("data.csv", io.BytesIO(replacement), "text/csv")},
             data={
-                "cid": "TestClientX1234567890",
+                "cid": "TestClientB1234567890",
                 "path": "",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(replacement).hexdigest(),
+                "vclock": json.dumps({"TestClientB1234567890": 1}),
+                "version_id": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7",
             },
         )
 
@@ -488,3 +512,65 @@ class TestConflictedCopy:
         assert any("conflicted_copy" in n for n in names), (
             f"conflicted copy not found in listing: {names}"
         )
+
+    @pytest.mark.asyncio
+    async def test_stale_upload_is_superseded_without_conflicted_copy(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """A causally dominated upload is rejected with 409 ``superseded`` and
+        creates NO conflicted copy: the incoming content is an ancestor whose
+        bytes are contained in the current version, so nothing is lost
+        (ADR-0022 §4.6 / piano §4.1 "Stale puro")."""
+        import hashlib
+        import io
+        import json
+        import os
+
+        bucket_path = os.path.join(temp_buckets_dir, "stalebucket")
+        os.makedirs(bucket_path)
+
+        current = b"current version"
+        stale = b"stale ancestor version"
+
+        # Upload the current version from client B (clock {B:2}).
+        r1 = await client.post(
+            "/api/v1/buckets/stalebucket/files",
+            files={"file": ("doc.pdf", io.BytesIO(current), "application/pdf")},
+            data={
+                "cid": "TestClientB1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(current).hexdigest(),
+                "vclock": json.dumps({"TestClientB1234567890": 2}),
+                "version_id": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7",
+            },
+        )
+        assert r1.status_code == 201
+
+        # Client A re-uploads an ancestor whose clock {B:1} is dominated by
+        # the stored {B:2} (component-wise ≤ on every known key) — e.g. a
+        # retry of an upload computed before B's second edit was learned.
+        r2 = await client.post(
+            "/api/v1/buckets/stalebucket/files",
+            files={"file": ("doc.pdf", io.BytesIO(stale), "application/pdf")},
+            data={
+                "cid": "TestClientA1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(stale).hexdigest(),
+                "vclock": json.dumps({"TestClientB1234567890": 1}),
+                "version_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+            },
+        )
+        assert r2.status_code == 409
+        body = r2.json()
+        assert body.get("resolution") == "superseded"
+        assert body.get("error") == "HSYNC-4005"
+
+        # No conflicted copy is created: the stale bytes are discarded, the
+        # current version stays untouched.
+        final_path = os.path.join(bucket_path, "doc.pdf")
+        with open(final_path, "rb") as f:
+            assert f.read() == current
+        conflicted_files = [f for f in os.listdir(bucket_path) if "conflicted_copy" in f]
+        assert len(conflicted_files) == 0

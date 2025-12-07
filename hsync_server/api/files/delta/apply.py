@@ -53,22 +53,30 @@ from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import update_file_timestamp
 from hsync_server.api.files.upload import _flush_to_disk
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket, set_permissions
+from hsync_server.arbitration import (
+    ArbitrationOutcome,
+    arbitrate_upload,
+    conflicted_copy_name,
+)
 from hsync_server.compression import decompress_file_to_file
 from hsync_server.config import get_buckets_path, get_delta_enabled
 from hsync_server.exceptions import (
-    FileNotFoundError as HSyncFileNotFoundError,
-)
-from hsync_server.exceptions import (
+    ConflictLostError,
     InvalidBucketNameError,
     InvalidPathError,
+    SupersededError,
     UploadError,
     ValidationError,
+)
+from hsync_server.exceptions import (
+    FileNotFoundError as HSyncFileNotFoundError,
 )
 from hsync_server.file_lock_manager import get_file_lock_manager
 from hsync_server.hashes import get_sha256_hash, set_sha256_hash
 from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import clear_deletion
+from hsync_server.versions import record_version, server_version_info
 
 
 def _delta_disabled() -> JSONResponse:
@@ -267,7 +275,68 @@ async def delta_apply(
             if Path(part_path).stat().st_size != new_size:
                 return _unprocessable("reconstructed_file_size_mismatch")
 
-            # 4. Publish: timestamps/permissions, atomic rename, cache, broadcast.
+            # 4. Causal arbitration: compare the rebuilt version against the
+            # stored one (same contract as full upload, ADR-0022).
+            buckets_path = get_buckets_path()
+            local_bucket = f"{buckets_path}/{bucket}"
+            from hsync_common.models.version import relpath_in_bucket
+
+            delta_relpath = relpath_in_bucket(file_location, local_bucket) or ""
+            delta_disk_hash = get_sha256_hash(file_location)
+            delta_result = arbitrate_upload(
+                bucket=bucket,
+                bucket_dir=local_bucket,
+                relpath=delta_relpath,
+                incoming_hash=rebuilt_sha256,
+                incoming_vclock_raw=meta.get("vclock"),
+                incoming_version_id=str(meta.get("version_id") or ""),
+                incoming_origin_cid=cid if is_valid_cid(cid) else None,
+                disk_hash=delta_disk_hash,
+            )
+
+            if delta_result.outcome is ArbitrationOutcome.superseded:
+                from os import remove
+
+                if part_path and Path(part_path).exists():
+                    remove(part_path)
+                raise SupersededError(
+                    message="Delta upload superseded by a newer version on the server",
+                    details={"sha256sum": rebuilt_sha256[:12]},
+                )
+            if delta_result.outcome is ArbitrationOutcome.conflict_lost:
+                from hsync_common.time_utils import conflict_timestamp
+
+                ts = conflict_timestamp()
+                conflicted = conflicted_copy_name(part_path, delta_result.loser_cid, ts)
+                replace(part_path, conflicted)
+                part_path = None
+                raise ConflictLostError(
+                    message="Delta upload lost a conflict tie-break; content preserved as conflicted copy",
+                    details={
+                        "sha256sum": rebuilt_sha256[:12],
+                        "conflicted_copy": Path(conflicted).name,
+                    },
+                )
+
+            # 5. Publish: timestamps/permissions, atomic rename, cache, broadcast.
+            resolution = delta_result.outcome.value
+            if (
+                delta_result.outcome is ArbitrationOutcome.accepted_conflict_won
+                and Path(file_location).exists()
+            ):
+                from hsync_common.time_utils import conflict_timestamp
+
+                ts = conflict_timestamp()
+                conflicted = conflicted_copy_name(file_location, delta_result.loser_cid, ts)
+                # Preserve the previous (losing) content before overwriting.
+                from shutil import copy2
+
+                copy2(file_location, conflicted)
+                log.warning(
+                    f"Delta conflict on {path}: previous version preserved as "
+                    f"{Path(conflicted).name}"
+                )
+
             update_file_timestamp(part_path, None, str(meta.get("mtime") or ""))
             if permissions:
                 await set_permissions(part_path, permissions)
@@ -276,14 +345,25 @@ async def delta_apply(
             set_sha256_hash(file_location, rebuilt_sha256)
             invalidate_sha256_cache(file_location)
 
-            buckets_path = get_buckets_path()
-            clear_deletion(bucket, f"{buckets_path}/{bucket}", file_location)
+            clear_deletion(bucket, local_bucket, file_location)
+
+            record_version(
+                bucket,
+                local_bucket,
+                file_location,
+                base_hash=rebuilt_sha256,
+                vclock=delta_result.record_vclock,
+                version_id=str(meta.get("version_id") or "") or None,
+                origin_cid=cid if is_valid_cid(cid) else None,
+            )
 
             src = None if is_hidden_file(file_location) else LocalFile().get(file_location)
+            if src is not None:
+                src.version = server_version_info(bucket, local_bucket, file_location)
             if src:
                 manager = bucket_manager.get_manager(bucket)
                 await manager.send_message(
-                    Event(cid, f"{buckets_path}/{bucket}", bucket, EventName.modified, src)
+                    Event(cid, local_bucket, bucket, EventName.modified, src)
                 )
 
             # Record metrics for successful transfer
@@ -306,12 +386,19 @@ async def delta_apply(
             )
             return JSONResponse(
                 status_code=200,
-                content={"status": "ok", "sha256": rebuilt_sha256, "size": new_size},
+                content={
+                    "status": "ok",
+                    "sha256": rebuilt_sha256,
+                    "size": new_size,
+                    "resolution": resolution,
+                },
             )
     except (
         InvalidBucketNameError,
         InvalidPathError,
         HSyncFileNotFoundError,
+        SupersededError,
+        ConflictLostError,
         ValidationError,
     ):
         # Record metrics for failed transfer

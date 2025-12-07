@@ -122,6 +122,8 @@ ctime=2024-01-15T10:30:00Z
 mtime=2024-01-15T10:30:00Z
 sha256sum=bb25b1c2b2a7427401c823a90904a759e2bd7425205b0702bca5e27e937e7cff
 permissions=-rw-rw-r--
+vclock={"Client123":{"counter":1}}
+version_id=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
 ```
 
 > `sha256sum` is **required**: the server verifies the received bytes against
@@ -135,9 +137,17 @@ permissions=-rw-rw-r--
 ```json
 {
   "info": "File uploaded successfully",
-  "file": "mybucket/documents/document.pdf"
+  "file": "mybucket/documents/document.pdf",
+  "resolution": "accepted"
 }
 ```
+
+> `resolution` is `"accepted"` (causally ahead) or `"accepted_conflict_won"`
+> (true concurrent divergence won by the incoming content on the deterministic
+> SHA-256 tie-break; the previous bytes are preserved as a
+> `_conflicted_copy_<timestamp>_<cid>` sibling). `vclock` and `version_id` are
+> optional: older peers that omit them are treated as an empty clock and never
+> cause an error. Malformed `vclock` payloads are also treated as absent.
 
 ### List Files
 
@@ -156,7 +166,13 @@ Authorization: Bearer your-api-key
     "mtime": "2024-01-15T10:30:00Z",
     "ctime": "2024-01-15T10:00:00Z",
     "sha256sum": "bb25b1c2b2a7427401c823a90904a759e2bd7425205b0702bca5e27e937e7cff",
-    "permissions": "-rw-rw-r--"
+    "permissions": "-rw-rw-r--",
+    "version": {
+      "vclock": {"Client123": 3},
+      "version_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+      "origin_cid": "Client123",
+      "ts": 1737072000
+    }
   }
 ]
 ```
@@ -164,6 +180,17 @@ Authorization: Bearer your-api-key
 > **Note**: when an identical file already exists (same SHA-256), the upload
 > endpoint responds `409 Conflict` with `{"info": "File already present", ...}`
 > instead of re-uploading the content.
+>
+> **Causal upload outcomes (`409`):** the server arbitrates every upload against
+> its stored version for the path (it is a transport hub, not an authority):
+>
+> - `409` `{"error": "HSYNC-4005", "resolution": "superseded", ...}` — the upload
+>   is causally dominated (a stale ancestor of the stored version): rejected,
+>   no conflict copy created (nothing is lost).
+> - `409` `{"error": "HSYNC-4006", "resolution": "conflict_lost", ...}` — true
+>   concurrent divergence won by the stored version on the SHA-256 tie-break:
+>   the incoming bytes are preserved as a `_conflicted_copy_` sibling and the
+>   client should download the winner.
 
 ### Upload Status (resumable uploads)
 
@@ -303,7 +330,7 @@ its `version` and `compression_enabled` capability.
 | 401 | Unauthorized - Invalid API key |
 | 403 | Forbidden - Missing API key |
 | 404 | Not Found - Resource not found |
-| 409 | Conflict - File already exists (same SHA-256) or base file changed |
+| 409 | Conflict — file already present (same SHA-256), stale upload (`superseded`), tie-break loser (`conflict_lost`), or delta base changed |
 | 422 | Unprocessable Entity - Request body validation failed |
 | 429 | Too Many Requests - Rate limit exceeded |
 | 500 | Internal Server Error |
@@ -371,6 +398,8 @@ Errors are categorized by prefix:
 | `HSYNC-4001` | UploadError | File upload failed |
 | `HSYNC-4003` | DeleteError | File deletion failed |
 | `HSYNC-4004` | InsufficientStorageError | Insufficient storage space on server |
+| `HSYNC-4005` | SupersededError | Upload causally dominated by the stored version (stale) |
+| `HSYNC-4006` | ConflictLostError | Upload lost the deterministic tie-break; content preserved as conflicted copy |
 
 #### Server Errors (5XXX)
 

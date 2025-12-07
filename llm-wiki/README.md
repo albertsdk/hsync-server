@@ -20,7 +20,7 @@ utilities.
 | [modules/infrastructure.md](modules/infrastructure.md) | config/Settings, rate limiting, SSL, hashes, compression, errors, logging |
 | [data-models.md](data-models.md) | Server-local state (hash cache, tombstone store) + reuse of common models |
 | [decisions.md](decisions.md) | Pointer to ecosystem ADRs under `../../hsync-common/docs/internal/adr/` |
-| [deferred-design-issues.md](deferred-design-issues.md) | Analysed but deferred architectural issues (conflict detection, compression Content-Length) — read before implementing related features |
+| [deferred-design-issues.md](deferred-design-issues.md) | Analysed but deferred architectural issues (compression Content-Length) — read before implementing related features |
 
 ## Quick facts
 

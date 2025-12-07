@@ -1,50 +1,12 @@
 # Deferred Design Issues — hsync-server
 
 > **Created:** 2026-08-11
-> **Status:** Analysed, deferred for architectural decision
-> **Reference:** Test audit report (Problemi 4 e 6 di 7)
+> **Status:** Active
 
 Issues that require an architectural choice before implementation.
 Once a decision is made, convert the chosen option into an ADR under
 `../hsync-common/docs/internal/adr/` and implement accordingly.
 
----
-
-## ~~DI-01~~ → RESOLVED (Option C — Conflicted Copy, 2026-08-11)
-
-### Resolution
-
-Adopted **Option C — Conflicted Copy (Dropbox-style)**. See
-[ADR-0021](../../hsync-common/docs/internal/adr/0021-server-conflicted-copy.md)
-for the full decision rationale.
-
-### What changed
-
-`hsync_server/api/files/upload.py:451-476`: when an upload overwrites a file
-with **different content** (different SHA-256), the server now renames the
-previous version to `filename_conflicted_copy_<ISO8601>_<cid>.ext` instead of
-silently deleting it. The existing `.backup` mechanism (created for crash
-protection at `upload.py:267`) is repurposed for this.
-
-- **No change to the wire protocol** — the HTTP API is unchanged.
-- **No change to client code required** — the conflicted copy appears as a new
-  file in the bucket listing and is synced to all peers normally.
-- **Server-only change** — the client retains the existing `mtime`-based
-  reconciliation (ADR-0006 already defines `resolve_three_way` for the client
-  side; the server side was the missing piece).
-
-### Original analysis (pre-resolution)
-
-When two clients uploaded different content for the same file path, the last
-writer overwrote the earlier one silently. The `.backup` file protected only
-against a crash during upload and was deleted on success.
-
-| Option | Chosen |
-|--------|--------|
-| A — Document LWW | No |
-| B — Conflict Detection (mtime-based) | No |
-| **C — Conflicted Copy (Dropbox-style)** | **Yes ✅** |
-| D — Vector Clocks / CRDT | No |
 ---
 
 ## DI-02: Compressed Download Lacks `Content-Length`

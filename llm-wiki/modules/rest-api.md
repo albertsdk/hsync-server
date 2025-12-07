@@ -35,8 +35,9 @@ Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–
 ## Upload (`api/files/upload.py:70`)
 
 Multipart form fields: `cid, file, path, ctime, mtime, sha256sum, permissions`
-(default `664`), and resumable fields `offset, size, compressed, compressed_size`
-(`upload.py:73`–`83`). Behavior:
+(default `664`), resumable fields `offset, size, compressed, compressed_size`,
+and causal version fields `vclock` (JSON-encoded vector clock) and `version_id`
+(ADR-0022). Behavior:
 - Filename validated/sanitized (`is_valid_filename`/`sanitize_filename` from
   `hsync_common.path_validation`); internal engine names
   (`.hsyncignore`/`.hsyncstate`/`.hsynctombstones`, `*.part`) rejected with
@@ -44,6 +45,11 @@ Multipart form fields: `cid, file, path, ctime, mtime, sha256sum, permissions`
 - `sha256sum` is a **required** form field and must be a well-formed 64-hex
   digest (`is_sha256_hex`): the received bytes must hash to it
   (`hmac.compare_digest`) or the upload fails with `ChecksumMismatchError`.
+- **Causal arbitration** (`arbitration.py`): the incoming version is compared
+  against the stored version for the path (inside the per-file
+  `FileLockManager`). Outcomes: `accepted`/`accepted_conflict_won` (201 with
+  `resolution`), `superseded` (409, stale ancestor, no copy), `conflict_lost`
+  (409, incoming loses tie-break, bytes preserved as conflicted copy).
 - Compressed uploads are **not resumable**: `compressed=true` with
   `offset > 0` is rejected up-front (the resumable path never decompresses).
 - Subdir path and filename confined to the bucket via `resolve_within_bucket`

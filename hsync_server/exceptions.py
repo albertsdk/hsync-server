@@ -19,6 +19,8 @@ Error Code Format: HSYNC-XXXX
 - 5XXX: Internal server errors
 """
 
+from typing import Any
+
 from hsync_common.exceptions import HSyncError as _CommonHSyncError
 
 
@@ -172,3 +174,44 @@ class InsufficientStorageError(FileOperationError):
 
     error_code = "HSYNC-4004"
     default_message = "Insufficient storage space"
+
+
+class SupersededError(FileOperationError):
+    """Upload is causally dominated by the stored version (stale/ancestor).
+
+    No conflicted copy is created: the incoming content is fully contained in
+    the winner's history, so nothing is lost. The client should download the
+    current version instead.
+    """
+
+    error_code = "HSYNC-4005"
+    default_message = "Upload superseded by a newer version"
+    # Machine-readable outcome token of the causal upload contract (ADR-0022
+    # §4.6), matching the token the LAN master returns so uploaders can branch
+    # on the outcome regardless of the transport.
+    token = "superseded"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize with the explicit contract token (ADR-0022 §4.6)."""
+        payload = super().to_dict()
+        payload["resolution"] = self.token
+        return payload
+
+
+class ConflictLostError(FileOperationError):
+    """Upload lost a causal tie-break (true divergence).
+
+    The incoming bytes are preserved on the receiver as a conflicted copy; the
+    client should download the winning version.
+    """
+
+    error_code = "HSYNC-4006"
+    default_message = "Upload lost a conflict tie-break; content preserved as conflicted copy"
+    # Machine-readable outcome token (ADR-0022 §4.6), matching the LAN master.
+    token = "conflict_lost"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize with the explicit contract token (ADR-0022 §4.6)."""
+        payload = super().to_dict()
+        payload["resolution"] = self.token
+        return payload

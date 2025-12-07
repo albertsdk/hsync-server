@@ -21,12 +21,14 @@ from loguru import logger as log
 
 from .exceptions import (
     AuthenticationError,
+    ConflictLostError,
     FileOperationError,
     HSyncError,
     InsufficientStorageError,
     InvalidApiKeyError,
     MissingApiKeyError,
     ResourceNotFoundError,
+    SupersededError,
     ValidationError,
 )
 
@@ -37,6 +39,8 @@ EXCEPTION_STATUS_CODES: dict[type, int] = {
     InvalidApiKeyError: status.HTTP_401_UNAUTHORIZED,
     MissingApiKeyError: status.HTTP_403_FORBIDDEN,
     AuthenticationError: status.HTTP_401_UNAUTHORIZED,
+    SupersededError: status.HTTP_409_CONFLICT,
+    ConflictLostError: status.HTTP_409_CONFLICT,
     InsufficientStorageError: status.HTTP_507_INSUFFICIENT_STORAGE,
     FileOperationError: status.HTTP_500_INTERNAL_SERVER_ERROR,
     HSyncError: status.HTTP_500_INTERNAL_SERVER_ERROR,

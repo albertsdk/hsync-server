@@ -39,6 +39,7 @@ from hsync_server.exceptions import (
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import record_deletion
+from hsync_server.versions import clear_version
 
 
 @auth_router.delete("/api/v1/buckets/{bucket}/files")
@@ -110,6 +111,8 @@ async def delete_file(
         # and a subsequent re-upload clears the marker via clear_deletion).
         remove(file)
         invalidate_sha256_cache(file)
+        # Drop the causal version entry so a re-created file starts fresh.
+        clear_version(bucket, local_bucket, file)
         log.info(f'{ActionLabel.DELETE} File: "{file}" deleted successfully (CID: {cid})')
 
         # Broadcast "deleted" event to other clients after successful removal.

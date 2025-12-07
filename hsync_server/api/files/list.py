@@ -40,6 +40,7 @@ from hsync_server.hashes import get_sha256_hash
 from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import get_tombstone_store
+from hsync_server.versions import server_version_info
 
 
 @auth_router.get("/api/v1/buckets/{bucket}/files/upload-status")
@@ -220,6 +221,13 @@ async def get_files(
             if file_obj:
                 file_info = file_obj.to_dict()
                 file_data = LocalFile().from_dict(file_info, f"{buckets_path}/{bucket}").to_dict()
+                # JOIN causal version metadata from the version store (ADR-0022).
+                abs_path = f"{buckets_path}/{bucket}/{file_data.get('filepath', '')}".replace(
+                    "//", "/"
+                )
+                version = server_version_info(bucket, f"{buckets_path}/{bucket}", abs_path)
+                if version is not None:
+                    file_data["version"] = version
                 file_list.append(file_data)
 
         # Emit dir-symlink entries: os.walk (followlinks=False) lists them in

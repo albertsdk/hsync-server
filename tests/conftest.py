@@ -80,6 +80,7 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI]:
         ),
         patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.tombstones.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.versions.get_buckets_path", return_value=temp_buckets_dir),
     ):
         from slowapi.errors import RateLimitExceeded
         from slowapi.middleware import SlowAPIMiddleware
@@ -172,12 +173,15 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI]:
 
 @pytest.fixture(autouse=True)
 def reset_tombstone_cache() -> Generator[None]:
-    """Clear the per-bucket tombstone store cache so tests stay isolated."""
-    from hsync_server.tombstones import reset_cache
+    """Clear the per-bucket tombstone and version store caches so tests stay isolated."""
+    from hsync_server.tombstones import reset_cache as reset_tombstones
+    from hsync_server.versions import reset_cache as reset_versions
 
-    reset_cache()
+    reset_tombstones()
+    reset_versions()
     yield
-    reset_cache()
+    reset_tombstones()
+    reset_versions()
 
 
 @pytest.fixture
@@ -189,6 +193,7 @@ async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[Asy
         patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.tombstones.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.versions.get_buckets_path", return_value=temp_buckets_dir),
     ):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(
@@ -208,6 +213,7 @@ async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGener
         patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.tombstones.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.versions.get_buckets_path", return_value=temp_buckets_dir),
     ):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
