@@ -22,9 +22,10 @@ from shutil import rmtree
 from typing import Any
 
 from hsync_common.models.dir import Dir
-from hsync_common.models.event import Event, EventName
+from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File
 from hsync_common.models.symlink import Symlink
+from hsync_common.models.tombstone import relpath_in_bucket
 from hsync_common.path_validation import is_safe_symlink_target
 from loguru import logger as log
 
@@ -40,6 +41,7 @@ from hsync_server.api.utils import set_directory_permissions
 from hsync_server.constants import ActionLabel
 from hsync_server.hashes import del_sha256_hash
 from hsync_server.tombstones import clear_deletion, record_deletion
+from hsync_server.versions import clear_version, get_version_store
 
 # ---------------------------------------------------------------------------
 # Shared validation helpers (DRY: replaces 8 duplicated path-validation blocks)
@@ -198,12 +200,26 @@ async def handle_deleted_event(
                     ensure_sentinel_in_dir(parent)
             del_sha256_hash(file_obj.filepath)
             if not is_sentinel_file(file_obj.filepath):
+                # Causal tombstone (ADR-0003): inherit the stored version clock
+                # for the path and tick it by the deleting peer, so
+                # delete-vs-recreate and delete-vs-delete resolve causally.
+                stored = get_version_store(bucket).get(
+                    relpath_in_bucket(file_obj.filepath, bucket_dir)
+                )
                 record_deletion(
                     bucket,
                     bucket_dir,
                     file_obj.filepath,
                     sha256sum=file_obj.sha256sum,
+                    origin_cid=cid if is_valid_cid(cid) else None,
+                    prev_vclock=stored["vclock"] if stored else None,
                 )
+                # Drop the causal version entry so a re-created file starts fresh.
+                clear_version(bucket, bucket_dir, file_obj.filepath)
+            else:
+                # Sentinel helpers are per-peer and never exchanged; drop any
+                # stale marker so a future sentinel re-creation is never blocked.
+                clear_deletion(bucket, bucket_dir, file_obj.filepath)
             return Event(cid, bucket_dir, bucket, EventName.deleted, file_obj)
 
     return None

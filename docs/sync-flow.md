@@ -45,7 +45,9 @@ The server has three core responsibilities:
 
 The server does **not**:
 - Decide which files to sync (the client decides)
-- Resolve conflicts (last-writer-wins at the storage level)
+- Decide conflicts by role (uploads are arbitrated **causally** against the
+  stored version with a deterministic SHA-256 tie-break on true divergence,
+  ADR-0022/ADR-0003 — never by wall clock)
 - Queue or retry events (the client retries on disconnect)
 - Watch the filesystem (the client watches its local directory)
 

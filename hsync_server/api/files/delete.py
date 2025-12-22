@@ -16,9 +16,10 @@ from pathlib import Path
 
 from fastapi import Form
 from fastapi.responses import JSONResponse
-from hsync_common.models.event import Event, EventName
+from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import invalidate_sha256_cache
+from hsync_common.models.tombstone import relpath_in_bucket
 from loguru import logger as log
 
 from hsync_server.api.connection_manager import bucket_manager
@@ -38,8 +39,8 @@ from hsync_server.exceptions import (
 )
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.routers import auth_router
-from hsync_server.tombstones import record_deletion
-from hsync_server.versions import clear_version
+from hsync_server.tombstones import clear_deletion, record_deletion
+from hsync_server.versions import clear_version, get_version_store
 
 
 @auth_router.delete("/api/v1/buckets/{bucket}/files")
@@ -93,18 +94,30 @@ async def delete_file(
         src = LocalFile().get(file)
         local_bucket = f"{get_buckets_path()}/{bucket}"
 
-        # Record a tombstone BEFORE removing the file so peers offline at
-        # deletion time do not resurrect the file on their next full sync.
-        # Writing the marker first guarantees that a server crash between
-        # deletion and tombstone persistence never causes a resurrection.
-        # Sentinel files are per-peer and never exchanged — no marker needed.
+        # Record a causal tombstone BEFORE removing the file so peers offline
+        # at deletion time do not resurrect the file on their next full sync.
+        # The marker inherits the stored version clock for the path and is
+        # ticked by the requesting peer (validated), so delete-vs-recreate and
+        # delete-vs-delete resolve causally (ADR-0003). Writing the marker
+        # first guarantees that a server crash between deletion and tombstone
+        # persistence never causes a resurrection. Sentinel files are per-peer
+        # and never exchanged — no marker needed.
         if not is_sentinel_file(file):
+            stored = get_version_store(bucket).get(relpath_in_bucket(file, local_bucket))
             record_deletion(
                 bucket,
                 local_bucket,
                 file,
                 sha256sum=src.sha256sum if src else None,
+                origin_cid=cid if is_valid_cid(cid) else None,
+                prev_vclock=stored["vclock"] if stored else None,
             )
+        else:
+            # Sentinel files are per-peer helper artifacts: when one is removed
+            # the path is only expected to carry directory-state sentinels, not
+            # user content; a deletion marker would outlive the sentinel and
+            # block its future re-creation. Drop any stale marker instead.
+            clear_deletion(bucket, local_bucket, file)
 
         # Remove the file after the tombstone is persisted. If the remove
         # fails, the tombstone is harmless (the file path still exists,

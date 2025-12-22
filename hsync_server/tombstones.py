@@ -51,20 +51,37 @@ def record_deletion(
     bucket_dir: str,
     abs_path: str,
     sha256sum: str | None = None,
+    origin_cid: str | None = None,
+    prev_vclock: dict[str, int] | None = None,
     timestamp: int | float | None = None,
 ) -> None:
-    """Record a deletion marker for an absolute path and persist the store."""
+    """Record a causal deletion marker for an absolute path and persist it.
+
+    The marker inherits the stored version clock for the path (``prev_vclock``)
+    and is ticked by ``origin_cid``, so delete-vs-recreate and delete-vs-delete
+    resolve causally (ADR-0003) — the deletion timestamp is informational only.
+    """
     relpath = relpath_in_bucket(abs_path, bucket_dir)
     if not relpath:
         return
     store = get_tombstone_store(bucket)
-    store.record(relpath, sha256sum=sha256sum, timestamp=timestamp)
+    store.record(
+        relpath,
+        sha256sum=sha256sum,
+        origin_cid=origin_cid,
+        prev_vclock=prev_vclock,
+        timestamp=timestamp,
+    )
     store.prune()
     store.save()
 
 
 def clear_deletion(bucket: str, bucket_dir: str, abs_path: str) -> None:
-    """Drop the deletion marker for a re-created/uploaded path and persist."""
+    """Drop the deletion marker for a re-created/uploaded path and persist.
+
+    A re-created file carries a clock that supersedes the tombstone clock, so
+    the marker is removed (never a stale deletion for a live file).
+    """
     relpath = relpath_in_bucket(abs_path, bucket_dir)
     if not relpath:
         return

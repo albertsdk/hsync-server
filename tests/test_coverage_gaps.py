@@ -637,13 +637,14 @@ class TestTombstonesCoverageGaps:
         """Pruning removes tombstones older than the retention window."""
         import time
 
-        from hsync_common.models.tombstone import TombstoneStore
+        from hsync_common.models.tombstone import TombstoneStore, tombstone_key
 
         store = TombstoneStore(ttl_days=1)
-        # Manually inject an expired tombstone
-        store._data["key1"] = {"ts": time.time() - 999999, "sha256": "abc"}
-        store._data["key2"] = {"ts": time.time(), "sha256": "def"}
+        # Record one expired marker (ttl=1 day) and one fresh marker through
+        # the public causal API (no private _data injection).
+        store.record("key1", sha256sum="a" * 64, timestamp=time.time() - 999999)
+        store.record("key2", sha256sum="b" * 64, timestamp=time.time())
         store.prune()
         payload = store.to_payload()
-        assert "key1" not in payload
-        assert "key2" in payload
+        assert tombstone_key("key1") not in payload
+        assert tombstone_key("key2") in payload

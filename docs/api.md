@@ -222,14 +222,19 @@ Authorization: Bearer your-api-key
 ```json
 {
   "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08": {
+    "sha256": "bb25b1c2b2a7427401c823a90904a759e2bd7425205b0702bca5e27e937e7cff",
+    "version_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+    "origin_cid": "TestClientX1234567890",
     "ts": 1737000000,
-    "sha256": "bb25b1c2b2a7427401c823a90904a759e2bd7425205b0702bca5e27e937e7cff"
+    "vclock": {"TestClientX1234567890": 3}
   }
 }
 ```
 
-`POST` to the same endpoint with a payload of identical shape to merge markers
-pushed by a peer (last-writer-wins on `ts`).
+`POST` to the same endpoint with a payload of the causal marker shape
+(`{"sha256", "version_id", "origin_cid", "ts", "vclock"}`) to merge markers
+pushed by a peer: dominance decides, the deletion timestamp never does
+(ADR-0003).
 
 ### Server Time
 

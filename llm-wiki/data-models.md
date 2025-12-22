@@ -34,8 +34,9 @@ Server-side façade over the common `TombstoneStore`:
 | `clear_deletion` | `:66` | drop a tombstone when the path is re-uploaded |
 | `reset_cache` | `:76` | test/lifecycle hook |
 
-TTL bound: `get_tombstone_ttl_days()` (`config.py:472`) → store `prune()`. LWW merge
-semantics and hashed keys are defined in the common model, not here.
+TTL bound: `get_tombstone_ttl_days()` (`config.py:472`) → store `prune()`. Causal
+merge semantics (vector-clock dominance + content tie-break) and hashed keys are
+defined in the common model, not here.
 
 ## On-disk layout
 

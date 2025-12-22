@@ -275,10 +275,10 @@ async def get_tombstones(
     """
     List deletion markers (tombstones) for a bucket.
 
-    Returns a mapping of hashed bucket-relative path to the deletion
-    timestamp and the content hash of the removed file. Clients use these
-    markers to avoid resurrecting files that were deleted while they were
-    offline.
+    Returns a mapping of hashed bucket-relative path to the causal marker
+    (``{"sha256", "version_id", "origin_cid", "ts", "vclock"}``). Clients use
+    these markers to avoid resurrecting files that were deleted while they
+    were offline.
 
     Args:
         request: The incoming FastAPI request.
@@ -319,12 +319,15 @@ async def post_tombstones(
     A client that deleted files while offline pushes its accumulated markers
     at the start of each sync cycle so the server converges to the union of
     all known deletions and other peers do not resurrect those files. The
-    merge is last-writer-wins per marker; entries are validated and the store
-    size is capped (see ``TombstoneStore.merge``).
+    merge is **causal** per marker (vector-clock dominance, deterministic
+    content tie-break on concurrency — never the deletion timestamp, ADR-0003);
+    entries are strictly validated and the store size is capped (see
+    ``TombstoneStore.merge``).
 
     Args:
         request: The incoming FastAPI request; the body is the JSON tombstone
-            payload (mapping of hashed path to ``{"ts": ..., "sha256": ...}``).
+            payload (mapping of hashed path to the causal
+            ``{"sha256", "version_id", "origin_cid", "ts", "vclock"}`` entry).
         bucket: Name of the bucket to merge markers into.
 
     Returns:
