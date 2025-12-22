@@ -180,39 +180,126 @@ class TestUploadCompressed:
 
 
 class TestUploadOverwrite:
-    def test_overwrite_with_correct_checksum_replaces_content(
+    """Causal upload arbitration over the public wire contract (ADR-0022).
+
+    These black-box tests drive only the HTTP surface: the ``vclock`` form
+    field is the client's causal history, the ``resolution`` response field and
+    the ``superseded``/``conflict_lost`` 409 tokens are the observable outcome.
+    The wall clock is never part of the contract.
+    """
+
+    @staticmethod
+    def _vclock(cid: str, counter: int) -> str:
+        import json
+
+        return json.dumps({cid: counter})
+
+    @staticmethod
+    def _conflicted_copies(bb_http: httpx.Client, bb_bucket: str, stem: str) -> list[dict]:
+        listed = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json()
+        return [e for e in listed if "conflicted_copy" in e["name"] and stem in e["name"]]
+
+    def test_dominating_version_accepted_without_copy(
         self, bb_upload, bb_http: httpx.Client, bb_bucket: str
     ):
-        """Uploading a new version of an existing file replaces content and
-        preserves the previous version as a conflicted copy."""
+        """A causally-ahead upload (same author, higher counter) replaces the
+        content silently: 201 ``resolution=accepted``, no conflicted copy."""
+        cid = "TestClientA1234567890"
         old = b"version one data"
         new = b"version two - updated content"
-        bb_upload(bb_http, bb_bucket, "over.bin", old)
 
-        # Overwrite with new content
-        r = bb_upload(bb_http, bb_bucket, "over.bin", new)
+        bb_upload(bb_http, bb_bucket, "over.bin", old, vclock=self._vclock(cid, 1))
+        r = bb_upload(bb_http, bb_bucket, "over.bin", new, vclock=self._vclock(cid, 2))
+
         assert r.status_code == 201
+        assert r.json()["resolution"] == "accepted"
 
-        # Main path has the new content
+        # Main path has the new content...
         dl = bb_http.get(
             f"/api/v1/buckets/{bb_bucket}/files/download", params={"filename": "over.bin"}
         )
         assert dl.status_code == 200
         assert dl.content == new
-        assert dl.content != old
+        # ...and no conflicted copy is created: this was a clean causal edit.
+        assert self._conflicted_copies(bb_http, bb_bucket, "over") == []
 
-        # A conflicted copy must exist preserving the old content
-        listed = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json()
-        conflict = [e for e in listed if "conflicted_copy" in e["name"] and "over" in e["name"]]
-        assert len(conflict) == 1, (
-            f"Expected 1 conflicted copy, found {len(conflict)}: {[e['name'] for e in conflict]}"
+    def test_stale_version_superseded_without_copy(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        """A causally-dominated upload (older content, older clock) is rejected
+        with 409 ``superseded``: no copy is created because the ancestor's data
+        is already inside the winner's history."""
+        cid = "TestClientA1234567890"
+        new = b"version two - updated content"
+        old = b"version one data"
+
+        # First push the causally-newer version...
+        r1 = bb_upload(bb_http, bb_bucket, "stale.bin", new, vclock=self._vclock(cid, 2))
+        assert r1.status_code == 201
+
+        # ...then a stale peer re-pushes the older content with the older clock.
+        r2 = bb_upload(bb_http, bb_bucket, "stale.bin", old, vclock=self._vclock(cid, 1))
+
+        assert r2.status_code == 409
+        assert r2.json()["resolution"] == "superseded"
+
+        # The winner remains on disk and no conflicted copy exists.
+        dl = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download", params={"filename": "stale.bin"}
         )
-        dl_old = bb_http.get(
-            f"/api/v1/buckets/{bb_bucket}/files/download",
-            params={"filename": conflict[0]["filepath"]},
+        assert dl.status_code == 200
+        assert dl.content == new
+        assert self._conflicted_copies(bb_http, bb_bucket, "stale") == []
+
+    def test_concurrent_tie_break_deterministic_and_preserves_loser(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        """True divergence (concurrent clocks from two authors) is resolved by
+        the deterministic SHA-256 tie-break. The incoming content either wins
+        (201 ``accepted_conflict_won``, previous preserved) or loses
+        (409 ``conflict_lost``, incoming preserved) — in both cases exactly one
+        conflicted copy survives and the main path keeps the winner."""
+        cid_a = "TestClientA1234567890"
+        cid_b = "TestClientB1234567890"
+        old = b"version one data"
+        new = b"version two - updated content"
+
+        # Compute the deterministic winner up front (highest SHA-256 wins).
+        win, lose = sorted((old, new), key=_sha, reverse=True)
+
+        bb_upload(bb_http, bb_bucket, "tie.bin", old, vclock=self._vclock(cid_a, 1))
+        r = bb_upload(bb_http, bb_bucket, "tie.bin", new, vclock=self._vclock(cid_b, 1))
+
+        copies = self._conflicted_copies(bb_http, bb_bucket, "tie")
+        if new == win:
+            # Incoming wins the tie-break → accepted, previous preserved.
+            assert r.status_code == 201
+            assert r.json()["resolution"] == "accepted_conflict_won"
+            assert len(copies) == 1, f"expected 1 conflicted copy, got {len(copies)}"
+            copy_dl = bb_http.get(
+                f"/api/v1/buckets/{bb_bucket}/files/download",
+                params={"filename": copies[0]["filepath"]},
+            )
+            assert copy_dl.status_code == 200
+            assert copy_dl.content == old
+        else:
+            # Incoming loses → rejected, incoming bytes preserved in a copy.
+            assert r.status_code == 409
+            assert r.json()["resolution"] == "conflict_lost"
+            assert len(copies) == 1, f"expected 1 conflicted copy, got {len(copies)}"
+            copy_dl = bb_http.get(
+                f"/api/v1/buckets/{bb_bucket}/files/download",
+                params={"filename": copies[0]["filepath"]},
+            )
+            assert copy_dl.status_code == 200
+            assert copy_dl.content == new
+
+        # The main path always keeps the deterministic winner.
+        dl = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download", params={"filename": "tie.bin"}
         )
-        assert dl_old.status_code == 200
-        assert dl_old.content == old
+        assert dl.status_code == 200
+        assert dl.content == win
 
     def test_overwrite_with_wrong_checksum_preserves_original(
         self, bb_upload, bb_http: httpx.Client, bb_bucket: str

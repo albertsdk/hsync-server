@@ -240,6 +240,9 @@ async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGener
 # A fixed, strong API key for every black-box run (>= 16 chars per Settings).
 BB_API_KEY = "test-bb-api-key-0123456789abcdef"
 BB_CLIENT_CID = "TestClientX1234567890"  # exactly 21 alphanumeric chars per CID_PATTERN
+# A second, distinct client id so black-box tests can author *concurrent*
+# causal histories (two different counters on the same path).
+BB_CLIENT_CID_B = "TestClientY1234567890"
 
 
 def _free_port() -> int:
@@ -462,6 +465,8 @@ def bb_upload():
         size: int = 0,
         compressed: str = "false",
         cid: str = BB_CLIENT_CID,
+        vclock: str = "",
+        version_id: str = "",
     ) -> httpx.Response:
         return client.post(
             f"/api/v1/buckets/{bucket}/files",
@@ -475,6 +480,8 @@ def bb_upload():
                 "offset": str(offset),
                 "size": str(size),
                 "compressed": compressed,
+                "vclock": vclock,
+                "version_id": version_id,
             },
             files={"file": (filename, content, "application/octet-stream")},
         )
