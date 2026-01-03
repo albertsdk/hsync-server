@@ -77,6 +77,11 @@ filterwarnings = [
     "ignore::urllib3.exceptions.InsecureRequestWarning",
     "ignore::DeprecationWarning:pathspec.*",
     "ignore::DeprecationWarning:watchdog.*",
+    # Starlette 1.6+ emits a transitional warning on the TestClient import,
+    # inviting to migrate to the httpx2 fork. httpx (0.28) still works fully;
+    # suppress only this single message so the output stays clean without
+    # masking any other deprecations.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
 ]
 
 [tool.ruff]
