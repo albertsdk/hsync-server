@@ -66,7 +66,9 @@ async def create_symlink(
         raise InvalidPathError(details={"path": path})
 
     # Confine to *this* bucket: both path and target are untrusted input.
-    absolute = resolve_within_bucket(bucket, path)
+    # The final component is NOT dereferenced: an existing endpoint symlink
+    # must be seen as the link (and replaced as such), never as its target.
+    absolute = resolve_within_bucket(bucket, path, resolve_final=False)
     if absolute is None:
         raise InvalidPathError(details={"path": path})
 

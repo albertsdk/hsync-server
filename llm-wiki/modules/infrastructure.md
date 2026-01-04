@@ -56,10 +56,16 @@ logging. Wired as a router-level dependency on `auth_router`.
 
 ## Hash cache (`hashes.py`)
 
-In-memory `FILE_HASHES: dict[str, str]` (`hashes.py:25`). `set_sha256_hash` (`:28`),
-`get_sha256_hash` (`:42`), `del_sha256_hash` (`:56`); `set_sha256_hashes` (`:73`)
-walks the buckets tree at startup (called from `main.py:58`) for fast duplicate
-detection without recompute.
+In-memory `FILE_HASHES: dict[str, tuple[str, int, int]]` (`hashes.py`) mapping
+`sha256(filepath) -> (file_sha256, mtime_ns, size)`. `set_sha256_hash` captures
+the current (mtime_ns, size) with the digest; `get_sha256_hash` serves the
+digest **only while the file's current metadata matches the captured pair** —
+a changed or vanished file drops the stale entry and returns `None`, so
+callers (download checksum header, upload dup-skip, delta race check) always
+recompute instead of trusting an outdated checksum. `set_sha256_hashes`
+(`:73`) walks the buckets tree at startup (called from `main.py:58`) for fast
+duplicate detection without recompute. `del_sha256_hash` (`:56`) removes an
+entry.
 
 ## Prometheus metrics (`metrics.py`)
 

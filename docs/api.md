@@ -98,6 +98,21 @@ updated signatures.
 See [Delta Transfer Guide](delta-transfer.md) for detailed usage examples and
 best practices.
 
+### Symlinks
+
+Symlinks are **replicated structurally**: the pair (path, target) travels the
+sync channel and the receiving peer reconstructs the link itself (WS `symlink`
+event or `POST /symlinks`). On the REST surface the semantics are
+per-operation:
+
+| Operation | Behaviour |
+|-----------|-----------|
+| List (`GET /files`) | A symlink whose target stays inside the bucket is listed; one whose target escapes the bucket is skipped (its metadata/hash never leak). |
+| Download (`GET /files/download`) | A symlink whose target stays inside the bucket is served transparently (static-server semantics); one whose target escapes the bucket is refused with `400`. |
+| Delete (`DELETE /files`) | Removes the **link** (the directory entry), never the target it points to. |
+| Create/update (`POST /symlinks`, WS event) | Recreates the **link**; a target escaping the bucket is rejected. |
+| Delta apply (`POST /delta/apply`) | Refuses symlink paths with `400`: a delta patches file content and never turns a symlink into a regular file. |
+
 ### Monitoring & Sync
 
 | Method | Endpoint | Description | Auth |

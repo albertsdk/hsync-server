@@ -21,13 +21,18 @@ from hsync_common.models.dir import is_hidden_dir
 from hsync_common.models.file import is_hidden_file
 
 # In-memory storage for file hashes
-# Maps SHA256(filepath) -> SHA256(file_content)
-FILE_HASHES: dict[str, str] = {}
+# Maps SHA256(filepath) -> (SHA256(file_content), mtime_ns, size)
+FILE_HASHES: dict[str, tuple[str, int, int]] = {}
 
 
 def set_sha256_hash(filepath: str, sha256sum: str) -> None:
     """
-    Store a SHA-256 hash for a file path.
+    Store a SHA-256 hash for a file path, with its current metadata.
+
+    The digest is stored together with the (mtime_ns, size) observed now, so
+    :func:`get_sha256_hash` can refuse stale entries instead of serving a
+    checksum that no longer describes the file on disk. A missing/unreadable
+    file is not cached (there is nothing verifiable to attach the digest to).
 
     The file path is hashed with SHA-256 before storage for privacy.
 
@@ -35,22 +40,43 @@ def set_sha256_hash(filepath: str, sha256sum: str) -> None:
         filepath: Absolute path to the file.
         sha256sum: SHA-256 checksum of the file content.
     """
+    try:
+        st = Path(filepath).stat()
+    except OSError:
+        return
     hashed_key: str = hashlib.sha256(filepath.encode()).hexdigest()
-    FILE_HASHES[hashed_key] = sha256sum
+    FILE_HASHES[hashed_key] = (sha256sum, st.st_mtime_ns, st.st_size)
 
 
 def get_sha256_hash(filepath: str) -> str | None:
     """
-    Retrieve the stored SHA-256 hash for a file path.
+    Retrieve the stored SHA-256 hash for a file path if it is still fresh.
+
+    The cached digest is served only while the file's current (mtime_ns,
+    size) match the values captured at caching time; a changed or vanished
+    file returns ``None`` and the stale entry is dropped, so callers
+    recompute instead of trusting an outdated checksum.
 
     Args:
         filepath: Absolute path to the file.
 
     Returns:
-        The SHA-256 checksum if found, None otherwise.
+        The SHA-256 checksum if found and fresh, None otherwise.
     """
     hashed_key: str = hashlib.sha256(filepath.encode()).hexdigest()
-    return FILE_HASHES.get(hashed_key)
+    entry = FILE_HASHES.get(hashed_key)
+    if entry is None:
+        return None
+    sha256sum, mtime_ns, size = entry
+    try:
+        st = Path(filepath).stat()
+    except OSError:
+        del FILE_HASHES[hashed_key]
+        return None
+    if (st.st_mtime_ns, st.st_size) != (mtime_ns, size):
+        del FILE_HASHES[hashed_key]
+        return None
+    return sha256sum
 
 
 def del_sha256_hash(filepath: str) -> bool:

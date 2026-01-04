@@ -147,21 +147,25 @@ class TestSettings:
         assert settings.log_level == "debug"
 
     def test_port_range_validation(self):
-        """Test that port is validated within range."""
-        with pytest.raises(Exception):
+        """Test that port is validated within range.
+
+        The pydantic ValidationError type (and its range message) is part of
+        the public fail-fast contract: a generic Exception catch would pass
+        for any unrelated error (wrong constructor signature, TypeError …)."""
+        with pytest.raises(ValidationError, match="greater than or equal to 1"):
             config.Settings(port=0)  # Below valid range
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="less than or equal to 65535"):
             config.Settings(port=70000)  # Above valid range
 
     def test_max_upload_size_non_negative(self):
         """Test that max upload size must be non-negative."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="greater than or equal to 0"):
             config.Settings(max_upload_size=-1)
 
     def test_workers_minimum(self):
         """Test that workers must be at least 1."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="greater than or equal to 1"):
             config.Settings(workers=0)
 
 

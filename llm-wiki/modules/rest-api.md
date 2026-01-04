@@ -86,11 +86,13 @@ and causal version fields `vclock` (JSON-encoded vector clock) and `version_id`
 
 Streams the file; supports zstd via `compression.async_compress_stream`
 (`compression.py:53`) when `get_compression_enabled()` (`config.py:437`). The
-`filename` is confined with `resolve_within_bucket` (rejects cross-bucket and
-internal-engine paths). A file-symlink inside the bucket whose target escapes
-it is refused (`is_safe_symlink_target`) — `FileResponse` would otherwise
-follow it and serve the out-of-bucket target (e.g. `secret -> /etc/passwd`).
-Missing file → `FileNotFoundError` (`exceptions.py:118`).
+`filename` is confined with `resolve_within_bucket` (full resolve): a symlink
+whose target stays inside the bucket is served **transparently** (static-
+server semantics — this endpoint serves content on demand), while one whose
+target escapes the bucket fails the confinement and is rejected (400).
+Symlinks are *replicated* structurally via the WS `symlink` event and
+`POST /symlinks`, never through this content endpoint. Missing file →
+`FileNotFoundError` (`exceptions.py:118`).
 Accepts an optional `cid` query parameter (sent by the client) that is included
 in the `[DOWNLOAD]` log line for request attribution. The log is deferred to a
 `BackgroundTasks` callback so it can include the actual transfer duration
@@ -113,9 +115,13 @@ in the `[DOWNLOAD]` log line for request attribution. The log is deferred to a
 
 ## Delete (`api/files/delete.py:44`)
 
-Removes the file, drops its hash (`del_sha256_hash`, `hashes.py:56`), records a
-tombstone (`record_deletion`, `tombstones.py:49`), cleans up now-empty dirs
-(`cleanup_empty_dir`, `api/file_utils.py:67`), and broadcasts a `deleted` event.
+Removes the file (for a symlink path, the **link itself**, never its target —
+final component left unresolved by the confinement), drops its hash
+(`del_sha256_hash`, `hashes.py:56`), records a tombstone (`record_deletion`,
+`tombstones.py:49`), cleans up now-empty dirs (`cleanup_empty_dir`,
+`api/file_utils.py:67`), and broadcasts a `deleted` event. The delta apply
+endpoint (`delta/apply.py`) **refuses symlink paths with 400**: a delta
+patches file content and must never turn a symlink into a regular file.
 
 ## Delta Transfer (`api/files/delta/`)
 

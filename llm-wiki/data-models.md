@@ -18,9 +18,14 @@ process-local state and side-car persistence.
 
 | State | Location | Lifetime | Persistence |
 | ----- | -------- | -------- | ----------- |
-| SHA-256 cache `FILE_HASHES` | `hashes.py:25` | process memory | rebuilt at startup from disk (`hashes.py:73`) |
+| SHA-256 cache `FILE_HASHES` | `hashes.py` | process memory | rebuilt at startup from disk (`set_sha256_hashes`) |
 | Per-bucket WS pools | `connection_manager.py:166` (`bucket_manager`) | process memory | none (live connections) |
 | Tombstone stores (per bucket) | `tombstones.py` cache | process memory + side-car | `.hsynctombstones` file |
+
+The SHA-256 cache maps `sha256(filepath) -> (file_sha256, mtime_ns, size)`: a
+cached digest is served only while the file's current metadata matches the
+captured pair, otherwise the entry is dropped and callers recompute (see
+[modules/infrastructure.md](modules/infrastructure.md) — Hash cache).
 
 ## Tombstones (`tombstones.py`)
 

@@ -288,7 +288,9 @@ class TestFileDiskSpace:
                 },
             )
 
-        assert response.status_code != 201
+        # The public contract for out-of-space is HTTP 507 (InsufficientStorage),
+        # not just "not 201": a 500/400 regression must fail here.
+        assert response.status_code == 507
         assert "HSYNC-4004" in response.text
 
     @pytest.mark.asyncio
@@ -484,7 +486,10 @@ class TestSymlinkSafety:
     async def test_download_refuses_escaping_symlink(
         self, client: AsyncClient, temp_buckets_dir: str
     ):
-        """Downloading an escaping file-symlink never serves the target content."""
+        """Downloading an escaping file-symlink never serves the target content.
+
+        The full-resolve confinement rejects the path (400) because the target
+        is outside the bucket — the outside bytes are never leaked."""
         bucket_path = os.path.join(temp_buckets_dir, "symlinkdlbucket")
         os.makedirs(bucket_path)
 
@@ -496,18 +501,17 @@ class TestSymlinkSafety:
         response = await client.get(
             "/api/v1/buckets/symlinkdlbucket/files/download", params={"filename": "secret"}
         )
-        # Either the path confinement rejects it (400) or the symlink guard
-        # refuses to serve it (404) — in no case is the target content leaked.
-        assert response.status_code in (400, 404)
+        assert response.status_code == 400
         assert b"top-secret-content" not in response.content
 
     @pytest.mark.asyncio
     async def test_download_serves_in_bucket_symlink_target(
         self, client: AsyncClient, temp_buckets_dir: str
     ):
-        """A symlink whose target stays inside the bucket is downloadable (its
-        dereferenced content) — consistent with the listing treating the link
-        as a regular file."""
+        """A symlink whose target stays inside the bucket is served
+        transparently (static-server semantics): this endpoint serves content
+        on demand, while replication happens structurally via WS events and
+        POST /symlinks. Symlinks are NOT refused wholesale."""
         bucket_path = os.path.join(temp_buckets_dir, "symlinkdlin")
         os.makedirs(bucket_path)
 
@@ -521,6 +525,8 @@ class TestSymlinkSafety:
         )
         assert response.status_code == 200
         assert response.content == b"inside-content"
+        # The link must not be touched: it is still a symlink on disk.
+        assert os.path.islink(os.path.join(bucket_path, "alias"))
 
 
 class TestFileDeleteValidation:

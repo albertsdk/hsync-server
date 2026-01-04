@@ -168,9 +168,19 @@ async def delta_apply(
     try:
         if not is_valid_bucket(bucket):
             raise InvalidBucketNameError(details={"bucket": bucket})
-        file_location = resolve_within_bucket(bucket, path)
+        # The final component is NOT dereferenced: the base file is read and
+        # then replaced atomically. A symlink at the endpoint is a structural
+        # entry that delta transfer cannot patch (no analogue does — rsync/git
+        # recreate links, never patch them); refuse it explicitly so the
+        # rebuild below can never turn a link into a regular file.
+        file_location = resolve_within_bucket(bucket, path, resolve_final=False)
         if file_location is None:
             raise InvalidPathError(details={"path": path})
+        if Path(file_location).is_symlink():
+            raise ValidationError(
+                message="Delta apply does not support symlink paths",
+                details={"path": path},
+            )
         if not await isfile(file_location):
             raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": path})
 
@@ -307,7 +317,12 @@ async def delta_apply(
                 from hsync_common.time_utils import conflict_timestamp
 
                 ts = conflict_timestamp()
-                conflicted = conflicted_copy_name(part_path, delta_result.loser_cid, ts)
+                # Use the FINAL path (regression: the temporary `.delta.part`
+                # name would produce `<stem>.delta_conflicted_copy_….part`,
+                # an internal-artifact suffix the sync engine never lists or
+                # syncs — ADR-0021 canonical name is `<stem>_conflicted_copy_…`
+                # with the real extension).
+                conflicted = conflicted_copy_name(file_location, delta_result.loser_cid, ts)
                 replace(part_path, conflicted)
                 part_path = None
                 raise ConflictLostError(

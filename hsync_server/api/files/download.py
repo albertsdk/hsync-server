@@ -73,7 +73,13 @@ async def download_file(
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
     # Confine to *this* bucket: the filename is untrusted input and must
-    # never escape into a sibling bucket or outside the storage root.
+    # never escape into a sibling bucket or outside the storage root. The
+    # full resolve is intentional here: a symlink whose target stays inside
+    # the bucket is served transparently (the standard static-server
+    # semantics), while one whose target escapes the bucket never resolves
+    # within the confinement and is rejected as InvalidPathError. Symlinks
+    # are *replicated* structurally via the WS symlink event and the
+    # /symlinks endpoint; this endpoint only serves content on demand.
     file = resolve_within_bucket(bucket, filename)
     if file is None:
         raise InvalidPathError(details={"path": filename})
@@ -84,12 +90,6 @@ async def download_file(
     # This ensures clients always download a complete, valid file
     if Path(backup_file).exists():
         file = backup_file
-
-    # Symlinks are synced as symlinks (structurally, never as file content).
-    # Downloading a symlink path is refused so a peer never dereferences it.
-    if Path(file).is_symlink():
-        log.debug(f'Download refused for symlink path: "{file}" (synced as symlink, not content)')
-        raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
 
     if not await isfile(file):
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})

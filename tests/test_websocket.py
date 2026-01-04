@@ -408,8 +408,13 @@ class TestWebSocketEvents:
         assert os.path.islink(f"{bucket_dir}/link")
 
     @pytest.mark.asyncio
-    async def test_exception_during_event_processing(self, mock_websocket):
-        """Exception during event processing is logged but doesn't crash."""
+    async def test_exception_during_event_processing(self, mock_websocket, tmp_path):
+        """Exception during event processing is logged but doesn't crash.
+
+        The storage root is redirected to a temp dir (like every sibling
+        test): writing to the repository's real ``buckets/`` tree would leak
+        side effects between runs.
+        """
         from fastapi import WebSocketDisconnect
 
         mock_websocket.receive_text.side_effect = [
@@ -418,7 +423,13 @@ class TestWebSocketEvents:
             WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
+        with (
+            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
+            patch(
+                "hsync_server.api.events.get_buckets_path",
+                return_value=str(tmp_path / "buckets"),
+            ),
+        ):
             await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Connection was accepted and authenticated before the event

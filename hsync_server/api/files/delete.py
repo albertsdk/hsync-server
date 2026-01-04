@@ -79,8 +79,10 @@ async def delete_file(
         raise BucketNotFoundError(details={"bucket": bucket})
 
     # Confine to *this* bucket: the filename is untrusted input and must
-    # never escape into a sibling bucket or outside the storage root.
-    file = resolve_within_bucket(bucket, filename)
+    # never escape into a sibling bucket or outside the storage root. The
+    # final component is NOT dereferenced: deleting a symlink path removes
+    # the link itself, never the target file it points to.
+    file = resolve_within_bucket(bucket, filename, resolve_final=False)
     if file is None:
         raise InvalidPathError(details={"path": filename})
 

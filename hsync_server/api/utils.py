@@ -17,7 +17,11 @@ from pathlib import Path
 
 from hsync_common.hashing import compute_sha256_async
 from hsync_common.models.dir import Dir
-from hsync_common.path_validation import is_valid_bucket_name, resolve_within
+from hsync_common.path_validation import (
+    is_valid_bucket_name,
+    resolve_within,
+    validate_remote_relpath,
+)
 from hsync_common.permissions import get_permissions as _read_permissions
 from hsync_common.permissions import octal_to_mode, sanitize_remote_permissions
 from loguru import logger as log
@@ -43,20 +47,31 @@ def is_valid_bucket(value: str) -> bool:
     return is_valid_bucket_name(value)
 
 
-def resolve_within_bucket(bucket: str, rel: str) -> str | None:
+def resolve_within_bucket(bucket: str, rel: str, *, resolve_final: bool = True) -> str | None:
     """Resolve a client-supplied relative path inside a *specific* bucket.
 
     The path is validated with
     :func:`hsync_common.path_validation.validate_remote_relpath` (rejecting
     traversal, absolute paths, backslashes, reserved names and internal
-    engine artifacts) and confined to ``buckets_path/bucket`` via
-    ``resolve()`` + ``relative_to()`` — a path such as ``../other-bucket/x``
-    can never escape into a sibling bucket (cross-bucket confinement).
+    engine artifacts) and confined to ``buckets_path/bucket`` — a path such
+    as ``../other-bucket/x`` can never escape into a sibling bucket
+    (cross-bucket confinement).
+
+    When *resolve_final* is False the **final component is not dereferenced**:
+    a symlink at the endpoint is returned as the link path, so callers that
+    must treat symlinks structurally (download refuses them, delete removes
+    the link itself, symlink-create replaces the link, delta-apply replaces
+    the file) never operate on the target. Intermediate components are still
+    fully resolved and confined, so a directory-symlink escaping the bucket
+    keeps being rejected.
 
     Args:
         bucket: Target bucket name (already validated).
         rel: Client-supplied bucket-relative path; ``""`` and ``"."`` refer
             to the bucket root.
+        resolve_final: When True (default) the returned path is fully
+            resolved — the safe choice for directory targets (uploads) and
+            base files (signatures/list).
 
     Returns:
         The confined absolute path, or ``None`` when the path is unsafe.
@@ -64,7 +79,20 @@ def resolve_within_bucket(bucket: str, rel: str) -> str | None:
     base = f"{get_buckets_path()}/{bucket}"
     if rel in ("", "."):
         return str(Path(base).resolve())
-    return resolve_within(base, rel)
+    if resolve_final:
+        return resolve_within(base, rel)
+
+    clean = validate_remote_relpath(rel)
+    if clean is None:
+        return None
+    root = Path(base).resolve()
+    try:
+        parent = (root / Path(clean).parent).resolve()
+        target = parent / Path(clean).name
+        target.relative_to(root)
+    except (OSError, ValueError):
+        return None
+    return str(target)
 
 
 async def get_permissions(obj_path: str) -> str:

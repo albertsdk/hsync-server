@@ -252,6 +252,9 @@ async def upload_file(
             log.warning(f"File already present: {file_location}")
             # Update timestamps even if skipping upload
             update_file_timestamp(file_location, ctime, mtime)
+            # The utime pass changed the (mtime_ns) the cache keyed on: refresh
+            # the entry so the next identical upload still hits the dup-skip.
+            set_sha256_hash(file_location, sha256sum)
             # The file exists: drop any stale deletion marker for it.
             clear_deletion(bucket, f"{buckets_path}/{bucket}", file_location)
             # Clean up partial file if exists
@@ -525,9 +528,6 @@ async def upload_file(
             elif backup_path and Path(backup_path).exists():
                 remove(backup_path)
 
-            # Store SHA-256 hash for future duplicate detection
-            set_sha256_hash(file_location, sha256sum_tmp)
-
             # Atomically move file to final destination (same-filesystem rename)
             replace(file_location_tmp, file_location)
             file_location_tmp = None  # Don't clean up - it's been moved
@@ -542,6 +542,15 @@ async def upload_file(
 
             # Invalidate SHA-256 cache for this file (content has changed)
             invalidate_sha256_cache(file_location)
+
+            # Store SHA-256 hash for future duplicate detection LAST, after
+            # the timestamp/permission pass: the cache captures the
+            # (mtime_ns, size) of the *published* file, so it must be written
+            # once the final path exists AND its metadata is final — a set
+            # before the rename would be a no-op (file missing) and a set
+            # before the utime/chmod pass would store already-stale metadata
+            # (the freshness check would drop the entry on the first read).
+            set_sha256_hash(file_location, sha256sum_tmp)
 
             # A successful upload (re-)creates the file: drop any deletion marker
             # so peers do not delete it on their next full sync.

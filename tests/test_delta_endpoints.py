@@ -358,6 +358,90 @@ class TestDeltaApply:
         )
         assert resp.status_code == 400
 
+    async def test_symlink_path_is_rejected(self, client, bucket_dir):
+        """A symlink path is a structural entry, not patchable content: delta
+        apply must reject it (400) and leave the link untouched."""
+        base = _base_bytes()
+        target_rel = _write_base(bucket_dir, base, rel="docs/real.bin")
+        (bucket_dir / "docs" / "link.bin").symlink_to("real.bin")
+
+        resp = await client.post(
+            "/api/v1/buckets/bucket1/files/delta/apply",
+            data={
+                "path": "docs/link.bin",
+                "metadata": json.dumps(
+                    {
+                        "cid": "TestClientABCDEFGHIJK",
+                        "base_sha256": sha256(base).hexdigest(),
+                        "new_sha256": sha256(b"x").hexdigest(),
+                        "new_size": 1,
+                        "block_size": BLOCK,
+                        "compressed": False,
+                        "ops": [{"type": "data", "offset": 0, "length": 1, "data_offset": 0}],
+                    }
+                ),
+            },
+            files={"file": ("delta.bin", b"x", "application/octet-stream")},
+        )
+        assert resp.status_code == 400
+        # The link is still a symlink (never turned into a regular file),
+        # and the base file it points to is untouched.
+        assert (bucket_dir / "docs" / "link.bin").is_symlink()
+        assert (bucket_dir / target_rel).read_bytes() == base
+
+    async def test_conflict_lost_copy_has_no_part_suffix(self, client, bucket_dir, tmp_path):
+        """Regression: the conflict-lost copy must be named from the FINAL
+        path (ADR-0021). The old code passed the temporary ``.delta.part``
+        path, producing ``<stem>.delta_conflicted_copy_....part`` — a name
+        ending in ``.part`` that the sync engine treats as an internal
+        artifact and never lists or syncs (the losing content was silently
+        unreachable)."""
+        from hsync_server.versions import get_version_store
+
+        # Pick deterministic contents where the DISK content wins the hash
+        # tie-break (conflict_download → conflict_lost). Loop over seeds is
+        # stable: SHA-256 is a pure function of the bytes.
+        disk_content = None
+        incoming_content = None
+        for seed in range(64):
+            candidate = _base_bytes(seed=seed)
+            edited = bytearray(candidate)
+            edited[BLOCK : BLOCK + 32] = b"X" * 32
+            edited = bytes(edited)
+            if sha256(candidate).hexdigest() > sha256(edited).hexdigest():
+                disk_content, incoming_content = candidate, edited
+                break
+        assert disk_content is not None, "no deterministic tie-break pair found"
+
+        rel = _write_base(bucket_dir, disk_content)
+
+        # Register the stored version with a clock concurrent with the
+        # incoming one ({A:1} vs the client's {B:1}): neither dominates, so
+        # arbitration falls through to the deterministic hash tie-break.
+        store = get_version_store("bucket1")
+        store.record(
+            rel,
+            base_hash=sha256(disk_content).hexdigest(),
+            vclock={"TestClientA1234567890": 1},
+        )
+        store.save()
+
+        payload = _apply_multipart(disk_content, incoming_content, tmp_path)
+        meta = json.loads(payload["data"]["metadata"])
+        meta["cid"] = "TestClientB1234567890"
+        meta["vclock"] = {"TestClientB1234567890": 1}
+        payload["data"]["metadata"] = json.dumps(meta)
+        resp = await client.post("/api/v1/buckets/bucket1/files/delta/apply", **payload)
+        assert resp.status_code == 409
+
+        conflicted = [p.name for p in bucket_dir.glob("docs/big_conflicted_copy_*")]
+        assert conflicted, "no conflicted copy written"
+        name = conflicted[0]
+        assert not name.endswith(".part"), f"conflicted copy name is an internal artifact: {name}"
+        assert name.endswith(".bin"), f"canonical extension lost (ADR-0021): {name}"
+        # The winner (disk content) is untouched.
+        assert (bucket_dir / rel).read_bytes() == disk_content
+
 
 # ---------------------------------------------------------------------------
 # Full round-trips through the wire
