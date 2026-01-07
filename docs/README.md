@@ -5,6 +5,41 @@ FastAPI application that stores files in per-bucket directories, exposes a REST
 API for listing/uploading/downloading/deleting files, and pushes change events
 to connected clients over WebSocket.
 
+## System Requirements
+
+### Minimum
+
+| Resource | Value |
+|----------|-------|
+| CPU | 1 core (x86_64 or arm64) |
+| RAM | 256 MB |
+| Disk | 1 GB free (plus storage for your files) |
+| OS | Linux (kernel ≥ 4.15), macOS, or Windows (WSL2) |
+
+### Recommended
+
+| Resource | Value |
+|----------|-------|
+| CPU | 2 cores |
+| RAM | 1 GB |
+| Disk | SSD, with at least 10% free space above your expected storage needs |
+
+### Metadata overhead
+
+The server stores files as plain files on disk — there is no database. The only
+additional metadata is:
+
+- **SHA-256 cache**: an in-memory LRU cache (not persisted). Size depends on the
+  number of unique files uploaded since the last restart. Roughly 32 bytes per
+  entry plus key overhead.
+- **Tombstones**: one small JSON file per bucket, typically a few KB even for
+  thousands of deletion markers.
+
+Neither should exceed a few MB in practice.
+
+For detailed performance and scalability guidelines, see the
+[Operations Guide → Performance and Limits](operations.md#performance-and-limits).
+
 ## Install & quickstart
 
 Pull the prebuilt multi-arch image (`linux/amd64`, `linux/arm64`) from GHCR and
@@ -49,7 +84,9 @@ on the client side.
 | [architecture.md](architecture.md) | Server components: FastAPI app, connection manager, storage, hashing. |
 | [api.md](api.md) | Complete REST + WebSocket API reference. |
 | [sync-flow.md](sync-flow.md) | Server-side sync flow: file storage, event broadcast, tombstones. |
-| [faq.md](faq.md) | Frequently asked questions and why to choose HSYNC. |
+| [faq.md](faq.md) | Frequently asked questions, troubleshooting, and why to choose HSYNC. |
+| [deployment.md](deployment.md) | Production deployment: Docker Compose, reverse proxy, systemd, troubleshooting. |
+| [operations.md](operations.md) | Day-to-day operations: backup/restore, upgrade, monitoring, performance. |
 
 ## Environment Variables
 
@@ -104,9 +141,19 @@ all defaults.
 For the ecosystem-wide decision records, see the
 [ADRs in hsync-common](../../hsync-common/docs/adr/README.md).
 
+## Upgrade
+
+For upgrade instructions (Docker, Docker Compose, and systemd/Poetry), see the
+[Operations Guide → Upgrade Guide](operations.md#upgrade-guide).
+
+## Client usage examples
+
+For practical usage examples of the HSYNC client — including first-time setup,
+file exclusion, conflict resolution, restore from tombstones, and migration —
+see the [client examples](../../hsync-client/docs/examples.md).
+
 ## Related projects
 
 - [hsync-client](../../hsync-client/docs/README.md) — the sync client / CLI.
 - [hsync-desktop](../../hsync-desktop/docs/README.md) — desktop GUI front-end.
 - [hsync-android](../../hsync-android/docs/README.md) — the Android app.
-- [hsync-common](../../hsync-common/docs/README.md) — shared models and protocol.

@@ -123,8 +123,155 @@ Use a version tag instead of `latest`, e.g.
 `ghcr.io/albertobasso/hsync-server:v1.0.0`. See
 [README → Install & quickstart](README.md#install--quickstart).
 
+## Troubleshooting
+
+### Server won't start
+
+**"Address already in use" on port 8765:**
+```bash
+# Find the process using the port
+sudo lsof -i :8765
+# Or use ss
+sudo ss -tlnp | grep 8765
+```
+Either stop the conflicting process or change the server port with `HSYNC_PORT`.
+
+**Container exits immediately:**
+```bash
+# Check the container logs
+docker logs hsync-server
+```
+Common causes:
+- `HSYNC_API_KEY` not set — the server requires an API key.
+- `HSYNC_SSL_KEYFILE_PASSWORD` missing when `HSYNC_SSL_ENABLED=true`.
+- Volume permissions — the container user (UID 1000) must be able to write to
+  the buckets and certs directories.
+
+**"HSYNC_SSL_KEYFILE_PASSWORD is required when SSL is enabled":**
+Set the `HSYNC_SSL_KEYFILE_PASSWORD` environment variable. This is mandatory
+whenever `HSYNC_SSL_ENABLED=true` because the server stores the private key
+encrypted on disk.
+
+### Clients cannot connect
+
+**Connection refused:**
+```bash
+# Verify the server is listening
+curl http://localhost:8765/health
+
+# Check firewall rules
+sudo ufw status
+# Open the port if needed
+sudo ufw allow 8765/tcp
+```
+
+**TLS/SSL errors:**
+- If using a reverse proxy, ensure the proxy is running and the certificate is
+  valid.
+- If using self-signed certificates, clients need `--ca-cert <file>` or
+  `--insecure`. See [README → Client Connection with Self-Signed Certificates](README.md#client-connection-with-self-signed-certificates).
+- Clients always connect with `https://` / `wss://` and refuse to send API keys
+  over plain HTTP.
+
+**"401 Unauthorized" or "403 Forbidden":**
+- Verify the client is sending the correct `Authorization: Bearer <key>` header.
+- Check that `HSYNC_API_KEY` on the server matches the client's key.
+- The server compares API keys in constant time to prevent timing attacks.
+
+**WebSocket connection fails:**
+- Ensure the client sends an `auth` frame as the first message after connecting.
+- The WebSocket URL format is:
+  ```
+  wss://host:8765/api/v1/buckets/{bucket}/events/{cid}
+  ```
+- Check the WebSocket close code:
+  - `4001` — first frame was not a valid `auth` message.
+  - `4002` — protocol version mismatch.
+  - `4003` — invalid API key.
+  - `4008` — authentication timeout (no auth frame within the timeout window).
+- See [API → WebSocket Authentication Flow](api.md#authentication-flow) for details.
+
+**Rate limited (429 Too Many Requests):**
+- The client IP may have exceeded the per-IP rate limit.
+- If behind a reverse proxy, ensure `HSYNC_TRUSTED_PROXIES` includes the proxy's
+  IP range so that `X-Forwarded-For` is honoured.
+- Check the current rate limits in [README → Rate Limiting](README.md#rate-limiting).
+
+### File operations fail
+
+**Upload fails with "File too large":**
+- The file exceeds `HSYNC_MAX_UPLOAD_SIZE` (default 10 GiB).
+- Increase the limit or split the file.
+
+**Upload fails with "Insufficient disk space":**
+- The server checks `HSYNC_MIN_FREE_DISK_SPACE` before accepting uploads.
+- Free up disk space or set `HSYNC_MIN_FREE_DISK_SPACE=0` to disable the check.
+
+**Upload returns 409 Conflict:**
+- A file with the same SHA-256 hash already exists on the server.
+- This is normal — the client can skip the upload.
+
+**Download fails with 404:**
+- The file does not exist in the specified bucket.
+- Verify the bucket name and file path.
+
+**"Path traversal" error:**
+- The server validates that file paths do not escape the bucket directory.
+- Ensure the file path does not contain `..` or start with `/`.
+
+### Performance issues
+
+**Slow file listings:**
+- Buckets with very large numbers of files (>100k) may experience slow `readdir`
+  performance. Organise files into subdirectories.
+
+**High memory usage:**
+- Each WebSocket connection uses approximately 50–100 KB of RAM.
+- Reduce `HSYNC_WS_MAX_CONNECTIONS` if memory is constrained.
+- The SHA-256 cache is in-memory and grows with the number of unique files
+  uploaded since the last restart. It is automatically evicted (LRU).
+
+**Slow uploads/downloads:**
+- Check network bandwidth and latency.
+- Compression is enabled by default for downloads (zstd). Files under 10 KB and
+  already-compressed formats are skipped.
+- Uploads are resumable — if a transfer is interrupted, the client can resume
+  from the last offset.
+
+### Where to find server logs
+
+| Deployment | Log location |
+|------------|-------------|
+| Docker (no `HSYNC_LOG_FILE`) | `docker logs hsync-server` |
+| Docker (with `HSYNC_LOG_FILE`) | Inside the container at the configured path, or `docker logs` |
+| Docker Compose | `docker compose logs hsync-server` |
+| Systemd | `journalctl -u hsync-server` |
+| Direct (Poetry) | stdout/stderr, or the configured log file |
+
+Enable debug logging for more verbose output:
+
+```bash
+HSYNC_LOG_LEVEL=debug ./docker.sh start
+```
+
+### Common error codes
+
+| HTTP Status | Meaning | Common causes |
+|-------------|---------|---------------|
+| 400 | Bad Request | Invalid parameters, malformed request |
+| 401 | Unauthorized | Invalid API key |
+| 403 | Forbidden | Missing API key |
+| 404 | Not Found | Bucket or file does not exist |
+| 409 | Conflict | File already exists (same SHA-256) |
+| 422 | Unprocessable Entity | Request body validation failed |
+| 429 | Too Many Requests | Rate limit exceeded |
+| 500 | Internal Server Error | Unexpected server error |
+
+For a complete list of error codes, see [API → Error Codes Reference](api.md#error-codes-reference).
+
 ## See also
 
 - [README](README.md) — install and quickstart.
 - [API Reference](api.md) — complete REST + WebSocket contract.
 - [Sync Flow](sync-flow.md) — end-to-end synchronization behavior.
+- [Deployment Guide](deployment.md) — production deployment, backup, and monitoring.
