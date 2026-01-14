@@ -342,8 +342,8 @@ async def upload_file(
                 remove(partial_file_path)
 
             # Create the temp file in the destination directory so the final
-            # move() below resolves to an atomic same-filesystem rename instead
-            # of a non-atomic copy+remove (which could leave a torn file).
+            # os.replace() below resolves to an atomic same-filesystem rename
+            # instead of a non-atomic copy+remove (which could leave a torn file).
             # The dot prefix keeps the in-flight artifact hidden: it must not
             # appear in /files listings (peers would sync torn content).
             async with NamedTemporaryFile(

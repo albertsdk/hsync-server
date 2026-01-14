@@ -40,8 +40,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
     For unhandled exceptions (which bypass ``BaseHTTPMiddleware.dispatch``
     because of Starlette's ``ServerErrorMiddleware``), the companion
-    ``register_unhandled_exception_handler`` function registers a global
-    exception handler that still injects the ``X-Request-ID`` header.
+    ``register_exception_handlers`` function registers a global exception
+    handler that still injects the ``X-Request-ID`` header.
 
     Usage:
         app.add_middleware(RequestIdMiddleware)

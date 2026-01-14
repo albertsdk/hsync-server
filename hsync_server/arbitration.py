@@ -57,7 +57,8 @@ class ArbitrationResult:
     """Result of causal arbitration for an upload.
 
     ``record_vclock`` is the clock the receiver should record on accept
-    (``merge(incoming, stored)`` per the convergence invariant D11).
+    (``merge_vclocks(incoming_vclock, stored_vclock)`` per the convergence
+    invariant D11).
     ``loser_cid`` is the author of the losing content for conflict-copy naming.
     """
 
