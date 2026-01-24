@@ -100,14 +100,18 @@ Endpoints enforce per-IP rate limits (configurable via environment variables). S
 
 ### What happens when two clients change the same file?
 
-The server stores the latest upload and broadcasts the event; clients reconcile
-according to their sync direction and mode. See [Sync Flow](sync-flow.md).
+Every upload is arbitrated causally against the stored version (ADR-0022): the
+server accepts the causally-dominant content, preserves the loser of a true
+concurrent divergence as a `_conflicted_copy_` sibling, and rejects stale
+ancestors. It then broadcasts the event; clients reconcile according to their
+sync direction and mode. See [Sync Flow](sync-flow.md).
 
 ### How are deletions handled across offline clients?
 
-Through **tombstones**: deletion markers (merged last-write-wins) let peers that
-were offline at deletion time avoid resurrecting files during a full
-reconciliation. See [API → Tombstones](api.md#tombstones).
+Through **tombstones**: deletion markers, merged causally (the dominant vector
+clock wins, never the deletion timestamp), let peers that were offline at
+deletion time avoid resurrecting files during a full reconciliation. See
+[API → Tombstones](api.md#tombstones).
 
 ### Does the server protect against mass deletion?
 
@@ -247,8 +251,11 @@ sudo ufw allow 9753/tcp
 - Free up disk space or set `HSYNC_MIN_FREE_DISK_SPACE=0` to disable the check.
 
 **Upload returns 409 Conflict:**
-- A file with the same SHA-256 hash already exists on the server.
-- This is normal — the client can skip the upload.
+- A file with the same SHA-256 hash already exists on the server (duplicate
+  upload; the client can skip it), or the upload lost the causal arbitration: it
+  was superseded by a newer version, or it lost the deterministic tie-break
+  (its content is preserved as a `_conflicted_copy_`).
+- These are normal outcomes — the client handles each one automatically.
 
 **Download fails with 404:**
 - The file does not exist in the specified bucket.
@@ -301,7 +308,7 @@ HSYNC_LOG_LEVEL=debug ./docker.sh start
 | 401 | Unauthorized | Invalid API key |
 | 403 | Forbidden | Missing API key |
 | 404 | Not Found | Bucket or file does not exist |
-| 409 | Conflict | File already exists (same SHA-256) |
+| 409 | Conflict | Duplicate content, or upload superseded / lost the causal tie-break |
 | 422 | Unprocessable Entity | Request body validation failed |
 | 429 | Too Many Requests | Rate limit exceeded |
 | 500 | Internal Server Error | Unexpected server error |
