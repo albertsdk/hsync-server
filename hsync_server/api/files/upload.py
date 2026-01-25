@@ -572,7 +572,7 @@ async def upload_file(
         # hidden files pick them up via their own watcher or the next full
         # reconciliation, and a peer cannot push dotfiles onto clients that
         # never asked for them.
-        src = None if is_hidden_file(file_location) else LocalFile().get(file_location)
+        src = None if is_hidden_file(file_location) else LocalFile.get(file_location)
         if src is not None:
             src.version = server_version_info(bucket, local_bucket, file_location)
         if src:

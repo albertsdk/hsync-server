@@ -183,7 +183,8 @@ def conflicted_copy_name(file_location: str, cid: str | None, ts: str) -> str:
     ``<stem>_conflicted_copy_<ts>_<cid>.<ext>`` (ADR-0021).
     """
     safe_cid = "".join(c for c in (cid or "unknown") if c.isalnum() or c in "-_.")[:32] or "unknown"
-    stem = Path(file_location).stem
-    suffix = Path(file_location).suffix
-    parent = str(Path(file_location).parent)
+    path = Path(file_location)  # one Path parse instead of three
+    stem = path.stem
+    suffix = path.suffix
+    parent = str(path.parent)
     return f"{parent}/{stem}_conflicted_copy_{ts}_{safe_cid}{suffix}"

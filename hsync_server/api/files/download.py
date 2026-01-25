@@ -13,10 +13,12 @@ This module provides the REST API endpoint for file download with:
 - Range request support (for resumable downloads)
 """
 
+import asyncio
+import stat as stat_module
+from os import stat as os_stat
 from pathlib import Path
 from time import monotonic
 
-from aiofiles.ospath import isfile
 from fastapi import BackgroundTasks, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from hsync_common.format import format_bytes, format_duration
@@ -91,10 +93,16 @@ async def download_file(
     if Path(backup_file).exists():
         file = backup_file
 
-    if not await isfile(file):
+    # Single stat in a worker thread replaces isfile() + stat() (two
+    # filesystem lookups). os.path.isfile semantics are preserved exactly:
+    # any OSError and any non-regular file map to the same 404.
+    try:
+        st = await asyncio.to_thread(os_stat, file)
+    except OSError:
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
-
-    file_size = Path(file).stat().st_size
+    if not stat_module.S_ISREG(st.st_mode):
+        raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
+    file_size = st.st_size
 
     # Retrieve or compute the SHA-256 checksum of the file being served,
     # so the client can verify integrity against the current server-side state.

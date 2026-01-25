@@ -60,8 +60,11 @@ class ConnectionManager:
         """
         # Iterate over a snapshot: registrations change concurrently as
         # clients connect/disconnect, and one dead socket must not abort
-        # delivery to the remaining clients.
-        for cid, connection in list(self.active_connections.items()):
+        # delivery to the remaining clients. A tuple view (no list copy) is
+        # already an immutable snapshot in CPython: concurrent mutation
+        # raises no RuntimeError, and any eviction below only affects the
+        # next broadcasts.
+        for cid, connection in tuple(self.active_connections.items()):
             # Don't send the event back to its originator
             if cid != event.cid:
                 try:
@@ -144,10 +147,12 @@ class BucketConnectionManager:
         Returns:
             ConnectionManager instance for the specified bucket.
         """
-        if bucket not in self.buckets:
-            self.buckets[bucket] = ConnectionManager()
+        manager = self.buckets.get(bucket)
+        if manager is None:
+            manager = ConnectionManager()
+            self.buckets[bucket] = manager
             log.debug(f"Created ConnectionManager for bucket: {bucket}")
-        return self.buckets[bucket]
+        return manager
 
 
 # Global bucket connection manager instance for WebSocket connections

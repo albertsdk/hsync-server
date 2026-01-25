@@ -169,6 +169,7 @@ async def get_files(
         raise InvalidPathError(details={"path": path})
 
     buckets_path = get_buckets_path()
+    bucket_root = f"{buckets_path}/{bucket}"
 
     if not Path(dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket, "path": path})
@@ -192,14 +193,10 @@ async def get_files(
             # A peer will recreate the link structurally from the target field,
             # and a escaping symlink is skipped entirely.
             if Path(file_path).is_symlink():
-                from hsync_common.models.symlink import Symlink
-                from hsync_common.path_validation import is_safe_symlink_target
-
                 try:
                     link = Symlink.get(file_path)
                 except OSError:
                     link = None
-                bucket_root = f"{buckets_path}/{bucket}"
                 if link is not None and not is_safe_symlink_target(
                     file_path, link.target, bucket_root
                 ):
@@ -217,15 +214,12 @@ async def get_files(
                 continue
 
             # Get file info and normalize path relative to bucket
-            file_obj = LocalFile().get(file, root)
+            file_obj = LocalFile.get(file, root)
             if file_obj:
-                file_info = file_obj.to_dict()
-                file_data = LocalFile().from_dict(file_info, f"{buckets_path}/{bucket}").to_dict()
+                file_data = LocalFile.from_dict(file_obj.to_dict(), bucket_root).to_dict()
                 # JOIN causal version metadata from the version store (ADR-0022).
-                abs_path = f"{buckets_path}/{bucket}/{file_data.get('filepath', '')}".replace(
-                    "//", "/"
-                )
-                version = server_version_info(bucket, f"{buckets_path}/{bucket}", abs_path)
+                abs_path = f"{bucket_root}/{file_data.get('filepath', '')}".replace("//", "/")
+                version = server_version_info(bucket, bucket_root, abs_path)
                 if version is not None:
                     file_data["version"] = version
                 file_list.append(file_data)
@@ -235,14 +229,10 @@ async def get_files(
         for d in dirs:
             d_path = f"{root}/{d}"
             if Path(d_path).is_symlink():
-                from hsync_common.models.symlink import Symlink
-                from hsync_common.path_validation import is_safe_symlink_target
-
                 try:
                     link = Symlink.get(d_path)
                 except OSError:
                     link = None
-                bucket_root = f"{buckets_path}/{bucket}"
                 if link is not None and not is_safe_symlink_target(
                     d_path, link.target, bucket_root
                 ):

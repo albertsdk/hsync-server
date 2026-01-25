@@ -93,7 +93,7 @@ async def delete_file(
         from os import remove
 
         # Collect file metadata before deletion (needed for the event and tombstone)
-        src = LocalFile().get(file)
+        src = LocalFile.get(file)
         local_bucket = f"{get_buckets_path()}/{bucket}"
 
         # Record a causal tombstone BEFORE removing the file so peers offline

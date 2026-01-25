@@ -78,7 +78,7 @@ async def _handle_create_or_modify(
         return None
 
     if "path" in src:
-        dir_obj = Dir().from_dict(src, bucket_dir)
+        dir_obj = Dir.from_dict(src, bucket_dir)
         if not _validate_path(dir_obj.path, bucket_dir):
             return None
         if dir_obj.path and dir_obj.permissions:
@@ -92,7 +92,7 @@ async def _handle_create_or_modify(
             return Event(cid, bucket_dir, bucket, event_name, dir_obj)
 
     elif "filepath" in src:
-        file_obj = File().from_dict(src, bucket_dir, False)
+        file_obj = File.from_dict(src, bucket_dir, False)
         if not _validate_path(file_obj.filepath, bucket_dir):
             return None
         log.info(
@@ -170,7 +170,7 @@ async def handle_deleted_event(
 
     # Handle directory deletion
     if "path" in src:
-        dir_obj = Dir().from_dict(src, bucket_dir)
+        dir_obj = Dir.from_dict(src, bucket_dir)
         # allow_root=False rejects an attempt to rmtree the bucket directory itself
         if not _validate_path(dir_obj.path, bucket_dir, allow_root=False):
             return None
@@ -184,7 +184,7 @@ async def handle_deleted_event(
 
     # Handle file deletion
     elif "filepath" in src:
-        file_obj = File().from_dict(src, bucket_dir, False)
+        file_obj = File.from_dict(src, bucket_dir, False)
         if not _validate_path(file_obj.filepath, bucket_dir):
             return None
         if file_obj.filepath:
@@ -250,8 +250,8 @@ async def handle_renamed_event(
 
     # Handle directory rename
     if src.get("path"):
-        src_dir = Dir().from_dict(src, bucket_dir)
-        dst_dir = Dir().from_dict(dst, bucket_dir)
+        src_dir = Dir.from_dict(src, bucket_dir)
+        dst_dir = Dir.from_dict(dst, bucket_dir)
         if not _validate_path(src_dir.path, bucket_dir):
             return None
         if not _validate_path(dst_dir.path, bucket_dir):
@@ -265,8 +265,8 @@ async def handle_renamed_event(
 
     # Handle file rename
     elif src.get("filepath"):
-        src_file = File().from_dict(src, bucket_dir, False)
-        dst_file = File().from_dict(dst, bucket_dir, False)
+        src_file = File.from_dict(src, bucket_dir, False)
+        dst_file = File.from_dict(dst, bucket_dir, False)
         if not _validate_path(src_file.filepath, bucket_dir):
             return None
         if not _validate_path(dst_file.filepath, bucket_dir):

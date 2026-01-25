@@ -372,7 +372,7 @@ async def delta_apply(
                 origin_cid=cid if is_valid_cid(cid) else None,
             )
 
-            src = None if is_hidden_file(file_location) else LocalFile().get(file_location)
+            src = None if is_hidden_file(file_location) else LocalFile.get(file_location)
             if src is not None:
                 src.version = server_version_info(bucket, local_bucket, file_location)
             if src:

@@ -62,6 +62,11 @@ class DeltaTokenStore:
     def __init__(self, ttl: int | None = None):
         self._ttl = ttl
         self._tokens: dict[str, DeltaTokenEntry] = {}
+        # Lazy single-value cache of the total parked payload size. Exact by
+        # construction: recomputed on the first access and invalidated at every
+        # mutation (_delete_payload / cleanup / discard), so the steady-state
+        # per-issue storage check is O(1) instead of one stat() per live token.
+        self._storage_size: int | None = None
 
     @property
     def ttl(self) -> int:
@@ -74,6 +79,7 @@ class DeltaTokenStore:
             Path(entry.payload_file).unlink(missing_ok=True)
         except OSError as exc:
             log.warning(f"Cannot remove delta payload {entry.payload_file}: {exc}")
+        self._storage_size = None
 
     def cleanup(self, now: float | None = None) -> int:
         """Drop expired tokens and their payload files; return the count."""
@@ -106,6 +112,9 @@ class DeltaTokenStore:
             compressed=compressed,
             created=time.time(),
         )
+        # The just-computed total + the new payload is the new exact size,
+        # so the cache stays valid without a rescan (O(1) update).
+        self._storage_size = total_storage + len(payload)
 
         # Update metrics
         from hsync_server.metrics import update_active_tokens, update_temp_storage
@@ -116,13 +125,20 @@ class DeltaTokenStore:
         return token
 
     def _get_total_storage_size(self) -> int:
-        """Calculate total size of all parked payload files."""
-        total = 0
-        for entry in self._tokens.values():
-            try:
-                total += Path(entry.payload_file).stat().st_size
-            except OSError:
-                pass
+        """Calculate total size of all parked payload files.
+
+        The value is cached between mutations: the scan (one ``stat`` per live
+        token) runs only after an invalidation, never on every ``issue``.
+        """
+        total = self._storage_size
+        if total is None:
+            total = 0
+            for entry in self._tokens.values():
+                try:
+                    total += Path(entry.payload_file).stat().st_size
+                except OSError:
+                    pass
+            self._storage_size = total
         return total
 
     def lookup(self, token: str) -> DeltaTokenEntry | None:
@@ -141,6 +157,7 @@ class DeltaTokenStore:
         """Drop a token and its payload file without serving it."""
         entry = self._tokens.pop(token, None)
         if entry is not None:
+            self._storage_size = None
             self._delete_payload(entry)
 
 

@@ -25,7 +25,6 @@ import asyncio
 import time
 from pathlib import Path
 
-import zstandard as zstd
 from aiofiles.ospath import isfile
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -54,7 +53,7 @@ from pydantic import BaseModel, Field
 
 from hsync_server.api.files.delta.tokens import delta_token_store
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
-from hsync_server.compression import should_compress
+from hsync_server.compression import _ZSTD_COMPRESSOR, should_compress
 from hsync_server.config import get_compression_enabled, get_delta_enabled
 from hsync_server.exceptions import (
     FileNotFoundError as HSyncFileNotFoundError,
@@ -263,10 +262,13 @@ async def post_delta_signatures(request: Request, bucket: str) -> JSONResponse:
         )
 
     # Optionally compress the literal payload (served with Content-Encoding).
+    # The shared compressor is reused: ZstdCompressor compress is stateless, so
+    # a new instance (with its expensive table/context construction) is never
+    # needed per request.
     compressed = False
     payload = literals
     if literals and get_compression_enabled() and should_compress(body.path, len(literals)):
-        payload = await asyncio.to_thread(zstd.ZstdCompressor().compress, literals)
+        payload = await asyncio.to_thread(_ZSTD_COMPRESSOR.compress, literals)
         compressed = True
 
     token = await asyncio.to_thread(

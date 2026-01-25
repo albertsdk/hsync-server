@@ -13,6 +13,7 @@ corresponding SHA-256 checksums are stored for quick duplicate detection.
 """
 
 import hashlib
+from os import stat as os_stat
 from os import walk
 from pathlib import Path
 
@@ -41,7 +42,7 @@ def set_sha256_hash(filepath: str, sha256sum: str) -> None:
         sha256sum: SHA-256 checksum of the file content.
     """
     try:
-        st = Path(filepath).stat()
+        st = os_stat(filepath)
     except OSError:
         return
     hashed_key: str = hashlib.sha256(filepath.encode()).hexdigest()
@@ -69,7 +70,7 @@ def get_sha256_hash(filepath: str) -> str | None:
         return None
     sha256sum, mtime_ns, size = entry
     try:
-        st = Path(filepath).stat()
+        st = os_stat(filepath)
     except OSError:
         del FILE_HASHES[hashed_key]
         return None
@@ -128,7 +129,7 @@ def set_sha256_hashes(directory: str) -> int:
         dirs[:] = [d for d in dirs if not is_hidden_dir(f"{root}/{d}")]
 
         for file in files:
-            file_path = str(Path(root) / file)
+            file_path = f"{root}/{file}"  # string concat: no Path object per entry
             # Skip hidden files using is_hidden_file
             if not is_hidden_file(file_path):
                 sha256 = compute_sha256(file_path)
