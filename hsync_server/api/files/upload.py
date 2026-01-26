@@ -26,6 +26,7 @@ import zstandard as zstd
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
+from hsync_common.clock import clamp_incoming_corrected_mtime
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
 from hsync_common.format import format_bytes, format_duration
 from hsync_common.hashing import compute_sha256_async, is_sha256_hex
@@ -98,6 +99,7 @@ async def upload_file(
     compressed_size: int = Form(0),  # Reserved for future use
     vclock: str = Form(""),  # JSON-encoded causal vector clock (ADR-0022)
     version_id: str = Form(""),  # opaque version lineage id from the uploader
+    corrected_mtime: int = Form(0),  # ADR-0023 offset-corrected mtime (0 ⇒ unknown)
 ) -> JSONResponse:
     """
     Upload a file to a bucket with resumable upload support.
@@ -462,6 +464,10 @@ async def upload_file(
             relpath = relpath_in_bucket(file_location, local_bucket) or ""
             disk_hash = get_sha256_hash(file_location) if Path(file_location).exists() else None
 
+            # ADR-0023 receiver-side guard: a far-future peer value cannot win
+            # every tie-break — it is clamped against the receiver's corrected
+            # clock (conflict engineering).
+            incoming_corrected = int(clamp_incoming_corrected_mtime(float(corrected_mtime)))
             result = arbitrate_upload(
                 bucket=bucket,
                 bucket_dir=local_bucket,
@@ -471,6 +477,7 @@ async def upload_file(
                 incoming_version_id=version_id,
                 incoming_origin_cid=cid if is_valid_cid(cid) else None,
                 disk_hash=disk_hash,
+                incoming_corrected_mtime=incoming_corrected,
             )
 
             if result.outcome is ArbitrationOutcome.superseded:
@@ -556,7 +563,8 @@ async def upload_file(
             # so peers do not delete it on their next full sync.
             clear_deletion(bucket, local_bucket, file_location)
 
-            # Record the agreed version (merge of incoming + stored clocks, D11).
+            # Record the agreed version (merge of incoming + stored clocks, D11,
+            # plus the ADR-0023 corrected mtime).
             record_version(
                 bucket,
                 local_bucket,
@@ -565,6 +573,7 @@ async def upload_file(
                 vclock=result.record_vclock,
                 version_id=version_id or None,
                 origin_cid=cid if is_valid_cid(cid) else None,
+                corrected_mtime=result.record_corrected_mtime,
             )
 
         # Broadcast "added" event to other connected clients. Hidden files
@@ -590,6 +599,12 @@ async def upload_file(
                 "info": "File uploaded successfully",
                 "file": f"{bucket}/{path}/{file.filename}",
                 "resolution": resolution,
+                # ADR-0023: the recorded causal version (merged clock + corrected
+                # mtime) so the uploader can mirror the agreed base exactly.
+                "version": {
+                    "vclock": result.record_vclock,
+                    "corrected_mtime": result.record_corrected_mtime,
+                },
             },
         )
     except (

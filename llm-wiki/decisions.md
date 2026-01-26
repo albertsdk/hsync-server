@@ -13,6 +13,7 @@ the server-local choices not big enough for an ADR.
 | [0003 tombstone-gossip](../../hsync-common/docs/internal/adr/0003-tombstone-gossip.md) | `tombstones.py`; `GET/POST .../tombstones` (`api/files/list.py:194`) |
 | [0005 protocol-versioning](../../hsync-common/docs/internal/adr/0005-protocol-versioning.md) | REST `VersionMiddleware` hard-fail 426 (`middleware.py:111`); WS handshake mismatch (`api/events.py`) |
 | [0022 causal-vector-clock-conflict-model](../../hsync-common/docs/internal/adr/0022-causal-vector-clock-conflict-model.md) | per-bucket version stores (`versions.py`) + causal upload arbitration (`arbitration.py`, shared by upload and delta-apply, `FileLockManager` critical section); SHA-256 dedup (`hashes.py`) + checksum verify on upload |
+| [0023 corrected-mtime-tie-break](../../hsync-common/docs/internal/adr/0023-corrected-mtime-tie-break.md) | same arbitration core, now with the chronological tie-break: `arbitrate_upload` takes `incoming_corrected_mtime` (form field on upload and metadata on delta/apply), compares it with the stored `corrected_mtime`, falls back to SHA-256 when unknown/tied, records the winner via `record_version` and exposes it in listings (`server_version_info`) and the 201 `version` object |
 
 ## Server-local decisions
 

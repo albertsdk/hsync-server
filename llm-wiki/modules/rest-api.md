@@ -36,8 +36,9 @@ Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–
 
 Multipart form fields: `cid, file, path, ctime, mtime, sha256sum, permissions`
 (default `664`), resumable fields `offset, size, compressed, compressed_size`,
-and causal version fields `vclock` (JSON-encoded vector clock) and `version_id`
-(ADR-0022). Behavior:
+and causal version fields `vclock` (JSON-encoded vector clock), `version_id`
+(ADR-0022) and `corrected_mtime` (ADR-0023; the uploader's offset-corrected
+modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
 - Filename validated/sanitized (`is_valid_filename`/`sanitize_filename` from
   `hsync_common.path_validation`); internal engine names
   (`.hsyncignore`/`.hsyncstate`/`.hsynctombstones`, `*.part`) rejected with
@@ -48,8 +49,11 @@ and causal version fields `vclock` (JSON-encoded vector clock) and `version_id`
 - **Causal arbitration** (`arbitration.py`): the incoming version is compared
   against the stored version for the path (inside the per-file
   `FileLockManager`). Outcomes: `accepted`/`accepted_conflict_won` (201 with
-  `resolution`), `superseded` (409, stale ancestor, no copy), `conflict_lost`
-  (409, incoming loses tie-break, bytes preserved as conflicted copy).
+  `resolution` and a `version` object carrying the recorded merged `vclock`
+  and `corrected_mtime`), `superseded` (409, stale ancestor, no copy),
+  `conflict_lost` (409, incoming loses tie-break, bytes preserved as
+  conflicted copy). The chronological tie-break (ADR-0023) uses the
+  corrected mtimes: higher wins, missing/tie falls back to SHA-256.
 - Compressed uploads are **not resumable**: `compressed=true` with
   `offset > 0` is rejected up-front (the resumable path never decompresses).
 - Subdir path and filename confined to the bucket via `resolve_within_bucket`

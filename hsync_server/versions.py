@@ -70,8 +70,14 @@ def record_version(
     vclock: dict[str, int] | None = None,
     version_id: str | None = None,
     origin_cid: str | None = None,
+    corrected_mtime: int = 0,
 ) -> None:
-    """Record (overwrite) the version for an absolute path and persist the store."""
+    """Record (overwrite) the version for an absolute path and persist the store.
+
+    ``corrected_mtime`` is the ADR-0023 offset-corrected modification time of
+    the content; 0 ⇒ unknown and is stored verbatim (the hash fallback applies
+    on comparison).
+    """
     relpath = relpath_in_bucket(abs_path, bucket_dir)
     if not relpath:
         return
@@ -82,6 +88,7 @@ def record_version(
         vclock=vclock,
         version_id=version_id,
         origin_cid=origin_cid,
+        corrected_mtime=corrected_mtime,
     )
     store.save()
 
@@ -118,6 +125,7 @@ def move_version(bucket: str, bucket_dir: str, src_abs: str, dst_abs: str) -> No
         version_id=entry["version_id"],
         origin_cid=entry["origin_cid"],
         timestamp=entry["ts"],
+        corrected_mtime=entry.get("corrected_mtime", 0),
     )
     store.save()
 
@@ -137,6 +145,7 @@ def server_version_info(bucket: str, bucket_dir: str, abs_path: str):
         version_id=entry["version_id"],
         origin_cid=entry["origin_cid"],
         ts=entry["ts"],
+        corrected_mtime=entry.get("corrected_mtime", 0),
     )
 
 

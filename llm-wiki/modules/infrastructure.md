@@ -165,8 +165,10 @@ uploads for the same file are ordered (ADR-0022).
   self-recording out-of-band edits detected at arbitration (ADR-0022 §3.4.7).
 - `arbitration.py` exposes `arbitrate_upload` — the shared causal arbitration
   used by both the REST upload and the delta apply endpoint (DRY). Returns an
-  `ArbitrationResult` (outcome + record clock + loser cid for conflict-copy
-  naming). `conflicted_copy_name` builds the canonical `_conflicted_copy_` path.
+  `ArbitrationResult` (outcome + record clock + record corrected mtime + loser
+  cid for conflict-copy naming). ADR-0023: the tie-break compares the incoming
+  `corrected_mtime` with the stored one, falling back to SHA-256 when unknown
+  or tied. `conflicted_copy_name` builds the canonical `_conflicted_copy_` path.
 
 > User-facing config reference (env vars, defaults): `../docs/` (architecture +
 > deployment sections).

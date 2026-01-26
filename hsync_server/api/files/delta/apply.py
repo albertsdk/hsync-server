@@ -33,6 +33,7 @@ from aiofiles.ospath import isfile
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
+from hsync_common.clock import clamp_incoming_corrected_mtime
 from hsync_common.constants import DELTA_MAX_LITERAL_SIZE, PARTIAL_DELTA_SUFFIX
 from hsync_common.delta import DeltaError, apply_delta
 from hsync_common.format import format_duration
@@ -293,6 +294,14 @@ async def delta_apply(
 
             delta_relpath = relpath_in_bucket(file_location, local_bucket) or ""
             delta_disk_hash = get_sha256_hash(file_location)
+            raw_corrected = meta.get("corrected_mtime")
+            incoming_corrected = (
+                int(clamp_incoming_corrected_mtime(float(raw_corrected)))
+                if isinstance(raw_corrected, int)
+                and not isinstance(raw_corrected, bool)
+                and raw_corrected > 0
+                else 0
+            )
             delta_result = arbitrate_upload(
                 bucket=bucket,
                 bucket_dir=local_bucket,
@@ -302,6 +311,7 @@ async def delta_apply(
                 incoming_version_id=str(meta.get("version_id") or ""),
                 incoming_origin_cid=cid if is_valid_cid(cid) else None,
                 disk_hash=delta_disk_hash,
+                incoming_corrected_mtime=incoming_corrected,
             )
 
             if delta_result.outcome is ArbitrationOutcome.superseded:
@@ -370,6 +380,7 @@ async def delta_apply(
                 vclock=delta_result.record_vclock,
                 version_id=str(meta.get("version_id") or "") or None,
                 origin_cid=cid if is_valid_cid(cid) else None,
+                corrected_mtime=delta_result.record_corrected_mtime,
             )
 
             src = None if is_hidden_file(file_location) else LocalFile.get(file_location)

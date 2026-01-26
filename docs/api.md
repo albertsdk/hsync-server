@@ -139,6 +139,7 @@ sha256sum=bb25b1c2b2a7427401c823a90904a759e2bd7425205b0702bca5e27e937e7cff
 permissions=-rw-rw-r--
 vclock={"Client123":{"counter":1}}
 version_id=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
+corrected_mtime=1737072000
 ```
 
 > `sha256sum` is **required**: the server verifies the received bytes against
@@ -153,16 +154,26 @@ version_id=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
 {
   "info": "File uploaded successfully",
   "file": "mybucket/documents/document.pdf",
-  "resolution": "accepted"
+  "resolution": "accepted",
+  "version": {
+    "vclock": {"Client123": 1, "Client456": 1},
+    "corrected_mtime": 1737072000
+  }
 }
 ```
 
 > `resolution` is `"accepted"` (causally ahead) or `"accepted_conflict_won"`
-> (true concurrent divergence won by the incoming content on the deterministic
-> SHA-256 tie-break; the previous bytes are preserved as a
-> `_conflicted_copy_<timestamp>_<cid>` sibling). `vclock` and `version_id` are
-> optional: older peers that omit them are treated as an empty clock and never
-> cause an error. Malformed `vclock` payloads are also treated as absent.
+> (true concurrent divergence won by the incoming content: the most recent
+> offset-corrected `corrected_mtime` wins the chronological tie-break
+> (ADR-0023), with a deterministic SHA-256 fallback when a side lacks the
+> field; the previous bytes are preserved as a
+> `_conflicted_copy_<timestamp>_<cid>` sibling). The `version` object echoes
+> the recorded causal version (merged vclock + corrected mtime) so the
+> uploader can mirror the agreed base. `vclock`, `version_id` and
+> `corrected_mtime` are optional: older peers that omit them are treated as
+> an empty clock / unknown mtime and never cause an error. Malformed `vclock`
+> payloads are also treated as absent, and a peer-supplied `corrected_mtime`
+> farther than 300 s in the future is clamped (conflict engineering).
 
 ### List Files
 
@@ -186,7 +197,8 @@ Authorization: Bearer your-api-key
       "vclock": {"Client123": 3},
       "version_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
       "origin_cid": "Client123",
-      "ts": 1737072000
+      "ts": 1737072000,
+      "corrected_mtime": 1737072000
     }
   }
 ]
@@ -203,9 +215,10 @@ Authorization: Bearer your-api-key
 >   is causally dominated (a stale ancestor of the stored version): rejected,
 >   no conflict copy created (nothing is lost).
 > - `409` `{"error": "HSYNC-4006", "resolution": "conflict_lost", ...}` — true
->   concurrent divergence won by the stored version on the SHA-256 tie-break:
->   the incoming bytes are preserved as a `_conflicted_copy_` sibling and the
->   client should download the winner.
+>   concurrent divergence won by the stored version on the chronological
+>   tie-break (most recent offset-corrected `corrected_mtime`, SHA-256
+>   fallback when a side lacks the field): the incoming bytes are preserved
+>   as a `_conflicted_copy_` sibling and the client should download the winner.
 
 ### Upload Status (resumable uploads)
 
