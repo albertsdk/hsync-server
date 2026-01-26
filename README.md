@@ -46,12 +46,12 @@ corporate networks, cloud environments, and restricted infrastructures.
 | Seafile | HTTP / HTTPS | ✅ | ⚠️ ¹ | ❌ ² | Client-Server |
 | scp / sftp | SSH | ❌ | ❌ | ✅ | Client-Server |
 | Unison | SSH or direct socket | ❌ | ❌ | ✅ | P2P |
-| Rclone | S3, SFTP, etc. | ⚠️ Partial | ❌ | ⚠️ ³ | Client-Server |
+| Rclone | S3, SFTP, etc. | ⚠️ ⁴ | ❌ | ⚠️ ³ | Client-Server |
 
 > ¹ Local filesystem monitoring via desktop client; no native push notifications (WebSocket) like HSYNC.
->
 > ² Seafile uses a proprietary block-based internal storage format; files are not directly accessible from the filesystem without the Seafile server.
 > ³ Rclone with the `crypt` backend stores files in an opaque encrypted format; with other backends (e.g., SFTP, local) files remain in their original format.
+> ⁴ Rclone's HTTP backend is read-only (download-only) and does not perform synchronization; Rclone's core operation relies on other protocols (S3, SFTP, etc.).
 
 **When to choose HSYNC Server:**
 - 🏢 **Corporate networks** — only ports 80/443 are open through the firewall
