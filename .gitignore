@@ -16,6 +16,7 @@ __pycache__/
 .coverage
 coverage
 htmlcov
+.pytest_cache
 
 /buckets
 /build
