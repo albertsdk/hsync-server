@@ -22,22 +22,27 @@ handlers:
   #  backupCount: 2
   #  encoding: utf8
 
+root:
+  level: DEBUG
+  handlers:
+    - console
+
 loggers:
   main:
     level: DEBUG
-    handlers: 
+    handlers:
       - console
-    propagate": no
+    propagate: false
 
   uvicorn.error:
     level: DEBUG
-    handlers: 
+    handlers:
       - console
-    propagate": no
-        
+    propagate: false
+
   uvicorn.access:
     level: DEBUG
-    handlers: 
+    handlers:
       - console
-    propagate": no
+    propagate: false
 
