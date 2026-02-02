@@ -11,6 +11,7 @@ from os.path import join
 from typing import Optional, Union
 from .dir import Dir
 from .file import File
+from .symlink import Symlink
 
 
 class EventName(str, Enum):
@@ -25,6 +26,7 @@ class EventName(str, Enum):
     modified = "modified"  # File or directory was modified
     renamed = "renamed"  # File or directory was renamed/moved
     deleted = "deleted"  # File or directory was deleted
+    symlink = "symlink"  # Symbolic link was created or modified
 
 
 class Event:
@@ -49,8 +51,8 @@ class Event:
         localpath: str,
         bucket: str,
         name: EventName,
-        src: Union[File, Dir],
-        dst: Optional[Union[File, Dir]] = None,
+        src: Union[File, Dir, Symlink],
+        dst: Optional[Union[File, Dir, Symlink]] = None,
         strip_localpath: bool = True,
     ):
         """
@@ -61,8 +63,8 @@ class Event:
             localpath: Local base path for path normalization.
             bucket: Name of the bucket.
             name: Type of event.
-            src: Source file or directory.
-            dst: Destination file or directory (for rename events).
+            src: Source file, directory, or symlink.
+            dst: Destination file, directory, or symlink (for rename events).
             strip_localpath: If True, remove localpath prefix from paths.
         """
         self.cid = cid
@@ -70,7 +72,7 @@ class Event:
         self.name = name.value
 
         def correct_path(
-            entity: Union[File, Dir], localpath: str, strip_localpath: bool
+            entity: Union[File, Dir, Symlink], localpath: str, strip_localpath: bool
         ) -> None:
             """
             Normalize the path in an entity based on localpath.
@@ -79,7 +81,7 @@ class Event:
             localpath prefix or prepending it.
 
             Args:
-                entity: File or Dir instance to modify.
+                entity: File, Dir, or Symlink instance to modify.
                 localpath: Base path for normalization.
                 strip_localpath: If True, remove prefix; if False, prepend it.
             """

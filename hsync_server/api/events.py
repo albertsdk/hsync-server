@@ -18,12 +18,13 @@ from hsync_server.hashes import del_md5_hash
 from hsync_server.models.dir import Dir
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File
+from hsync_server.models.symlink import Symlink
 from hsync_server.routers import public_router
 from fastapi import Query, WebSocket, WebSocketDisconnect
 from json import loads, JSONDecodeError
 from logging import getLogger
-from os import makedirs, rename, remove
-from os.path import exists
+from os import makedirs, rename, remove, symlink as os_symlink, unlink
+from os.path import dirname, exists, islink
 from shutil import rmtree
 from typing import Dict
 
@@ -81,12 +82,61 @@ class ConnectionManager:
                 await connection.send_json(event.to_dict())
 
 
+class BucketConnectionManager:
+    """
+    Manages per-bucket ConnectionManager instances for better scalability.
+
+    Instead of a single global ConnectionManager, this class provides
+    separate connection pools for each bucket. This improves:
+    - Scalability: events only broadcast to relevant bucket subscribers
+    - Isolation: bucket-specific issues don't affect other buckets
+    - Performance: smaller connection pools for event broadcasting
+
+    Attributes:
+        buckets: Dictionary mapping bucket names to ConnectionManager instances.
+    """
+
+    def __init__(self):
+        """Initialize with empty buckets dictionary."""
+        self.buckets: Dict[str, ConnectionManager] = {}
+
+    def get_manager(self, bucket: str) -> ConnectionManager:
+        """
+        Get or create a ConnectionManager for a specific bucket.
+
+        Args:
+            bucket: Name of the bucket.
+
+        Returns:
+            ConnectionManager instance for the specified bucket.
+        """
+        if bucket not in self.buckets:
+            self.buckets[bucket] = ConnectionManager()
+            LOG.debug(f"Created ConnectionManager for bucket: {bucket}")
+        return self.buckets[bucket]
+
+    def get_connection_count(self, bucket: str = None) -> int:
+        """
+        Get the number of active connections.
+
+        Args:
+            bucket: Optional bucket name. If None, returns total across all buckets.
+
+        Returns:
+            Number of active connections.
+        """
+        if bucket:
+            manager = self.buckets.get(bucket)
+            return len(manager.active_connections) if manager else 0
+        return sum(
+            len(m.active_connections) for m in self.buckets.values()
+        )
+
+
 # NOTE: WebSocket does not support Header Authentication
 #       and FastAPI auto-docs for WebSocket endpoints
 @public_router.websocket("/events/v1/{bucket}/{cid}")
-async def ws_events(
-    websocket: WebSocket, bucket: str, cid: str, token: str = Query(...)
-) -> None:
+async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
     """
     WebSocket endpoint for real-time file system event synchronization.
 
@@ -95,27 +145,51 @@ async def ws_events(
     - Send their own file system events to be broadcast
     - Trigger server-side file operations based on events
 
-    Authentication is done via query parameter since WebSocket
-    doesn't support standard HTTP headers in the same way.
+    Authentication is done via the first message after connection:
+    Client must send: {"type": "auth", "token": "<api_key>"}
+    Server responds: {"type": "auth", "status": "ok"}
 
     Args:
         websocket: The WebSocket connection object.
         bucket: Name of the bucket to sync events for.
         cid: Unique client ID for the connecting client.
-        token: API key for authentication (passed as query parameter).
 
     Raises:
         ValueError: If the API key is invalid.
     """
     try:
-        # Validate API key
-        if token != HSYNC_API_KEY:
-            message = "Invalid API KEY."
-            LOG.warning(message)
-            raise ValueError(message)
+        # Accept the connection first (required before receiving messages)
+        await websocket.accept()
 
-        # Accept the connection and register the client
-        await manager.connect(websocket, cid)
+        # Wait for authentication message
+        try:
+            auth_data = await websocket.receive_text()
+            auth_message = loads(auth_data)
+
+            if auth_message.get("type") != "auth":
+                LOG.warning(f"[WS] Invalid auth message type from {cid}")
+                await websocket.close(code=4001, reason="Invalid auth message")
+                return
+
+            auth_token = auth_message.get("token")
+            if auth_token != HSYNC_API_KEY:
+                LOG.warning(f"[WS] Invalid API key from {cid}")
+                await websocket.close(code=4003, reason="Invalid API key")
+                return
+
+            LOG.debug(f"[WS] Client {cid} authenticated")
+            # Send auth confirmation
+            await websocket.send_json({"type": "auth", "status": "ok"})
+
+        except Exception as e:
+            LOG.warning(f"[WS] Auth failed for {cid}: {e}")
+            await websocket.close(code=4003, reason="Authentication failed")
+            return
+
+        # Register the authenticated client with bucket-specific manager
+        manager = bucket_manager.get_manager(bucket)
+        manager.active_connections[cid] = websocket
+        LOG.info(f"[WS] Client connected: {cid} (bucket: {bucket})")
         try:
             # Main message processing loop
             while True:
@@ -130,6 +204,7 @@ async def ws_events(
                         EventName.modified.value,
                         EventName.renamed.value,
                         EventName.deleted.value,
+                        EventName.symlink.value,
                     }:
                         LOG.error(f"Invalid event name: {message.get('name')}")
                         continue
@@ -249,6 +324,33 @@ async def ws_events(
                                     dst_file,
                                 )
 
+                    # Handle "symlink" events - create or update symbolic links
+                    elif event_name == EventName.symlink:
+                        if src and "type" in src and src.get("type") == "symlink":
+                            link = Symlink.from_dict(src)
+                            # Build the full path
+                            link.filepath = f"{bucket_dir}/{link.filepath.lstrip('/')}"
+                            target = link.target
+
+                            if link.filepath and target:
+                                LOG.info(
+                                    f'[WS] Symlink "{link.filepath}" -> "{target}"'
+                                )
+                                # Ensure parent directory exists
+                                parent_dir = dirname(link.filepath)
+                                if not exists(parent_dir):
+                                    makedirs(parent_dir, exist_ok=True)
+
+                                # Remove existing symlink or file if present
+                                if islink(link.filepath) or exists(link.filepath):
+                                    unlink(link.filepath)
+
+                                # Create the symlink
+                                os_symlink(target, link.filepath)
+                                event = Event(
+                                    cid, bucket_dir, bucket, EventName.symlink, link
+                                )
+
                     # Broadcast the event to all other connected clients
                     if event:
                         await manager.send_message(event)
@@ -274,8 +376,9 @@ async def ws_events(
         await websocket.close()
 
 
-# Global connection manager instance for WebSocket connections
-manager = ConnectionManager()
+# Global bucket connection manager instance for WebSocket connections
+# Provides per-bucket connection management for better scalability
+bucket_manager = BucketConnectionManager()
 
 
 LOG.info(f"Module {__name__} loaded")

@@ -11,6 +11,9 @@ HTTP-based file synchronization server built with FastAPI, featuring WebSocket s
 - ✅ MD5-based file integrity verification
 - 📊 Integrated Prometheus metrics
 - 🐳 Docker-ready deployment
+- 🛡️ Rate limiting to prevent API abuse
+- 🔗 Symbolic link synchronization support
+- 📦 Per-bucket connection management for scalability
 
 ## Requirements
 
@@ -102,8 +105,23 @@ docker run --rm -it --entrypoint=/bin/sh hsync:0.1.0
 ### Endpoint
 
 ```
-ws://host:8765/events/v1/{bucket}/{cid}?token={api_key}
+ws://host:8765/events/v1/{bucket}/{cid}
 ```
+
+### Authentication
+
+After connecting, the client must send an authentication message:
+
+```json
+{"type": "auth", "token": "your-api-key"}
+```
+
+Server responds with:
+```json
+{"type": "auth", "status": "ok"}
+```
+
+If authentication fails, the connection is closed with an appropriate error code.
 
 ### Supported Events
 
@@ -113,16 +131,30 @@ ws://host:8765/events/v1/{bucket}/{cid}?token={api_key}
 | `modified` | File/directory modified |
 | `renamed` | File/directory renamed |
 | `deleted` | File/directory deleted |
+| `symlink` | Symbolic link created/modified |
 
 ### Message Format
 
 ```json
 {
-  "name": "added|modified|renamed|deleted",
+  "name": "added|modified|renamed|deleted|symlink",
   "src": { "filepath": "...", "name": "...", ... },
   "dst": { ... }  // only for 'renamed'
 }
 ```
+
+## Rate Limiting
+
+The server implements rate limiting to prevent API abuse:
+
+| Endpoint | Limit |
+|----------|-------|
+| Upload (`/upload/v1`) | 50 requests/minute |
+| Download (`/download/v1`) | 200 requests/minute |
+| Files list (`/files/v1`) | 100 requests/minute |
+| Other endpoints | 100 requests/minute |
+
+When rate limit is exceeded, the server returns HTTP 429 (Too Many Requests).
 
 ## Health Check
 
@@ -147,6 +179,7 @@ hsync-server/
 │   ├── main.py             # FastAPI application
 │   ├── routers.py          # Router configuration
 │   ├── hashes.py           # MD5 hash caching
+│   ├── rate_limiter.py     # Rate limiting configuration
 │   ├── api/                # API endpoints
 │   │   ├── __init__.py
 │   │   ├── utils.py        # API utilities
@@ -158,6 +191,7 @@ hsync-server/
 │       ├── dir.py
 │       ├── event.py
 │       ├── file.py
+│       ├── symlink.py      # Symbolic link model
 │       └── sync_action.py
 ├── config/                 # Configuration files
 │   ├── logging-debug.yaml

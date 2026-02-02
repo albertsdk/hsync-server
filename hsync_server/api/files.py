@@ -9,19 +9,26 @@ This module provides REST API endpoints for file and bucket management:
 - File deletion with event broadcasting
 
 All endpoints require API key authentication via Bearer token.
+Rate limiting is applied to protect against abuse.
 """
 
 from hsync_server.api.utils import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
-from hsync_server.api.events import manager
+from hsync_server.api.events import bucket_manager
 from hsync_server.config import HSYNC_BUCKETS
 from hsync_server.hashes import get_md5_hash, set_md5_hash
 from hsync_server.models.file import File as LocalFile
 from hsync_server.models.event import Event, EventName
+from hsync_server.rate_limiter import (
+    limiter,
+    RATE_LIMIT_DEFAULT,
+    RATE_LIMIT_UPLOAD,
+    RATE_LIMIT_DOWNLOAD,
+)
 from hsync_server.routers import auth_router
 from aiofiles.ospath import isfile
 from aiofiles.tempfile import NamedTemporaryFile
 from datetime import datetime, timezone
-from fastapi import File, Form, HTTPException, UploadFile, status
+from fastapi import File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 from logging import getLogger
 from os import makedirs, remove, utime, walk
@@ -279,7 +286,9 @@ async def delete_bucket(bucket: str) -> JSONResponse:
 
 
 @auth_router.post("/upload/v1/{bucket}")
+@limiter.limit(RATE_LIMIT_UPLOAD)
 async def upload_file(
+    request: Request,
     bucket: str,
     cid: str = Form(),
     file: UploadFile = File(...),
@@ -372,6 +381,7 @@ async def upload_file(
         src = LocalFile().get(file_location)
         local_bucket = f"{HSYNC_BUCKETS}/{bucket}"
         if src:
+            manager = bucket_manager.get_manager(bucket)
             await manager.send_message(
                 Event(cid, local_bucket, bucket, EventName.added, src)
             )
@@ -393,13 +403,17 @@ async def upload_file(
 
 
 @auth_router.get("/download/v1/{bucket}")
-async def download_file(bucket: str, filename: str) -> FileResponse:
+@limiter.limit(RATE_LIMIT_DOWNLOAD)
+async def download_file(
+    request: Request, bucket: str, filename: str
+) -> FileResponse:
     """
     Download a file from a bucket.
 
     Streams the file content as a response with appropriate headers.
 
     Args:
+        request: The incoming FastAPI request.
         bucket: Name of the bucket containing the file.
         filename: Path to the file within the bucket.
 
@@ -431,8 +445,12 @@ async def download_file(bucket: str, filename: str) -> FileResponse:
 
 
 @auth_router.get("/files/v1/{bucket}")
+@limiter.limit(RATE_LIMIT_DEFAULT)
 async def get_files(
-    bucket: str, path: Optional[str] = None, sync_order: str = "mtime"
+    request: Request,
+    bucket: str,
+    path: Optional[str] = None,
+    sync_order: str = "mtime",
 ) -> JSONResponse:
     """
     List all files in a bucket or subdirectory.
@@ -567,6 +585,7 @@ async def delete_file(
         src = LocalFile().get(file)
         local_bucket = f"{HSYNC_BUCKETS}/{bucket}"
         if src:
+            manager = bucket_manager.get_manager(bucket)
             await manager.send_message(
                 Event(cid, local_bucket, bucket, EventName.deleted, src)
             )
