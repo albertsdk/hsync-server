@@ -22,7 +22,12 @@ LOG = getLogger("main")
 HSYNC_PORT: int = int(os.environ.get("HSYNC_PORT", 8765))
 
 # Number of worker processes for uvicorn
-# Recommended: 2-4 workers per CPU core in production
+# WARNING: Multi-worker mode (>1) is NOT recommended because:
+# - WebSocket connections are NOT shared between workers (clients on different
+#   workers cannot communicate)
+# - MD5 hash cache (FILE_HASHES) is NOT shared between workers
+# - Rate limiter state is NOT shared (limits apply per-worker, not globally)
+# Use HSYNC_WORKERS=1 unless you implement Redis/shared state for these components
 HSYNC_WORKERS: int = int(os.environ.get("HSYNC_WORKERS", 1))
 
 # Log level for the server (debug, info, warning, error, critical)
