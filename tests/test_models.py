@@ -178,6 +178,28 @@ class TestSymlinkModel:
         s = Symlink(filepath="/bucket/link", target="/bucket/target")
         assert s.filepath == "/bucket/link"
         assert s.target == "/bucket/target"
+        assert s.name == "link"
+
+    def test_init_with_all_params(self):
+        """Initialize Symlink with all parameters."""
+        s = Symlink(
+            filepath="/path/link",
+            target="/path/target",
+            name="custom_name",
+            ctime=1000.0,
+            mtime=2000.0
+        )
+        assert s.name == "custom_name"
+        assert s.ctime == 1000.0
+        assert s.mtime == 2000.0
+
+    def test_repr(self):
+        """Test Symlink repr."""
+        s = Symlink(filepath="/path/link", target="/path/target")
+        r = repr(s)
+        assert "Symlink" in r
+        assert "/path/link" in r
+        assert "/path/target" in r
 
     def test_to_dict(self):
         """Convert Symlink to dictionary."""
@@ -186,4 +208,49 @@ class TestSymlinkModel:
         assert d["filepath"] == "/bucket/link"
         assert d["target"] == "/bucket/target"
         assert d["type"] == "symlink"
+
+    def test_from_dict(self):
+        """Create Symlink from dictionary."""
+        data = {
+            "filepath": "/path/link",
+            "name": "link",
+            "target": "/path/target",
+            "ctime": 1000.0,
+            "mtime": 2000.0
+        }
+        s = Symlink.from_dict(data)
+        assert s.filepath == "/path/link"
+        assert s.target == "/path/target"
+        assert s.ctime == 1000.0
+
+    def test_get_existing_symlink(self, tmp_path):
+        """Get Symlink from existing symlink file."""
+        target = tmp_path / "target.txt"
+        target.write_text("content")
+        link = tmp_path / "link"
+        link.symlink_to(target)
+
+        s = Symlink.get(str(link))
+        assert s is not None
+        assert s.name == "link"
+
+    def test_get_nonexistent_path(self):
+        """Get returns None for nonexistent path."""
+        s = Symlink.get("/nonexistent/path/link")
+        assert s is None
+
+    def test_get_regular_file(self, tmp_path):
+        """Get returns None for regular file (not symlink)."""
+        f = tmp_path / "regular.txt"
+        f.write_text("content")
+        s = Symlink.get(str(f))
+        assert s is None
+
+    def test_get_broken_symlink(self, tmp_path):
+        """Get handles broken symlink gracefully."""
+        link = tmp_path / "broken_link"
+        link.symlink_to("/nonexistent/target")
+        # Should not raise an exception
+        s = Symlink.get(str(link))
+        # Broken symlinks may return None due to stat failure
 
