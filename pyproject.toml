@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "HSYNC File Server"
 authors = ["Alberto Basso <alberto.sdk@gmail.com>"]
 readme = "README.md"
-package-mode = false
+packages = [{include = "hsync_server"}]
+
+[tool.poetry.scripts]
+hsync-server = "hsync_server.__main__:main"
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.14"

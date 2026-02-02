@@ -6,7 +6,7 @@ and load balancer health probes. Returns an empty 200 OK response
 to indicate the server is running.
 """
 
-from app.routers import public_router
+from hsync_server.routers import public_router
 from fastapi.responses import PlainTextResponse
 from logging import getLogger
 

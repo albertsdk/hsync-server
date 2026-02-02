@@ -20,14 +20,17 @@ HTTP-based file synchronization server built with FastAPI, featuring WebSocket s
 ## Installation
 
 ```bash
-# Clone the repository
-cd hsync-sever
+# Navigate to the server directory
+cd hsync-server
 
 # Install dependencies with Poetry
 poetry install
 
 # Start the server
-poetry run uvicorn app.main:app --host 0.0.0.0 --port 8765
+poetry run uvicorn hsync_server.main:app --host 0.0.0.0 --port 8765
+
+# Or run as a module
+poetry run python -m hsync_server
 ```
 
 ## Configuration
@@ -136,17 +139,31 @@ curl http://localhost:8765/metrics
 ## Project Structure
 
 ```
-hsync-sever/
-├── app/
-│   ├── api/
-│   │   ├── events/     # WebSocket handler
-│   │   ├── files/      # REST API files/buckets
-│   │   └── health/     # Health check
-│   ├── model/          # Data models
-│   ├── config.py       # Configuration
-│   ├── main.py         # FastAPI entry point
-│   └── routers.py      # Router configuration
-├── docker/             # Docker scripts
+hsync-server/
+├── hsync_server/           # Main Python package
+│   ├── __init__.py
+│   ├── __main__.py         # Entry point: python -m hsync_server
+│   ├── config.py           # Configuration
+│   ├── main.py             # FastAPI application
+│   ├── routers.py          # Router configuration
+│   ├── file_hashes.py      # MD5 hash caching
+│   ├── api/                # API endpoints
+│   │   ├── __init__.py
+│   │   ├── common.py       # Common utilities
+│   │   ├── events.py       # WebSocket handler
+│   │   ├── files.py        # REST API files/buckets
+│   │   └── health.py       # Health check
+│   └── models/             # Data models
+│       ├── __init__.py
+│       ├── dir.py
+│       ├── event.py
+│       ├── file.py
+│       └── sync_action.py
+├── config/                 # Configuration files
+│   ├── logging-debug.yaml
+│   └── logging-info.yaml
+├── docker/                 # Docker scripts
+├── tests/                  # Test files
 ├── Dockerfile
 ├── pyproject.toml
 └── poetry.lock

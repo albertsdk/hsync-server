@@ -55,9 +55,8 @@ RUN mkdir buckets tmp
 
 # Copy application source code
 COPY docker /project/docker
-COPY app /project/app
-COPY logging-debug.yaml /project
-COPY logging-info.yaml /project
+COPY hsync_server /project/hsync_server
+COPY config /project/config
 
 RUN   rm -rf /project/.venv \
     && ln -s /venv /project/.venv \
