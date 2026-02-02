@@ -11,10 +11,10 @@ This module provides REST API endpoints for file and bucket management:
 All endpoints require API key authentication via Bearer token.
 """
 
-from hsync_server.api.common import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
+from hsync_server.api.utils import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
 from hsync_server.api.events import manager
 from hsync_server.config import HSYNC_BUCKETS
-from hsync_server.file_hashes import get_md5_hash, set_md5_hash
+from hsync_server.hashes import get_md5_hash, set_md5_hash
 from hsync_server.models.file import File as LocalFile
 from hsync_server.models.event import Event, EventName
 from hsync_server.routers import auth_router

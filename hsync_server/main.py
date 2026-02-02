@@ -10,7 +10,7 @@ import time
 
 from .api import events, files, health
 from .config import HSYNC_BUCKETS
-from .file_hashes import set_md5_hashes
+from .hashes import set_md5_hashes
 from .routers import auth_router, public_router
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware

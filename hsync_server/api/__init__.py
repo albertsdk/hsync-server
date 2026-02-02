@@ -4,7 +4,7 @@ API endpoints package for HSYNC Server.
 This package contains all REST API and WebSocket endpoints.
 """
 
-from hsync_server.api.common import (
+from hsync_server.api.utils import (
     compute_md5,
     get_dir_info,
     get_permissions,
