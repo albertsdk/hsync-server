@@ -55,6 +55,7 @@ from hsync_server.config import (
     get_compression_enabled,
     get_cors_enabled,
     get_cors_origins,
+    get_delta_enabled,
     get_ws_auth_timeout,
     get_ws_heartbeat_interval,
     get_ws_heartbeat_timeout,
@@ -179,9 +180,11 @@ async def _dispatching_authenticate(
             f"(capabilities: {sorted(c.value for c in client_caps) or 'none'})"
         )
 
-        server_caps: set[Capability] = set()
+        server_caps: set[Capability] = {Capability.tombstones, Capability.vector_clocks}
         if get_compression_enabled():
             server_caps.add(Capability.compression)
+        if get_delta_enabled():
+            server_caps.add(Capability.delta)
         await websocket.send_json(
             build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=server_caps)
         )

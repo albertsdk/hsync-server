@@ -14,7 +14,7 @@ from hsync_common.protocol.handshake import (
 )
 
 from hsync_server.api.events import _event_paths_safe, bucket_manager, ws_events
-from hsync_server.config import get_compression_enabled
+from hsync_server.config import get_compression_enabled, get_delta_enabled
 from hsync_server.constants import HSYNC_VERSION
 
 
@@ -83,6 +83,16 @@ def _auth_frame(token: str) -> str:
     return dumps(build_ws_auth_request(token=token, app_version=HSYNC_VERSION, capabilities=[]))
 
 
+def _expected_server_caps() -> set[Capability]:
+    """The capability set the server advertises on auth success (ADR-0024)."""
+    caps = {Capability.tombstones, Capability.vector_clocks}
+    if get_compression_enabled():
+        caps.add(Capability.compression)
+    if get_delta_enabled():
+        caps.add(Capability.delta)
+    return caps
+
+
 class TestWebSocketAuthentication:
     """Tests for WebSocket authentication."""
 
@@ -110,9 +120,8 @@ class TestWebSocketAuthentication:
             await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.accept.assert_called_once()
-        expected_caps = {Capability.compression} if get_compression_enabled() else set()
         mock_websocket.send_json.assert_called_with(
-            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=expected_caps)
+            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=_expected_server_caps())
         )
 
     @pytest.mark.asyncio
@@ -216,9 +225,8 @@ class TestWebSocketEvents:
 
         # Connection accepted and authenticated
         mock_websocket.accept.assert_called_once()
-        expected_caps = {Capability.compression} if get_compression_enabled() else set()
         mock_websocket.send_json.assert_called_with(
-            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=expected_caps)
+            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=_expected_server_caps())
         )
         # Invalid event should not close the connection
         mock_websocket.close.assert_not_called()
@@ -239,9 +247,8 @@ class TestWebSocketEvents:
 
         # Connection accepted and authenticated
         mock_websocket.accept.assert_called_once()
-        expected_caps = {Capability.compression} if get_compression_enabled() else set()
         mock_websocket.send_json.assert_called_with(
-            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=expected_caps)
+            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=_expected_server_caps())
         )
         # Malformed JSON should not close the connection
         mock_websocket.close.assert_not_called()
@@ -434,9 +441,8 @@ class TestWebSocketEvents:
 
         # Connection was accepted and authenticated before the event
         mock_websocket.accept.assert_called_once()
-        expected_caps = {Capability.compression} if get_compression_enabled() else set()
         mock_websocket.send_json.assert_called_with(
-            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=expected_caps)
+            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=_expected_server_caps())
         )
         # Exception during processing should not close the connection
         mock_websocket.close.assert_not_called()

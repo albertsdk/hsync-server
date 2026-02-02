@@ -14,8 +14,11 @@ Uses `hsync_common.protocol.handshake` (imported `events.py:28`):
 - Client sends an auth frame; server validates token (`hmac.compare_digest` vs
   `get_api_key()`) and **hard-fails on `protocol_version` mismatch** against
   `PROTOCOL_VERSION_WS`.
-- Replies with `build_ws_auth_ok` / `build_ws_auth_error`; capabilities via
-  `decode_capabilities` / `Capability` enum.
+- Replies with `build_ws_auth_ok` / `build_ws_auth_error`; client capabilities
+  via `decode_capabilities`; the reply advertises the server's **honest**
+  capability set (ADR-0024): `tombstones` + `vector_clocks` unconditionally,
+  `compression` when `get_compression_enabled()`, `delta` when
+  `get_delta_enabled()`.
 - Auth must arrive within `get_ws_auth_timeout()` (`config.py:452`); otherwise the
   connection is dropped.
 
