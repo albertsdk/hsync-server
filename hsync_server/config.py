@@ -3,7 +3,9 @@ Configuration module for HSYNC Server.
 
 This module loads and exposes all configuration values from environment
 variables with sensible defaults. Configuration includes server port,
-API key for authentication, and paths for file storage.
+API key for authentication, timezone, logging level, and paths for file storage.
+
+Environment variables can be set via dev.env or prod.env files.
 """
 
 import os
@@ -18,6 +20,17 @@ LOG = getLogger("main")
 # Server port - the port on which the HSYNC server listens for connections
 # Can be overridden via HSYNC_PORT environment variable
 HSYNC_PORT: int = int(os.environ.get("HSYNC_PORT", 8765))
+
+# Number of worker processes for uvicorn
+# Recommended: 2-4 workers per CPU core in production
+HSYNC_WORKERS: int = int(os.environ.get("HSYNC_WORKERS", 1))
+
+# Log level for the server (debug, info, warning, error, critical)
+HSYNC_LOG_LEVEL: str = os.environ.get("HSYNC_LOG_LEVEL", "info").lower()
+
+# Timezone in IANA format (e.g., Europe/Rome, America/New_York, UTC)
+# See: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+HSYNC_TZ: str = os.environ.get("TZ", "UTC")
 
 # Application root path - resolved absolute path to the project directory
 HSYNC_PATH: str = str(Path(os.path.dirname(__file__) + "/..").resolve())

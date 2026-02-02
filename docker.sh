@@ -20,6 +20,10 @@ export HSYNC_PORT="${HSYNC_PORT:-8765}"
 export HSYNC_LOG_LEVEL="${HSYNC_LOG_LEVEL:-info}"
 export HSYNC_WORKERS="${HSYNC_WORKERS:-1}"
 export HSYNC_API_KEY="${HSYNC_API_KEY:-}"
+export TZ="${TZ:-UTC}"
+
+# Environment file (can be set via --env-file option)
+ENV_FILE=""
 
 # -----------------------------------------------------------------------------
 # Colors (disabled if not a terminal)
@@ -71,6 +75,7 @@ ${BOLD}Commands:${RESET}
     compose     Run docker-compose commands
 
 ${BOLD}Options:${RESET}
+    -e, --env-file  Environment file to load (e.g., dev.env, prod.env)
     -f, --follow    Follow log output (for logs command)
     -h, --help      Show this help message
 
@@ -79,12 +84,13 @@ ${BOLD}Environment Variables:${RESET}
     HSYNC_LOG_LEVEL   Log level: debug, info, warning, error (default: info)
     HSYNC_WORKERS     Number of workers (default: 1)
     HSYNC_API_KEY     API key for authentication (required)
+    TZ                Timezone in IANA format (default: UTC)
     HSYNC_VERSION     Image tag version (default: 0.1.0)
 
 ${BOLD}Examples:${RESET}
     ./docker.sh build
-    ./docker.sh start
-    HSYNC_API_KEY=secret HSYNC_LOG_LEVEL=debug ./docker.sh start
+    ./docker.sh start --env-file dev.env
+    ./docker.sh start --env-file prod.env
     ./docker.sh logs -f
     ./docker.sh shell
 EOF
@@ -97,8 +103,23 @@ cmd_build() {
 }
 
 cmd_start() {
+    # Load environment file if specified
+    if [[ -n "${ENV_FILE}" ]]; then
+        if [[ -f "${ENV_FILE}" ]]; then
+            log_info "Loading environment from ${ENV_FILE}"
+            # shellcheck disable=SC1090
+            set -a
+            source "${ENV_FILE}"
+            set +a
+        else
+            log_error "Environment file not found: ${ENV_FILE}"
+            exit 1
+        fi
+    fi
+
     if [[ -z "${HSYNC_API_KEY}" ]]; then
         log_error "HSYNC_API_KEY is required"
+        log_info "Set it via environment variable or use --env-file option"
         exit 1
     fi
 
@@ -108,16 +129,24 @@ cmd_start() {
     fi
 
     log_step "Starting container ${CONTAINER_NAME}..."
-    docker run -d \
-        --name "${CONTAINER_NAME}" \
-        --restart unless-stopped \
-        -p "${HSYNC_PORT}:8765" \
-        -e "HSYNC_API_KEY=${HSYNC_API_KEY}" \
-        -e "HSYNC_LOG_LEVEL=${HSYNC_LOG_LEVEL}" \
-        -e "HSYNC_WORKERS=${HSYNC_WORKERS}" \
-        -v "${SCRIPT_DIR}/buckets:/project/buckets" \
-        "${IMAGE_NAME}:${IMAGE_TAG}"
+
+    # Build docker run command with env file support
+    local docker_args=(
+        run -d
+        --name "${CONTAINER_NAME}"
+        --restart unless-stopped
+        -p "${HSYNC_PORT}:${HSYNC_PORT}"
+        -e "HSYNC_PORT=${HSYNC_PORT}"
+        -e "HSYNC_API_KEY=${HSYNC_API_KEY}"
+        -e "HSYNC_LOG_LEVEL=${HSYNC_LOG_LEVEL}"
+        -e "HSYNC_WORKERS=${HSYNC_WORKERS}"
+        -e "TZ=${TZ}"
+        -v "${SCRIPT_DIR}/buckets:/project/buckets"
+    )
+
+    docker "${docker_args[@]}" "${IMAGE_NAME}:${IMAGE_TAG}"
     log_ok "Container started: ${CONTAINER_NAME}"
+    log_info "Port: ${HSYNC_PORT}, Workers: ${HSYNC_WORKERS}, Log Level: ${HSYNC_LOG_LEVEL}, TZ: ${TZ}"
 }
 
 cmd_stop() {
@@ -162,10 +191,40 @@ cmd_compose() {
 }
 
 # -----------------------------------------------------------------------------
+# Parse Options
+# -----------------------------------------------------------------------------
+parse_options() {
+    local args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -e|--env-file)
+                if [[ -n "${2:-}" ]]; then
+                    ENV_FILE="$2"
+                    shift 2
+                else
+                    log_error "Option $1 requires an argument"
+                    exit 1
+                fi
+                ;;
+            *)
+                args+=("$1")
+                shift
+                ;;
+        esac
+    done
+    # Return remaining args for processing
+    ARGS=("${args[@]}")
+}
+
+# -----------------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------------
 main() {
     cd "${SCRIPT_DIR}"
+
+    # Parse global options
+    parse_options "$@"
+    set -- "${ARGS[@]}"
 
     case "${1:-}" in
         build)   cmd_build ;;
