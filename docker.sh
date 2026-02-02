@@ -22,25 +22,36 @@ export HSYNC_WORKERS="${HSYNC_WORKERS:-1}"
 export HSYNC_API_KEY="${HSYNC_API_KEY:-}"
 
 # -----------------------------------------------------------------------------
-# Colors
+# Colors (disabled if not a terminal)
 # -----------------------------------------------------------------------------
-readonly RED='\033[0;31m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[0;33m'
-readonly BLUE='\033[0;34m'
-readonly CYAN='\033[0;36m'
-readonly BOLD='\033[1m'
-readonly DIM='\033[2m'
-readonly RESET='\033[0m'
+if [[ -t 1 ]]; then
+    readonly RED=$'\033[0;31m'
+    readonly GREEN=$'\033[0;32m'
+    readonly YELLOW=$'\033[0;33m'
+    readonly BLUE=$'\033[0;34m'
+    readonly CYAN=$'\033[0;36m'
+    readonly BOLD=$'\033[1m'
+    readonly DIM=$'\033[2m'
+    readonly RESET=$'\033[0m'
+else
+    readonly RED=''
+    readonly GREEN=''
+    readonly YELLOW=''
+    readonly BLUE=''
+    readonly CYAN=''
+    readonly BOLD=''
+    readonly DIM=''
+    readonly RESET=''
+fi
 
 # -----------------------------------------------------------------------------
-# Functions
+# Logging Functions
 # -----------------------------------------------------------------------------
-log_info()  { echo -e "${BLUE}ℹ${RESET} $*"; }
-log_ok()    { echo -e "${GREEN}✓${RESET} $*"; }
-log_warn()  { echo -e "${YELLOW}⚠${RESET} $*"; }
-log_error() { echo -e "${RED}✕${RESET} $*" >&2; }
-log_step()  { echo -e "${CYAN}→${RESET} ${BOLD}$*${RESET}"; }
+log_info()  { printf '%s\n' "${BLUE}ℹ${RESET} $*"; }
+log_ok()    { printf '%s\n' "${GREEN}✓${RESET} $*"; }
+log_warn()  { printf '%s\n' "${YELLOW}⚠${RESET} $*"; }
+log_error() { printf '%s\n' "${RED}✕${RESET} $*" >&2; }
+log_step()  { printf '%s\n' "${CYAN}→${RESET} ${BOLD}$*${RESET}"; }
 
 show_help() {
     cat << EOF
@@ -122,7 +133,7 @@ cmd_restart() {
 }
 
 cmd_status() {
-    echo -e "${BOLD}Container Status:${RESET}"
+    printf '%s\n' "${BOLD}Container Status:${RESET}"
     docker ps -a --filter name="${CONTAINER_NAME}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 }
 
