@@ -1,0 +1,165 @@
+# HSYNC Server
+
+HTTP-based file synchronization server built with FastAPI, featuring WebSocket support for real-time events.
+
+## Features
+
+- 🚀 REST API server for file upload/download
+- 📁 Bucket management for file organization
+- 🔄 WebSocket for real-time synchronization
+- 🔐 API Key authentication (Bearer Token)
+- ✅ MD5-based file integrity verification
+- 📊 Integrated Prometheus metrics
+- 🐳 Docker-ready deployment
+
+## Requirements
+
+- Python ≥3.12, <3.14
+- Poetry (for dependency management)
+
+## Installation
+
+```bash
+# Clone the repository
+cd hsync-sever
+
+# Install dependencies with Poetry
+poetry install
+
+# Start the server
+poetry run uvicorn app.main:app --host 0.0.0.0 --port 8765
+```
+
+## Configuration
+
+The server uses environment variables for configuration:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HSYNC_API_KEY` | API key for authentication | (empty) |
+| `HSYNC_PORT` | Server port | `8765` |
+| `HSYNC_LOG_LEVEL` | Log level (`debug`, `info`) | `info` |
+
+## Docker
+
+### Build
+
+```bash
+docker build -t hsync:0.1.0 .
+```
+
+### Run
+
+```bash
+docker run --network="host" \
+  -e HSYNC_API_KEY="your-api-key" \
+  -e HSYNC_LOG_LEVEL="info" \
+  hsync:0.1.0
+```
+
+### Debug container
+
+```bash
+docker run --rm -it --entrypoint=/bin/sh hsync:0.1.0
+```
+
+## REST API
+
+### Bucket
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/bucket/v1/{bucket}` | Get bucket information |
+| `POST` | `/bucket/v1?bucket={name}` | Create a new bucket |
+| `DELETE` | `/bucket/v1/{bucket}` | Delete a bucket |
+
+### File
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/upload/v1/{bucket}` | Upload file (multipart/form-data) |
+| `GET` | `/download/v1/{bucket}?filename={path}` | Download file |
+| `GET` | `/files/v1/{bucket}` | List files in bucket |
+| `DELETE` | `/file/v1/{bucket}` | Delete file |
+
+### Upload Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cid` | string | Client ID |
+| `file` | file | File to upload |
+| `path` | string | Relative path in bucket |
+| `ctime` | string | Creation time |
+| `mtime` | string | Modification time |
+| `md5sum` | string | MD5 checksum |
+| `permissions` | string | File permissions (e.g., `-rw-rw-r--`) |
+
+## WebSocket
+
+### Endpoint
+
+```
+ws://host:8765/events/v1/{bucket}/{cid}?token={api_key}
+```
+
+### Supported Events
+
+| Event | Description |
+|-------|-------------|
+| `added` | File/directory added |
+| `modified` | File/directory modified |
+| `renamed` | File/directory renamed |
+| `deleted` | File/directory deleted |
+
+### Message Format
+
+```json
+{
+  "name": "added|modified|renamed|deleted",
+  "src": { "filepath": "...", "name": "...", ... },
+  "dst": { ... }  // only for 'renamed'
+}
+```
+
+## Health Check
+
+```bash
+curl http://localhost:8765/health
+```
+
+## Prometheus Metrics
+
+```bash
+curl http://localhost:8765/metrics
+```
+
+## Project Structure
+
+```
+hsync-sever/
+├── app/
+│   ├── api/
+│   │   ├── events/     # WebSocket handler
+│   │   ├── files/      # REST API files/buckets
+│   │   └── health/     # Health check
+│   ├── model/          # Data models
+│   ├── config.py       # Configuration
+│   ├── main.py         # FastAPI entry point
+│   └── routers.py      # Router configuration
+├── docker/             # Docker scripts
+├── Dockerfile
+├── pyproject.toml
+└── poetry.lock
+```
+
+## Authentication
+
+All API requests (except `/health` and `/metrics`) require the header:
+
+```
+Authorization: Bearer {HSYNC_API_KEY}
+```
+
+## Version
+
+0.1.0

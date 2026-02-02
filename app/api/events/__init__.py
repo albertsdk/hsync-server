@@ -1,3 +1,17 @@
+"""
+WebSocket events API for HSYNC Server.
+
+This module provides real-time event synchronization via WebSocket.
+Clients connect to receive file system events (add, modify, rename, delete)
+and broadcast their own events to other connected clients.
+
+The WebSocket endpoint handles:
+- Client connection management
+- Event validation and processing
+- Broadcasting events to all connected clients (except sender)
+- File system operations based on received events
+"""
+
 from app.api import set_permissions
 from app.config import HSYNC_API_KEY, HSYNC_BUCKETS
 from app.file_hashes import del_md5_hash
@@ -14,188 +28,253 @@ from shutil import rmtree
 from typing import Dict
 
 
+# Logger instance for this module
 LOG = getLogger("main")
 
 
 class ConnectionManager:
+    """
+    Manages WebSocket connections for real-time event broadcasting.
+
+    This class maintains a dictionary of active WebSocket connections,
+    allowing events to be broadcast to all connected clients except
+    the originator of the event.
+
+    Attributes:
+        active_connections: Dictionary mapping client IDs to WebSocket objects.
+    """
+
     def __init__(self):
+        """Initialize the ConnectionManager with empty connections dict."""
         self.active_connections: Dict[str, WebSocket] = {}
 
-    async def connect(self, websocket: WebSocket, client_id: str):
-        """Connect a client and accept the WebSocket connection."""
+    async def connect(self, websocket: WebSocket, client_id: str) -> None:
+        """
+        Accept and register a new WebSocket connection.
+
+        Args:
+            websocket: The WebSocket connection to accept.
+            client_id: Unique identifier for the connecting client.
+        """
         await websocket.accept()
         self.active_connections[client_id] = websocket
 
-    def disconnect(self, client_id: str):
-        """Disconnect a client and remove their WebSocket connection."""
+    def disconnect(self, client_id: str) -> None:
+        """
+        Remove a client's WebSocket connection.
+
+        Args:
+            client_id: The client ID to disconnect.
+        """
         self.active_connections.pop(client_id, None)
 
-    async def send_message(self, event: Event):
+    async def send_message(self, event: Event) -> None:
         """
-        Broadcast message to all clients except sender.
+        Broadcast an event to all connected clients except the sender.
 
-        :param event: The message event to send.
+        Args:
+            event: The Event object to broadcast.
         """
         for cid, connection in self.active_connections.items():
+            # Don't send the event back to its originator
             if cid != event.cid:
                 await connection.send_json(event.to_dict())
 
 
-# NOTE: Websocket doesent support Header Authentication 
-#       and FastAPI auto-docs
+# NOTE: WebSocket does not support Header Authentication
+#       and FastAPI auto-docs for WebSocket endpoints
 @public_router.websocket("/events/v1/{bucket}/{cid}")
 async def ws_events(
     websocket: WebSocket, bucket: str, cid: str, token: str = Query(...)
-):
-    """Manage remote events.
+) -> None:
+    """
+    WebSocket endpoint for real-time file system event synchronization.
+
+    This endpoint allows clients to:
+    - Receive events from other clients in real-time
+    - Send their own file system events to be broadcast
+    - Trigger server-side file operations based on events
+
+    Authentication is done via query parameter since WebSocket
+    doesn't support standard HTTP headers in the same way.
 
     Args:
-        websocket (WebSocket): _description_
-        bucket (str): _description_
-        cid (str): Client ID
-        token (str, optional): _description_. Defaults to Query(...).
+        websocket: The WebSocket connection object.
+        bucket: Name of the bucket to sync events for.
+        cid: Unique client ID for the connecting client.
+        token: API key for authentication (passed as query parameter).
 
     Raises:
-        ValueError: _description_
+        ValueError: If the API key is invalid.
     """
     try:
+        # Validate API key
         if token != HSYNC_API_KEY:
             message = "Invalid API KEY."
             LOG.warning(message)
             raise ValueError(message)
 
+        # Accept the connection and register the client
         await manager.connect(websocket, cid)
         try:
+            # Main message processing loop
             while True:
                 data = await websocket.receive_text()
                 LOG.debug(f"[WS] Received message: {data}")
                 try:
                     message = loads(data)
+
+                    # Validate event type
                     if message.get("name") not in {
                         EventName.added.value,
                         EventName.modified.value,
                         EventName.renamed.value,
                         EventName.deleted.value,
                     }:
-                        LOG.error(f"Invalid event name: {message.get("name")}")
+                        LOG.error(f"Invalid event name: {message.get('name')}")
                         continue
 
+                    # Extract event data
                     src = message.get("src", None)
                     dst = message.get("dst", None)
                     bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
                     event_name = EventName(message.get("name"))
 
-                    # Added
+                    # Initialize event to None - will be set if valid event processed
+                    event = None
+
+                    # Handle "added" events - create new files/directories
                     if event_name == EventName.added:
-                        # Dir
+                        # Handle directory creation
                         if src and "path" in src:
                             dir = Dir().from_dict(src, bucket_dir)
-                            LOG.info(f'[WS] Added dir "{dir.path}"')
-                            makedirs(dir.path, exist_ok=True)
-                            await set_permissions(dir.path, dir.permissions)
-                            event = Event(cid, bucket_dir, bucket, EventName.added, dir)
-                        # File
+                            if dir.path and dir.permissions:
+                                LOG.info(f'[WS] Added dir "{dir.path}"')
+                                makedirs(dir.path, exist_ok=True)
+                                await set_permissions(dir.path, dir.permissions)
+                                event = Event(
+                                    cid, bucket_dir, bucket, EventName.added, dir
+                                )
+                        # Handle file creation notification
                         elif src and "filepath" in src:
                             file = File().from_dict(src, bucket_dir)
                             LOG.info(f'[WS] Added file "{file.filepath}"')
                             event = Event(
                                 cid, bucket_dir, bucket, EventName.added, file
                             )
-                    # Modified
+
+                    # Handle "modified" events - update existing files/directories
                     elif event_name == EventName.modified:
-                        # Dir
+                        # Handle directory modification (permissions)
                         if src and "path" in src:
                             dir = Dir().from_dict(src, bucket_dir)
-                            LOG.info(f'[WS] Modified dir "{dir.path}"')
-                            await set_permissions(dir.path, dir.permissions)
-                            event = Event(
-                                cid, bucket_dir, bucket, EventName.modified, dir
-                            )
-                        # File
+                            if dir.path and dir.permissions:
+                                LOG.info(f'[WS] Modified dir "{dir.path}"')
+                                await set_permissions(dir.path, dir.permissions)
+                                event = Event(
+                                    cid, bucket_dir, bucket, EventName.modified, dir
+                                )
+                        # Handle file modification notification
                         elif src and "filepath" in src:
                             file = File().from_dict(src, bucket_dir)
                             LOG.info(f'[WS] Modified file "{file.filepath}"')
                             event = Event(
                                 cid, bucket_dir, bucket, EventName.modified, file
                             )
-                    # Delete
+                    # Handle "deleted" events - remove files/directories
                     elif event_name == EventName.deleted:
-                        # Dir
+                        # Handle directory deletion
                         if src and "path" in src:
                             dir = Dir().from_dict(src, bucket_dir)
-                            if not exists(dir.path):
-                                LOG.warning(f'[WS] Dir: "{dir.path}" not found.')
-                            else:
-                                LOG.info(f'[WS] Deleted dir "{dir.path}"')
-                                rmtree(dir.path, ignore_errors=False)
-                            event = Event(
-                                cid, bucket_dir, bucket, EventName.deleted, dir
-                            )
-                        # File
+                            if dir.path:
+                                if not exists(dir.path):
+                                    LOG.warning(f'[WS] Dir: "{dir.path}" not found.')
+                                else:
+                                    LOG.info(f'[WS] Deleted dir "{dir.path}"')
+                                    rmtree(dir.path, ignore_errors=False)
+                                event = Event(
+                                    cid, bucket_dir, bucket, EventName.deleted, dir
+                                )
+                        # Handle file deletion
                         elif src and "filepath" in src:
                             file = File().from_dict(src, bucket_dir, False)
-                            if not exists(file.filepath):
-                                LOG.warning(f'[WS] File: "{file.filepath}" not found.')
-                            else:
-                                LOG.info(f'[WS] Deleted file "{file.filepath}"')
-                                remove(file.filepath)
-                            del_md5_hash(file.filepath)
-                            event = Event(
-                                cid, bucket_dir, bucket, EventName.deleted, file
-                            )
-                    # Rename
+                            if file.filepath:
+                                if not exists(file.filepath):
+                                    LOG.warning(
+                                        f'[WS] File: "{file.filepath}" not found.'
+                                    )
+                                else:
+                                    LOG.info(f'[WS] Deleted file "{file.filepath}"')
+                                    remove(file.filepath)
+                                # Remove from hash cache
+                                del_md5_hash(file.filepath)
+                                event = Event(
+                                    cid, bucket_dir, bucket, EventName.deleted, file
+                                )
+
+                    # Handle "renamed" events - rename/move files or directories
                     elif event_name == EventName.renamed:
-                        # Dir
-                        if src and src.get("path", None):
+                        # Handle directory rename
+                        if src and src.get("path", None) and dst:
                             src_dir = Dir().from_dict(src, bucket_dir)
                             dst_dir = Dir().from_dict(dst, bucket_dir)
-                            LOG.info(
-                                f'[WS] Renamed "{src_dir.path}" -> "{dst_dir.path}"'
-                            )
-                            rename(src_dir.path, dst_dir.path)
-                            event = Event(
-                                cid,
-                                bucket_dir,
-                                bucket,
-                                EventName.renamed,
-                                src_dir,
-                                dst_dir,
-                            )
-                        # File
-                        elif src and src.get("filepath", None):
+                            if src_dir.path and dst_dir.path:
+                                LOG.info(
+                                    f'[WS] Renamed "{src_dir.path}" -> "{dst_dir.path}"'
+                                )
+                                rename(src_dir.path, dst_dir.path)
+                                event = Event(
+                                    cid,
+                                    bucket_dir,
+                                    bucket,
+                                    EventName.renamed,
+                                    src_dir,
+                                    dst_dir,
+                                )
+                        # Handle file rename
+                        elif src and src.get("filepath", None) and dst:
                             src_file = File().from_dict(src, bucket_dir, False)
                             dst_file = File().from_dict(dst, bucket_dir, False)
-                            LOG.info(
-                                f'[WS] Renamed "{src_file.filepath}" -> "{dst_file.filepath}"'
-                            )
-                            rename(src_file.filepath, dst_file.filepath)
-                            event = Event(
-                                cid,
-                                bucket_dir,
-                                bucket,
-                                EventName.renamed,
-                                src_file,
-                                dst_file,
-                            )
+                            if src_file.filepath and dst_file.filepath:
+                                LOG.info(
+                                    f'[WS] Renamed "{src_file.filepath}" -> "{dst_file.filepath}"'
+                                )
+                                rename(src_file.filepath, dst_file.filepath)
+                                event = Event(
+                                    cid,
+                                    bucket_dir,
+                                    bucket,
+                                    EventName.renamed,
+                                    src_file,
+                                    dst_file,
+                                )
 
-                    await manager.send_message(event)
+                    # Broadcast the event to all other connected clients
+                    if event:
+                        await manager.send_message(event)
+
                 except JSONDecodeError:
                     LOG.error(f"[WS] Invalid JSON received: {data}")
                 except Exception as e:
                     LOG.error(f"[WS] Exception data: {data}")
                     LOG.error(f"[WS] Exception: {e}", exc_info=True)
+
         except WebSocketDisconnect:
+            # Client disconnected normally
             manager.disconnect(cid)
             LOG.warning(f"[WS] Disconnected (CID: {cid})")
         except Exception as e:
+            # Client disconnected with error
             manager.disconnect(cid)
             LOG.warning(f"[WS] Disconnected (CID: {cid}) ({e})")
             await websocket.close()
-    except:
+    except Exception:
+        # Handle any outer exception (e.g., auth failure)
         LOG.warning(f"[WS] Disconnected (CID: {cid})")
         await websocket.close()
 
 
+# Global connection manager instance for WebSocket connections
 manager = ConnectionManager()
 
 
