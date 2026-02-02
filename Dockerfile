@@ -41,28 +41,25 @@ COPY --from=builder /project/.venv /venv
 
 # Copy application source code (ordered by change frequency)
 COPY config /project/config
-COPY docker /project/docker
 COPY hsync_server /project/hsync_server
 
 # Setup directories and permissions in single layer
 RUN mkdir -p buckets tmp \
-    && ln -s /venv /project/.venv \
-    && chmod 755 /project/docker/entrypoint.sh \
-    && chmod 755 /project/docker/run.sh
+    && ln -s /venv /project/.venv
 
 # Set environment variables
 ENV PATH="/project/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     TZ=Europe/Rome \
-    HSYNC_LOG_LEVEL=info
+    HSYNC_LOG_LEVEL=info \
+    HSYNC_PORT=8765 \
+    HSYNC_WORKERS=1
 
 # Expose port
 EXPOSE 8765
 
-# Specify the entrypoint and default command
-ENTRYPOINT ["/project/docker/entrypoint.sh"]
-CMD ["/project/docker/run.sh"]
+# Run as nobody user for security
+USER nobody
 
-# docker build -t hsync:0.1.0 .
-# docker run --network="host" -e HSYNC_API_KEY="development" -e HSYNC_LOG_LEVEL="debug" hsync:0.1.0
-# docker run --rm -it --entrypoint=/bin/sh hsync:0.1.0
+# Start uvicorn server
+CMD ["sh", "-c", "uvicorn hsync_server.main:app --host 0.0.0.0 --port ${HSYNC_PORT} --log-config config/logging-${HSYNC_LOG_LEVEL}.yaml --log-level ${HSYNC_LOG_LEVEL} --workers ${HSYNC_WORKERS}"]
