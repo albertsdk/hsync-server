@@ -96,7 +96,7 @@ flowchart TB
 - 🚀 REST API server for file upload/download
 - 📁 Bucket management for file organization
 - 🔄 WebSocket for real-time synchronization
-- 🔐 API Key authentication (Bearer Token)
+- 🔐 API Key authentication (Bearer token for REST, first-frame for WebSocket)
 - ✅ SHA-256-based file integrity verification
 - 📊 Integrated Prometheus metrics
 - 🐳 Docker-ready deployment
@@ -157,9 +157,10 @@ Key variables:
 | `HSYNC_MAX_UPLOAD_SIZE` | Maximum upload size in bytes | `10737418240` (10 GiB) |
 
 > ⚠️ **Warning**: Multi-worker mode (`HSYNC_WORKERS > 1`) is NOT recommended.
-> WebSocket connections and SHA-256 cache are not shared between workers.
-> The server uses asynchronous I/O (FastAPI + asyncio), so a single worker
-> can handle high concurrency efficiently without multiple processes.
+> WebSocket connections, the SHA-256 cache, and the in-memory rate limiter are
+> not shared between workers. The server uses asynchronous I/O (FastAPI +
+> asyncio), so a single worker can handle high concurrency efficiently
+> without multiple processes.
 
 ## Documentation
 
