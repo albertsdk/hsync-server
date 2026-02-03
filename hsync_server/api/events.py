@@ -42,7 +42,7 @@ from logging import getLogger
 from os import makedirs, rename, remove, symlink as os_symlink, unlink
 from os.path import dirname, exists, islink
 from shutil import rmtree
-from typing import Dict
+from typing import Dict, Optional
 
 
 # Logger instance for this module
@@ -131,7 +131,7 @@ class BucketConnectionManager:
             LOG.debug(f"Created ConnectionManager for bucket: {bucket}")
         return self.buckets[bucket]
 
-    def get_connection_count(self, bucket: str = None) -> int:
+    def get_connection_count(self, bucket: Optional[str] = None) -> int:
         """
         Get the number of active connections.
 
