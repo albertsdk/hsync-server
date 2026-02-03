@@ -98,6 +98,68 @@ The server uses environment variables for configuration. Create a `.env` file or
 
 > ⚠️ **Warning**: Multi-worker mode (`HSYNC_WORKERS > 1`) is NOT recommended. WebSocket connections and MD5 cache are not shared between workers.
 
+### SSL/TLS Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HSYNC_SSL_ENABLED` | Enable HTTPS/WSS (`true`/`false`) | `false` |
+| `HSYNC_SSL_CERTFILE` | Path to SSL certificate (PEM format) | (auto-generated) |
+| `HSYNC_SSL_KEYFILE` | Path to SSL private key (PEM format) | (auto-generated) |
+| `HSYNC_SSL_CERT_DIR` | Directory for auto-generated certificates | `./certs` |
+
+## SSL/TLS (HTTPS/WSS)
+
+The server supports encrypted communication via HTTPS and WSS (WebSocket Secure).
+
+### Quick Start with Self-Signed Certificates
+
+```bash
+# Enable SSL - certificates are auto-generated if not provided
+HSYNC_SSL_ENABLED=true HSYNC_API_KEY=secret ./docker.sh start
+```
+
+When SSL is enabled without explicit certificate paths, the server automatically generates self-signed certificates in the `certs/` directory with:
+- RSA 2048-bit key
+- SHA-256 signature
+- 1-year validity
+- Subject Alternative Names (SAN) for hostname, localhost, 127.0.0.1, ::1
+
+### Using Custom Certificates
+
+For production, use certificates from a trusted CA (e.g., Let's Encrypt):
+
+```bash
+export HSYNC_SSL_ENABLED=true
+export HSYNC_SSL_CERTFILE=/etc/letsencrypt/live/yourdomain/fullchain.pem
+export HSYNC_SSL_KEYFILE=/etc/letsencrypt/live/yourdomain/privkey.pem
+./docker.sh start
+```
+
+### Client Connection with Self-Signed Certificates
+
+Clients connecting to a server with self-signed certificates need to either:
+
+1. **Trust the certificate** (recommended):
+   ```bash
+   # Copy the server certificate to the client
+   scp server:/path/to/certs/server.crt ./server.crt
+
+   # Connect using the CA certificate
+   hsync -s https://server:8765 -b mybucket --ca-cert server.crt
+   ```
+
+2. **Disable verification** (not recommended for production):
+   ```bash
+   hsync -s https://server:8765 -b mybucket --insecure
+   ```
+
+### Endpoints with SSL
+
+| Protocol | Endpoint |
+|----------|----------|
+| HTTPS | `https://host:8765/api/v1/...` |
+| WSS | `wss://host:8765/api/v1/buckets/{bucket}/events/{cid}` |
+
 ## Docker
 
 The server is designed to run in Docker. Use the `docker.sh` script for all operations:

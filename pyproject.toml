@@ -23,6 +23,7 @@ websockets = "^15.0"
 watchdog = "^6.0.0"
 watchfiles = "^1.0.4"
 slowapi = "^0.1.9"
+cryptography = "^44.0.0"
 
 
 [tool.poetry.group.dev.dependencies]
