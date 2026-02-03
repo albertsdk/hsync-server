@@ -9,15 +9,20 @@ This module allows the package to be run directly using Python's -m flag.
 
 import uvicorn
 
-from hsync_server.config import HSYNC_PORT
+from hsync_server.config import HSYNC_LOG_LEVEL, HSYNC_PORT
+from hsync_server.logger import setup_logging
 
 
 def main() -> None:
     """Run the HSYNC server using uvicorn."""
+    # Configure logging before starting the server
+    setup_logging(level=HSYNC_LOG_LEVEL)
+
     uvicorn.run(
         "hsync_server.main:app",
         host="0.0.0.0",
         port=HSYNC_PORT,
+        log_level=HSYNC_LOG_LEVEL,
         reload=True,
     )
 

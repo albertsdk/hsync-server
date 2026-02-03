@@ -17,53 +17,71 @@ HTTP-based file synchronization server built with FastAPI, featuring WebSocket s
 
 ## Requirements
 
-- Python ≥3.12, <3.14
-- Poetry (for dependency management)
+- Docker
 
-## Installation
+## Quick Start
 
 ```bash
-# Navigate to the server directory
 cd hsync-server
 
-# Install dependencies with Poetry
-poetry install
+# Build the Docker image
+./docker.sh build
 
-# Start the server
-poetry run uvicorn hsync_server.main:app --host 0.0.0.0 --port 8765
-
-# Or run as a module
-poetry run python -m hsync_server
+# Start the server (requires environment file)
+./docker.sh start --env-file prod.env
 ```
 
 ## Configuration
 
-The server uses environment variables for configuration:
+The server uses environment variables for configuration. Create a `.env` file or use the provided `dev.env`/`prod.env` templates:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HSYNC_API_KEY` | API key for authentication | (empty) |
+| `HSYNC_API_KEY` | API key for authentication (required) | (empty) |
 | `HSYNC_PORT` | Server port | `8765` |
-| `HSYNC_LOG_LEVEL` | Log level (`debug`, `info`) | `info` |
+| `HSYNC_LOG_LEVEL` | Log level (`debug`, `info`, `warning`, `error`, `critical`) | `info` |
+| `HSYNC_WORKERS` | Number of uvicorn workers | `1` |
+| `HSYNC_TZ` | Timezone in IANA format (e.g., `Europe/Rome`) | `UTC` |
+
+> ⚠️ **Warning**: Multi-worker mode (`HSYNC_WORKERS > 1`) is NOT recommended. WebSocket connections and MD5 cache are not shared between workers.
 
 ## Docker
 
-### Build
+The server is designed to run in Docker. Use the `docker.sh` script for all operations:
+
+### Commands
 
 ```bash
-docker build -t hsync:0.1.0 .
+./docker.sh build       # Build the Docker image
+./docker.sh start       # Start the container
+./docker.sh stop        # Stop the container
+./docker.sh restart     # Restart the container
+./docker.sh status      # Show container status
+./docker.sh logs        # Show container logs
+./docker.sh logs -f     # Follow container logs
+./docker.sh shell       # Open a shell in the running container
+./docker.sh clean       # Remove container and image
 ```
 
-### Run
+### Using Environment Files
 
 ```bash
-docker run --network="host" \
-  -e HSYNC_API_KEY="your-api-key" \
-  -e HSYNC_LOG_LEVEL="info" \
-  hsync:0.1.0
+# Development
+./docker.sh start --env-file dev.env
+
+# Production
+./docker.sh start --env-file prod.env
 ```
 
-### Debug container
+### Environment Variables
+
+You can also set environment variables directly:
+
+```bash
+HSYNC_API_KEY="your-secret-key" ./docker.sh start
+```
+
+### Debug Container
 
 ```bash
 docker run --rm -it --entrypoint=/bin/sh hsync:0.1.0
@@ -184,6 +202,7 @@ hsync-server/
 │   ├── __init__.py
 │   ├── __main__.py         # Entry point: python -m hsync_server
 │   ├── config.py           # Configuration
+│   ├── logger.py           # Logging configuration
 │   ├── main.py             # FastAPI application
 │   ├── routers.py          # Router configuration
 │   ├── hashes.py           # MD5 hash caching
@@ -201,16 +220,16 @@ hsync-server/
 │       ├── file.py
 │       ├── symlink.py      # Symbolic link model
 │       └── sync_action.py
-├── docs/                   # Documentation with Mermaid diagrams
+├── docs/                   # Documentation
 │   ├── architecture.md
 │   ├── api.md
 │   └── sync-flow.md
-├── config/                 # Configuration files
-│   ├── logging-debug.yaml
-│   └── logging-info.yaml
-├── docker/                 # Docker scripts
 ├── tests/                  # Test files
+├── buckets/                # File storage (created at runtime)
 ├── Dockerfile
+├── docker.sh               # Docker management script
+├── dev.env                 # Development environment template
+├── prod.env                # Production environment template
 ├── pyproject.toml
 └── poetry.lock
 ```

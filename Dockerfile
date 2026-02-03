@@ -39,8 +39,7 @@ WORKDIR /project/
 # Copy the virtual environment from the builder stage
 COPY --from=builder /project/.venv /venv
 
-# Copy application source code (ordered by change frequency)
-COPY config /project/config
+# Copy application source code
 COPY hsync_server /project/hsync_server
 
 # Setup directories and permissions in single layer
@@ -51,11 +50,10 @@ RUN mkdir -p buckets tmp \
 # These can be overridden via --env-file or -e flags
 ENV PATH="/project/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    TZ=UTC \
     HSYNC_LOG_LEVEL=info \
     HSYNC_PORT=8765 \
     HSYNC_WORKERS=1 \
-    HSYNC_API_KEY=""
+    HSYNC_TZ=UTC
 
 # Expose default port (can be changed via HSYNC_PORT)
 EXPOSE 8765
@@ -64,4 +62,4 @@ EXPOSE 8765
 USER nobody
 
 # Start uvicorn server with configurable parameters
-CMD ["sh", "-c", "uvicorn hsync_server.main:app --host 0.0.0.0 --port ${HSYNC_PORT} --log-config config/logging-${HSYNC_LOG_LEVEL}.yaml --log-level ${HSYNC_LOG_LEVEL} --workers ${HSYNC_WORKERS}"]
+CMD ["sh", "-c", "uvicorn hsync_server.main:app --host 0.0.0.0 --port ${HSYNC_PORT} --log-level ${HSYNC_LOG_LEVEL} --workers ${HSYNC_WORKERS}"]
