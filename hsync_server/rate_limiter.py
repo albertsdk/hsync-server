@@ -20,12 +20,17 @@ Rate limiting configuration for HSYNC Server.
 This module provides rate limiting functionality using slowapi to protect
 the server from abuse and ensure fair usage across all clients.
 
-Default limits:
-- General API: 100 requests/minute per IP
-- Upload: 50 requests/minute per IP
-- Download: 200 requests/minute per IP
-- WebSocket: 10 connections/minute per IP
+Default limits (configurable via environment variables):
+- HSYNC_RATE_LIMIT_DEFAULT: 500/minute per IP (general API)
+- HSYNC_RATE_LIMIT_UPLOAD: 200/minute per IP (file uploads)
+- HSYNC_RATE_LIMIT_DOWNLOAD: 1000/minute per IP (file downloads)
+- HSYNC_RATE_LIMIT_WEBSOCKET: 50/minute per IP (WebSocket connections)
+
+Format: "<number>/<period>" where period is: second, minute, hour, day
+Examples: "100/minute", "1000/hour", "10/second"
 """
+
+import os
 
 from fastapi import Request, Response
 from logging import getLogger
@@ -38,6 +43,23 @@ from starlette.responses import JSONResponse
 
 # Logger instance for this module
 LOG = getLogger("main")
+
+
+# -----------------------------------------------------------------------------
+# Rate Limit Configuration (from environment variables)
+# -----------------------------------------------------------------------------
+
+# Standard rate limit for general endpoints (list, delete, bucket operations)
+RATE_LIMIT_DEFAULT: str = os.environ.get("HSYNC_RATE_LIMIT_DEFAULT", "500/minute")
+
+# Rate limit for upload endpoints (more restrictive due to resource usage)
+RATE_LIMIT_UPLOAD: str = os.environ.get("HSYNC_RATE_LIMIT_UPLOAD", "200/minute")
+
+# Rate limit for download endpoints (more permissive for high-traffic systems)
+RATE_LIMIT_DOWNLOAD: str = os.environ.get("HSYNC_RATE_LIMIT_DOWNLOAD", "1000/minute")
+
+# Rate limit for WebSocket connections
+RATE_LIMIT_WEBSOCKET: str = os.environ.get("HSYNC_RATE_LIMIT_WEBSOCKET", "50/minute")
 
 
 def get_client_ip(request: Request) -> str:
@@ -66,7 +88,7 @@ def get_client_ip(request: Request) -> str:
 # Initialize the rate limiter with custom key function
 limiter = Limiter(
     key_func=get_client_ip,
-    default_limits=["100/minute"],
+    default_limits=[RATE_LIMIT_DEFAULT],
     headers_enabled=True,  # Add rate limit headers to responses
 )
 
@@ -104,21 +126,9 @@ async def rate_limit_exceeded_handler(
     )
 
 
-# Rate limit decorators for different endpoint types
-# Use these as decorators on route handlers
-
-# Standard rate limit for general endpoints
-RATE_LIMIT_DEFAULT = "100/minute"
-
-# Rate limit for upload endpoints (more restrictive)
-RATE_LIMIT_UPLOAD = "50/minute"
-
-# Rate limit for download endpoints (more permissive)
-RATE_LIMIT_DOWNLOAD = "200/minute"
-
-# Rate limit for WebSocket connections
-RATE_LIMIT_WEBSOCKET = "10/minute"
-
-
-LOG.info(f"Module {__name__} loaded")
+LOG.info(
+    f"Rate limits configured: default={RATE_LIMIT_DEFAULT}, "
+    f"upload={RATE_LIMIT_UPLOAD}, download={RATE_LIMIT_DOWNLOAD}, "
+    f"websocket={RATE_LIMIT_WEBSOCKET}"
+)
 

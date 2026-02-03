@@ -103,23 +103,32 @@ class TestRateLimitExceededHandler:
 
 
 class TestRateLimitConstants:
-    """Tests for rate limit constants."""
+    """Tests for rate limit constants (high-traffic defaults)."""
 
     def test_default_limit(self):
-        """Default rate limit is set."""
-        assert RATE_LIMIT_DEFAULT == "100/minute"
+        """Default rate limit is set for high-traffic systems."""
+        assert RATE_LIMIT_DEFAULT == "500/minute"
 
     def test_upload_limit(self):
-        """Upload rate limit is more restrictive."""
-        assert RATE_LIMIT_UPLOAD == "50/minute"
+        """Upload rate limit is set (more restrictive than download)."""
+        assert RATE_LIMIT_UPLOAD == "200/minute"
 
     def test_download_limit(self):
-        """Download rate limit is more permissive."""
-        assert RATE_LIMIT_DOWNLOAD == "200/minute"
+        """Download rate limit is set for high-traffic systems."""
+        assert RATE_LIMIT_DOWNLOAD == "1000/minute"
 
     def test_websocket_limit(self):
         """WebSocket rate limit is set."""
-        assert RATE_LIMIT_WEBSOCKET == "10/minute"
+        assert RATE_LIMIT_WEBSOCKET == "50/minute"
+
+    def test_limits_are_valid_format(self):
+        """All rate limits follow the expected format."""
+        import re
+        pattern = r"^\d+/(second|minute|hour|day)$"
+        assert re.match(pattern, RATE_LIMIT_DEFAULT)
+        assert re.match(pattern, RATE_LIMIT_UPLOAD)
+        assert re.match(pattern, RATE_LIMIT_DOWNLOAD)
+        assert re.match(pattern, RATE_LIMIT_WEBSOCKET)
 
 
 class TestLimiterInstance:
