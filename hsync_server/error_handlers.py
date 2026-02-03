@@ -92,7 +92,7 @@ def get_status_code_for_exception(exc: HSyncError) -> int:
     return status.HTTP_500_INTERNAL_SERVER_ERROR
 
 
-async def hsync_exception_handler(request: Request, exc: HSyncError) -> JSONResponse:
+async def hsync_exception_handler(_request: Request, exc: HSyncError) -> JSONResponse:
     """
     Handle HSYNC custom exceptions.
 
@@ -100,7 +100,7 @@ async def hsync_exception_handler(request: Request, exc: HSyncError) -> JSONResp
     with appropriate HTTP status codes.
 
     Args:
-        request: The incoming request.
+        _request: The incoming request (unused but required by FastAPI).
         exc: The HSyncError exception.
 
     Returns:
@@ -121,7 +121,7 @@ async def hsync_exception_handler(request: Request, exc: HSyncError) -> JSONResp
 
 
 async def validation_exception_handler(
-    request: Request, exc: RequestValidationError
+    _request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """
     Handle Pydantic validation errors.
@@ -129,7 +129,7 @@ async def validation_exception_handler(
     Converts FastAPI/Pydantic validation errors to standardized format.
 
     Args:
-        request: The incoming request.
+        _request: The incoming request (unused but required by FastAPI).
         exc: The validation exception.
 
     Returns:
@@ -148,7 +148,7 @@ async def validation_exception_handler(
     )
 
 
-async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+async def global_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
     """
     Handle all unhandled exceptions.
 
@@ -157,7 +157,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     but returns a generic error message to avoid leaking internal details.
 
     Args:
-        request: The incoming request.
+        _request: The incoming request (unused but required by FastAPI).
         exc: The unhandled exception.
 
     Returns:
@@ -182,11 +182,11 @@ def register_exception_handlers(app: FastAPI) -> None:
         app: The FastAPI application instance.
     """
     # Handle custom HSYNC exceptions
-    app.add_exception_handler(HSyncError, hsync_exception_handler)
+    app.add_exception_handler(HSyncError, hsync_exception_handler)  # type: ignore[arg-type]
 
     # Handle Pydantic validation errors
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
 
     # Handle all other unhandled exceptions (must be last)
-    app.add_exception_handler(Exception, global_exception_handler)
+    app.add_exception_handler(Exception, global_exception_handler)  # type: ignore[arg-type]
 

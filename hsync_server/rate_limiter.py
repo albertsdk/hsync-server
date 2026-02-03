@@ -95,7 +95,7 @@ limiter = Limiter(
 
 async def rate_limit_exceeded_handler(
     request: Request, exc: RateLimitExceeded
-) -> Response:
+) -> JSONResponse:
     """
     Custom handler for rate limit exceeded errors.
 
