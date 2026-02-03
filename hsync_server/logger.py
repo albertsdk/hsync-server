@@ -86,7 +86,7 @@ class RequestIdFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Add request_id to the log record."""
-        record.request_id = get_request_id() or "-"
+        record.request_id = get_request_id() or "N/A"
         return True
 
 
