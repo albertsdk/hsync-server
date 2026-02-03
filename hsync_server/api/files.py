@@ -31,6 +31,17 @@ Rate limiting is applied to protect against abuse.
 from hsync_server.api.utils import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
 from hsync_server.api.events import bucket_manager
 from hsync_server.config import HSYNC_BUCKETS
+from hsync_server.exceptions import (
+    BucketNotFoundError,
+    ChecksumMismatchError,
+    DeleteError,
+    FileNotFoundError as HSyncFileNotFoundError,
+    InvalidBucketNameError,
+    InvalidPathError,
+    InvalidPermissionFormatError,
+    InvalidSyncOrderError,
+    UploadError,
+)
 from hsync_server.hashes import get_md5_hash, set_md5_hash
 from hsync_server.models.file import File as LocalFile
 from hsync_server.models.event import Event, EventName
@@ -44,7 +55,7 @@ from hsync_server.routers import auth_router
 from aiofiles.ospath import isfile
 from aiofiles.tempfile import NamedTemporaryFile
 from datetime import datetime, timezone
-from fastapi import File, Form, HTTPException, Request, UploadFile, status
+from fastapi import File, Form, Request, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 from logging import getLogger
 from os import makedirs, remove, utime, walk
@@ -164,39 +175,31 @@ async def get_bucket(bucket: str) -> JSONResponse:
         JSON response with bucket name and timestamps.
 
     Raises:
-        HTTPException: 404 if bucket not found, 400 for invalid bucket name.
+        InvalidBucketNameError: If bucket name is invalid.
+        BucketNotFoundError: If bucket does not exist.
     """
-    try:
-        if not is_valid_bucket(bucket):
-            raise ValueError("Invalid bucket name")
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
 
-        bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
+    bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
 
-        if not exists(bucket_dir):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Bucket not found"
-            )
+    if not exists(bucket_dir):
+        raise BucketNotFoundError(details={"bucket": bucket})
 
-        # Fetch and format access, creation and modification times
-        times = {
-            "adate": getatime(bucket_dir),
-            "cdate": getctime(bucket_dir),
-            "mdate": getmtime(bucket_dir),
-        }
-        formatted_times = {
-            key: datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
-            for key, value in times.items()
-        }
+    # Fetch and format access, creation and modification times
+    times = {
+        "adate": getatime(bucket_dir),
+        "cdate": getctime(bucket_dir),
+        "mdate": getmtime(bucket_dir),
+    }
+    formatted_times = {
+        key: datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
+        for key, value in times.items()
+    }
 
-        return JSONResponse(
-            status_code=status.HTTP_200_OK, content={"name": bucket, **formatted_times}
-        )
-    except HTTPException as e:
-        LOG.error(f"Failed to get bucket information: {bucket}: {e}", exc_info=True)
-        raise e
-    except Exception as e:
-        LOG.error(f"Failed to get bucket information: {bucket}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return JSONResponse(
+        status_code=status.HTTP_200_OK, content={"name": bucket, **formatted_times}
+    )
 
 
 @auth_router.post("/api/v1/buckets")
@@ -214,38 +217,34 @@ async def create_bucket(bucket: str) -> JSONResponse:
         JSON response confirming creation or conflict if exists.
 
     Raises:
-        HTTPException: 400 for invalid bucket name or other errors.
+        InvalidBucketNameError: If bucket name is invalid.
     """
-    try:
-        if not is_valid_bucket(bucket):
-            raise ValueError("Invalid bucket name")
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
 
-        bucket_directory = f"{HSYNC_BUCKETS}/{bucket}"
+    bucket_directory = f"{HSYNC_BUCKETS}/{bucket}"
 
-        # Check if bucket already exists
-        if exists(bucket_directory):
-            LOG.warning(f"Bucket already exists: {bucket_directory}")
-            return JSONResponse(
-                status_code=status.HTTP_409_CONFLICT,
-                content={
-                    "info": "Bucket already exists",
-                    "bucket": bucket,
-                },
-            )
-        else:
-            makedirs(bucket_directory, exist_ok=True)
-            LOG.info(f'Bucket: "{bucket}" created')
-
+    # Check if bucket already exists
+    if exists(bucket_directory):
+        LOG.warning(f"Bucket already exists: {bucket_directory}")
         return JSONResponse(
-            status_code=status.HTTP_201_CREATED,
+            status_code=409,
             content={
-                "info": "Bucket created successfully",
+                "info": "Bucket already exists",
                 "bucket": bucket,
             },
         )
-    except Exception as e:
-        LOG.error(f"Bucket creation failed: {bucket}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    makedirs(bucket_directory, exist_ok=True)
+    LOG.info(f'Bucket: "{bucket}" created')
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "info": "Bucket created successfully",
+            "bucket": bucket,
+        },
+    )
 
 
 @auth_router.delete("/api/v1/buckets/{bucket}")
@@ -263,42 +262,35 @@ async def delete_bucket(bucket: str) -> JSONResponse:
         JSON response confirming deletion.
 
     Raises:
-        HTTPException: 400 for invalid name, 404 if not found, 500 for errors.
+        InvalidBucketNameError: If bucket name is invalid.
+        BucketNotFoundError: If bucket does not exist.
+        DeleteError: If deletion fails.
     """
-    bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
-    try:
-        if not is_valid_bucket(bucket):
-            LOG.error(f"Invalid bucket name: {bucket}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid bucket name"
-            )
-        if not exists(bucket_dir):
-            LOG.warning(f"Bucket not found: {bucket_dir}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Bucket not found"
-            )
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
 
+    bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
+
+    if not exists(bucket_dir):
+        raise BucketNotFoundError(details={"bucket": bucket})
+
+    try:
         # Remove bucket and all contents
         rmtree(bucket_dir)
         LOG.info(f'Bucket: "{bucket}" deleted successfully')
 
         return JSONResponse(
-            status_code=status.HTTP_200_OK,
+            status_code=200,
             content={
                 "info": "Bucket deleted successfully",
                 "bucket": bucket,
             },
         )
-    except HTTPException as e:
-        LOG.error(f"Failed to delete bucket: {bucket}: {e}", exc_info=True)
-        raise e
-    except Exception as e:
-        LOG.error(
-            f"Unexpected error while deleting bucket {bucket}: {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete bucket",
+    except OSError as e:
+        LOG.error(f"Failed to delete bucket {bucket}: {e}", exc_info=True)
+        raise DeleteError(
+            message=f"Failed to delete bucket: {bucket}",
+            details={"bucket": bucket, "error": str(e)},
         )
 
 
@@ -336,17 +328,21 @@ async def upload_file(
         JSON response confirming upload or conflict if identical file exists.
 
     Raises:
-        HTTPException: 400 for validation errors or upload failures.
+        InvalidBucketNameError: If bucket name is invalid.
+        InvalidPathError: If path is invalid.
+        InvalidPermissionFormatError: If permission format is invalid.
+        ChecksumMismatchError: If MD5 checksum verification fails.
+        UploadError: If upload operation fails.
     """
     file_location_tmp = None
     try:
         # Validate inputs
         if not is_valid_bucket(bucket):
-            raise ValueError("Invalid bucket name")
+            raise InvalidBucketNameError(details={"bucket": bucket})
         if not is_valid_dir(path):
-            raise ValueError("Invalid path")
+            raise InvalidPathError(details={"path": path})
         if permissions and not is_valid_permission_format(permissions):
-            raise ValueError("Invalid permission format")
+            raise InvalidPermissionFormatError(details={"permissions": permissions})
 
         # Define file paths
         file_directory = f"{HSYNC_BUCKETS}/{bucket}/{path}"
@@ -358,7 +354,7 @@ async def upload_file(
             # Update timestamps even if skipping upload
             update_file_timestamp(file_location, ctime, mtime)
             return JSONResponse(
-                status_code=status.HTTP_409_CONFLICT,
+                status_code=409,
                 content={
                     "info": "File already present",
                     "file": file_location,
@@ -384,9 +380,10 @@ async def upload_file(
         # Verify MD5 checksum if provided
         md5sum_tmp = await compute_md5(file_location_tmp)
         if md5sum and md5sum != md5sum_tmp:
-            error = f"Invalid checksum: expected {md5sum}, {md5sum_tmp} given"
-            LOG.error(error)
-            raise ValueError(error)
+            raise ChecksumMismatchError(
+                message=f"Checksum mismatch: expected {md5sum}, got {md5sum_tmp}",
+                details={"expected": md5sum, "actual": md5sum_tmp},
+            )
 
         # Store MD5 hash for future duplicate detection
         set_md5_hash(file_location, md5sum_tmp)
@@ -404,15 +401,26 @@ async def upload_file(
             )
 
         return JSONResponse(
-            status_code=status.HTTP_201_CREATED,
+            status_code=201,
             content={
                 "info": "File uploaded successfully",
                 "file": f"{bucket}/{path}/{file.filename}",
             },
         )
+    except (
+        InvalidBucketNameError,
+        InvalidPathError,
+        InvalidPermissionFormatError,
+        ChecksumMismatchError,
+    ):
+        # Re-raise custom exceptions - they'll be handled by global handler
+        raise
     except Exception as e:
         LOG.error(f"Upload failed for file {file.filename}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise UploadError(
+            message=f"Upload failed for file {file.filename}",
+            details={"filename": file.filename, "error": str(e)},
+        )
     finally:
         # Clean up temporary file if it exists
         if file_location_tmp and exists(file_location_tmp):
@@ -438,27 +446,21 @@ async def download_file(
         FileResponse with the file content for download.
 
     Raises:
-        HTTPException: 404 if file not found, 400 for validation errors.
+        InvalidBucketNameError: If bucket name is invalid.
+        InvalidPathError: If path is invalid.
+        HSyncFileNotFoundError: If file does not exist.
     """
-    try:
-        if not is_valid_bucket(bucket):
-            raise ValueError("Invalid bucket name")
-        if not is_valid_dir(filename):
-            raise ValueError("Invalid path")
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
+    if not is_valid_dir(filename):
+        raise InvalidPathError(details={"path": filename})
 
-        file = f"{HSYNC_BUCKETS}/{bucket}/{filename}"
+    file = f"{HSYNC_BUCKETS}/{bucket}/{filename}"
 
-        if not await isfile(file):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
-            )
-        return FileResponse(file, filename=filename)
-    except HTTPException as e:
-        LOG.error(f"Failed to download file: {bucket}:{filename} {e}", exc_info=True)
-        raise e
-    except Exception as e:
-        LOG.error(f"Download failed {filename}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if not await isfile(file):
+        raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
+
+    return FileResponse(file, filename=filename)
 
 
 @auth_router.get("/api/v1/buckets/{bucket}/files")
@@ -484,65 +486,59 @@ async def get_files(
         JSON response with list of file metadata dictionaries.
 
     Raises:
-        HTTPException: 404 if bucket not found, 400 for validation errors.
+        InvalidBucketNameError: If bucket name is invalid.
+        InvalidPathError: If path is invalid.
+        InvalidSyncOrderError: If sync_order is invalid.
+        BucketNotFoundError: If bucket does not exist.
     """
-    try:
-        # Validate inputs
-        if not is_valid_bucket(bucket):
-            raise ValueError("Invalid bucket name")
-        if path and not is_valid_dir(path):
-            raise ValueError("Invalid path")
+    # Validate inputs
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
+    if path and not is_valid_dir(path):
+        raise InvalidPathError(details={"path": path})
 
-        valid_orders = ["mtime", "ctime"]
-        if sync_order not in valid_orders:
-            raise ValueError(
-                f"Invalid order '{sync_order}'. Must be one of {valid_orders}."
-            )
-
-        # Construct directory path
-        dir = f"{HSYNC_BUCKETS}/{bucket}/{path or ''}".rstrip("/")
-
-        if not exists(dir):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Bucket not found: {bucket}",
-            )
-
-        # Collect file metadata
-        file_list = []
-        for root, dirs, files in walk(dir):
-            # Skip hidden directories
-            dirs[:] = [d for d in dirs if not d.startswith(".")]
-
-            for file in files:
-                # Skip hidden files
-                if file.startswith("."):
-                    continue
-
-                # Get file info and normalize path relative to bucket
-                file_obj = LocalFile().get(file, root)
-                if file_obj:
-                    file_info = file_obj.to_dict()
-                    file_data = (
-                        LocalFile()
-                        .from_dict(file_info, f"{HSYNC_BUCKETS}/{bucket}")
-                        .to_dict()
-                    )
-                    file_list.append(file_data)
-
-        # Sort by specified timestamp field
-        file_list.sort(key=lambda x: x.get(sync_order))
-
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=file_list,
+    valid_orders = ["mtime", "ctime"]
+    if sync_order not in valid_orders:
+        raise InvalidSyncOrderError(
+            message=f"Invalid sync order '{sync_order}'. Must be one of {valid_orders}.",
+            details={"sync_order": sync_order, "valid_orders": valid_orders},
         )
-    except HTTPException as e:
-        LOG.error(f"Files list failed: {e}", exc_info=True)
-        raise e
-    except Exception as e:
-        LOG.error(f"Files list failed: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    # Construct directory path
+    dir = f"{HSYNC_BUCKETS}/{bucket}/{path or ''}".rstrip("/")
+
+    if not exists(dir):
+        raise BucketNotFoundError(details={"bucket": bucket, "path": path})
+
+    # Collect file metadata
+    file_list = []
+    for root, dirs, files in walk(dir):
+        # Skip hidden directories
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+
+        for file in files:
+            # Skip hidden files
+            if file.startswith("."):
+                continue
+
+            # Get file info and normalize path relative to bucket
+            file_obj = LocalFile().get(file, root)
+            if file_obj:
+                file_info = file_obj.to_dict()
+                file_data = (
+                    LocalFile()
+                    .from_dict(file_info, f"{HSYNC_BUCKETS}/{bucket}")
+                    .to_dict()
+                )
+                file_list.append(file_data)
+
+    # Sort by specified timestamp field
+    file_list.sort(key=lambda x: x.get(sync_order))
+
+    return JSONResponse(
+        status_code=200,
+        content=file_list,
+    )
 
 
 @auth_router.delete("/api/v1/buckets/{bucket}/files")
@@ -566,38 +562,30 @@ async def delete_file(
         JSON response confirming deletion.
 
     Raises:
-        HTTPException: 400 for invalid input, 404 if not found, 500 for errors.
+        InvalidBucketNameError: If bucket name is invalid.
+        BucketNotFoundError: If bucket does not exist.
+        InvalidPathError: If path is invalid.
+        HSyncFileNotFoundError: If file does not exist.
+        DeleteError: If deletion fails.
     """
     # Validate bucket name
     if not is_valid_bucket(bucket):
-        LOG.error(f"Invalid bucket name: {bucket}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid bucket name"
-        )
+        raise InvalidBucketNameError(details={"bucket": bucket})
 
     bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
     if not exists(bucket_dir):
-        LOG.warning(f"Bucket not found: {bucket_dir}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Bucket not found"
-        )
+        raise BucketNotFoundError(details={"bucket": bucket})
 
     file = f"{bucket_dir}/{filename}"
 
     # Validate path to prevent traversal attacks
     if not is_valid_dir(dirname(file)):
-        LOG.error(f"Invalid path: {bucket}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path"
-        )
+        raise InvalidPathError(details={"path": filename})
+
+    if not exists(file):
+        raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
 
     try:
-        if not exists(file):
-            LOG.warning(f"File not found: {file}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
-            )
-
         # Broadcast "deleted" event to other clients before deletion
         src = LocalFile().get(file)
         local_bucket = f"{HSYNC_BUCKETS}/{bucket}"
@@ -612,20 +600,17 @@ async def delete_file(
         LOG.info(f'File: "{file}" deleted successfully')
 
         return JSONResponse(
-            status_code=status.HTTP_200_OK,
+            status_code=200,
             content={
                 "info": "File deleted successfully",
                 "file": file,
             },
         )
-    except HTTPException as e:
-        LOG.error(f"Error deleting file {file}: {e}", exc_info=True)
-        raise e
-    except Exception as e:
-        LOG.error(f"Unexpected error while deleting file {file}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete file",
+    except OSError as e:
+        LOG.error(f"Failed to delete file {file}: {e}", exc_info=True)
+        raise DeleteError(
+            message=f"Failed to delete file: {filename}",
+            details={"bucket": bucket, "filename": filename, "error": str(e)},
         )
 
 

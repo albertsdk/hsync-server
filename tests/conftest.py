@@ -32,6 +32,7 @@ def test_app(temp_buckets_dir: str) -> FastAPI:
          patch("hsync_server.api.files.HSYNC_BUCKETS", temp_buckets_dir):
 
         from hsync_server.rate_limiter import limiter, rate_limit_exceeded_handler
+        from hsync_server.error_handlers import register_exception_handlers
         from slowapi.errors import RateLimitExceeded
         from slowapi.middleware import SlowAPIMiddleware
 
@@ -40,6 +41,9 @@ def test_app(temp_buckets_dir: str) -> FastAPI:
         app.state.limiter = limiter
         app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
         app.add_middleware(SlowAPIMiddleware)
+
+        # Register custom exception handlers
+        register_exception_handlers(app)
 
         # Create new routers for test app (avoid reusing global routers)
         from fastapi import APIRouter, Depends

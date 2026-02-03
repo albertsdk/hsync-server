@@ -24,12 +24,8 @@ It provides two router types:
 """
 
 from .config import HSYNC_API_KEY
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    status,
-)
+from .exceptions import InvalidApiKeyError, MissingApiKeyError
+from fastapi import APIRouter, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from logging import getLogger
 from typing import Annotated
@@ -37,24 +33,6 @@ from typing import Annotated
 
 # Logger instance for this module
 LOG = getLogger("main")
-
-
-def _handle_error(message: str, status_code: int) -> None:
-    """
-    Helper function for error handling and logging.
-
-    Logs the error message and raises an HTTPException with the
-    specified status code.
-
-    Args:
-        message: Error message to log and return to client.
-        status_code: HTTP status code for the response.
-
-    Raises:
-        HTTPException: Always raised with the provided status code and message.
-    """
-    LOG.error(message)
-    raise HTTPException(status_code=status_code, detail=message)
 
 
 def mask_api_key(api_key: str) -> str:
@@ -70,7 +48,9 @@ def mask_api_key(api_key: str) -> str:
     Returns:
         Masked API key string (e.g., "abc****xyz").
     """
-    return api_key[:3] + "*" * (len(api_key) - 10) + api_key[-3:]
+    if len(api_key) <= 6:
+        return "*" * len(api_key)
+    return api_key[:3] + "*" * (len(api_key) - 6) + api_key[-3:]
 
 
 def verify_api_key(
@@ -88,16 +68,18 @@ def verify_api_key(
         token: HTTP Authorization credentials containing the Bearer token.
 
     Raises:
-        HTTPException: 403 if no token provided, 401 if token is invalid.
+        MissingApiKeyError: If no API key is provided.
+        InvalidApiKeyError: If the API key is invalid.
     """
     api_key = token.credentials
     if not api_key:
-        return _handle_error("Undefined signature", status.HTTP_403_FORBIDDEN)
+        LOG.warning("Authentication attempt with missing API key")
+        raise MissingApiKeyError()
 
     if api_key != HSYNC_API_KEY:
-        _handle_error(
-            f"Invalid signature: {mask_api_key(api_key)}",
-            status.HTTP_401_UNAUTHORIZED,
+        LOG.warning(f"Authentication attempt with invalid API key: {mask_api_key(api_key)}")
+        raise InvalidApiKeyError(
+            details={"provided_key": mask_api_key(api_key)}
         )
 
 
