@@ -9,7 +9,6 @@ flowchart TB
     subgraph Clients["👥 Clients"]
         CA["🖥️ Client A<br/><small>Office Desktop</small>"]
         CB["💻 Client B<br/><small>Laptop</small>"]
-        CC["📱 Client C<br/><small>Remote Worker</small>"]
     end
 
     subgraph Server["🗄️ HSYNC Server"]
@@ -21,12 +20,10 @@ flowchart TB
     %% Upload flows
     CA -->|"⬆️ Upload"| API
     CB -->|"⬆️ Upload"| API
-    CC -->|"⬆️ Upload"| API
 
     %% Download flows
     API -->|"⬇️ Download"| CA
     API -->|"⬇️ Download"| CB
-    API -->|"⬇️ Download"| CC
 
     %% API to Storage
     API <-->|"💾 Read/Write"| BUCKET
@@ -34,14 +31,12 @@ flowchart TB
     %% WebSocket connections
     CA <-.->|"🔔 Events"| WS
     CB <-.->|"🔔 Events"| WS
-    CC <-.->|"🔔 Events"| WS
 
     %% Event broadcast
     WS -.->|"📢 Broadcast"| WS
 
     style CA fill:#e1f5fe,stroke:#01579b,color:#01579b
     style CB fill:#e1f5fe,stroke:#01579b,color:#01579b
-    style CC fill:#e1f5fe,stroke:#01579b,color:#01579b
     style API fill:#c8e6c9,stroke:#2e7d32,color:#1b5e20
     style WS fill:#fff3e0,stroke:#e65100,color:#e65100
     style BUCKET fill:#f3e5f5,stroke:#7b1fa2,color:#7b1fa2
@@ -55,10 +50,10 @@ flowchart TB
 </details>
 
 **Legend:**
-- 🟦 **Clients**: Desktop, laptop, or remote machines running HSYNC Client
-- 🟩 **REST API**: HTTP endpoints for file upload/download operations
-- 🟧 **WebSocket Hub**: Real-time event distribution to connected clients
-- 🟪 **Bucket Storage**: Server-side file repository organized by buckets
+- 🟦 **Clients**: Machines running HSYNC Client (desktop, laptop, etc.)
+- 🟩 **REST API**: HTTP endpoints for file upload/download
+- 🟧 **WebSocket Hub**: Real-time event distribution
+- 🟪 **Bucket Storage**: Server-side file repository
 
 ## Features
 
