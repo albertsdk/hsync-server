@@ -47,6 +47,13 @@ flowchart TB
     style BUCKET fill:#f3e5f5,stroke:#7b1fa2,color:#7b1fa2
 ```
 
+<details>
+<summary>📷 View as image (if Mermaid is not rendered)</summary>
+
+![Architecture Overview](docs/images/README-1.png)
+
+</details>
+
 **Legend:**
 - 🟦 **Clients**: Desktop, laptop, or remote machines running HSYNC Client
 - 🟩 **REST API**: HTTP endpoints for file upload/download operations
