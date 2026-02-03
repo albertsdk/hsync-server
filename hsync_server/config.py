@@ -83,5 +83,5 @@ def _get_log_level() -> str:
 # Log level for the server (debug, info, warning, error, critical)
 HSYNC_LOG_LEVEL: str = _get_log_level()
 
-# Logger instance for this module
-LOG = logging.getLogger("main")
+# Logger instance for this module (uses __name__ for module-level filtering)
+LOG = logging.getLogger(__name__)

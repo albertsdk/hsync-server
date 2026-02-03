@@ -23,10 +23,11 @@ This module provides:
 - Mapping from custom exceptions to HTTP status codes
 """
 
+import logging
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from logging import getLogger
 from pydantic import BaseModel
 from typing import Any, Optional
 
@@ -41,7 +42,8 @@ from .exceptions import (
 )
 
 
-LOG = getLogger("main")
+# Logger instance for this module (uses __name__ for module-level filtering)
+LOG = logging.getLogger(__name__)
 
 
 class ErrorResponse(BaseModel):
