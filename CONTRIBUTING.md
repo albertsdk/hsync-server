@@ -6,20 +6,20 @@ workflow for the HSYNC server (FastAPI REST + WebSocket).
 ## Prerequisites
 
 - Python `>=3.12,<3.15` (lint/CI target: **3.13**)
-- [Poetry](https://python-poetry.org/) for dependency management
+- A committed virtualenv at `.venv/` (no Poetry required)
 - A checkout of [`hsync-common`](../hsync-common) as a **sibling directory**
   (declared as a Poetry path dependency)
 
 ## Setup
 
-```bash
-poetry install
-```
+The project ships a committed virtualenv at `.venv/`. All tooling is invoked
+through it as `.venv/bin/python -m <tool>` — exactly as the root `Makefile`
+does. No Poetry installation is required.
 
 ## Running
 
 ```bash
-HSYNC_API_KEY=dev-key poetry run python -m hsync_server
+HSYNC_API_KEY=dev-key .venv/bin/python -m hsync_server
 # or use the provided dev.env template
 ```
 
@@ -29,8 +29,8 @@ This project uses [ruff](https://docs.astral.sh/ruff/) for linting and
 formatting (line length 100, target `py313`), enforced via pre-commit hooks.
 
 ```bash
-poetry run ruff check --fix .
-poetry run ruff format .
+.venv/bin/python -m ruff check --fix .
+.venv/bin/python -m ruff format .
 ```
 
 ## Pre-commit Workflow
@@ -40,8 +40,8 @@ auto-fixes files, the commit aborts because files changed — **this is expected
 not a failure**. Re-stage and commit again:
 
 ```bash
-poetry run ruff check --fix .
-poetry run ruff format .
+.venv/bin/python -m ruff check --fix .
+.venv/bin/python -m ruff format .
 git add -A
 git commit -m "type(scope): message"
 # if hooks modified files and the commit aborted, re-stage and retry:
@@ -53,23 +53,26 @@ git commit -m "type(scope): message"
 
 ```bash
 # Run the full test suite
-poetry run pytest
+.venv/bin/python -m pytest
 
 # Run a specific test file
-poetry run pytest tests/test_api_files.py
+.venv/bin/python -m pytest tests/test_api_files.py
 
 # Run with coverage report
-poetry run pytest --cov=hsync_server --cov-report=term-missing
+.venv/bin/python -m pytest --cov=hsync_server --cov-report=term-missing
 
 # Run only integration tests
-poetry run pytest -m integration
+.venv/bin/python -m pytest -m integration
 
 # Run only unit tests (exclude integration)
-poetry run pytest -m "not integration"
+.venv/bin/python -m pytest -m "not integration"
 ```
 
-If the project configures mypy (see `pyproject.toml`), also run
-`poetry run mypy .`.
+Type checking (mypy) is configured for this project:
+
+```bash
+.venv/bin/python -m mypy hsync_server
+```
 
 ### Test structure
 
@@ -104,7 +107,7 @@ The server depends on `hsync-common` models. When you change a model in
 `hsync-common`, run the server's test suite to verify nothing breaks:
 
 ```bash
-cd ../hsync-common && poetry run pytest && cd ../hsync-server && poetry run pytest
+cd ../hsync-common && .venv/bin/python -m pytest && cd ../hsync-server && .venv/bin/python -m pytest
 ```
 
 ## Release Process
@@ -159,7 +162,17 @@ testing:
 - [ ] Release notes are published on GitHub
 - [ ] `docs/api.md` is up to date with any endpoint changes
 - [ ] Environment variable table in `docs/README.md` is updated
-- [ ] Notify downstream projects (hsync-client, hsync-desktop) if protocol changed
+- [ ] Notify downstream projects (hsync-client, hsync-desktop, hsync-android) if protocol changed
+
+## Documentation
+
+HSYNC maintains two documentation sets that must stay in sync with the code:
+
+- `llm-wiki/` — internal agent knowledge base (architecture, modules, data models)
+- `docs/` — end-user technical documentation
+
+Any change that affects architecture, contracts, configuration, or behavior
+must update the relevant files in both sets within the same change.
 
 ## Commit Messages
 
@@ -171,4 +184,4 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 - Keep changes focused and covered by tests.
 - Keep the API reference (`docs/api.md`) and rate-limit table
   (`README.md`) in sync with the code when you change endpoints or limits.
-- Ensure `ruff` and `pytest` pass locally before opening a PR.
+- Ensure `ruff`, `pytest` and `mypy` pass locally before opening a PR.

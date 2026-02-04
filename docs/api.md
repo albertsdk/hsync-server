@@ -26,10 +26,12 @@ graph LR
             DF["GET .../files/download"]
             RF["DELETE .../files"]
             US["GET .../files/upload-status"]
+            SL["POST .../buckets/:bucket/symlinks"]
         end
 
         subgraph Tombstones["⑤ Tombstones"]
             GT["GET .../buckets/:bucket/tombstones"]
+            PT["POST .../buckets/:bucket/tombstones"]
         end
     end
 ```
@@ -73,6 +75,7 @@ files during a full reconciliation.
 | Method | Endpoint | Description | Rate Limit |
 |--------|----------|-------------|------------|
 | `GET` | `/api/v1/buckets/{bucket}/tombstones` | List deletion markers for a bucket | 500/min |
+| `POST` | `/api/v1/buckets/{bucket}/tombstones` | Merge deletion markers pushed by a peer | 500/min |
 
 ### Delta Transfer
 
@@ -104,6 +107,15 @@ Symlinks are **replicated structurally**: the pair (path, target) travels the
 sync channel and the receiving peer reconstructs the link itself (WS `symlink`
 event or `POST /symlinks`). On the REST surface the semantics are
 per-operation:
+
+| Method | Endpoint | Description | Rate Limit |
+|--------|----------|-------------|------------|
+| `POST` | `/api/v1/buckets/{bucket}/symlinks?path={path}&target={target}&cid={cid}` | Create or update a symlink entry | 500/min |
+
+> The link is created from the structural pair: `path` is the bucket-relative
+> link location, `target` is what it points to. A target escaping the bucket
+> is rejected; an existing file/link at `path` is replaced (a non-empty
+> directory is refused).
 
 | Operation | Behaviour |
 |-----------|-----------|
@@ -300,18 +312,25 @@ sequenceDiagram
 
     C->>S: ① WebSocket Connect
     S->>C: ② Connection Accepted
-    C->>S: ③ {"type": "auth", "token": "api-key", "version": "1.0.0"}
-    alt ④a Valid token
-        S->>C: ⑤ {"type": "auth", "status": "ok", "version": ..., "compression_enabled": ...}
+    C->>S: ③ {"type": "auth", "token", "app_version", "protocol_version", "capabilities"}
+    alt ④a Valid token + matching protocol
+        S->>C: ⑤ {"type": "auth", "status": "ok", "protocol_version", "app_version", "capabilities"}
         Note over C,S: ⑥ Client is now authenticated
     else ④b Invalid token
-        S->>C: ⑤ Close (4003: Invalid API key)
+        S->>C: Close (4003: Invalid API key)
+    else ④c Protocol mismatch
+        S->>C: {"type": "auth", "status": "error", "error": "protocol_incompatible", ...} + Close (4002)
     end
 ```
 
-The first frame must be `{"type": "auth", "token": "<api_key>"}`; an optional
-`version` field enables compatibility checks. On success the server replies with
-its `version` and `compression_enabled` capability.
+The first frame must follow the shared handshake contract
+(`hsync_common.protocol.handshake`): `{"type": "auth", "token": "<api_key>",
+"app_version": "...", "protocol_version": "<peer protocol>", "capabilities": [...]}`.
+The server hard-fails on a `protocol_version` mismatch (sending an
+`auth`/`error` reply first) and otherwise responds with its own
+`protocol_version`, `app_version` and `capabilities`. The capabilities are the
+feature registry (compression, delta, tombstones, vector_clocks); both sides
+use the intersection for transfer gating.
 
 **WebSocket close codes:**
 
@@ -334,6 +353,10 @@ its `version` and `compression_enabled` capability.
 | `renamed` | File/directory renamed | `src: File\|Dir, dst: File\|Dir` |
 | `deleted` | File/directory deleted | `src: File\|Dir` |
 | `symlink` | Symbolic link created | `src: Symlink` |
+
+> File payloads advertised as `vector_clocks`-capable carry an optional
+> `version` field (causal metadata: `vclock`, `version_id`, `origin_cid`,
+> `ts`, `corrected_mtime` — ADR-0022), mirroring the `/files` listing.
 
 ### Event Message Format
 
@@ -371,7 +394,8 @@ its `version` and `compression_enabled` capability.
 
 ### Error Response Format
 
-All error responses follow this standardized JSON format:
+All error responses raised through the server's exception hierarchy follow
+this standardized JSON format:
 
 ```json
 {
@@ -382,6 +406,15 @@ All error responses follow this standardized JSON format:
   }
 }
 ```
+
+> **Exception: the delta-transfer endpoints** (`/files/delta/*`) return
+> FastAPI-style `{"detail": ...}` bodies for their endpoint-specific failures
+> (e.g. `404 {"detail": "Not Found"}` when the feature is disabled, `409`
+> `{"detail": "base_file_changed", ...}` on a base race, `422`
+> `{"detail": "<reason>"}` on invalid instructions or a failed
+> reconstruction). Errors raised through the shared exception hierarchy
+> (invalid bucket/path, checksum, not found, superseded, conflict-lost)
+> keep the standardized `HSYNC-XXXX` format above.
 
 ### Error Codes Reference
 
