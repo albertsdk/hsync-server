@@ -88,7 +88,7 @@ class TestRequestIdFilter:
         )
         result = filter_obj.filter(record)
         assert result is True
-        assert record.request_id == "filter-test-id"
+        assert getattr(record, "request_id") == "filter-test-id"
         set_request_id(None)  # cleanup
 
     def test_filter_uses_na_when_no_request_id(self):
@@ -100,7 +100,7 @@ class TestRequestIdFilter:
             msg="test message", args=(), exc_info=None
         )
         filter_obj.filter(record)
-        assert record.request_id == "N/A"
+        assert getattr(record, "request_id") == "N/A"
 
 
 class TestJsonFormatter:
