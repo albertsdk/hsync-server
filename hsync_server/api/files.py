@@ -17,8 +17,7 @@
 """
 File operations API for HSYNC Server.
 
-This module provides REST API endpoints for file and bucket management:
-- Bucket CRUD operations (create, read, delete)
+This module provides REST API endpoints for file management:
 - File upload with integrity verification (MD5)
 - File download with streaming response
 - File listing with sorting options
@@ -30,8 +29,18 @@ Rate limiting is applied to protect against abuse.
 
 import logging
 
+from aiofiles.ospath import isfile
+from aiofiles.tempfile import NamedTemporaryFile
+from fastapi import File, Form, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
+from os import makedirs, remove, walk
+from os.path import dirname, exists
+from shutil import move
+from typing import Optional
+
+from hsync_server.api.connection_manager import bucket_manager
+from hsync_server.api.file_utils import is_valid_permission_format, update_file_timestamp
 from hsync_server.api.utils import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
-from hsync_server.api.events import bucket_manager
 from hsync_server.config import HSYNC_BUCKETS
 from hsync_server.exceptions import (
     BucketNotFoundError,
@@ -45,254 +54,19 @@ from hsync_server.exceptions import (
     UploadError,
 )
 from hsync_server.hashes import get_md5_hash, set_md5_hash
-from hsync_server.models.file import File as LocalFile
 from hsync_server.models.event import Event, EventName
+from hsync_server.models.file import File as LocalFile
 from hsync_server.rate_limiter import (
     limiter,
     RATE_LIMIT_DEFAULT,
-    RATE_LIMIT_UPLOAD,
     RATE_LIMIT_DOWNLOAD,
+    RATE_LIMIT_UPLOAD,
 )
 from hsync_server.routers import auth_router
-from aiofiles.ospath import isfile
-from aiofiles.tempfile import NamedTemporaryFile
-from datetime import datetime, timezone
-from fastapi import File, Form, Request, UploadFile, status
-from fastapi.responses import FileResponse, JSONResponse
-from os import makedirs, remove, utime, walk
-from os.path import (
-    abspath,
-    commonpath,
-    dirname,
-    exists,
-    getatime,
-    getctime,
-    getmtime,
-)
-from re import match
-from shutil import move, rmtree
-from typing import Optional
 
 
 # Logger instance for this module (uses __name__ for module-level filtering)
 LOG = logging.getLogger(__name__)
-
-
-def is_safe_path(base_path: str, target_path: str) -> bool:
-    """
-    Check if a target path is safely within the base path.
-
-    Prevents path traversal attacks by ensuring the target path
-    doesn't escape the base directory.
-
-    Args:
-        base_path: The base directory path.
-        target_path: The target path to validate.
-
-    Returns:
-        True if target is within base, False otherwise.
-    """
-    base_path = abspath(base_path)
-    target_path = abspath(target_path)
-    return commonpath([base_path]) == commonpath([base_path, target_path])
-
-
-def is_valid_permission_format(permissions: str) -> bool:
-    """
-    Validate a symbolic permission string format.
-
-    Args:
-        permissions: Permission string to validate (e.g., '-rw-r--r--', 'drwxr-xr-x').
-
-    Returns:
-        True if the format is valid, False otherwise.
-    """
-    # First character: file type (d=dir, l=link, -=file, b=block, c=char, p=pipe, s=socket)
-    return bool(match(r"^[dlbcps\-][rwx-]{9}$", permissions))
-
-
-def update_file_timestamp(
-    file_location: str, ctime: Optional[str] = None, mtime: Optional[str] = None
-) -> None:
-    """
-    Update file access and modification timestamps.
-
-    Accepts timestamps as either Unix timestamps (digit strings) or
-    ISO format datetime strings.
-
-    Args:
-        file_location: Path to the file.
-        ctime: Creation/access time (Unix timestamp or ISO string).
-        mtime: Modification time (Unix timestamp or ISO string).
-    """
-    # Only update if at least one timestamp is provided
-    if ctime or mtime:
-        # Parse ctime (can be Unix timestamp or ISO format)
-        if ctime and ctime.isdigit():
-            _ctime = int(
-                datetime.fromtimestamp(int(ctime), timezone.utc).timestamp()
-            )
-        elif ctime:
-            _ctime = int(datetime.fromisoformat(ctime).timestamp())
-        else:
-            _ctime = None
-
-        # Parse mtime (can be Unix timestamp or ISO format)
-        if mtime and mtime.isdigit():
-            _mtime = int(
-                datetime.fromtimestamp(int(mtime), timezone.utc).timestamp()
-            )
-        elif mtime:
-            _mtime = int(datetime.fromisoformat(mtime).timestamp())
-        else:
-            _mtime = None
-
-        LOG.debug(f"Update timestamp: {file_location} ({ctime}, {mtime})")
-        # Set access time and modification time (fallback to the other if one is None)
-        # Only call utime if we have at least one valid timestamp
-        atime = _ctime or _mtime
-        mtime_val = _mtime or _ctime
-        if atime is not None and mtime_val is not None:
-            utime(file_location, (atime, mtime_val))
-
-
-@auth_router.get(
-    "/api/v1/buckets/{bucket}",
-    name="Get bucket information",
-    summary="Get bucket information",
-    description="""Get bucket information including timestamps.""",
-)
-async def get_bucket(bucket: str) -> JSONResponse:
-    """
-    Retrieve information about a specific bucket.
-
-    Returns the bucket name and timestamps (access, creation, modification)
-    in ISO format.
-
-    Args:
-        bucket: Name of the bucket to query.
-
-    Returns:
-        JSON response with bucket name and timestamps.
-
-    Raises:
-        InvalidBucketNameError: If bucket name is invalid.
-        BucketNotFoundError: If bucket does not exist.
-    """
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-
-    bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
-
-    if not exists(bucket_dir):
-        raise BucketNotFoundError(details={"bucket": bucket})
-
-    # Fetch and format access, creation and modification times
-    times = {
-        "adate": getatime(bucket_dir),
-        "cdate": getctime(bucket_dir),
-        "mdate": getmtime(bucket_dir),
-    }
-    formatted_times = {
-        key: datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
-        for key, value in times.items()
-    }
-
-    return JSONResponse(
-        status_code=status.HTTP_200_OK, content={"name": bucket, **formatted_times}
-    )
-
-
-@auth_router.post("/api/v1/buckets")
-async def create_bucket(bucket: str) -> JSONResponse:
-    """
-    Create a new storage bucket.
-
-    Creates a directory in the buckets storage area with the specified name.
-    Bucket names must be alphanumeric.
-
-    Args:
-        bucket: Name for the new bucket.
-
-    Returns:
-        JSON response confirming creation or conflict if exists.
-
-    Raises:
-        InvalidBucketNameError: If bucket name is invalid.
-    """
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-
-    bucket_directory = f"{HSYNC_BUCKETS}/{bucket}"
-
-    # Check if bucket already exists
-    if exists(bucket_directory):
-        LOG.warning(f"Bucket already exists: {bucket_directory}")
-        return JSONResponse(
-            status_code=409,
-            content={
-                "info": "Bucket already exists",
-                "bucket": bucket,
-            },
-        )
-
-    makedirs(bucket_directory, exist_ok=True)
-    LOG.info(f'Bucket: "{bucket}" created')
-
-    return JSONResponse(
-        status_code=201,
-        content={
-            "info": "Bucket created successfully",
-            "bucket": bucket,
-        },
-    )
-
-
-@auth_router.delete("/api/v1/buckets/{bucket}")
-async def delete_bucket(bucket: str) -> JSONResponse:
-    """
-    Delete a bucket and all its contents.
-
-    Permanently removes the bucket directory and all files/subdirectories.
-    This operation cannot be undone.
-
-    Args:
-        bucket: Name of the bucket to delete.
-
-    Returns:
-        JSON response confirming deletion.
-
-    Raises:
-        InvalidBucketNameError: If bucket name is invalid.
-        BucketNotFoundError: If bucket does not exist.
-        DeleteError: If deletion fails.
-    """
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-
-    bucket_dir = f"{HSYNC_BUCKETS}/{bucket}"
-
-    if not exists(bucket_dir):
-        raise BucketNotFoundError(details={"bucket": bucket})
-
-    try:
-        # Remove bucket and all contents
-        rmtree(bucket_dir)
-        LOG.info(f'Bucket: "{bucket}" deleted successfully')
-
-        return JSONResponse(
-            status_code=200,
-            content={
-                "info": "Bucket deleted successfully",
-                "bucket": bucket,
-            },
-        )
-    except OSError as e:
-        LOG.error(f"Failed to delete bucket {bucket}: {e}", exc_info=True)
-        raise DeleteError(
-            message=f"Failed to delete bucket: {bucket}",
-            details={"bucket": bucket, "error": str(e)},
-        )
 
 
 @auth_router.post("/api/v1/buckets/{bucket}/files")

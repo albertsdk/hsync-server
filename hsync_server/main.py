@@ -26,7 +26,7 @@ directory on startup.
 import logging
 import time
 
-from .api import events, files, health
+from .api import buckets, events, files, health  # noqa: F401
 from .config import HSYNC_BUCKETS
 from .error_handlers import register_exception_handlers
 from .hashes import set_md5_hashes
@@ -64,13 +64,8 @@ register_exception_handlers(app)
 # Public router: endpoints that don't require authentication
 app.include_router(public_router)
 # Auth router: endpoints that require API key authentication
+# (buckets.py and files.py use auth_router directly via decorators)
 app.include_router(auth_router)
-# Events router: WebSocket endpoint for real-time synchronization
-app.include_router(events.public_router)
-# Files router: file and bucket management endpoints
-app.include_router(files.auth_router)
-# Health router: health check endpoint for monitoring
-app.include_router(health.public_router)
 
 # Add GZip compression middleware for responses larger than 1000 bytes
 app.add_middleware(GZipMiddleware, minimum_size=1000)

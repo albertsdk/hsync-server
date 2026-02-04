@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from hsync_server.api.files import (
+from hsync_server.api.file_utils import (
     is_safe_path,
     is_valid_permission_format,
     update_file_timestamp,
