@@ -61,6 +61,15 @@ HSYNC_API_KEY: str = os.environ.get("HSYNC_API_KEY", "")
 HSYNC_BUCKETS: str = f"{HSYNC_PATH}/buckets"
 
 # =============================================================================
+# Upload Limits
+# =============================================================================
+
+# Maximum file size for uploads in bytes (default: 10GB)
+# Set to 0 to disable the limit (not recommended)
+# Examples: 1073741824 (1GB), 10737418240 (10GB), 107374182400 (100GB)
+HSYNC_MAX_UPLOAD_SIZE: int = int(os.environ.get("HSYNC_MAX_UPLOAD_SIZE", str(10 * 1024 * 1024 * 1024)))
+
+# =============================================================================
 # CORS Configuration
 # =============================================================================
 

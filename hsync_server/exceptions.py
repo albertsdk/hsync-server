@@ -112,6 +112,13 @@ class ChecksumMismatchError(ValidationError):
     default_message = "Checksum mismatch"
 
 
+class FileTooLargeError(ValidationError):
+    """File exceeds maximum allowed size."""
+
+    error_code = "HSYNC-1006"
+    default_message = "File too large"
+
+
 # =============================================================================
 # Resource Not Found Errors (2XXX)
 # =============================================================================
