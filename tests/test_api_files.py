@@ -325,3 +325,155 @@ class TestFileSizeLimit:
 
         assert response.status_code == 201
 
+
+class TestFileDownloadValidation:
+    """Tests for file download validation."""
+
+    @pytest.mark.asyncio
+    async def test_download_invalid_bucket_name(self, client: AsyncClient):
+        """Download from invalid bucket name returns 400."""
+        response = await client.get(
+            "/api/v1/buckets/invalid..bucket/files/download",
+            params={"filename": "test.txt"}
+        )
+        assert response.status_code == 400
+        assert "HSYNC-1001" in response.text
+
+    @pytest.mark.asyncio
+    async def test_download_invalid_filename(self, client: AsyncClient, temp_buckets_dir: str):
+        """Download with path traversal filename returns 400."""
+        bucket_path = os.path.join(temp_buckets_dir, "downloadbucket")
+        os.makedirs(bucket_path)
+
+        response = await client.get(
+            "/api/v1/buckets/downloadbucket/files/download",
+            params={"filename": "../../../etc/passwd"}
+        )
+        assert response.status_code == 400
+        assert "HSYNC-1002" in response.text
+
+
+class TestFileListValidation:
+    """Tests for file list validation."""
+
+    @pytest.mark.asyncio
+    async def test_list_files_invalid_bucket_name(self, client: AsyncClient):
+        """List files with invalid bucket name returns 400."""
+        response = await client.get("/api/v1/buckets/invalid..bucket/files")
+        assert response.status_code == 400
+        assert "HSYNC-1001" in response.text
+
+    @pytest.mark.asyncio
+    async def test_list_files_invalid_path(self, client: AsyncClient, temp_buckets_dir: str):
+        """List files with path traversal returns 400."""
+        bucket_path = os.path.join(temp_buckets_dir, "listbucket")
+        os.makedirs(bucket_path)
+
+        response = await client.get(
+            "/api/v1/buckets/listbucket/files",
+            params={"path": "../../../etc"}
+        )
+        assert response.status_code == 400
+        assert "HSYNC-1002" in response.text
+
+    @pytest.mark.asyncio
+    async def test_list_files_invalid_sync_order(self, client: AsyncClient, temp_buckets_dir: str):
+        """List files with invalid sync_order returns 400."""
+        bucket_path = os.path.join(temp_buckets_dir, "orderbucket")
+        os.makedirs(bucket_path)
+
+        response = await client.get(
+            "/api/v1/buckets/orderbucket/files",
+            params={"sync_order": "invalid"}
+        )
+        assert response.status_code == 400
+        assert "HSYNC-1004" in response.text
+
+    @pytest.mark.asyncio
+    async def test_list_files_bucket_not_found(self, client: AsyncClient):
+        """List files from non-existent bucket returns 404."""
+        response = await client.get("/api/v1/buckets/nonexistentbucket/files")
+        assert response.status_code == 404
+        assert "HSYNC-2001" in response.text
+
+    @pytest.mark.asyncio
+    async def test_list_files_skips_hidden(self, client: AsyncClient, temp_buckets_dir: str):
+        """List files skips hidden files and directories."""
+        bucket_path = os.path.join(temp_buckets_dir, "hiddenbucket")
+        os.makedirs(bucket_path)
+
+        # Create visible and hidden files
+        with open(os.path.join(bucket_path, "visible.txt"), "w") as f:
+            f.write("visible")
+        with open(os.path.join(bucket_path, ".hidden"), "w") as f:
+            f.write("hidden")
+
+        response = await client.get("/api/v1/buckets/hiddenbucket/files")
+        assert response.status_code == 200
+        data = response.json()
+        # Response is a list of file objects
+        filenames = [f["filepath"] for f in data]
+        assert any("visible.txt" in f for f in filenames)
+        assert not any(".hidden" in f for f in filenames)
+
+
+class TestFileDeleteValidation:
+    """Tests for file delete validation."""
+
+    @pytest.mark.asyncio
+    async def test_delete_invalid_bucket_name(self, client: AsyncClient):
+        """Delete from invalid bucket name returns 400."""
+        response = await client.request(
+            "DELETE",
+            "/api/v1/buckets/invalid..bucket/files",
+            data={"cid": "test-client-1", "filename": "test.txt"}
+        )
+        assert response.status_code == 400
+        assert "HSYNC-1001" in response.text
+
+    @pytest.mark.asyncio
+    async def test_delete_bucket_not_found(self, client: AsyncClient):
+        """Delete from non-existent bucket returns 404."""
+        response = await client.request(
+            "DELETE",
+            "/api/v1/buckets/nonexistentbucket/files",
+            data={"cid": "test-client-1", "filename": "test.txt"}
+        )
+        assert response.status_code == 404
+        assert "HSYNC-2001" in response.text
+
+    @pytest.mark.asyncio
+    async def test_delete_path_traversal(self, client: AsyncClient, temp_buckets_dir: str):
+        """Delete with path traversal returns 400."""
+        bucket_path = os.path.join(temp_buckets_dir, "deletebucket3")
+        os.makedirs(bucket_path)
+
+        response = await client.request(
+            "DELETE",
+            "/api/v1/buckets/deletebucket3/files",
+            data={"cid": "test-client-1", "filename": "../../../etc/passwd"}
+        )
+        assert response.status_code == 400
+        assert "HSYNC-1002" in response.text
+
+    @pytest.mark.asyncio
+    async def test_delete_oserror(self, client: AsyncClient, temp_buckets_dir: str):
+        """Delete with OSError returns 500."""
+        from unittest.mock import patch
+
+        bucket_path = os.path.join(temp_buckets_dir, "deletebucket4")
+        os.makedirs(bucket_path)
+        file_path = os.path.join(bucket_path, "test.txt")
+        with open(file_path, "w") as f:
+            f.write("content")
+
+        with patch("hsync_server.api.files.remove", side_effect=OSError("Permission denied")):
+            response = await client.request(
+                "DELETE",
+                "/api/v1/buckets/deletebucket4/files",
+                data={"cid": "test-client-1", "filename": "test.txt"}
+            )
+
+        assert response.status_code == 500
+        assert "HSYNC-4003" in response.text
+

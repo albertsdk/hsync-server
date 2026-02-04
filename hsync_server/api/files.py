@@ -368,11 +368,11 @@ async def delete_file(
     if not exists(bucket_dir):
         raise BucketNotFoundError(details={"bucket": bucket})
 
-    file = f"{bucket_dir}/{filename}"
-
     # Validate path to prevent traversal attacks
-    if not is_valid_dir(dirname(file)):
+    if not is_valid_dir(filename):
         raise InvalidPathError(details={"path": filename})
+
+    file = f"{bucket_dir}/{filename}"
 
     if not exists(file):
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
