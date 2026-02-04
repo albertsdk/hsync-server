@@ -51,11 +51,13 @@ from hsync_server.exceptions import (
     FileNotFoundError as HSyncFileNotFoundError,
     FileTooLargeError,
     InvalidBucketNameError,
+    InvalidFilenameError,
     InvalidPathError,
     InvalidPermissionFormatError,
     InvalidSyncOrderError,
     UploadError,
 )
+from hsync_server.path_validation import is_valid_filename
 from hsync_server.hashes import get_md5_hash, set_md5_hash
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File as LocalFile
@@ -109,6 +111,7 @@ async def upload_file(
         InvalidBucketNameError: If bucket name is invalid.
         InvalidPathError: If path is invalid.
         InvalidPermissionFormatError: If permission format is invalid.
+        InvalidFilenameError: If filename contains forbidden characters or is reserved.
         ChecksumMismatchError: If MD5 checksum verification fails.
         UploadError: If upload operation fails.
     """
@@ -121,6 +124,8 @@ async def upload_file(
             raise InvalidPathError(details={"path": path})
         if permissions and not is_valid_permission_format(permissions):
             raise InvalidPermissionFormatError(details={"permissions": permissions})
+        if not is_valid_filename(file.filename or ""):
+            raise InvalidFilenameError(details={"filename": file.filename})
 
         # Define file paths
         file_directory = f"{HSYNC_BUCKETS}/{bucket}/{path}"

@@ -119,6 +119,13 @@ class FileTooLargeError(ValidationError):
     default_message = "File too large"
 
 
+class InvalidFilenameError(ValidationError):
+    """Filename contains invalid characters or is reserved."""
+
+    error_code = "HSYNC-1007"
+    default_message = "Invalid filename"
+
+
 # =============================================================================
 # Resource Not Found Errors (2XXX)
 # =============================================================================
