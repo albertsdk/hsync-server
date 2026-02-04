@@ -23,6 +23,7 @@ It provides two router types:
 - public_router: No authentication required (health checks, metrics)
 """
 
+import hmac
 import logging
 
 from .config import HSYNC_API_KEY
@@ -77,7 +78,8 @@ def verify_api_key(
         LOG.warning("Authentication attempt with missing API key")
         raise MissingApiKeyError()
 
-    if api_key != HSYNC_API_KEY:
+    # Use constant-time comparison to prevent timing attacks
+    if not hmac.compare_digest(api_key, HSYNC_API_KEY):
         LOG.warning(f"Authentication attempt with invalid API key: {mask_api_key(api_key)}")
         raise InvalidApiKeyError(
             details={"provided_key": mask_api_key(api_key)}

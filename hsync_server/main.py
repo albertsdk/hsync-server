@@ -26,14 +26,17 @@ directory on startup.
 import logging
 import time
 
+import sys
+
 from .api import buckets, events, files, health  # noqa: F401
-from .config import HSYNC_BUCKETS
+from .config import HSYNC_API_KEY, HSYNC_BUCKETS, HSYNC_CORS_ENABLED, HSYNC_CORS_ORIGINS
 from .error_handlers import register_exception_handlers
 from .hashes import set_md5_hashes
 from .middleware import RequestIdMiddleware
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .routers import auth_router, public_router
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
@@ -42,6 +45,25 @@ from slowapi.middleware import SlowAPIMiddleware
 
 # Logger instance for this module (uses __name__ for module-level filtering)
 LOG = logging.getLogger(__name__)
+
+# =============================================================================
+# Security Validation at Startup
+# =============================================================================
+
+# Validate that API key is configured
+if not HSYNC_API_KEY:
+    LOG.critical(
+        "HSYNC_API_KEY environment variable is not set. "
+        "Server cannot start without authentication configured. "
+        "Generate a secure key at: https://it-tools.tech/token-generator"
+    )
+    sys.exit(1)
+
+if len(HSYNC_API_KEY) < 16:
+    LOG.warning(
+        f"HSYNC_API_KEY is only {len(HSYNC_API_KEY)} characters. "
+        "Consider using a longer key (32+ characters) for better security."
+    )
 
 # Track startup time for performance monitoring
 start = time.time()
@@ -69,6 +91,17 @@ app.include_router(auth_router)
 
 # Add GZip compression middleware for responses larger than 1000 bytes
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Add CORS middleware if enabled (for web frontend compatibility)
+if HSYNC_CORS_ENABLED:
+    LOG.info(f"CORS enabled for origins: {HSYNC_CORS_ORIGINS or ['*']}")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=HSYNC_CORS_ORIGINS or ["*"],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Client-Name", "X-Client-Version"],
+    )
 
 # Add Request ID middleware for distributed tracing
 # This must be added after other middleware to ensure request_id is set first
