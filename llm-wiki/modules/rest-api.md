@@ -113,6 +113,10 @@ in the `[DOWNLOAD]` log line for request attribution. The log is deferred to a
   listing), attaches cached hashes (`get_sha256_hash`, `hashes.py:42`),
   returns `File` dicts.
 - `get_upload_status` (`list.py:40`) reports existing `.part` size for resume.
+  **LAN parity**: the same endpoint is now served by LAN masters — Python
+  (`hsync_client/lan_server.py:_handle_upload_status`) and Android
+  (`LanServer.kt:handleUploadStatus`) — so the client resume logic works
+  uniformly in both server mode and LAN P2P mode.
 - `get_tombstones` (`list.py:194`) returns the bucket's tombstone entries from
   `get_tombstone_store` (`tombstones.py:38`); the `POST` counterpart records
   client-side deletions into the same store.
