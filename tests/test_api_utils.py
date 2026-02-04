@@ -9,42 +9,9 @@ from datetime import datetime, timezone
 import pytest
 
 from hsync_server.api.file_utils import (
-    is_safe_path,
     is_valid_permission_format,
     update_file_timestamp,
 )
-
-
-class TestIsSafePath:
-    """Tests for is_safe_path function."""
-
-    def test_safe_path_inside_base(self):
-        """Path inside base directory is safe."""
-        assert is_safe_path("/base", "/base/file.txt") is True
-        assert is_safe_path("/base", "/base/subdir/file.txt") is True
-
-    def test_safe_path_exact_base(self):
-        """Path equal to base is safe."""
-        assert is_safe_path("/base", "/base") is True
-
-    def test_unsafe_path_outside_base(self):
-        """Path outside base directory is unsafe."""
-        assert is_safe_path("/base", "/other/file.txt") is False
-        assert is_safe_path("/base", "/") is False
-
-    def test_unsafe_path_traversal(self):
-        """Path traversal attempts are unsafe."""
-        assert is_safe_path("/base", "/base/../etc/passwd") is False
-        assert is_safe_path("/base/dir", "/base/dir/../../etc") is False
-
-    def test_safe_path_with_relative_components(self):
-        """Safe paths with resolved relative components."""
-        assert is_safe_path("/base", "/base/./file.txt") is True
-        assert is_safe_path("/base", "/base/subdir/../file.txt") is True
-
-    def test_unsafe_path_prefix_trick(self):
-        """Path that looks like prefix but isn't."""
-        assert is_safe_path("/base", "/base_other/file.txt") is False
 
 
 class TestIsValidPermissionFormat:

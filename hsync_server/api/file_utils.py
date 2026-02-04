@@ -27,31 +27,11 @@ import logging
 
 from datetime import datetime, timezone
 from os import utime
-from os.path import abspath, commonpath
 from re import match
 
 
 # Logger instance for this module
 LOG = logging.getLogger(__name__)
-
-
-def is_safe_path(base_path: str, target_path: str) -> bool:
-    """
-    Check if a target path is safely within the base path.
-
-    Prevents path traversal attacks by ensuring the target path
-    doesn't escape the base directory.
-
-    Args:
-        base_path: The base directory path.
-        target_path: The target path to validate.
-
-    Returns:
-        True if target is within base, False otherwise.
-    """
-    base_path = abspath(base_path)
-    target_path = abspath(target_path)
-    return commonpath([base_path]) == commonpath([base_path, target_path])
 
 
 def is_valid_permission_format(permissions: str) -> bool:

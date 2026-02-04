@@ -28,6 +28,9 @@ from os import walk
 from os.path import isdir, join
 from typing import Optional
 
+from hsync_server.models.dir import is_hidden_dir
+from hsync_server.models.file import is_hidden_file
+
 
 # In-memory storage for file hashes
 # Each entry is a dict mapping SHA256(filepath) -> MD5(file_content)
@@ -128,12 +131,13 @@ def set_md5_hashes(directory: str) -> int:
 
     # Walk directory tree, skipping hidden directories
     for root, dirs, files in walk(directory):
-        dirs[:] = [d for d in dirs if not str(d).startswith(".")]
+        # Skip hidden directories using is_hidden_dir
+        dirs[:] = [d for d in dirs if not is_hidden_dir(f"{root}/{d}")]
 
         for file in files:
-            # Skip hidden files
-            if not str(file).startswith("."):
-                file_path = join(root, file)
+            file_path = join(root, file)
+            # Skip hidden files using is_hidden_file
+            if not is_hidden_file(file_path):
                 md5 = _compute_md5(file_path)
                 set_md5_hash(file_path, md5)
                 file_count += 1

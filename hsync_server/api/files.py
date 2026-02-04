@@ -42,6 +42,8 @@ from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import is_valid_permission_format, update_file_timestamp
 from hsync_server.api.utils import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
 from hsync_server.config import HSYNC_BUCKETS
+from hsync_server.models.dir import is_hidden_dir
+from hsync_server.models.file import is_hidden_file
 from hsync_server.exceptions import (
     BucketNotFoundError,
     ChecksumMismatchError,
@@ -288,12 +290,13 @@ async def get_files(
     # Collect file metadata
     file_list = []
     for root, dirs, files in walk(dir):
-        # Skip hidden directories
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        # Skip hidden directories using is_hidden_dir
+        dirs[:] = [d for d in dirs if not is_hidden_dir(f"{root}/{d}")]
 
         for file in files:
-            # Skip hidden files
-            if file.startswith("."):
+            file_path = f"{root}/{file}"
+            # Skip hidden files using is_hidden_file
+            if is_hidden_file(file_path):
                 continue
 
             # Get file info and normalize path relative to bucket
