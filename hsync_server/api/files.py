@@ -202,6 +202,7 @@ async def upload_file(
         InvalidPathError,
         InvalidPermissionFormatError,
         ChecksumMismatchError,
+        FileTooLargeError,
     ):
         # Re-raise custom exceptions - they'll be handled by global handler
         raise

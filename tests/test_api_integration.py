@@ -101,12 +101,49 @@ class TestBucketEndpoints:
         # Create bucket
         bucket_path = os.path.join(temp_buckets_dir, "to-delete")
         os.makedirs(bucket_path)
-        
+
         response = await client.delete("/api/v1/buckets/to-delete")
         assert response.status_code == 200
-        
+
         # Verify bucket was deleted
         assert not os.path.exists(bucket_path)
+
+    @pytest.mark.asyncio
+    async def test_get_bucket_invalid_name(self, client: AsyncClient):
+        """Get bucket with invalid name returns 400."""
+        response = await client.get("/api/v1/buckets/invalid..bucket")
+        assert response.status_code == 400
+        assert "HSYNC-1001" in response.text
+
+    @pytest.mark.asyncio
+    async def test_delete_bucket_invalid_name(self, client: AsyncClient):
+        """Delete bucket with invalid name returns 400."""
+        response = await client.delete("/api/v1/buckets/invalid..bucket")
+        assert response.status_code == 400
+        assert "HSYNC-1001" in response.text
+
+    @pytest.mark.asyncio
+    async def test_delete_bucket_not_found(self, client: AsyncClient):
+        """Delete non-existent bucket returns 404."""
+        response = await client.delete("/api/v1/buckets/nonexistent")
+        assert response.status_code == 404
+        assert "HSYNC-2001" in response.text
+
+    @pytest.mark.asyncio
+    async def test_delete_bucket_oserror(self, client: AsyncClient, temp_buckets_dir: str):
+        """Delete bucket with OSError returns 500."""
+        from unittest.mock import patch
+
+        # Create bucket
+        bucket_path = os.path.join(temp_buckets_dir, "oserror-bucket")
+        os.makedirs(bucket_path)
+
+        # Mock rmtree to raise OSError
+        with patch("hsync_server.api.buckets.rmtree", side_effect=OSError("Permission denied")):
+            response = await client.delete("/api/v1/buckets/oserror-bucket")
+
+        assert response.status_code == 500
+        assert "HSYNC-4003" in response.text
 
 
 class TestAuthenticationRequired:

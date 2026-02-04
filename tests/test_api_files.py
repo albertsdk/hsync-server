@@ -178,3 +178,150 @@ class TestFileDelete:
 
         assert response.status_code == 404
 
+
+class TestFileUploadValidation:
+    """Tests for file upload validation."""
+
+    @pytest.mark.asyncio
+    async def test_upload_invalid_bucket_name(self, client: AsyncClient, temp_buckets_dir: str):
+        """Upload to invalid bucket name returns 400."""
+        response = await client.post(
+            "/api/v1/buckets/invalid..bucket/files",
+            files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
+            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"}
+        )
+        assert response.status_code == 400
+        assert "HSYNC-1001" in response.text
+
+    @pytest.mark.asyncio
+    async def test_upload_path_traversal_rejected(self, client: AsyncClient, temp_buckets_dir: str):
+        """Upload with path traversal is rejected."""
+        bucket_path = os.path.join(temp_buckets_dir, "securitybucket")
+        os.makedirs(bucket_path)
+
+        response = await client.post(
+            "/api/v1/buckets/securitybucket/files",
+            files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
+            data={"cid": "test-client-1", "path": "../../../tmp", "permissions": "-rw-r--r--"}
+        )
+        assert response.status_code == 400
+        assert "HSYNC-1002" in response.text
+
+    @pytest.mark.asyncio
+    async def test_upload_invalid_permissions(self, client: AsyncClient, temp_buckets_dir: str):
+        """Upload with invalid permissions returns 400."""
+        bucket_path = os.path.join(temp_buckets_dir, "permbucket")
+        os.makedirs(bucket_path)
+
+        response = await client.post(
+            "/api/v1/buckets/permbucket/files",
+            files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
+            data={"cid": "test-client-1", "path": "", "permissions": "invalid"}
+        )
+        assert response.status_code == 400
+        assert "HSYNC-1003" in response.text
+
+    @pytest.mark.asyncio
+    async def test_upload_file_already_exists(self, client: AsyncClient, temp_buckets_dir: str):
+        """Upload identical file returns 409."""
+        import hashlib
+        bucket_path = os.path.join(temp_buckets_dir, "dupbucket")
+        os.makedirs(bucket_path)
+
+        file_content = b"duplicate content"
+        md5sum = hashlib.md5(file_content).hexdigest()
+
+        # First upload
+        response = await client.post(
+            "/api/v1/buckets/dupbucket/files",
+            files={"file": ("dup.txt", io.BytesIO(file_content), "text/plain")},
+            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--", "md5sum": md5sum}
+        )
+        assert response.status_code == 201
+
+        # Second upload with same content
+        response = await client.post(
+            "/api/v1/buckets/dupbucket/files",
+            files={"file": ("dup.txt", io.BytesIO(file_content), "text/plain")},
+            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--", "md5sum": md5sum}
+        )
+        assert response.status_code == 409
+        assert "already present" in response.json()["info"]
+
+    @pytest.mark.asyncio
+    async def test_upload_checksum_mismatch(self, client: AsyncClient, temp_buckets_dir: str):
+        """Upload with wrong checksum returns 400."""
+        bucket_path = os.path.join(temp_buckets_dir, "checksumbucket")
+        os.makedirs(bucket_path)
+
+        response = await client.post(
+            "/api/v1/buckets/checksumbucket/files",
+            files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
+            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--", "md5sum": "wrongchecksum"}
+        )
+        assert response.status_code == 400
+        assert "HSYNC-1005" in response.text
+
+
+class TestFileSizeLimit:
+    """Tests for file upload size limit."""
+
+    @pytest.mark.asyncio
+    async def test_upload_exceeds_size_limit(self, client: AsyncClient, temp_buckets_dir: str):
+        """Upload exceeding size limit returns 400."""
+        from unittest.mock import patch
+
+        bucket_path = os.path.join(temp_buckets_dir, "sizelimitbucket")
+        os.makedirs(bucket_path)
+
+        # Create content larger than limit
+        large_content = b"x" * 1000
+
+        with patch("hsync_server.api.files.HSYNC_MAX_UPLOAD_SIZE", 100):
+            response = await client.post(
+                "/api/v1/buckets/sizelimitbucket/files",
+                files={"file": ("large.txt", io.BytesIO(large_content), "text/plain")},
+                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"}
+            )
+
+        assert response.status_code == 400
+        assert "HSYNC-1006" in response.text
+
+    @pytest.mark.asyncio
+    async def test_upload_within_size_limit(self, client: AsyncClient, temp_buckets_dir: str):
+        """Upload within size limit succeeds."""
+        from unittest.mock import patch
+
+        bucket_path = os.path.join(temp_buckets_dir, "sizelimitbucket2")
+        os.makedirs(bucket_path)
+
+        small_content = b"small"
+
+        with patch("hsync_server.api.files.HSYNC_MAX_UPLOAD_SIZE", 1000):
+            response = await client.post(
+                "/api/v1/buckets/sizelimitbucket2/files",
+                files={"file": ("small.txt", io.BytesIO(small_content), "text/plain")},
+                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"}
+            )
+
+        assert response.status_code == 201
+
+    @pytest.mark.asyncio
+    async def test_upload_size_limit_disabled(self, client: AsyncClient, temp_buckets_dir: str):
+        """Upload with size limit disabled (0) succeeds."""
+        from unittest.mock import patch
+
+        bucket_path = os.path.join(temp_buckets_dir, "nolimitbucket")
+        os.makedirs(bucket_path)
+
+        content = b"x" * 1000
+
+        with patch("hsync_server.api.files.HSYNC_MAX_UPLOAD_SIZE", 0):
+            response = await client.post(
+                "/api/v1/buckets/nolimitbucket/files",
+                files={"file": ("file.txt", io.BytesIO(content), "text/plain")},
+                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"}
+            )
+
+        assert response.status_code == 201
+

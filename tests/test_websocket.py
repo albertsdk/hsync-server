@@ -129,16 +129,158 @@ class TestWebSocketEvents:
     async def test_client_disconnect_cleanup(self, mock_websocket):
         """Client disconnect removes from active connections."""
         from fastapi import WebSocketDisconnect
-        
+
         mock_websocket.receive_text.side_effect = [
             '{"type": "auth", "token": "test-key"}',
             WebSocketDisconnect()
         ]
-        
+
         with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
-        
+
         # Client should be removed from connections
         manager = bucket_manager.get_manager("testbucket")
         assert "client1" not in manager.active_connections
+
+    @pytest.mark.asyncio
+    async def test_added_event_dispatched(self, mock_websocket, tmp_path):
+        """Added event is dispatched to handler."""
+        from fastapi import WebSocketDisconnect
+        import os
+
+        bucket_dir = str(tmp_path / "buckets" / "testbucket")
+        os.makedirs(bucket_dir, exist_ok=True)
+
+        mock_websocket.receive_text.side_effect = [
+            '{"type": "auth", "token": "test-key"}',
+            '{"name": "added", "src": {"path": "newdir", "permissions": "755"}}',
+            WebSocketDisconnect()
+        ]
+
+        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"), \
+             patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")):
+            await ws_events(mock_websocket, "testbucket", "client1")
+
+        # Directory should be created
+        assert os.path.exists(f"{bucket_dir}/newdir")
+
+    @pytest.mark.asyncio
+    async def test_modified_event_dispatched(self, mock_websocket, tmp_path):
+        """Modified event is dispatched to handler."""
+        from fastapi import WebSocketDisconnect
+        import os
+
+        bucket_dir = str(tmp_path / "buckets" / "testbucket")
+        target_dir = f"{bucket_dir}/existingdir"
+        os.makedirs(target_dir, exist_ok=True)
+
+        mock_websocket.receive_text.side_effect = [
+            '{"type": "auth", "token": "test-key"}',
+            '{"name": "modified", "src": {"path": "existingdir", "permissions": "700"}}',
+            WebSocketDisconnect()
+        ]
+
+        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"), \
+             patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")):
+            await ws_events(mock_websocket, "testbucket", "client1")
+
+    @pytest.mark.asyncio
+    async def test_deleted_event_dispatched(self, mock_websocket, tmp_path):
+        """Deleted event is dispatched to handler."""
+        from fastapi import WebSocketDisconnect
+        import os
+
+        bucket_dir = str(tmp_path / "buckets" / "testbucket")
+        target_dir = f"{bucket_dir}/todelete"
+        os.makedirs(target_dir, exist_ok=True)
+
+        mock_websocket.receive_text.side_effect = [
+            '{"type": "auth", "token": "test-key"}',
+            '{"name": "deleted", "src": {"path": "todelete", "permissions": "755"}}',
+            WebSocketDisconnect()
+        ]
+
+        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"), \
+             patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")):
+            await ws_events(mock_websocket, "testbucket", "client1")
+
+        # Directory should be deleted
+        assert not os.path.exists(target_dir)
+
+    @pytest.mark.asyncio
+    async def test_renamed_event_dispatched(self, mock_websocket, tmp_path):
+        """Renamed event is dispatched to handler."""
+        from fastapi import WebSocketDisconnect
+        import os
+
+        bucket_dir = str(tmp_path / "buckets" / "testbucket")
+        src_dir = f"{bucket_dir}/olddir"
+        os.makedirs(src_dir, exist_ok=True)
+
+        mock_websocket.receive_text.side_effect = [
+            '{"type": "auth", "token": "test-key"}',
+            '{"name": "renamed", "src": {"path": "olddir", "permissions": "755"}, "dst": {"path": "newdir", "permissions": "755"}}',
+            WebSocketDisconnect()
+        ]
+
+        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"), \
+             patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")):
+            await ws_events(mock_websocket, "testbucket", "client1")
+
+        # Directory should be renamed
+        assert not os.path.exists(src_dir)
+        assert os.path.exists(f"{bucket_dir}/newdir")
+
+    @pytest.mark.asyncio
+    async def test_symlink_event_dispatched(self, mock_websocket, tmp_path):
+        """Symlink event is dispatched to handler."""
+        from fastapi import WebSocketDisconnect
+        from pathlib import Path
+        import os
+
+        bucket_dir = str(tmp_path / "buckets" / "testbucket")
+        os.makedirs(bucket_dir, exist_ok=True)
+        target_file = f"{bucket_dir}/target.txt"
+        Path(target_file).write_text("content")
+
+        mock_websocket.receive_text.side_effect = [
+            '{"type": "auth", "token": "test-key"}',
+            '{"name": "symlink", "src": {"type": "symlink", "filepath": "link", "target": "target.txt"}}',
+            WebSocketDisconnect()
+        ]
+
+        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"), \
+             patch("hsync_server.api.events.HSYNC_BUCKETS", str(tmp_path / "buckets")):
+            await ws_events(mock_websocket, "testbucket", "client1")
+
+        # Symlink should be created
+        assert os.path.islink(f"{bucket_dir}/link")
+
+    @pytest.mark.asyncio
+    async def test_exception_during_event_processing(self, mock_websocket):
+        """Exception during event processing is logged but doesn't crash."""
+        from fastapi import WebSocketDisconnect
+
+        mock_websocket.receive_text.side_effect = [
+            '{"type": "auth", "token": "test-key"}',
+            '{"name": "added", "src": {"path": "test", "permissions": "invalid"}}',
+            WebSocketDisconnect()
+        ]
+
+        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
+            # Should not raise
+            await ws_events(mock_websocket, "testbucket", "client1")
+
+    @pytest.mark.asyncio
+    async def test_client_disconnect_with_error(self, mock_websocket):
+        """Client disconnect with error is handled."""
+        mock_websocket.receive_text.side_effect = [
+            '{"type": "auth", "token": "test-key"}',
+            Exception("Connection error")
+        ]
+
+        with patch("hsync_server.api.events.HSYNC_API_KEY", "test-key"):
+            await ws_events(mock_websocket, "testbucket", "client1")
+
+        mock_websocket.close.assert_called()
 
