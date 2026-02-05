@@ -30,6 +30,7 @@ import sys
 
 from .api import buckets, events, files, health  # noqa: F401
 from .config import HSYNC_API_KEY, HSYNC_BUCKETS, HSYNC_CORS_ENABLED, HSYNC_CORS_ORIGINS
+from .constants import HSYNC_VERSION
 from .error_handlers import register_exception_handlers
 from .hashes import set_md5_hashes
 from .middleware import RequestIdMiddleware, VersionMiddleware
@@ -71,7 +72,7 @@ start = time.time()
 # Initialize FastAPI application with metadata
 app = FastAPI(
     title="HSYNC - HTTP Sync file server",
-    version="0.1.0",
+    version=HSYNC_VERSION,
 )
 
 # Configure rate limiting
