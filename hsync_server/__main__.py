@@ -115,6 +115,10 @@ def main(
         metavar="LEVEL",
         callback=lambda v: _validate_log_level(v),
     )] = None,
+    no_color: Annotated[bool, typer.Option(
+        "--no-color",
+        help="Disable colored log output.",
+    )] = False,
     # -------------------------------------------------------------------------
     # SSL/TLS options
     # -------------------------------------------------------------------------
@@ -156,7 +160,7 @@ def main(
     effective_ssl_cert_dir = ssl_cert_dir if ssl_cert_dir else get_ssl_cert_dir()
 
     # Configure logging before starting the server
-    LOG = setup_logging(level=effective_log_level)
+    LOG = setup_logging(level=effective_log_level, no_color=no_color)
 
     # Log version at startup
     LOG.info(f"HSYNC Server v{HSYNC_VERSION}")
