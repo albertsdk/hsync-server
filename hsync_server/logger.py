@@ -50,14 +50,9 @@ LOG_FORMAT_NO_REQUEST_ID: Final[str] = (
 )
 LOG_DATE_FORMAT: Final[str] = "%Y-%m-%dT%H:%M:%SZ"
 
-# Valid log levels (Python standard logging levels)
-VALID_LOG_LEVELS: Final[tuple[str, ...]] = (
-    "debug",
-    "info",
-    "warning",
-    "error",
-    "critical",
-)
+# Valid log levels - imported from config module to avoid circular imports
+# Re-exported here for backward compatibility
+from hsync_server.config import VALID_LOG_LEVELS
 
 # Valid log formats
 VALID_LOG_FORMATS: Final[tuple[str, ...]] = ("text", "json")
