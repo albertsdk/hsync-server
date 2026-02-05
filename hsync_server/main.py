@@ -32,7 +32,7 @@ from .api import buckets, events, files, health  # noqa: F401
 from .config import HSYNC_API_KEY, HSYNC_BUCKETS, HSYNC_CORS_ENABLED, HSYNC_CORS_ORIGINS
 from .error_handlers import register_exception_handlers
 from .hashes import set_md5_hashes
-from .middleware import RequestIdMiddleware
+from .middleware import RequestIdMiddleware, VersionMiddleware
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .routers import auth_router, public_router
 from fastapi import FastAPI
@@ -106,6 +106,10 @@ if HSYNC_CORS_ENABLED:
 # Add Request ID middleware for distributed tracing
 # This must be added after other middleware to ensure request_id is set first
 app.add_middleware(RequestIdMiddleware)
+
+# Add Version middleware for client-server version compatibility checking
+# This adds X-Server-Version header to all responses and rejects incompatible clients
+app.add_middleware(VersionMiddleware)
 
 # Preload MD5 checksums for all existing files in buckets
 # This enables fast duplicate detection without recalculating hashes

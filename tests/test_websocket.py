@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import WebSocket
 from hsync_server.api.events import ws_events, bucket_manager
+from hsync_server.constants import HSYNC_VERSION
 
 
 class TestWebSocketAuthentication:
@@ -36,7 +37,11 @@ class TestWebSocketAuthentication:
                 pass
         
         mock_websocket.accept.assert_called_once()
-        mock_websocket.send_json.assert_called_with({"type": "auth", "status": "ok"})
+        mock_websocket.send_json.assert_called_with({
+            "type": "auth",
+            "status": "ok",
+            "version": HSYNC_VERSION,
+        })
 
     @pytest.mark.asyncio
     async def test_auth_invalid_token(self, mock_websocket):

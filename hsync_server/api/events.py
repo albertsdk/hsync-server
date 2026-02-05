@@ -43,6 +43,8 @@ from hsync_server.api.event_handlers import (
     handle_symlink_event,
 )
 from hsync_server.config import HSYNC_API_KEY, HSYNC_BUCKETS
+from hsync_server.constants import HSYNC_VERSION
+from hsync_server.middleware import check_version_compatibility
 from hsync_server.models.event import EventName
 from hsync_server.routers import public_router
 
@@ -96,9 +98,40 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                 await websocket.close(code=4003, reason="Invalid API key")
                 return
 
+            # Check client version compatibility if provided
+            client_version = auth_message.get("version", "")
+            if client_version:
+                is_compatible, reason = check_version_compatibility(
+                    HSYNC_VERSION, client_version
+                )
+                if not is_compatible:
+                    LOG.warning(
+                        f"[WEBSOCKET ] Rejecting client {cid} with incompatible "
+                        f"version {client_version} (server: {HSYNC_VERSION})"
+                    )
+                    await websocket.send_json({
+                        "type": "auth",
+                        "status": "error",
+                        "error": "version_incompatible",
+                        "client_version": client_version,
+                        "server_version": HSYNC_VERSION,
+                    })
+                    await websocket.close(code=4002, reason="Version incompatible")
+                    return
+
+                if reason == "minor_mismatch":
+                    LOG.warning(
+                        f"[WEBSOCKET ] Client {cid} version {client_version} "
+                        f"differs from server {HSYNC_VERSION}"
+                    )
+
             LOG.debug(f"[WEBSOCKET ] Client {cid} authenticated")
-            # Send auth confirmation
-            await websocket.send_json({"type": "auth", "status": "ok"})
+            # Send auth confirmation with server version
+            await websocket.send_json({
+                "type": "auth",
+                "status": "ok",
+                "version": HSYNC_VERSION,
+            })
 
         except Exception as e:
             LOG.warning(f"[WEBSOCKET ] Auth failed for {cid}: {e}")
