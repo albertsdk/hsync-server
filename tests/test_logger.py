@@ -1,43 +1,26 @@
 """
 Tests for hsync_server.logger module.
+
+Tests the loguru-based logging configuration.
 """
 
-import json
 import logging
 import os
 import pytest
 
 from hsync_server.logger import (
-    LOG_FORMAT,
-    LOG_DATE_FORMAT,
     VALID_LOG_LEVELS,
     VALID_LOG_FORMATS,
-    HOSTNAME,
-    get_log_level,
     get_log_format,
     get_request_id,
     set_request_id,
     setup_logging,
-    RequestIdFilter,
-    JsonFormatter,
+    InterceptHandler,
 )
 
 
 class TestLogConstants:
     """Tests for logging constants."""
-
-    def test_log_format_contains_required_fields(self):
-        """Test LOG_FORMAT contains required formatting fields."""
-        assert "%(asctime)s" in LOG_FORMAT
-        assert "%(msecs)03d" in LOG_FORMAT
-        assert "%(process)d" in LOG_FORMAT
-        assert "%(levelname)s" in LOG_FORMAT
-        assert "%(message)s" in LOG_FORMAT
-        assert "%(request_id)s" in LOG_FORMAT
-
-    def test_log_date_format_iso_8601(self):
-        """Test LOG_DATE_FORMAT is ISO 8601 format."""
-        assert LOG_DATE_FORMAT == "%Y-%m-%dT%H:%M:%SZ"
 
     def test_valid_log_levels(self):
         """Test all expected log levels are defined."""
@@ -47,11 +30,6 @@ class TestLogConstants:
     def test_valid_log_formats(self):
         """Test valid log formats."""
         assert VALID_LOG_FORMATS == ("text", "json")
-
-    def test_hostname_is_string(self):
-        """Test HOSTNAME is a non-empty string."""
-        assert isinstance(HOSTNAME, str)
-        assert len(HOSTNAME) > 0
 
 
 class TestRequestIdContext:
@@ -75,76 +53,13 @@ class TestRequestIdContext:
         assert get_request_id() is None
 
 
-class TestRequestIdFilter:
-    """Tests for RequestIdFilter class."""
+class TestInterceptHandler:
+    """Tests for InterceptHandler class."""
 
-    def test_filter_adds_request_id(self):
-        """Test filter adds request_id to log record."""
-        set_request_id("filter-test-id")
-        filter_obj = RequestIdFilter()
-        record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="test message", args=(), exc_info=None
-        )
-        result = filter_obj.filter(record)
-        assert result is True
-        assert getattr(record, "request_id") == "filter-test-id"
-        set_request_id(None)  # cleanup
-
-    def test_filter_uses_na_when_no_request_id(self):
-        """Test filter uses 'N/A' when no request ID is set."""
-        set_request_id(None)
-        filter_obj = RequestIdFilter()
-        record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="test message", args=(), exc_info=None
-        )
-        filter_obj.filter(record)
-        assert getattr(record, "request_id") == "N/A"
-
-
-class TestJsonFormatter:
-    """Tests for JsonFormatter class."""
-
-    def test_format_returns_valid_json(self):
-        """Test formatter returns valid JSON."""
-        formatter = JsonFormatter()
-        record = logging.LogRecord(
-            name="test.logger", level=logging.INFO, pathname="test.py",
-            lineno=10, msg="test message", args=(), exc_info=None
-        )
-        result = formatter.format(record)
-        parsed = json.loads(result)
-        assert "timestamp" in parsed
-        assert parsed["level"] == "INFO"
-        assert parsed["message"] == "test message"
-        assert "pid" in parsed
-        assert "hostname" in parsed
-
-    def test_format_includes_request_id_when_set(self):
-        """Test formatter includes request_id when set."""
-        set_request_id("json-test-id")
-        formatter = JsonFormatter()
-        record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="test", args=(), exc_info=None
-        )
-        result = formatter.format(record)
-        parsed = json.loads(result)
-        assert parsed["request_id"] == "json-test-id"
-        set_request_id(None)  # cleanup
-
-    def test_format_excludes_request_id_when_not_set(self):
-        """Test formatter excludes request_id when not set."""
-        set_request_id(None)
-        formatter = JsonFormatter()
-        record = logging.LogRecord(
-            name="hsync", level=logging.INFO, pathname="", lineno=0,
-            msg="test", args=(), exc_info=None
-        )
-        result = formatter.format(record)
-        parsed = json.loads(result)
-        assert "request_id" not in parsed
+    def test_handler_is_logging_handler(self):
+        """Test InterceptHandler is a logging.Handler."""
+        handler = InterceptHandler()
+        assert isinstance(handler, logging.Handler)
 
 
 class TestGetLogFormat:
@@ -169,116 +84,42 @@ class TestGetLogFormat:
         os.environ.pop("HSYNC_LOG_FORMAT", None)
 
 
-class TestGetLogLevel:
-    """Tests for get_log_level function."""
+class TestSetupLogging:
+    """Tests for setup_logging function."""
 
-    def test_default_is_info(self):
-        """Test None defaults to INFO level."""
-        assert get_log_level(None) == logging.INFO
+    def test_returns_loguru_logger(self):
+        """Test setup_logging returns loguru logger."""
+        result = setup_logging()
+        # Loguru logger has specific attributes
+        assert hasattr(result, "info")
+        assert hasattr(result, "debug")
+        assert hasattr(result, "warning")
+        assert hasattr(result, "error")
+        assert hasattr(result, "bind")
 
-    def test_debug_level(self):
-        """Test debug level."""
-        assert get_log_level("debug") == logging.DEBUG
-
-    def test_info_level(self):
-        """Test info level."""
-        assert get_log_level("info") == logging.INFO
-
-    def test_warning_level(self):
-        """Test warning level."""
-        assert get_log_level("warning") == logging.WARNING
-
-    def test_error_level(self):
-        """Test error level."""
-        assert get_log_level("error") == logging.ERROR
-
-    def test_critical_level(self):
-        """Test critical level."""
-        assert get_log_level("critical") == logging.CRITICAL
-
-    def test_case_insensitive(self):
-        """Test level is case-insensitive."""
-        assert get_log_level("DEBUG") == logging.DEBUG
-        assert get_log_level("Info") == logging.INFO
-        assert get_log_level("WARNING") == logging.WARNING
+    def test_accepts_level_parameter(self):
+        """Test setup_logging accepts level parameter."""
+        # Should not raise
+        setup_logging(level="debug")
+        setup_logging(level="info")
+        setup_logging(level="warning")
+        setup_logging(level="error")
 
     def test_invalid_level_raises(self):
         """Test invalid level raises ValueError."""
         with pytest.raises(ValueError) as exc_info:
-            get_log_level("invalid")
-        assert "Invalid log level: 'invalid'" in str(exc_info.value)
-        assert "debug" in str(exc_info.value)
-        assert "info" in str(exc_info.value)
+            setup_logging(level="invalid")
+        assert "Invalid log level" in str(exc_info.value)
 
+    def test_accepts_json_format(self):
+        """Test setup_logging accepts json format."""
+        # Should not raise
+        setup_logging(log_format="json")
 
-class TestSetupLogging:
-    """Tests for setup_logging function."""
-
-    def test_returns_logger(self):
-        """Test setup_logging returns a logger."""
-        logger = setup_logging()
-        assert isinstance(logger, logging.Logger)
-
-    def test_logger_name_is_hsync_server(self):
-        """Test logger has correct name for module hierarchy."""
-        logger = setup_logging()
-        assert logger.name == "hsync_server"
-
-    def test_default_level_is_info(self):
-        """Test default level is INFO."""
-        logger = setup_logging()
-        assert logger.level == logging.INFO
-
-    def test_debug_level(self):
-        """Test debug level configuration."""
-        logger = setup_logging(level="debug")
-        assert logger.level == logging.DEBUG
-
-    def test_has_handler(self):
-        """Test logger has at least one handler."""
-        logger = setup_logging()
-        assert len(logger.handlers) >= 1
-
-    def test_handler_has_formatter(self):
-        """Test handler has formatter configured."""
-        logger = setup_logging()
-        handler = logger.handlers[0]
-        assert handler.formatter is not None
-
-    def test_handler_has_request_id_filter(self):
-        """Test handler has RequestIdFilter configured."""
-        logger = setup_logging()
-        handler = logger.handlers[0]
-        filter_types = [type(f).__name__ for f in handler.filters]
-        assert "RequestIdFilter" in filter_types
-
-    def test_no_propagation(self):
-        """Test logger does not propagate."""
-        logger = setup_logging()
-        assert logger.propagate is False
-
-    def test_clears_existing_handlers(self):
-        """Test setup clears existing handlers."""
-        logger = setup_logging()
-        initial_count = len(logger.handlers)
-
-        # Setup again
-        logger = setup_logging()
-
-        # Should have same number of handlers (cleared and re-added)
-        assert len(logger.handlers) == initial_count
-
-    def test_json_format(self):
-        """Test JSON format configuration."""
-        logger = setup_logging(log_format="json")
-        handler = logger.handlers[0]
-        assert isinstance(handler.formatter, JsonFormatter)
-
-    def test_text_format_default(self):
-        """Test text format is default."""
-        logger = setup_logging(log_format="text")
-        handler = logger.handlers[0]
-        assert not isinstance(handler.formatter, JsonFormatter)
+    def test_accepts_text_format(self):
+        """Test setup_logging accepts text format."""
+        # Should not raise
+        setup_logging(log_format="text")
 
     def test_uvicorn_loggers_configured(self):
         """Test uvicorn loggers are configured."""
