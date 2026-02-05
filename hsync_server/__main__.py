@@ -162,7 +162,7 @@ def main(
 
     [bold]Authors:[/bold]
 
-        Alberto Basso <alberto.basso@proton.me>
+        Alberto Basso
     """
     # Load environment file if specified (before reading any config)
     if env_file:
