@@ -8,20 +8,20 @@ This document provides a complete reference for the HSYNC Server REST and WebSoc
 
 ```mermaid
 graph LR
-    subgraph Public["Public Endpoints"]
+    subgraph Public["① Public Endpoints"]
         H["GET /health"]
         M["GET /metrics"]
         WS["WS .../buckets/:bucket/events/:cid"]
     end
 
-    subgraph Auth["Authenticated Endpoints"]
-        subgraph Buckets["Buckets"]
+    subgraph Auth["② Authenticated Endpoints"]
+        subgraph Buckets["③ Buckets"]
             GB["GET .../buckets/:bucket"]
             CB["POST .../buckets"]
             DB["DELETE .../buckets/:bucket"]
         end
 
-        subgraph Files["Files"]
+        subgraph Files["④ Files"]
             LF["GET .../buckets/:bucket/files"]
             UF["POST .../buckets/:bucket/files"]
             DF["GET .../files/download"]
@@ -129,14 +129,14 @@ sequenceDiagram
     participant C as Client
     participant S as Server
 
-    C->>S: WebSocket Connect
-    S->>C: Connection Accepted
-    C->>S: {"type": "auth", "token": "api-key"}
-    alt Valid token
-        S->>C: {"type": "auth", "status": "ok"}
-        Note over C,S: Client is now authenticated
-    else Invalid token
-        S->>C: Close (4003: Invalid API key)
+    C->>S: ① WebSocket Connect
+    S->>C: ② Connection Accepted
+    C->>S: ③ {"type": "auth", "token": "api-key"}
+    alt ④a Valid token
+        S->>C: ⑤ {"type": "auth", "status": "ok"}
+        Note over C,S: ⑥ Client is now authenticated
+    else ④b Invalid token
+        S->>C: ⑤ Close (4003: Invalid API key)
     end
 ```
 
