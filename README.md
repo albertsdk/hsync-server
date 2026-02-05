@@ -84,6 +84,45 @@ cd hsync-server
 ./docker.sh start --env-file prod.env
 ```
 
+## Command Line Options
+
+```bash
+hsync-server [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--env-file PATH` | Load environment variables from file | - |
+| `-p, --port PORT` | Server port | `8765` |
+| `--log-level LEVEL` | Log level (debug, info, warning, error) | `info` |
+| `--ssl` | Enable HTTPS/WSS (auto-generates certs if not provided) | disabled |
+| `--ssl-cert FILE` | Path to SSL certificate (PEM format) | auto-generated |
+| `--ssl-key FILE` | Path to SSL private key (PEM format) | auto-generated |
+| `--ssl-cert-dir DIR` | Directory for auto-generated certificates | `./certs` |
+| `-V, --version` | Show version | - |
+
+### Examples
+
+```bash
+# Start server on default port (8765)
+hsync-server
+
+# Start server on custom port
+hsync-server --port 9000
+
+# Start with HTTPS enabled (auto-generates certificates)
+hsync-server --ssl
+
+# Start with custom SSL certificates
+hsync-server --ssl --ssl-cert /path/to/cert.pem --ssl-key /path/to/key.pem
+
+# Start with debug logging
+hsync-server --log-level debug
+
+# Load configuration from environment file
+hsync-server --env-file /path/to/prod.env
+```
+
 ## Configuration
 
 The server uses environment variables for configuration. Create a `.env` file or use the provided `dev.env`/`prod.env` templates:
