@@ -7,10 +7,12 @@ Usage:
 This module allows the package to be run directly using Python's -m flag.
 """
 
-import argparse
 import sys
+from typing import Optional
 
+import typer
 import uvicorn
+from typing_extensions import Annotated
 
 from hsync_server.config import (
     get_log_level,
@@ -26,11 +28,11 @@ from hsync_server.logger import setup_logging, VALID_LOG_LEVELS
 from hsync_server.ssl_utils import get_ssl_config
 
 
-def create_argument_parser() -> argparse.ArgumentParser:
-    """Create and configure the argument parser."""
-    from argparse import RawDescriptionHelpFormatter
+# =============================================================================
+# CLI Application
+# =============================================================================
 
-    epilog = """
+EPILOG = """
 Examples:
   # Start server on default port (8765)
   hsync-server
@@ -58,155 +60,138 @@ Environment variables:
   HSYNC_MAX_UPLOAD_SIZE Maximum upload size in bytes
 """
 
-    parser = argparse.ArgumentParser(
-        prog="hsync-server",
-        description="HSYNC Server - HTTP-based file synchronization server",
-        formatter_class=RawDescriptionHelpFormatter,
-        epilog=epilog,
-    )
+app = typer.Typer(
+    name="hsync-server",
+    help="HSYNC Server - HTTP-based file synchronization server",
+    epilog=EPILOG,
+    add_completion=False,
+    rich_markup_mode=None,
+)
 
-    parser.add_argument(
+
+def _version_callback(value: bool) -> None:
+    """Show version and exit."""
+    if value:
+        print(f"hsync-server {HSYNC_VERSION}")
+        raise typer.Exit()
+
+
+def _validate_log_level(value: Optional[str]) -> Optional[str]:
+    """Validate log level against valid options."""
+    if value is not None and value not in VALID_LOG_LEVELS:
+        raise typer.BadParameter(
+            f"Invalid log level '{value}'. Must be one of: {', '.join(VALID_LOG_LEVELS)}"
+        )
+    return value
+
+
+@app.command()
+def main(
+    # -------------------------------------------------------------------------
+    # General options
+    # -------------------------------------------------------------------------
+    env_file: Annotated[Optional[str], typer.Option(
         "--env-file",
-        type=str,
-        required=False,
-        metavar="PATH",
-        dest="env_file",
         help="Load environment variables from file.",
-    )
-
-    parser.add_argument(
-        "-V",
-        "--version",
-        action="version",
-        version=f"%(prog)s {HSYNC_VERSION}",
-    )
-
+        metavar="PATH",
+    )] = None,
+    version: Annotated[Optional[bool], typer.Option(
+        "-V", "--version",
+        help="Show version and exit.",
+        callback=_version_callback,
+        is_eager=True,
+    )] = None,
     # -------------------------------------------------------------------------
     # Server options
     # -------------------------------------------------------------------------
-    server_group = parser.add_argument_group("Server")
-
-    server_group.add_argument(
-        "-p",
-        "--port",
-        type=int,
-        required=False,
-        default=None,
-        metavar="PORT",
-        dest="port",
+    port: Annotated[Optional[int], typer.Option(
+        "-p", "--port",
         help="Server port (default: 8765).",
-    )
-
-    server_group.add_argument(
+        metavar="PORT",
+    )] = None,
+    log_level: Annotated[Optional[str], typer.Option(
         "--log-level",
-        type=str,
-        required=False,
-        default=None,
-        choices=list(VALID_LOG_LEVELS),
-        metavar="LEVEL",
-        dest="log_level",
         help="Log level: debug, info, warning, error (default: info).",
-    )
-
+        metavar="LEVEL",
+        callback=lambda v: _validate_log_level(v),
+    )] = None,
     # -------------------------------------------------------------------------
     # SSL/TLS options
     # -------------------------------------------------------------------------
-    ssl_group = parser.add_argument_group("SSL/TLS")
-
-    ssl_group.add_argument(
+    ssl_enabled: Annotated[bool, typer.Option(
         "--ssl",
-        action="store_true",
-        dest="ssl_enabled",
         help="Enable HTTPS/WSS. Auto-generates certificates if not provided.",
-    )
-
-    ssl_group.add_argument(
+    )] = False,
+    ssl_certfile: Annotated[Optional[str], typer.Option(
         "--ssl-cert",
-        type=str,
-        required=False,
-        default=None,
-        metavar="FILE",
-        dest="ssl_certfile",
         help="Path to SSL certificate file (PEM format).",
-    )
-
-    ssl_group.add_argument(
-        "--ssl-key",
-        type=str,
-        required=False,
-        default=None,
         metavar="FILE",
-        dest="ssl_keyfile",
+    )] = None,
+    ssl_keyfile: Annotated[Optional[str], typer.Option(
+        "--ssl-key",
         help="Path to SSL private key file (PEM format).",
-    )
-
-    ssl_group.add_argument(
+        metavar="FILE",
+    )] = None,
+    ssl_cert_dir: Annotated[Optional[str], typer.Option(
         "--ssl-cert-dir",
-        type=str,
-        required=False,
-        default=None,
-        metavar="DIR",
-        dest="ssl_cert_dir",
         help="Directory for auto-generated certificates (default: ./certs).",
-    )
-
-    return parser
-
-
-def main() -> None:
-    """Run the HSYNC server using uvicorn."""
-    # Parse command line arguments
-    parser = create_argument_parser()
-    args = parser.parse_args()
-
+        metavar="DIR",
+    )] = None,
+) -> None:
+    """HSYNC Server - HTTP-based file synchronization server."""
     # Load environment file if specified (before reading any config)
-    if args.env_file:
+    if env_file:
         try:
-            load_env_file(args.env_file)
+            load_env_file(env_file)
         except FileNotFoundError as e:
             print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
+            raise typer.Exit(1)
 
     # Get configuration values (CLI args take precedence over env vars)
-    log_level = args.log_level if args.log_level else get_log_level()
-    port = args.port if args.port else get_port()
-    ssl_enabled = args.ssl_enabled or get_ssl_enabled()
-    ssl_certfile = args.ssl_certfile if args.ssl_certfile else get_ssl_certfile()
-    ssl_keyfile = args.ssl_keyfile if args.ssl_keyfile else get_ssl_keyfile()
-    ssl_cert_dir = args.ssl_cert_dir if args.ssl_cert_dir else get_ssl_cert_dir()
+    effective_log_level = log_level if log_level else get_log_level()
+    effective_port = port if port else get_port()
+    effective_ssl_enabled = ssl_enabled or get_ssl_enabled()
+    effective_ssl_certfile = ssl_certfile if ssl_certfile else get_ssl_certfile()
+    effective_ssl_keyfile = ssl_keyfile if ssl_keyfile else get_ssl_keyfile()
+    effective_ssl_cert_dir = ssl_cert_dir if ssl_cert_dir else get_ssl_cert_dir()
 
     # Configure logging before starting the server
-    LOG = setup_logging(level=log_level)
+    LOG = setup_logging(level=effective_log_level)
 
     # Log version at startup
     LOG.info(f"HSYNC Server v{HSYNC_VERSION}")
 
     # Get SSL configuration (empty dict if SSL disabled)
     ssl_config = get_ssl_config(
-        ssl_enabled=ssl_enabled,
-        ssl_certfile=ssl_certfile or None,
-        ssl_keyfile=ssl_keyfile or None,
-        ssl_cert_dir=ssl_cert_dir,
+        ssl_enabled=effective_ssl_enabled,
+        ssl_certfile=effective_ssl_certfile or None,
+        ssl_keyfile=effective_ssl_keyfile or None,
+        ssl_cert_dir=effective_ssl_cert_dir,
     )
 
     # Log server startup mode
-    if ssl_enabled:
-        LOG.info(f"Starting HSYNC server with HTTPS/WSS on port {port}")
+    if effective_ssl_enabled:
+        LOG.info(f"Starting HSYNC server with HTTPS/WSS on port {effective_port}")
         LOG.info(f"Certificate: {ssl_config.get('ssl_certfile', 'N/A')}")
     else:
-        LOG.info(f"Starting HSYNC server with HTTP/WS on port {port}")
+        LOG.info(f"Starting HSYNC server with HTTP/WS on port {effective_port}")
         LOG.warning("SSL is disabled. Communication is NOT encrypted!")
 
     uvicorn.run(
         "hsync_server.main:app",
         host="0.0.0.0",
-        port=port,
-        log_level=log_level,
+        port=effective_port,
+        log_level=effective_log_level,
         reload=True,
         **ssl_config,
     )
 
 
+def run() -> None:
+    """Entry point for the CLI application."""
+    app()
+
+
 if __name__ == "__main__":
-    main()
+    run()
 
