@@ -32,38 +32,9 @@ from hsync_server.ssl_utils import get_ssl_config
 # CLI Application
 # =============================================================================
 
-EPILOG = """
-Examples:
-  # Start server on default port (8765)
-  hsync-server
-
-  # Start server on custom port
-  hsync-server --port 9000
-
-  # Start with HTTPS enabled (auto-generates certificates)
-  hsync-server --ssl
-
-  # Start with custom SSL certificates
-  hsync-server --ssl --ssl-cert /path/to/cert.pem --ssl-key /path/to/key.pem
-
-  # Start with debug logging
-  hsync-server --log-level debug
-
-  # Load configuration from environment file
-  hsync-server --env-file /path/to/prod.env
-
-Environment variables:
-  HSYNC_API_KEY         API key for authentication (required)
-  HSYNC_BUCKETS         Path to buckets directory
-  HSYNC_CORS_ENABLED    Enable CORS (true/false)
-  HSYNC_CORS_ORIGINS    Allowed CORS origins (comma-separated)
-  HSYNC_MAX_UPLOAD_SIZE Maximum upload size in bytes
-"""
-
 app = typer.Typer(
     name="hsync-server",
     help="HSYNC Server - HTTP-based file synchronization server",
-    epilog=EPILOG,
     add_completion=False,
     rich_markup_mode="rich",  # Enable rich formatting for grouped options
 )
@@ -149,7 +120,37 @@ def main(
         is_eager=True,
     )] = None,
 ) -> None:
-    """HSYNC Server - HTTP-based file synchronization server."""
+    """
+    HSYNC Server - HTTP-based file synchronization server.
+
+    [bold]Examples:[/bold]
+
+        [dim]# Start server on default port (8765)[/dim]
+        $ hsync-server
+
+        [dim]# Start server on custom port[/dim]
+        $ hsync-server --port 9000
+
+        [dim]# Start with HTTPS enabled (auto-generates certificates)[/dim]
+        $ hsync-server --ssl
+
+        [dim]# Start with custom SSL certificates[/dim]
+        $ hsync-server --ssl --ssl-cert /path/to/cert.pem --ssl-key /path/to/key.pem
+
+        [dim]# Start with debug logging[/dim]
+        $ hsync-server --log-level debug
+
+        [dim]# Load configuration from environment file[/dim]
+        $ hsync-server --env-file /path/to/prod.env
+
+    [bold]Environment variables:[/bold]
+
+        HSYNC_API_KEY           API key for authentication (required)
+        HSYNC_BUCKETS           Path to buckets directory
+        HSYNC_CORS_ENABLED      Enable CORS (true/false)
+        HSYNC_CORS_ORIGINS      Allowed CORS origins (comma-separated)
+        HSYNC_MAX_UPLOAD_SIZE   Maximum upload size in bytes
+    """
     # Load environment file if specified (before reading any config)
     if env_file:
         try:
