@@ -65,7 +65,7 @@ app = typer.Typer(
     help="HSYNC Server - HTTP-based file synchronization server",
     epilog=EPILOG,
     add_completion=False,
-    rich_markup_mode=None,
+    rich_markup_mode="rich",  # Enable rich formatting for grouped options
 )
 
 
@@ -88,6 +88,53 @@ def _validate_log_level(value: Optional[str]) -> Optional[str]:
 @app.command()
 def main(
     # -------------------------------------------------------------------------
+    # Server options
+    # -------------------------------------------------------------------------
+    port: Annotated[Optional[int], typer.Option(
+        "-p", "--port",
+        help="Server port (default: 8765).",
+        metavar="PORT",
+        rich_help_panel="Server",
+    )] = None,
+    log_level: Annotated[Optional[str], typer.Option(
+        "--log-level",
+        help="Log level: debug, info, warning, error (default: info).",
+        metavar="LEVEL",
+        callback=lambda v: _validate_log_level(v),
+        rich_help_panel="Server",
+    )] = None,
+    no_color: Annotated[bool, typer.Option(
+        "--no-color",
+        help="Disable colored log output.",
+        rich_help_panel="Server",
+    )] = False,
+    # -------------------------------------------------------------------------
+    # SSL/TLS options
+    # -------------------------------------------------------------------------
+    ssl_enabled: Annotated[bool, typer.Option(
+        "--ssl",
+        help="Enable HTTPS/WSS. Auto-generates certificates if not provided.",
+        rich_help_panel="SSL/TLS",
+    )] = False,
+    ssl_certfile: Annotated[Optional[str], typer.Option(
+        "--ssl-cert",
+        help="Path to SSL certificate file (PEM format).",
+        metavar="FILE",
+        rich_help_panel="SSL/TLS",
+    )] = None,
+    ssl_keyfile: Annotated[Optional[str], typer.Option(
+        "--ssl-key",
+        help="Path to SSL private key file (PEM format).",
+        metavar="FILE",
+        rich_help_panel="SSL/TLS",
+    )] = None,
+    ssl_cert_dir: Annotated[Optional[str], typer.Option(
+        "--ssl-cert-dir",
+        help="Directory for auto-generated certificates (default: ./certs).",
+        metavar="DIR",
+        rich_help_panel="SSL/TLS",
+    )] = None,
+    # -------------------------------------------------------------------------
     # General options
     # -------------------------------------------------------------------------
     env_file: Annotated[Optional[str], typer.Option(
@@ -100,46 +147,6 @@ def main(
         help="Show version and exit.",
         callback=_version_callback,
         is_eager=True,
-    )] = None,
-    # -------------------------------------------------------------------------
-    # Server options
-    # -------------------------------------------------------------------------
-    port: Annotated[Optional[int], typer.Option(
-        "-p", "--port",
-        help="Server port (default: 8765).",
-        metavar="PORT",
-    )] = None,
-    log_level: Annotated[Optional[str], typer.Option(
-        "--log-level",
-        help="Log level: debug, info, warning, error (default: info).",
-        metavar="LEVEL",
-        callback=lambda v: _validate_log_level(v),
-    )] = None,
-    no_color: Annotated[bool, typer.Option(
-        "--no-color",
-        help="Disable colored log output.",
-    )] = False,
-    # -------------------------------------------------------------------------
-    # SSL/TLS options
-    # -------------------------------------------------------------------------
-    ssl_enabled: Annotated[bool, typer.Option(
-        "--ssl",
-        help="Enable HTTPS/WSS. Auto-generates certificates if not provided.",
-    )] = False,
-    ssl_certfile: Annotated[Optional[str], typer.Option(
-        "--ssl-cert",
-        help="Path to SSL certificate file (PEM format).",
-        metavar="FILE",
-    )] = None,
-    ssl_keyfile: Annotated[Optional[str], typer.Option(
-        "--ssl-key",
-        help="Path to SSL private key file (PEM format).",
-        metavar="FILE",
-    )] = None,
-    ssl_cert_dir: Annotated[Optional[str], typer.Option(
-        "--ssl-cert-dir",
-        help="Directory for auto-generated certificates (default: ./certs).",
-        metavar="DIR",
     )] = None,
 ) -> None:
     """HSYNC Server - HTTP-based file synchronization server."""
