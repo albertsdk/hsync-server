@@ -34,7 +34,7 @@ from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from os import makedirs, remove, walk
-from os.path import dirname, exists
+from os.path import dirname, exists, getsize
 from shutil import move
 from typing import Optional
 
@@ -86,13 +86,18 @@ async def upload_file(
     mtime: str = Form(""),
     md5sum: str = Form(""),
     permissions: str = Form("-rw-rw-r--"),
+    offset: int = Form(0),
+    size: int = Form(0),
 ) -> JSONResponse:
     """
-    Upload a file to a bucket.
+    Upload a file to a bucket with resumable upload support.
 
     Handles file upload with integrity verification (MD5), timestamp
     preservation, and permission setting. Broadcasts an "added" event
     to all connected WebSocket clients.
+
+    Supports resumable uploads: if offset > 0, the incoming data is
+    appended to an existing partial file (.part extension).
 
     Args:
         bucket: Target bucket name.
@@ -103,6 +108,8 @@ async def upload_file(
         mtime: Modification time (Unix timestamp or ISO string).
         md5sum: Expected MD5 checksum for integrity verification.
         permissions: File permissions in symbolic format.
+        offset: Byte offset for resumable uploads (0 for new uploads).
+        size: Total file size (required for resumable uploads).
 
     Returns:
         JSON response confirming upload or conflict if identical file exists.
@@ -116,6 +123,8 @@ async def upload_file(
         UploadError: If upload operation fails.
     """
     file_location_tmp = None
+    partial_file_path = None
+    is_resumable = offset > 0
     try:
         # Validate inputs
         if not is_valid_bucket(bucket):
@@ -130,12 +139,16 @@ async def upload_file(
         # Define file paths
         file_directory = f"{HSYNC_BUCKETS}/{bucket}/{path}"
         file_location = f"{file_directory}/{file.filename}"
+        partial_file_path = f"{file_location}.part"
 
         # Skip upload if identical file already exists (same MD5)
         if md5sum and exists(file_location) and md5sum == get_md5_hash(file_location):
             LOG.warning(f"File already present: {file_location}")
             # Update timestamps even if skipping upload
             update_file_timestamp(file_location, ctime, mtime)
+            # Clean up partial file if exists
+            if exists(partial_file_path):
+                remove(partial_file_path)
             return JSONResponse(
                 status_code=409,
                 content={
@@ -147,28 +160,86 @@ async def upload_file(
         # Ensure directory exists
         makedirs(file_directory, exist_ok=True)
 
-        # Write file to temporary location first (atomic write pattern)
-        # Track total bytes written to enforce size limit
-        total_bytes = 0
-        async with NamedTemporaryFile(delete=False) as temp_file:
-            file_location_tmp = str(temp_file.name)
-            while chunk := await file.read(8192):
-                total_bytes += len(chunk)
-                # Check size limit during upload to prevent DoS
-                if HSYNC_MAX_UPLOAD_SIZE > 0 and total_bytes > HSYNC_MAX_UPLOAD_SIZE:
-                    raise FileTooLargeError(
-                        message=f"File exceeds maximum size of {HSYNC_MAX_UPLOAD_SIZE} bytes",
-                        details={
-                            "max_size": HSYNC_MAX_UPLOAD_SIZE,
-                            "received_bytes": total_bytes,
-                        },
-                    )
-                await temp_file.write(chunk)
+        # Handle resumable upload
+        if is_resumable:
+            # Validate partial file exists and has expected size
+            if not exists(partial_file_path):
+                raise UploadError(
+                    message="Cannot resume: partial file not found",
+                    details={"offset": offset, "partial_file": partial_file_path},
+                )
+            current_size = getsize(partial_file_path)
+            if current_size != offset:
+                raise UploadError(
+                    message=f"Offset mismatch: expected {current_size}, got {offset}",
+                    details={"expected_offset": current_size, "provided_offset": offset},
+                )
 
-        # Set timestamps on temporary file
+            # Append to partial file
+            total_bytes = offset
+            import aiofiles
+            async with aiofiles.open(partial_file_path, "ab") as f:
+                while chunk := await file.read(8192):
+                    total_bytes += len(chunk)
+                    if HSYNC_MAX_UPLOAD_SIZE > 0 and total_bytes > HSYNC_MAX_UPLOAD_SIZE:
+                        raise FileTooLargeError(
+                            message=f"File exceeds maximum size of {HSYNC_MAX_UPLOAD_SIZE} bytes",
+                            details={"max_size": HSYNC_MAX_UPLOAD_SIZE, "received_bytes": total_bytes},
+                        )
+                    await f.write(chunk)
+
+            # Check if upload is complete
+            if size > 0 and total_bytes < size:
+                # Partial upload - more chunks expected
+                return JSONResponse(
+                    status_code=202,
+                    content={
+                        "info": "Partial upload received",
+                        "offset": total_bytes,
+                        "remaining": size - total_bytes,
+                    },
+                )
+
+            # Upload complete - verify and finalize
+            file_location_tmp = partial_file_path
+        else:
+            # Standard upload to temp file (new upload or first chunk)
+            total_bytes = 0
+
+            # If size > 0, this might be first chunk of a multi-chunk upload
+            if size > 0 and exists(partial_file_path):
+                # Remove stale partial file
+                remove(partial_file_path)
+
+            async with NamedTemporaryFile(delete=False) as temp_file:
+                file_location_tmp = str(temp_file.name)
+                while chunk := await file.read(8192):
+                    total_bytes += len(chunk)
+                    if HSYNC_MAX_UPLOAD_SIZE > 0 and total_bytes > HSYNC_MAX_UPLOAD_SIZE:
+                        raise FileTooLargeError(
+                            message=f"File exceeds maximum size of {HSYNC_MAX_UPLOAD_SIZE} bytes",
+                            details={"max_size": HSYNC_MAX_UPLOAD_SIZE, "received_bytes": total_bytes},
+                        )
+                    await temp_file.write(chunk)
+
+            # Check if this is partial upload (size provided but not fully received)
+            if size > 0 and total_bytes < size:
+                # Move temp file to partial file location
+                move(file_location_tmp, partial_file_path)
+                file_location_tmp = None
+                return JSONResponse(
+                    status_code=202,
+                    content={
+                        "info": "Partial upload received",
+                        "offset": total_bytes,
+                        "remaining": size - total_bytes,
+                    },
+                )
+
+        # Set timestamps on file
         update_file_timestamp(file_location_tmp, ctime, mtime)
 
-        # Set permissions on temporary file
+        # Set permissions on file
         if permissions:
             await set_permissions(file_location_tmp, permissions)
 
@@ -185,6 +256,7 @@ async def upload_file(
 
         # Atomically move file to final destination
         move(file_location_tmp, file_location)
+        file_location_tmp = None  # Don't clean up - it's been moved
 
         # Broadcast "added" event to other connected clients
         src = LocalFile().get(file_location)
@@ -218,8 +290,8 @@ async def upload_file(
             details={"filename": file.filename, "error": str(e)},
         )
     finally:
-        # Clean up temporary file if it exists
-        if file_location_tmp and exists(file_location_tmp):
+        # Clean up temporary file if it exists (but not partial files)
+        if file_location_tmp and exists(file_location_tmp) and not file_location_tmp.endswith(".part"):
             remove(file_location_tmp)
 
 
@@ -257,6 +329,90 @@ async def download_file(
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
 
     return FileResponse(file, filename=filename)
+
+
+@auth_router.get("/api/v1/buckets/{bucket}/files/upload-status")
+@limiter.limit(RATE_LIMIT_DEFAULT)
+async def get_upload_status(
+    request: Request,
+    bucket: str,
+    filename: str,
+    md5sum: str = "",
+    size: int = 0,
+) -> JSONResponse:
+    """
+    Get upload status for resumable uploads.
+
+    Checks if a partial file exists from a previous interrupted upload
+    and returns the current offset from which the client can resume.
+
+    Args:
+        request: The incoming FastAPI request.
+        bucket: Target bucket name.
+        filename: Path to the file within the bucket.
+        md5sum: Expected MD5 checksum of the complete file.
+        size: Expected size of the complete file.
+
+    Returns:
+        JSON response with upload status:
+        - offset: Number of bytes already uploaded (0 if no partial file)
+        - status: "resumable" if partial file exists, "new" otherwise
+
+    Raises:
+        InvalidBucketNameError: If bucket name is invalid.
+        InvalidPathError: If path is invalid.
+    """
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
+    if not is_valid_dir(dirname(filename)):
+        raise InvalidPathError(details={"path": filename})
+
+    file_path = f"{HSYNC_BUCKETS}/{bucket}/{filename}"
+    partial_path = f"{file_path}.part"
+
+    # Check if complete file already exists with same MD5
+    if md5sum and exists(file_path) and md5sum == get_md5_hash(file_path):
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "complete",
+                "offset": 0,
+                "message": "File already exists with same checksum",
+            },
+        )
+
+    # Check for partial file
+    if exists(partial_path):
+        partial_size = getsize(partial_path)
+        # Validate partial file is not larger than expected
+        if size > 0 and partial_size >= size:
+            # Partial file is invalid, remove it
+            remove(partial_path)
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "new",
+                    "offset": 0,
+                    "message": "Previous partial file was invalid, starting fresh",
+                },
+            )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "resumable",
+                "offset": partial_size,
+                "message": f"Can resume from byte {partial_size}",
+            },
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "new",
+            "offset": 0,
+            "message": "No partial file exists",
+        },
+    )
 
 
 @auth_router.get("/api/v1/buckets/{bucket}/files")
