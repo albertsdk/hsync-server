@@ -23,7 +23,7 @@ Examples: "100/minute", "1000/hour", "10/second"
 import os
 
 from fastapi import Request, Response
-from loguru import logger as LOG
+from loguru import logger as log
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -95,7 +95,7 @@ async def rate_limit_exceeded_handler(
     Returns:
         JSON response with 429 status code.
     """
-    LOG.warning(
+    log.warning(
         f"Rate limit exceeded for {get_client_ip(request)}: "
         f"{exc.detail}"
     )
@@ -112,7 +112,7 @@ async def rate_limit_exceeded_handler(
     )
 
 
-LOG.info(
+log.info(
     f"Rate limits configured: default={RATE_LIMIT_DEFAULT}, "
     f"upload={RATE_LIMIT_UPLOAD}, download={RATE_LIMIT_DOWNLOAD}, "
     f"websocket={RATE_LIMIT_WEBSOCKET}"

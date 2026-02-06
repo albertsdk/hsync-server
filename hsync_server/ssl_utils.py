@@ -32,7 +32,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-from loguru import logger as LOG
+from loguru import logger as log
 
 # Default certificate validity period (365 days)
 DEFAULT_CERT_VALIDITY_DAYS = 365
@@ -67,7 +67,7 @@ def generate_self_signed_cert(
     if hostname is None:
         hostname = socket.gethostname()
 
-    LOG.info(f"Generating self-signed certificate for hostname: {hostname}")
+    log.info(f"Generating self-signed certificate for hostname: {hostname}")
 
     # Generate RSA private key
     private_key = rsa.generate_private_key(
@@ -143,9 +143,9 @@ def generate_self_signed_cert(
         f.write(cert.public_bytes(serialization.Encoding.PEM))
     os.chmod(cert_path, 0o644)  # Readable by all
 
-    LOG.info(f"Certificate generated: {cert_path}")
-    LOG.info(f"Private key generated: {key_path}")
-    LOG.info(f"Certificate valid until: {not_valid_after.isoformat()}")
+    log.info(f"Certificate generated: {cert_path}")
+    log.info(f"Private key generated: {key_path}")
+    log.info(f"Certificate valid until: {not_valid_after.isoformat()}")
 
     return cert_path, key_path
 
@@ -172,10 +172,10 @@ def ensure_certificates(
     key_path = os.path.join(cert_dir, key_filename)
 
     if os.path.exists(cert_path) and os.path.exists(key_path):
-        LOG.info(f"Using existing certificates from: {cert_dir}")
+        log.info(f"Using existing certificates from: {cert_dir}")
         return cert_path, key_path
 
-    LOG.info("Certificates not found, generating new self-signed certificates...")
+    log.info("Certificates not found, generating new self-signed certificates...")
     return generate_self_signed_cert(cert_path, key_path, hostname)
 
 

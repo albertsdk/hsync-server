@@ -22,7 +22,7 @@ import hmac
 
 from fastapi import WebSocket, WebSocketDisconnect
 from json import loads, JSONDecodeError
-from loguru import logger as LOG
+from loguru import logger as log
 
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.event_handlers import (
@@ -78,14 +78,14 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             auth_message = loads(auth_data)
 
             if auth_message.get("type") != "auth":
-                LOG.warning(f"[WEBSOCKET ] Invalid auth message type from {cid}")
+                log.warning(f"[WEBSOCKET ] Invalid auth message type from {cid}")
                 await websocket.close(code=4001, reason="Invalid auth message")
                 return
 
             auth_token = auth_message.get("token", "")
             # Use constant-time comparison to prevent timing attacks
             if not hmac.compare_digest(auth_token, HSYNC_API_KEY):
-                LOG.warning(f"[WEBSOCKET ] Invalid API key from {cid}")
+                log.warning(f"[WEBSOCKET ] Invalid API key from {cid}")
                 await websocket.close(code=4003, reason="Invalid API key")
                 return
 
@@ -96,7 +96,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                     HSYNC_VERSION, client_version
                 )
                 if not is_compatible:
-                    LOG.warning(
+                    log.warning(
                         f"[WEBSOCKET ] Rejecting client {cid} with incompatible "
                         f"version {client_version} (server: {HSYNC_VERSION})"
                     )
@@ -111,12 +111,12 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                     return
 
                 if reason == "minor_mismatch":
-                    LOG.warning(
+                    log.warning(
                         f"[WEBSOCKET ] Client {cid} version {client_version} "
                         f"differs from server {HSYNC_VERSION}"
                     )
 
-            LOG.debug(f"[WEBSOCKET ] Client {cid} authenticated")
+            log.debug(f"[WEBSOCKET ] Client {cid} authenticated")
             # Send auth confirmation with server version and capabilities
             await websocket.send_json({
                 "type": "auth",
@@ -126,19 +126,19 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             })
 
         except Exception as e:
-            LOG.warning(f"[WEBSOCKET ] Auth failed for {cid}: {e}")
+            log.warning(f"[WEBSOCKET ] Auth failed for {cid}: {e}")
             await websocket.close(code=4003, reason="Authentication failed")
             return
 
         # Register the authenticated client with bucket-specific manager
         manager = bucket_manager.get_manager(bucket)
         manager.active_connections[cid] = websocket
-        LOG.info(f"[WEBSOCKET ] Client connected: {cid} (bucket: {bucket})")
+        log.info(f"[WEBSOCKET ] Client connected: {cid} (bucket: {bucket})")
         try:
             # Main message processing loop
             while True:
                 data = await websocket.receive_text()
-                LOG.debug(f"[WEBSOCKET ] Received message: {_escape_braces(data)}")
+                log.debug(f"[WEBSOCKET ] Received message: {_escape_braces(data)}")
                 try:
                     message = loads(data)
 
@@ -150,7 +150,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         EventName.deleted.value,
                         EventName.symlink.value,
                     }:
-                        LOG.error(f"Invalid event name: {message.get('name')}")
+                        log.error(f"Invalid event name: {message.get('name')}")
                         continue
 
                     # Extract event data
@@ -179,24 +179,24 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         await manager.send_message(event)
 
                 except JSONDecodeError:
-                    LOG.error(f"[WEBSOCKET ] Invalid JSON received: {_escape_braces(data)}")
+                    log.error(f"[WEBSOCKET ] Invalid JSON received: {_escape_braces(data)}")
                 except Exception as e:
-                    LOG.error(f"[WEBSOCKET ] Exception data: {_escape_braces(data)}")
-                    LOG.error(f"[WEBSOCKET ] Exception: {e}", exc_info=True)
+                    log.error(f"[WEBSOCKET ] Exception data: {_escape_braces(data)}")
+                    log.error(f"[WEBSOCKET ] Exception: {e}", exc_info=True)
 
         except WebSocketDisconnect:
             # Client disconnected normally
             manager.disconnect(cid)
-            LOG.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")
+            log.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")
         except Exception as e:
             # Client disconnected with error
             manager.disconnect(cid)
-            LOG.warning(f"[WEBSOCKET ] Disconnected (CID: {cid}) ({e})")
+            log.warning(f"[WEBSOCKET ] Disconnected (CID: {cid}) ({e})")
             await websocket.close()
     except Exception:
         # Handle any outer exception (e.g., auth failure)
-        LOG.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")
+        log.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")
         await websocket.close()
 
 
-LOG.info(f"Module {__name__} loaded")
+log.info(f"Module {__name__} loaded")

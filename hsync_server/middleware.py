@@ -14,7 +14,7 @@ This module provides middleware for request processing, including:
 
 import uuid
 
-from loguru import logger as LOG
+from loguru import logger as log
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -152,7 +152,7 @@ class VersionMiddleware(BaseHTTPMiddleware):
             )
 
             if not is_compatible:
-                LOG.warning(
+                log.warning(
                     f"Rejecting client with incompatible version {client_version} "
                     f"(server: {HSYNC_VERSION}, reason: {reason})"
                 )
@@ -168,7 +168,7 @@ class VersionMiddleware(BaseHTTPMiddleware):
                 )
 
             if reason == "minor_mismatch":
-                LOG.warning(
+                log.warning(
                     f"Client version {client_version} has different minor version "
                     f"(server: {HSYNC_VERSION}). Sync may have issues."
                 )
