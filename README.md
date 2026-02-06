@@ -318,6 +318,36 @@ If authentication fails, the connection is closed with an appropriate error code
 }
 ```
 
+## File Compression
+
+HSYNC Server supports automatic file compression to optimize transfers using **Zstandard (zstd)**.
+
+### How It Works
+
+- Files are compressed before sending to clients (downloads)
+- Incoming compressed uploads are decompressed before storage
+- Server informs clients about compression support via WebSocket handshake
+- Compression uses `Content-Encoding: zstd` header
+
+### Compression Threshold
+
+| Context | Threshold | Rationale |
+|---------|-----------|-----------|
+| **Download** (Server→Client) | 10 KB | Below this, compression overhead exceeds transfer savings |
+
+### Skipped Files
+
+Compression is automatically skipped for:
+- Files below 10 KB
+- Pre-compressed formats: `.jpg`, `.png`, `.mp4`, `.zip`, `.gz`, `.pdf`, `.docx`, etc.
+- Resumable downloads (Range requests)
+
+### Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HSYNC_COMPRESSION_ENABLED` | Enable/disable compression | `true` |
+
 ## Rate Limiting
 
 The server implements rate limiting to prevent API abuse:
