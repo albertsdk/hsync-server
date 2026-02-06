@@ -14,8 +14,14 @@ This module provides:
 """
 
 import logging
+from json import dumps as json_dumps
 
 from fastapi import FastAPI, Request, status
+
+
+def _safe_json(obj: object) -> str:
+    """Serialize object to JSON and escape braces for loguru."""
+    return json_dumps(obj).replace("{", "{{").replace("}", "}}")
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -126,7 +132,7 @@ async def validation_exception_handler(
         JSONResponse with validation error details.
     """
     errors = exc.errors()
-    LOG.warning(f"Validation error: {errors}")
+    LOG.warning(f"Validation error: {_safe_json(errors)}")
 
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

@@ -24,6 +24,11 @@ import logging
 from fastapi import WebSocket, WebSocketDisconnect
 from json import loads, JSONDecodeError
 
+
+def _escape_braces(s: str) -> str:
+    """Escape curly braces in string for loguru format."""
+    return s.replace("{", "{{").replace("}", "}}")
+
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.event_handlers import (
     handle_added_event,
@@ -137,7 +142,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             # Main message processing loop
             while True:
                 data = await websocket.receive_text()
-                LOG.debug(f"[WEBSOCKET ] Received message: {data}")
+                LOG.debug(f"[WEBSOCKET ] Received message: {_escape_braces(data)}")
                 try:
                     message = loads(data)
 
@@ -178,9 +183,9 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         await manager.send_message(event)
 
                 except JSONDecodeError:
-                    LOG.error(f"[WEBSOCKET ] Invalid JSON received: {data}")
+                    LOG.error(f"[WEBSOCKET ] Invalid JSON received: {_escape_braces(data)}")
                 except Exception as e:
-                    LOG.error(f"[WEBSOCKET ] Exception data: {data}")
+                    LOG.error(f"[WEBSOCKET ] Exception data: {_escape_braces(data)}")
                     LOG.error(f"[WEBSOCKET ] Exception: {e}", exc_info=True)
 
         except WebSocketDisconnect:
