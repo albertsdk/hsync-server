@@ -123,6 +123,9 @@ class Settings(BaseSettings):
     cors_enabled: bool = Field(default=False, description="Enable CORS middleware")
     cors_origins: str = Field(default="", description="Comma-separated allowed origins")
 
+    # Compression Configuration
+    compression_enabled: bool = Field(default=True, description="Enable zstd compression for file transfers")
+
     # SSL/TLS Configuration
     ssl_enabled: bool = Field(default=False, description="Enable HTTPS/WSS")
     ssl_certfile: str = Field(default="", description="Path to SSL certificate file")
@@ -199,6 +202,7 @@ HSYNC_SSL_CERTFILE: str = _get_settings().ssl_certfile
 HSYNC_SSL_KEYFILE: str = _get_settings().ssl_keyfile
 HSYNC_SSL_CERT_DIR: str = _get_settings().ssl_cert_dir
 HSYNC_LOG_LEVEL: str = _get_settings().log_level
+HSYNC_COMPRESSION_ENABLED: bool = _get_settings().compression_enabled
 
 
 # =============================================================================
@@ -234,3 +238,8 @@ def get_ssl_keyfile() -> str:
 def get_ssl_cert_dir() -> str:
     """Get SSL certificate directory from environment (late binding)."""
     return get_settings().ssl_cert_dir
+
+
+def get_compression_enabled() -> bool:
+    """Get compression enabled flag from environment (late binding)."""
+    return get_settings().compression_enabled

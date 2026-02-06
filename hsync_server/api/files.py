@@ -41,7 +41,13 @@ from typing import Optional
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import is_valid_permission_format, update_file_timestamp
 from hsync_server.api.utils import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
-from hsync_server.config import HSYNC_BUCKETS, HSYNC_MAX_UPLOAD_SIZE
+from hsync_server.compression import (
+    compress_data,
+    decompress_data,
+    should_compress,
+    CONTENT_ENCODING_ZSTD,
+)
+from hsync_server.config import HSYNC_BUCKETS, HSYNC_MAX_UPLOAD_SIZE, get_compression_enabled
 from hsync_server.models.dir import is_hidden_dir
 from hsync_server.models.file import is_hidden_file
 from hsync_server.exceptions import (
@@ -88,6 +94,8 @@ async def upload_file(
     permissions: str = Form("-rw-rw-r--"),
     offset: int = Form(0),
     size: int = Form(0),
+    compressed: str = Form("false"),
+    compressed_size: int = Form(0),
 ) -> JSONResponse:
     """
     Upload a file to a bucket with resumable upload support.
@@ -125,6 +133,7 @@ async def upload_file(
     file_location_tmp = None
     partial_file_path = None
     is_resumable = offset > 0
+    is_compressed = compressed.lower() == "true"
     try:
         # Validate inputs
         if not is_valid_bucket(bucket):
@@ -222,8 +231,21 @@ async def upload_file(
                         )
                     await temp_file.write(chunk)
 
+            # Handle compressed upload - decompress the file
+            if is_compressed and total_bytes > 0:
+                import aiofiles
+                async with aiofiles.open(file_location_tmp, "rb") as f:
+                    compressed_data = await f.read()
+                LOG.debug(
+                    f"Decompressing uploaded file: {total_bytes} bytes -> ~{size} bytes"
+                )
+                decompressed_data = decompress_data(compressed_data)
+                async with aiofiles.open(file_location_tmp, "wb") as f:
+                    await f.write(decompressed_data)
+                total_bytes = len(decompressed_data)
+
             # Check if this is partial upload (size provided but not fully received)
-            if size > 0 and total_bytes < size:
+            if size > 0 and total_bytes < size and not is_compressed:
                 # Move temp file to partial file location
                 move(file_location_tmp, partial_file_path)
                 file_location_tmp = None
@@ -299,11 +321,12 @@ async def upload_file(
 @limiter.limit(RATE_LIMIT_DOWNLOAD)
 async def download_file(
     request: Request, bucket: str, filename: str
-) -> FileResponse:
+):
     """
-    Download a file from a bucket.
+    Download a file from a bucket with optional zstd compression.
 
     Streams the file content as a response with appropriate headers.
+    If compression is enabled and beneficial, compresses the file before sending.
 
     Args:
         request: The incoming FastAPI request.
@@ -311,13 +334,15 @@ async def download_file(
         filename: Path to the file within the bucket.
 
     Returns:
-        FileResponse with the file content for download.
+        FileResponse or Response with the file content for download.
 
     Raises:
         InvalidBucketNameError: If bucket name is invalid.
         InvalidPathError: If path is invalid.
         HSyncFileNotFoundError: If file does not exist.
     """
+    from fastapi.responses import Response
+
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
     if not is_valid_dir(filename):
@@ -328,6 +353,37 @@ async def download_file(
     if not await isfile(file):
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
 
+    file_size = getsize(file)
+
+    # Check if compression should be used:
+    # - Compression is enabled on server
+    # - File is compressible (not too small, not pre-compressed)
+    # - No Range header (resume requests skip compression)
+    has_range_header = "range" in request.headers
+    use_compression = (
+        get_compression_enabled()
+        and should_compress(filename, file_size)
+        and not has_range_header
+    )
+
+    if use_compression:
+        # Read and compress file
+        compressed_data = compress_data(open(file, "rb").read())
+        compression_ratio = len(compressed_data) / file_size * 100
+        LOG.debug(
+            f"Compressed download: {file_size} -> {len(compressed_data)} bytes "
+            f"({compression_ratio:.1f}%)"
+        )
+        return Response(
+            content=compressed_data,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Encoding": CONTENT_ENCODING_ZSTD,
+                "Content-Disposition": f'attachment; filename="{filename.split("/")[-1]}"',
+            },
+        )
+
+    # Standard download (streaming, supports Range requests)
     return FileResponse(file, filename=filename)
 
 
