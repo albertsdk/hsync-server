@@ -13,15 +13,10 @@ This module provides utility functions for file operations:
 - Timestamp updates
 """
 
-import logging
-
 from datetime import datetime, timezone
+from loguru import logger as LOG
 from os import utime
 from re import match
-
-
-# Logger instance for this module
-LOG = logging.getLogger(__name__)
 
 
 def is_valid_permission_format(permissions: str) -> bool:

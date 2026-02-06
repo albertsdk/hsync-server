@@ -23,16 +23,12 @@ Examples: "100/minute", "1000/hour", "10/second"
 import os
 
 from fastapi import Request, Response
-from logging import getLogger
+from loguru import logger as LOG
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.responses import JSONResponse
-
-
-# Logger instance for this module
-LOG = getLogger("main")
 
 
 # -----------------------------------------------------------------------------

@@ -13,10 +13,16 @@ It also preloads MD5 hashes for all existing files in the buckets
 directory on startup.
 """
 
-import logging
+import sys
 import time
 
-import sys
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from loguru import logger as LOG
+from prometheus_fastapi_instrumentator import Instrumentator
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from .api import buckets, events, files, health  # noqa: F401
 from .config import HSYNC_API_KEY, HSYNC_BUCKETS, HSYNC_CORS_ENABLED, HSYNC_CORS_ORIGINS
@@ -26,16 +32,6 @@ from .hashes import set_md5_hashes
 from .middleware import RequestIdMiddleware, VersionMiddleware
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .routers import auth_router, public_router
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
-from prometheus_fastapi_instrumentator import Instrumentator
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
-
-
-# Logger instance for this module (uses __name__ for module-level filtering)
-LOG = logging.getLogger(__name__)
 
 # =============================================================================
 # Security Validation at Startup

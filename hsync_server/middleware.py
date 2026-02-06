@@ -12,18 +12,15 @@ This module provides middleware for request processing, including:
 - Version compatibility checking between client and server
 """
 
-import logging
 import uuid
 
+from loguru import logger as LOG
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from .constants import HSYNC_VERSION, HEADER_CLIENT_VERSION, HEADER_SERVER_VERSION
 from .logger import get_request_id, set_request_id
-
-
-LOG = logging.getLogger(__name__)
 
 
 def check_version_compatibility(

@@ -17,12 +17,11 @@ All endpoints require API key authentication via Bearer token.
 Rate limiting is applied to protect against abuse.
 """
 
-import logging
-
 from aiofiles.ospath import isfile
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from loguru import logger as LOG
 from os import makedirs, remove, walk
 from os.path import dirname, exists, getsize
 from shutil import move
@@ -64,10 +63,6 @@ from hsync_server.rate_limiter import (
     RATE_LIMIT_UPLOAD,
 )
 from hsync_server.routers import auth_router
-
-
-# Logger instance for this module (uses __name__ for module-level filtering)
-LOG = logging.getLogger(__name__)
 
 
 @auth_router.post("/api/v1/buckets/{bucket}/files")

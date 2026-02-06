@@ -13,19 +13,14 @@ This module provides:
 - Mapping from custom exceptions to HTTP status codes
 """
 
-import logging
 from json import dumps as json_dumps
+from typing import Any, Optional
 
 from fastapi import FastAPI, Request, status
-
-
-def _safe_json(obj: object) -> str:
-    """Serialize object to JSON and escape braces for loguru."""
-    return json_dumps(obj).replace("{", "{{").replace("}", "}}")
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from loguru import logger as LOG
 from pydantic import BaseModel
-from typing import Any, Optional
 
 from .exceptions import (
     HSyncError,
@@ -38,8 +33,9 @@ from .exceptions import (
 )
 
 
-# Logger instance for this module (uses __name__ for module-level filtering)
-LOG = logging.getLogger(__name__)
+def _safe_json(obj: object) -> str:
+    """Serialize object to JSON and escape braces for loguru."""
+    return json_dumps(obj).replace("{", "{{").replace("}", "}}")
 
 
 class ErrorResponse(BaseModel):
