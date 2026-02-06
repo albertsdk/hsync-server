@@ -2,7 +2,7 @@
 name = "hsync-server"
 version = "1.0.0"
 description = "HSYNC File Server"
-authors = ["Alberto Basso <alberto.sdk@gmail.com>"]
+authors = ["Alberto Basso"]
 readme = "README.md"
 packages = [{include = "hsync_server"}]
 
