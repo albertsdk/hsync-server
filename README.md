@@ -239,7 +239,7 @@ HSYNC_API_KEY="your-secret-key" ./docker.sh start
 ### Debug Container
 
 ```bash
-docker run --rm -it --entrypoint=/bin/sh hsync:0.1.0
+docker run --rm -it --entrypoint=/bin/sh hsync:1.0.0
 ```
 
 ## REST API
@@ -439,4 +439,8 @@ Authorization: Bearer {HSYNC_API_KEY}
 
 ## Version
 
-0.1.0
+1.0.0
+
+## License
+
+This project is licensed under the [Mozilla Public License 2.0](LICENSE).
