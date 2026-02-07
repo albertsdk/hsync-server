@@ -221,20 +221,34 @@ class TestIsValidBucket:
         """Valid bucket names are accepted."""
         assert is_valid_bucket("mybucket") is True
         assert is_valid_bucket("my-bucket") is True
+        assert is_valid_bucket("my_bucket") is True
         assert is_valid_bucket("bucket123") is True
+        assert is_valid_bucket("my-bucket_123") is True
+        assert is_valid_bucket("a") is True
+        assert is_valid_bucket("a1") is True
 
-    def test_invalid_bucket_with_underscore(self):
-        """Bucket names with underscores are rejected."""
-        assert is_valid_bucket("my_bucket") is False
+    def test_invalid_bucket_start_end(self):
+        """Bucket names starting/ending with hyphen or underscore are rejected."""
+        assert is_valid_bucket("-bucket") is False
+        assert is_valid_bucket("bucket-") is False
+        assert is_valid_bucket("_bucket") is False
+        assert is_valid_bucket("bucket_") is False
 
     def test_invalid_bucket_with_dots(self):
-        """Bucket names with double dots are rejected."""
+        """Bucket names with dots are rejected."""
         assert is_valid_bucket("my..bucket") is False
         assert is_valid_bucket("../escape") is False
+        assert is_valid_bucket("my.bucket") is False
 
     def test_invalid_bucket_empty(self):
         """Empty bucket name is rejected."""
         assert is_valid_bucket("") is False
+
+    def test_invalid_bucket_special_chars(self):
+        """Bucket names with special characters are rejected."""
+        assert is_valid_bucket("my@bucket") is False
+        assert is_valid_bucket("my bucket") is False
+        assert is_valid_bucket("my/bucket") is False
 
 
 class TestIsValidDir:

@@ -377,19 +377,6 @@ class TestFileListValidation:
         assert "HSYNC-1002" in response.text
 
     @pytest.mark.asyncio
-    async def test_list_files_invalid_sync_order(self, client: AsyncClient, temp_buckets_dir: str):
-        """List files with invalid sync_order returns 400."""
-        bucket_path = os.path.join(temp_buckets_dir, "orderbucket")
-        os.makedirs(bucket_path)
-
-        response = await client.get(
-            "/api/v1/buckets/orderbucket/files",
-            params={"sync_order": "invalid"}
-        )
-        assert response.status_code == 400
-        assert "HSYNC-1004" in response.text
-
-    @pytest.mark.asyncio
     async def test_list_files_bucket_not_found(self, client: AsyncClient):
         """List files from non-existent bucket returns 404."""
         response = await client.get("/api/v1/buckets/nonexistentbucket/files")

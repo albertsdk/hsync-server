@@ -49,7 +49,6 @@ from hsync_server.exceptions import (
     InvalidFilenameError,
     InvalidPathError,
     InvalidPermissionFormatError,
-    InvalidSyncOrderError,
     UploadError,
 )
 from hsync_server.path_validation import is_valid_filename
@@ -462,18 +461,17 @@ async def get_files(
     request: Request,
     bucket: str,
     path: Optional[str] = None,
-    sync_order: str = "mtime",
 ) -> JSONResponse:
     """
     List all files in a bucket or subdirectory.
 
     Recursively walks the directory tree and returns metadata for
-    all non-hidden files, sorted by the specified timestamp field.
+    all non-hidden files, sorted by mtime ascending (oldest first)
+    to prioritize updating older files.
 
     Args:
         bucket: Name of the bucket to list files from.
         path: Optional subdirectory path within the bucket.
-        sync_order: Sort order ('mtime' or 'ctime').
 
     Returns:
         JSON response with list of file metadata dictionaries.
@@ -481,7 +479,6 @@ async def get_files(
     Raises:
         InvalidBucketNameError: If bucket name is invalid.
         InvalidPathError: If path is invalid.
-        InvalidSyncOrderError: If sync_order is invalid.
         BucketNotFoundError: If bucket does not exist.
     """
     # Validate inputs
@@ -489,13 +486,6 @@ async def get_files(
         raise InvalidBucketNameError(details={"bucket": bucket})
     if path and not is_valid_dir(path):
         raise InvalidPathError(details={"path": path})
-
-    valid_orders = ["mtime", "ctime"]
-    if sync_order not in valid_orders:
-        raise InvalidSyncOrderError(
-            message=f"Invalid sync order '{sync_order}'. Must be one of {valid_orders}.",
-            details={"sync_order": sync_order, "valid_orders": valid_orders},
-        )
 
     # Construct directory path
     dir = f"{HSYNC_BUCKETS}/{bucket}/{path or ''}".rstrip("/")
@@ -526,8 +516,8 @@ async def get_files(
                 )
                 file_list.append(file_data)
 
-    # Sort by specified timestamp field
-    file_list.sort(key=lambda x: x.get(sync_order))
+    # Sort by mtime ascending (oldest first) to prioritize updating older files
+    file_list.sort(key=lambda x: x.get("mtime", 0))
 
     return JSONResponse(
         status_code=200,
