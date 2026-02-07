@@ -401,4 +401,4 @@ Or set `HSYNC_LOG_LEVEL=debug` in your environment file.
 - [Reverse Proxy Guide](reverse-proxy.md) — nginx and Traefik configuration.
 - [Sync Flow](sync-flow.md) — end-to-end synchronization behavior.
 - [FAQ](faq.md) — frequently asked questions.
-- [Client Examples](../../hsync-client/docs/examples.md) — usage examples for the HSYNC client.
+- [Client Examples](https://github.com/albertobasso/hsync-client/blob/main/docs/examples.md) — usage examples for the HSYNC client.
