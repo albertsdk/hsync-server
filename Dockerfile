@@ -55,9 +55,9 @@ COPY hsync-server/hsync_server /project/hsync_server
 # Setup directories and permissions in single layer
 RUN addgroup -S hsync \
     && adduser -S -G hsync -h /project hsync \
-    && mkdir -p buckets tmp certs \
+    && mkdir -p buckets state tmp certs \
     && ln -s /venv /project/.venv \
-    && chown -R hsync:hsync buckets tmp certs
+    && chown -R hsync:hsync buckets state tmp certs
 
 # Set environment variables with defaults
 # These can be overridden via --env-file or -e flags
@@ -68,6 +68,7 @@ ENV PATH="/project/.venv/bin:$PATH" \
     HSYNC_WORKERS=1 \
     HSYNC_TZ=UTC \
     HSYNC_BUCKETS=/project/buckets \
+    HSYNC_STATE_DIR=/project/state \
     HSYNC_SSL_CERT_DIR=/project/certs
 
 # Expose default port (can be changed via HSYNC_PORT)

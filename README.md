@@ -48,9 +48,9 @@ corporate networks, cloud environments, and restricted infrastructures.
 | Unison | SSH or direct socket | ❌ | ❌ | ✅ | P2P |
 | Rclone | S3, SFTP, etc. | ⚠️ ⁴ | ❌ | ⚠️ ³ | Client-Server |
 
-> ¹ Local filesystem monitoring via desktop client; no native push notifications (WebSocket) like HSYNC.
-> ² Seafile uses a proprietary block-based internal storage format; files are not directly accessible from the filesystem without the Seafile server.
-> ³ Rclone with the `crypt` backend stores files in an opaque encrypted format; with other backends (e.g., SFTP, local) files remain in their original format.
+> ¹ Local filesystem monitoring via desktop client; no native push notifications (WebSocket) like HSYNC.<br>
+> ² Seafile uses a proprietary block-based internal storage format; files are not directly accessible from the filesystem without the Seafile server.<br>
+> ³ Rclone with the `crypt` backend stores files in an opaque encrypted format; with other backends (e.g., SFTP, local) files remain in their original format.<br>
 > ⁴ Rclone's HTTP backend is read-only (download-only) and does not perform synchronization; Rclone's core operation relies on other protocols (S3, SFTP, etc.).
 
 **When to choose HSYNC Server:**
@@ -153,6 +153,7 @@ Key variables:
 | `HSYNC_PORT` | Server port | `9753` |
 | `HSYNC_LOG_LEVEL` | Log level | `info` |
 | `HSYNC_BUCKETS` | Directory for bucket data storage | `./buckets` |
+| `HSYNC_STATE_DIR` | Directory for `syncstate.db` (causal versions and tombstones) | `./state` |
 | `HSYNC_WORKERS` | Number of uvicorn worker processes | `1` |
 | `HSYNC_MAX_UPLOAD_SIZE` | Maximum upload size in bytes | `10737418240` (10 GiB) |
 

@@ -141,6 +141,7 @@ services:
       - .env
     volumes:
       - hsync-buckets:/project/buckets
+      - hsync-state:/project/state
       - hsync-certs:/project/certs
     healthcheck:
       test:
@@ -159,6 +160,8 @@ services:
 volumes:
   hsync-buckets:
     name: hsync-server-buckets
+  hsync-state:
+    name: hsync-server-state
   hsync-certs:
     name: hsync-server-certs
 EOF
@@ -178,6 +181,7 @@ HSYNC_API_KEY=${api_key}
 HSYNC_SSL_ENABLED=true
 HSYNC_SSL_KEYFILE_PASSWORD=${keyfile_password}
 HSYNC_BUCKETS=/project/buckets
+HSYNC_STATE_DIR=/project/state
 HSYNC_SSL_CERT_DIR=/project/certs
 EOF
     chmod 600 "${INSTALL_DIR}/.env"

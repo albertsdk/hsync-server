@@ -22,9 +22,9 @@ from hsync_server.api.event_handlers import (
 
 @pytest.fixture(autouse=True)
 def _isolate_tombstones(tmp_path):
-    """Keep tombstone side-cars inside the test tmp dir and reset the cache."""
+    """Keep tombstone state inside the test tmp dir and reset the cache."""
     tombstones.reset_cache()
-    with patch.object(tombstones, "get_buckets_path", return_value=str(tmp_path)):
+    with patch.object(tombstones, "get_state_dir", return_value=str(tmp_path)):
         yield
     tombstones.reset_cache()
 

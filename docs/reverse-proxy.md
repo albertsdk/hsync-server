@@ -82,6 +82,7 @@ services:
       - ./prod.env
     volumes:
       - hsync-buckets:/project/buckets
+      - hsync-state:/project/state
       - hsync-certs:/project/certs
       - hsync-logs:/project/logs
     labels:
@@ -95,6 +96,7 @@ services:
 
 volumes:
   hsync-buckets:
+  hsync-state:
   hsync-certs:
   hsync-logs:
   traefik-le:

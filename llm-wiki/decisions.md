@@ -14,12 +14,14 @@ the server-local choices not big enough for an ADR.
 | [0005 protocol-versioning](../../hsync-common/docs/internal/adr/0005-protocol-versioning.md) | REST `VersionMiddleware` hard-fail 426 (`middleware.py:111`); WS handshake mismatch (`api/events.py`) |
 | [0022 causal-vector-clock-conflict-model](../../hsync-common/docs/internal/adr/0022-causal-vector-clock-conflict-model.md) | per-bucket version stores (`versions.py`) + causal upload arbitration (`arbitration.py`, shared by upload and delta-apply, `FileLockManager` critical section); SHA-256 dedup (`hashes.py`) + checksum verify on upload |
 | [0023 corrected-mtime-tie-break](../../hsync-common/docs/internal/adr/0023-corrected-mtime-tie-break.md) | same arbitration core, now with the chronological tie-break: `arbitrate_upload` takes `incoming_corrected_mtime` (form field on upload and metadata on delta/apply), compares it with the stored `corrected_mtime`, falls back to SHA-256 when unknown/tied, records the winner via `record_version` and exposes it in listings (`server_version_info`) and the 201 `version` object |
+| [0025 sqlite-external-state-store](../../hsync-common/docs/internal/adr/0025-sqlite-external-state-store.md) | `get_state_dir()`; `versions.py` / `tombstones.py` (`buckets` table, no in-bucket marker); `.hsyncnodeid` next to `syncstate.db` |
 
 ## Server-local decisions
 
-- **No database.** State = filesystem + an in-memory SHA-256 cache rebuilt at
-  startup (`main.py:58` → `hashes.py:73`). Simplicity + NAS-friendly; survives
-  restarts via the files themselves and side-cars.
+- **Filesystem for user data; SQLite for causal metadata.** Bucket files live
+  under `get_buckets_path()`. Versions and tombstones live in
+  `get_state_dir()/syncstate.db` (ADR-0025). SHA-256 cache is still in-memory
+  and rebuilt at startup (`main.py:58` → `hashes.py:73`).
 - **Per-bucket WS pools** (`connection_manager.py:71`) instead of one global hub:
   isolation + smaller broadcast fan-out; global slot accounting still caps total
   and per-IP connections (`config.py:457`/`:462`).

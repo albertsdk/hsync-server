@@ -32,8 +32,8 @@ utilities.
 - Protocol versions enforced from common SSOT (`hsync_common.protocol.handshake`):
   REST in `VersionMiddleware` (`middleware.py:111`), WS in `events.py` handshake.
 - Auth: Bearer API key, constant-time compare (`routers.py:69`).
-- Persistence: plain filesystem under `get_buckets_path()` (`config.py:362`);
-  no database. SHA-256 cache and tombstones are in-memory + side-car files.
+- Persistence: files under `get_buckets_path()`; causal versions/tombstones in
+  `get_state_dir()/syncstate.db` (ADR-0025). SHA-256 cache is in-memory.
 
 ## Conventions used in this wiki
 

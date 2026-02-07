@@ -26,12 +26,13 @@ recreations and upgrades:
 | Volume | Container path | Contents |
 |--------|---------------|----------|
 | `hsync-buckets` | `/project/buckets` | All uploaded files, one sub-directory per bucket |
+| `hsync-state` | `/project/state` | `syncstate.db` (causal versions and tombstones) |
 | `hsync-certs` | `/project/certs` | Auto-generated SSL certificates (if using built-in SSL) |
 | `hsync-logs` | `/project/logs` | Log files (if `HSYNC_LOG_FILE` is set) |
 
-> **Note**: Tombstones are stored inside the buckets directory
-> (`/project/buckets/.tombstones/`), so they are automatically included in the
-> bucket volume backup.
+> **Note**: Causal versions and tombstones live in `HSYNC_STATE_DIR`
+> (`/project/state/syncstate.db`), not inside the buckets volume. Back up
+> both volumes.
 
 With `docker.sh`, these volumes are managed automatically:
 - `hsync-server-certs` — named volume for SSL certificates (persists across
@@ -40,7 +41,8 @@ With `docker.sh`, these volumes are managed automatically:
 
 The recommended Compose installer uses stable named volumes:
 
-- `hsync-server-buckets` — files and tombstones
+- `hsync-server-buckets` — user files
+- `hsync-server-state` — `syncstate.db` (versions and tombstones)
 - `hsync-server-certs` — the persistent self-signed certificate and key
 
 ---
@@ -81,10 +83,11 @@ docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR"
 install -m 600 "$INSTALL_DIR/.env" "$BACKUP_DIR/hsync-config-$TIMESTAMP.env"
 docker run --rm \
   -v hsync-server-buckets:/snapshot/buckets:ro \
+  -v hsync-server-state:/snapshot/state:ro \
   -v hsync-server-certs:/snapshot/certs:ro \
   -v "$BACKUP_DIR:/backup" \
   alpine:3.22 tar -czf "/backup/hsync-volumes-$TIMESTAMP.tar.gz" \
-    -C /snapshot buckets certs
+    -C /snapshot buckets state certs
 docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR" start
 ```
 
@@ -102,25 +105,28 @@ ARCHIVE="$HOME/hsync-backups/hsync-volumes-20260101-120000.tar.gz"
 CONFIG_BACKUP="$HOME/hsync-backups/hsync-config-20260101-120000.env"
 
 docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR" stop
-for volume in hsync-server-buckets-restored hsync-server-certs-restored; do
+for volume in hsync-server-buckets-restored hsync-server-state-restored hsync-server-certs-restored; do
   if docker volume inspect "$volume" >/dev/null 2>&1; then
     echo "Refusing to overlay existing restore volume: $volume" >&2
     exit 1
   fi
 done
 docker volume create hsync-server-buckets-restored
+docker volume create hsync-server-state-restored
 docker volume create hsync-server-certs-restored
 docker run --rm \
   -v hsync-server-buckets-restored:/restore/buckets \
+  -v hsync-server-state-restored:/restore/state \
   -v hsync-server-certs-restored:/restore/certs \
   -v "$(dirname "$ARCHIVE"):/backup:ro" \
   alpine:3.22 tar -xzf "/backup/$(basename "$ARCHIVE")" -C /restore
 install -m 600 "$CONFIG_BACKUP" "$INSTALL_DIR/.env"
 ```
 
-After inspecting the restored volumes, change both volume `name` values in
-`compose.yaml` to `hsync-server-buckets-restored` and
-`hsync-server-certs-restored`, start the server, and run the verification below.
+After inspecting the restored volumes, change the volume `name` values in
+`compose.yaml` to `hsync-server-buckets-restored`,
+`hsync-server-state-restored` and `hsync-server-certs-restored`, start the
+server, and run the verification below.
 Keep the original volumes until the restore is confirmed.
 
 ### Backup strategies
@@ -139,6 +145,7 @@ mkdir -p "$BACKUP_DIR"
 
 ./docker.sh stop
 tar -czf "$BACKUP_DIR/hsync-buckets-$TIMESTAMP.tar.gz" -C buckets .
+tar -czf "$BACKUP_DIR/hsync-state-$TIMESTAMP.tar.gz" -C state .
 ./docker.sh start --env-file prod.env
 
 # Rotate old backups

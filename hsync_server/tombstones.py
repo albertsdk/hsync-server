@@ -8,15 +8,23 @@
 Per-bucket tombstone management for HSYNC Server.
 
 Wraps :class:`hsync_common.models.tombstone.TombstoneStore` with one persisted
-store per bucket, backed by a hidden side-car file at the bucket root. Deletion
-markers let a client that was offline at deletion time avoid resurrecting the
-file during a full reconciliation.
+store per bucket, backed by the installation ``syncstate.db`` and keyed by a
+folder UUID in the ``buckets`` table (ADR-0025). No marker is written into
+served bucket directories. Deletion markers let a client that was offline at
+deletion time avoid resurrecting the file during a full reconciliation.
 """
 
-from hsync_common.constants import HSYNCTOMBSTONES_FILENAME
+from __future__ import annotations
+
+import os
+import threading
+from pathlib import Path
+
+from hsync_common.constants import SYNCSTATE_DB_FILENAME
+from hsync_common.models.sqlstore import get_state_db, reset_state_db_cache
 from hsync_common.models.tombstone import TombstoneStore, relpath_in_bucket
 
-from hsync_server.config import get_buckets_path, get_tombstone_ttl_days
+from hsync_server.config import get_state_dir, get_tombstone_ttl_days
 
 __all__ = [
     "clear_deletion",
@@ -26,20 +34,52 @@ __all__ = [
     "reset_cache",
 ]
 
-# Cache of per-bucket stores, keyed by bucket name.
 _stores: dict[str, TombstoneStore] = {}
+_locks: dict[str, threading.RLock] = {}
+_locks_guard = threading.Lock()
+_pid: int | None = None
 
 
-def _store_path(bucket: str) -> str:
-    """Return the side-car file path for a bucket's tombstones."""
-    return f"{get_buckets_path()}/{bucket}/{HSYNCTOMBSTONES_FILENAME}"
+def _rebind_after_fork() -> None:
+    """Drop inherited SQLite handles after a worker fork."""
+    global _pid
+    current = os.getpid()
+    if _pid is None:
+        _pid = current
+        return
+    if _pid != current:
+        _stores.clear()
+        _locks.clear()
+        reset_state_db_cache()
+        _pid = current
+
+
+def _bucket_lock(bucket: str) -> threading.RLock:
+    with _locks_guard:
+        lock = _locks.get(bucket)
+        if lock is None:
+            lock = threading.RLock()
+            _locks[bucket] = lock
+        return lock
+
+
+def _db_path() -> str:
+    return str(Path(get_state_dir()) / SYNCSTATE_DB_FILENAME)
 
 
 def get_tombstone_store(bucket: str) -> TombstoneStore:
     """Return the cached store for a bucket, loading and pruning it on first use."""
+    _rebind_after_fork()
     store = _stores.get(bucket)
     if store is None:
-        store = TombstoneStore(path=_store_path(bucket), ttl_days=get_tombstone_ttl_days())
+        db_path = _db_path()
+        folder_id = get_state_db(db_path).ensure_bucket_id(bucket)
+        store = TombstoneStore(
+            db_path=db_path,
+            folder_id=folder_id,
+            ttl_days=get_tombstone_ttl_days(),
+            canonical_path=f"bucket:{bucket}",
+        )
         store.load()
         store.prune()
         _stores[bucket] = store
@@ -64,16 +104,17 @@ def record_deletion(
     relpath = relpath_in_bucket(abs_path, bucket_dir)
     if not relpath:
         return
-    store = get_tombstone_store(bucket)
-    store.record(
-        relpath,
-        sha256sum=sha256sum,
-        origin_cid=origin_cid,
-        prev_vclock=prev_vclock,
-        timestamp=timestamp,
-    )
-    store.prune()
-    store.save()
+    with _bucket_lock(bucket):
+        store = get_tombstone_store(bucket)
+        store.record(
+            relpath,
+            sha256sum=sha256sum,
+            origin_cid=origin_cid,
+            prev_vclock=prev_vclock,
+            timestamp=timestamp,
+        )
+        store.prune()
+        store.save()
 
 
 def clear_deletion(bucket: str, bucket_dir: str, abs_path: str) -> None:
@@ -85,11 +126,13 @@ def clear_deletion(bucket: str, bucket_dir: str, abs_path: str) -> None:
     relpath = relpath_in_bucket(abs_path, bucket_dir)
     if not relpath:
         return
-    store = get_tombstone_store(bucket)
-    if store.clear(relpath):
-        store.save()
+    with _bucket_lock(bucket):
+        store = get_tombstone_store(bucket)
+        if store.clear(relpath):
+            store.save()
 
 
 def reset_cache() -> None:
     """Clear the in-memory store cache (primarily for tests)."""
     _stores.clear()
+    _locks.clear()

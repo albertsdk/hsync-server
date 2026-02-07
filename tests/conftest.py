@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 from collections.abc import AsyncGenerator, Generator
+from pathlib import Path
 from unittest.mock import patch
 
 import httpx
@@ -79,8 +80,8 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI]:
             "hsync_server.api.files.delta.tokens.get_buckets_path", return_value=temp_buckets_dir
         ),
         patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
-        patch("hsync_server.tombstones.get_buckets_path", return_value=temp_buckets_dir),
-        patch("hsync_server.versions.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.tombstones.get_state_dir", return_value=temp_buckets_dir),
+        patch("hsync_server.versions.get_state_dir", return_value=temp_buckets_dir),
     ):
         from slowapi.errors import RateLimitExceeded
         from slowapi.middleware import SlowAPIMiddleware
@@ -172,16 +173,27 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI]:
 
 
 @pytest.fixture(autouse=True)
-def reset_tombstone_cache() -> Generator[None]:
-    """Clear the per-bucket tombstone and version store caches so tests stay isolated."""
+def reset_tombstone_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
+    """Isolate causal state and clear store caches so tests stay isolated."""
+    from hsync_common.models.sqlstore import reset_state_db_cache
+
+    from hsync_server.config import get_settings
     from hsync_server.tombstones import reset_cache as reset_tombstones
     from hsync_server.versions import reset_cache as reset_versions
 
+    state_dir = str(tmp_path / "hsync_state")
+    monkeypatch.setenv("HSYNC_STATE_DIR", state_dir)
+    get_settings.cache_clear()
+    monkeypatch.setattr("hsync_server.versions.get_state_dir", lambda: state_dir)
+    monkeypatch.setattr("hsync_server.tombstones.get_state_dir", lambda: state_dir)
     reset_tombstones()
     reset_versions()
+    reset_state_db_cache()
     yield
     reset_tombstones()
     reset_versions()
+    reset_state_db_cache()
+    get_settings.cache_clear()
 
 
 @pytest.fixture
@@ -192,8 +204,8 @@ async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[Asy
         patch("hsync_server.api.files.list.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
-        patch("hsync_server.tombstones.get_buckets_path", return_value=temp_buckets_dir),
-        patch("hsync_server.versions.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.tombstones.get_state_dir", return_value=temp_buckets_dir),
+        patch("hsync_server.versions.get_state_dir", return_value=temp_buckets_dir),
     ):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(
@@ -212,8 +224,8 @@ async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGener
         patch("hsync_server.api.files.list.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
-        patch("hsync_server.tombstones.get_buckets_path", return_value=temp_buckets_dir),
-        patch("hsync_server.versions.get_buckets_path", return_value=temp_buckets_dir),
+        patch("hsync_server.tombstones.get_state_dir", return_value=temp_buckets_dir),
+        patch("hsync_server.versions.get_state_dir", return_value=temp_buckets_dir),
     ):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -332,6 +344,7 @@ def _start_live_server(
         {
             "HSYNC_API_KEY": BB_API_KEY,
             "HSYNC_BUCKETS": buckets_dir,
+            "HSYNC_STATE_DIR": buckets_dir + "_state",
             # Raise limits so the behavioural suite never trips a 429; individual
             # rate-limit tests spawn a dedicated low-limit server instead.
             "HSYNC_RATE_LIMIT_DEFAULT": "1000000/minute",

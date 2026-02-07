@@ -117,6 +117,10 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("HSYNC_BUCKETS", "HSYNC_BUCKETS_PATH"),
         description="Path to buckets storage directory",
     )
+    state_dir: str = Field(
+        default=f"{_HSYNC_PATH}/state",
+        description="Directory for the installation causal-state database (syncstate.db)",
+    )
 
     # CORS Configuration
     cors_enabled: bool = Field(default=False, description="Enable CORS middleware")
@@ -359,6 +363,14 @@ def get_api_key() -> str:
 def get_buckets_path() -> str:
     """Get buckets storage path from environment (late binding)."""
     return get_settings().buckets_path
+
+
+def get_state_dir() -> str:
+    """Get the installation state directory (late binding).
+
+    Holds ``syncstate.db`` (ADR-0025). Override with ``HSYNC_STATE_DIR``.
+    """
+    return get_settings().state_dir
 
 
 def get_rate_limit_default() -> str:

@@ -161,8 +161,9 @@ from filling up the root filesystem and causing system-wide issues:
 
 ```bash
 # Example: mount a dedicated volume at /data/hsync
-sudo mkdir -p /data/hsync/buckets
+sudo mkdir -p /data/hsync/buckets /data/hsync/state
 export HSYNC_BUCKETS=/data/hsync/buckets
+export HSYNC_STATE_DIR=/data/hsync/state
 ```
 
 ---

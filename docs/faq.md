@@ -54,9 +54,10 @@ proxy's `https://` URL. See [Architecture](internal/architecture.md).
 
 ### Where are my files stored?
 
-Under the buckets directory (`/project/buckets` in the container), one
-sub-directory per bucket, as ordinary files — so backing up is just copying that
-directory. See [Architecture](internal/architecture.md).
+User files live under the buckets directory (`/project/buckets` in the
+container), one sub-directory per bucket. Causal versions and deletion
+markers live in `HSYNC_STATE_DIR` (`/project/state/syncstate.db`). Back up
+both. See [Architecture](internal/architecture.md).
 
 When clients sync with `--ignore-delete` (pure backup mode), the bucket
 accumulates append-only history: files removed on the client stay on the

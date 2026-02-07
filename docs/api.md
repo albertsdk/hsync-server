@@ -156,7 +156,8 @@ corrected_mtime=1737072000
 
 > `sha256sum` is **required**: the server verifies the received bytes against
 > it and rejects the upload (400) on mismatch. Internal sync-engine filenames
-> (`.hsyncignore`, `.hsyncstate`, `.hsynctombstones`, `*.part`) are rejected,
+> (`.hsyncignore`, `.hsyncfolder`, leftover `.hsyncstate` / `.hsynctombstones`,
+> `*.part`) are rejected,
 > and `path`/`filename` must resolve inside the target bucket (no `..`,
 > absolute paths or backslashes). Compressed uploads (`compressed=true`) must
 > declare the real file `size` and are capped at it when decompressed.

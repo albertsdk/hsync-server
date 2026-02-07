@@ -29,7 +29,7 @@ Delta transfer is attempted automatically when **all** of these conditions are m
 
 1. **File size threshold**: file is ≥ 256 KB (server mode) or ≥ 1 MB (LAN mode)
 2. **Base hash exists**: a previously synced version of the file is recorded in
-   `.hsyncstate` (three-way merge state)
+   the installation `syncstate.db` (three-way merge state)
 3. **Direction check**:
    - **Upload**: local file changed (`local_sha256 != base_hash`)
    - **Download**: local file is still the base (`local_sha256 == base_hash`) and

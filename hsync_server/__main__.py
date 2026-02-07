@@ -188,6 +188,7 @@ def main(
 
         HSYNC_API_KEY           API key for authentication (required)
         HSYNC_BUCKETS           Path to buckets directory
+        HSYNC_STATE_DIR         Path to syncstate.db directory
         HSYNC_CORS_ENABLED      Enable CORS (true/false)
         HSYNC_CORS_ORIGINS      Allowed CORS origins (comma-separated)
         HSYNC_MAX_UPLOAD_SIZE   Maximum upload size in bytes

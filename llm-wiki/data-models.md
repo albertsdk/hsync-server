@@ -2,7 +2,7 @@
 
 The server owns **no** sync data types — those come from `hsync_common.models`
 (see [common data-models](../../hsync-common/llm-wiki/data-models.md)). It only adds
-process-local state and side-car persistence.
+process-local state and the installation SQLite store.
 
 ## Reused common models
 
@@ -20,7 +20,8 @@ process-local state and side-car persistence.
 | ----- | -------- | -------- | ----------- |
 | SHA-256 cache `FILE_HASHES` | `hashes.py` | process memory | rebuilt at startup from disk (`set_sha256_hashes`) |
 | Per-bucket WS pools | `connection_manager.py:166` (`bucket_manager`) | process memory | none (live connections) |
-| Tombstone stores (per bucket) | `tombstones.py` cache | process memory + side-car | `.hsynctombstones` file |
+| Tombstone stores (per bucket) | `tombstones.py` cache | process memory + SQLite | `syncstate.db` (`tombstones` table) |
+| Version stores (per bucket) | `versions.py` cache | process memory + SQLite | `syncstate.db` (`versions` table) |
 
 The SHA-256 cache maps `sha256(filepath) -> (file_sha256, mtime_ns, size)`: a
 cached digest is served only while the file's current metadata matches the
@@ -33,8 +34,7 @@ Server-side façade over the common `TombstoneStore`:
 
 | Function | Line | Role |
 | -------- | ---- | ---- |
-| `_store_path` | `tombstones.py:33` | locate the `.hsynctombstones` side-car for a bucket |
-| `get_tombstone_store` | `:38` | load/cache the per-bucket store |
+| `get_tombstone_store` | `tombstones.py` | load/cache the per-bucket store (`buckets` table → folder UUID) |
 | `record_deletion` | `:49` | add a tombstone on delete/`deleted` event |
 | `clear_deletion` | `:66` | drop a tombstone when the path is re-uploaded |
 | `reset_cache` | `:76` | test/lifecycle hook |
@@ -48,12 +48,13 @@ defined in the common model, not here.
 ```
 <buckets_path>/<bucket>/...            # real files (relative paths preserved)
 <buckets_path>/<bucket>/.hsynckeep     # sentinel keeping empty dirs alive
-<buckets_path>/<bucket>/.hsynctombstones
+<state_dir>/syncstate.db               # versions + tombstones (ADR-0025)
+<state_dir>/.hsyncnodeid               # reserved server node cid
 <name>.part                            # in-progress resumable upload
 ```
 
 Sentinel + cleanup logic: `api/file_utils.py` (`is_sentinel_file:22`,
-`ensure_sentinel_in_dir:29`, `cleanup_empty_dir:67`). Side-car filenames are the
-shared constants from `hsync_common.constants`.
+`ensure_sentinel_in_dir:29`, `cleanup_empty_dir:67`). No `.hsyncfolder` marker
+is written into served buckets; the `buckets` table maps name → folder UUID.
 
 > Field-level attribute tables: [common data-models](../../hsync-common/llm-wiki/data-models.md).

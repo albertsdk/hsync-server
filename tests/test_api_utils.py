@@ -291,6 +291,7 @@ class TestResolveWithinBucket:
         with patch("hsync_server.api.utils.get_buckets_path", return_value=str(tmp_path)):
             assert resolve_within_bucket("b", ".hsyncignore") is None
             assert resolve_within_bucket("b", "sub/.hsyncstate") is None
+            assert resolve_within_bucket("b", ".hsyncfolder") is None
 
 
 # =============================================================================

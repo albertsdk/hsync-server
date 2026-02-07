@@ -29,6 +29,7 @@ HSYNC_API_KEY=<strong-random-secret>
 HSYNC_SSL_ENABLED=true
 HSYNC_SSL_KEYFILE_PASSWORD=<different-strong-random-secret>
 HSYNC_BUCKETS=/project/buckets
+HSYNC_STATE_DIR=/project/state
 HSYNC_SSL_CERT_DIR=/project/certs
 ```
 

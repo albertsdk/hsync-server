@@ -41,7 +41,7 @@ and causal version fields `vclock` (JSON-encoded vector clock), `version_id`
 modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
 - Filename validated/sanitized (`is_valid_filename`/`sanitize_filename` from
   `hsync_common.path_validation`); internal engine names
-  (`.hsyncignore`/`.hsyncstate`/`.hsynctombstones`, `*.part`) rejected with
+  (`.hsyncignore`/`.hsyncfolder`/legacy `.hsyncstate`/`.hsynctombstones`, `*.part`) rejected with
   `InvalidFilenameError`; `cid` format checked with `is_valid_cid`.
 - `sha256sum` is a **required** form field and must be a well-formed 64-hex
   digest (`is_sha256_hex`): the received bytes must hash to it

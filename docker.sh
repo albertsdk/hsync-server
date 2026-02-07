@@ -189,6 +189,7 @@ cmd_start() {
         --restart unless-stopped
         -p "${HSYNC_PORT}:${HSYNC_PORT}"
         -v "${SCRIPT_DIR}/buckets:/project/buckets"
+        -v "${SCRIPT_DIR}/state:/project/state"
         -v "${CERTS_VOLUME}:/project/certs"
     )
 

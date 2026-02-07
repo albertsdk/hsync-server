@@ -173,6 +173,7 @@ services:
       - ./prod.env
     volumes:
       - hsync-buckets:/project/buckets
+      - hsync-state:/project/state
       - hsync-certs:/project/certs
       - hsync-logs:/project/logs
     healthcheck:
@@ -206,6 +207,7 @@ services:
 
 volumes:
   hsync-buckets:
+  hsync-state:
   hsync-certs:
   hsync-logs:
   caddy-data:
@@ -248,6 +250,7 @@ HSYNC_LOG_ROTATION=100 MB
 HSYNC_LOG_RETENTION=30 days
 HSYNC_TZ=UTC
 HSYNC_BUCKETS=/project/buckets
+HSYNC_STATE_DIR=/project/state
 HSYNC_SSL_ENABLED=false
 HSYNC_MAX_UPLOAD_SIZE=10737418240
 HSYNC_MIN_FREE_DISK_SPACE=524288000
@@ -305,7 +308,7 @@ cd /opt/hsync/hsync-server
 sudo -u hsync env POETRY_VIRTUALENVS_IN_PROJECT=true poetry install --only main
 
 # Create required directories
-sudo -u hsync mkdir -p /opt/hsync/{buckets,certs,logs}
+sudo -u hsync mkdir -p /opt/hsync/{buckets,state,certs,logs}
 ```
 
 Create `/opt/hsync/prod.env` with at least a strong `HSYNC_API_KEY` and these
@@ -314,6 +317,7 @@ host paths. If a reverse proxy terminates TLS, keep built-in SSL disabled:
 ```dotenv
 HSYNC_API_KEY=<generate-a-strong-random-key>
 HSYNC_BUCKETS=/opt/hsync/buckets
+HSYNC_STATE_DIR=/opt/hsync/state
 HSYNC_SSL_CERT_DIR=/opt/hsync/certs
 HSYNC_LOG_FILE=/opt/hsync/logs/hsync-server.log
 HSYNC_SSL_ENABLED=false

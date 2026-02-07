@@ -10,6 +10,7 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `CLAUDE.m
 - `load_env_file` (`config.py:54`) loads a dotenv before settings resolve.
 - Typed accessors (used everywhere instead of touching `Settings` directly):
   `get_port` (`:317`), `get_workers` (`:322`), `get_buckets_path` (`:362`),
+  `get_state_dir` (`config.py`),
   `get_api_key` (`:357`), `get_max_upload_size` (`:397`),
   `get_compression_enabled` (`:437`), SSL getters (`:412`–`:432`),
   WS getters (`:442`–`:462`), rate-limit getters (`:367`–`:392`),
@@ -158,11 +159,12 @@ uploads for the same file are ordered (ADR-0022).
 ## Version store & arbitration (`versions.py`, `arbitration.py`)
 
 - `versions.py` wraps `hsync_common.models.version.SyncStateStore` per bucket
-  (side-car `.hsyncstate` at the bucket root, excluded from sync via
-  `is_internal_name`). `record_version`/`clear_version`/`move_version` maintain
-  the store; `server_version_info` produces the wire `VersionInfo` for listings.
-  `get_server_cid` mints and persists a reserved 21-char server node id for
-  self-recording out-of-band edits detected at arbitration (ADR-0022 §3.4.7).
+  in `get_state_dir()/syncstate.db` (folder UUID via the `buckets` table,
+  ADR-0025). Lazy connection (fork-safe); per-bucket `RLock`.
+  `record_version`/`clear_version`/`move_version` maintain the store;
+  `server_version_info` produces the wire `VersionInfo` for listings.
+  `get_server_cid` mints and persists a reserved 21-char server node id next
+  to the DB for out-of-band edits (ADR-0022 §3.4.7).
 - `arbitration.py` exposes `arbitrate_upload` — the shared causal arbitration
   used by both the REST upload and the delta apply endpoint (DRY). Returns an
   `ArbitrationResult` (outcome + record clock + record corrected mtime + loser

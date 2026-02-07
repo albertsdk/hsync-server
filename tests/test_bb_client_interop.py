@@ -128,6 +128,7 @@ class TestClientUploadArbitrationE2E:
             {
                 "HSYNC_API_KEY": BB_API_KEY,
                 "HSYNC_BUCKETS": buckets_dir,
+                "HSYNC_STATE_DIR": buckets_dir + "_state",
                 "HSYNC_RATE_LIMIT_DEFAULT": "1000000/minute",
                 "HSYNC_RATE_LIMIT_UPLOAD": "1000000/minute",
                 "HSYNC_MIN_FREE_DISK_SPACE": "0",

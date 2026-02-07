@@ -109,6 +109,7 @@ all defaults.
 | `HSYNC_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error` |
 | `HSYNC_TZ` | `UTC` | Timezone (IANA format, e.g. `Europe/Rome`) |
 | `HSYNC_BUCKETS` | `./buckets` | Directory for bucket data storage |
+| `HSYNC_STATE_DIR` | `./state` | Directory for `syncstate.db` (causal versions and tombstones) |
 | `HSYNC_API_KEY` | *(required)* | API key for client authentication |
 | `HSYNC_MAX_UPLOAD_SIZE` | `10737418240` (10 GiB) | Maximum upload size in bytes |
 | `HSYNC_MIN_FREE_DISK_SPACE` | `524288000` (500 MiB) | Minimum free disk before rejecting uploads (`0` = disabled) |

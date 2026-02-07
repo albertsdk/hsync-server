@@ -104,7 +104,9 @@ class TestInternalFilenames:
     """Engine-owned files must never enter the storage via the wire."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("name", [".hsyncignore", ".hsyncstate", ".hsynctombstones"])
+    @pytest.mark.parametrize(
+        "name", [".hsyncignore", ".hsyncfolder", ".hsyncstate", ".hsynctombstones"]
+    )
     async def test_upload_internal_name_rejected(
         self, client: AsyncClient, temp_buckets_dir: str, name: str
     ):

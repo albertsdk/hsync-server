@@ -274,6 +274,7 @@ class TestModuleLevelConstants:
             "get_workers",
             "get_api_key",
             "get_buckets_path",
+            "get_state_dir",
             "get_rate_limit_default",
             "get_rate_limit_upload",
             "get_rate_limit_download",
