@@ -5,14 +5,16 @@
 # Copyright (C) 2025 Alberto Basso
 
 """
-Health check endpoint for HSYNC Server.
+Health check and time synchronization endpoints for HSYNC Server.
 
-This module provides a simple health check endpoint for monitoring
-and load balancer health probes. Returns an empty 200 OK response
-to indicate the server is running.
+This module provides:
+- A simple health check endpoint for monitoring and load balancer health probes.
+- A time endpoint for clock synchronization between clients and server.
 """
 
-from fastapi.responses import PlainTextResponse
+import time
+
+from fastapi.responses import JSONResponse, PlainTextResponse
 from loguru import logger as log
 
 from hsync_server.routers import public_router
@@ -34,6 +36,25 @@ async def root() -> str:
         Empty string (200 OK response).
     """
     return ""
+
+
+@public_router.get(
+    "/api/v1/time",
+    name="Clock synchronization endpoint",
+)
+async def get_time() -> JSONResponse:
+    """
+    Return the server's current timestamp for clock synchronization.
+
+    Clients use this endpoint to calculate clock offset via round-trip
+    measurement (NTP-like): the client records T1 before the request,
+    the server returns T2, and the client records T3 after the response.
+    Offset = T2 - (T1 + RTT/2), where RTT = T3 - T1.
+
+    Returns:
+        JSON with ``{"timestamp": <float>}`` (Unix epoch seconds).
+    """
+    return JSONResponse({"timestamp": time.time()})
 
 
 log.info(f"Module {__name__} loaded")

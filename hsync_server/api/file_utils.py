@@ -15,8 +15,81 @@ This module provides utility functions for file operations:
 
 from datetime import datetime, timezone
 from loguru import logger as log
-from os import utime
+from os import listdir, rmdir, utime
+from os.path import basename, exists as path_exists, isdir, join as path_join
 from re import match
+
+
+def is_sentinel_file(filepath: str) -> bool:
+    """Return True if *filepath* is a .hsynckeep sentinel file."""
+    from hsync_server.constants import HSYNCKEEP_FILENAME
+
+    return basename(filepath) == HSYNCKEEP_FILENAME
+
+
+def ensure_sentinel_in_dir(dir_path: str) -> None:
+    """Create a .hsynckeep sentinel if *dir_path* is an empty directory.
+
+    After a file is deleted the parent directory may become empty.
+    Placing a sentinel preserves the directory structure during sync.
+
+    A directory is considered "empty" when it contains no syncable
+    (non-hidden) files.  An already-existing sentinel counts as
+    syncable, so a second one is never created.
+
+    Args:
+        dir_path: Absolute path to the directory to check.
+    """
+    from hsync_server.constants import HSYNCKEEP_FILENAME
+    from hsync_server.models.file import is_hidden_file
+
+    if not path_exists(dir_path) or not isdir(dir_path):
+        return
+
+    try:
+        entries = listdir(dir_path)
+    except OSError:
+        return
+
+    has_syncable = any(not is_hidden_file(e) for e in entries)
+    if has_syncable:
+        return
+
+    sentinel = path_join(dir_path, HSYNCKEEP_FILENAME)
+    if not path_exists(sentinel):
+        try:
+            open(sentinel, "w").close()  # noqa: SIM115
+            log.debug(f'Created sentinel "{sentinel}"')
+        except OSError as exc:
+            log.warning(f'Cannot create sentinel "{sentinel}": {exc}')
+
+
+def cleanup_empty_dir(dir_path: str) -> None:
+    """Remove *dir_path* if it is completely empty (no files at all).
+
+    Called after deleting a sentinel file so that the directory does
+    not linger on disk once it has no real content.  Only removes the
+    directory if it contains zero entries (hidden or otherwise).
+
+    Args:
+        dir_path: Absolute path to the directory to check.
+    """
+    if not path_exists(dir_path) or not isdir(dir_path):
+        return
+
+    try:
+        entries = listdir(dir_path)
+    except OSError:
+        return
+
+    if entries:
+        return
+
+    try:
+        rmdir(dir_path)
+        log.debug(f'Removed empty directory "{dir_path}"')
+    except OSError as exc:
+        log.warning(f'Cannot remove directory "{dir_path}": {exc}')
 
 
 def is_valid_permission_format(permissions: str) -> bool:

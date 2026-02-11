@@ -41,12 +41,20 @@ def is_hidden_file(file_path: str) -> bool:
     Returns:
         True if the file is hidden/temporary, False otherwise.
     """
+    from hsync_server.constants import HSYNCKEEP_FILENAME
+
+    name = basename(file_path)
+
+    # Sentinel file for empty-directory sync — never hidden
+    if name == HSYNCKEEP_FILENAME:
+        return False
+
     hidden_file_regex = (
         r"(^\..*|.*~$|^4913$|^\..*\.sw[px]$|^\.~lock\..*#$|"
         r".*\.bak$|.*\.tmp$|.*\.temp$|.*\.swp$|.*\.swo$|"
         r".*-\d{4}-\d{2}-\d{2}-\d{6}$)"
     )
-    return bool(match(hidden_file_regex, basename(file_path)))
+    return bool(match(hidden_file_regex, name))
 
 
 class File:

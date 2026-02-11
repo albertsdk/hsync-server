@@ -22,6 +22,7 @@ from pathlib import Path
 from shutil import rmtree
 from typing import Any, Dict, Optional
 
+from hsync_server.api.file_utils import cleanup_empty_dir, ensure_sentinel_in_dir, is_sentinel_file
 from hsync_server.api.utils import set_permissions
 from hsync_server.hashes import del_md5_hash
 from hsync_server.models.dir import Dir
@@ -230,6 +231,13 @@ async def handle_deleted_event(
             else:
                 log.info(f'[WEBSOCKET ] Deleted file "{file_obj.filepath}"')
                 remove(file_obj.filepath)
+                parent = dirname(file_obj.filepath)
+                if is_sentinel_file(file_obj.filepath):
+                    # Sentinel removed — clean up the now-empty directory
+                    cleanup_empty_dir(parent)
+                else:
+                    # Regular file removed — preserve directory with sentinel
+                    ensure_sentinel_in_dir(parent)
             # Remove from hash cache
             del_md5_hash(file_obj.filepath)
             return Event(cid, bucket_dir, bucket, EventName.deleted, file_obj)
