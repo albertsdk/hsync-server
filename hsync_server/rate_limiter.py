@@ -80,7 +80,7 @@ limiter = Limiter(
 
 
 async def rate_limit_exceeded_handler(
-    request: Request, exc: RateLimitExceeded
+    request: Request, exc: Exception
 ) -> JSONResponse:
     """
     Custom handler for rate limit exceeded errors.
@@ -95,6 +95,13 @@ async def rate_limit_exceeded_handler(
     Returns:
         JSON response with 429 status code.
     """
+    # Type check to ensure we have RateLimitExceeded
+    if not isinstance(exc, RateLimitExceeded):
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Internal server error"},
+        )
+
     log.warning(
         f"Rate limit exceeded for {get_client_ip(request)}: "
         f"{exc.detail}"

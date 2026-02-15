@@ -277,7 +277,7 @@ class TestFileSizeLimit:
         # Create content larger than limit
         large_content = b"x" * 1000
 
-        with patch("hsync_server.api.files.HSYNC_MAX_UPLOAD_SIZE", 100):
+        with patch("hsync_server.api.files.upload.HSYNC_MAX_UPLOAD_SIZE", 100):
             response = await client.post(
                 "/api/v1/buckets/sizelimitbucket/files",
                 files={"file": ("large.txt", io.BytesIO(large_content), "text/plain")},
@@ -297,7 +297,7 @@ class TestFileSizeLimit:
 
         small_content = b"small"
 
-        with patch("hsync_server.api.files.HSYNC_MAX_UPLOAD_SIZE", 1000):
+        with patch("hsync_server.api.files.upload.HSYNC_MAX_UPLOAD_SIZE", 1000):
             response = await client.post(
                 "/api/v1/buckets/sizelimitbucket2/files",
                 files={"file": ("small.txt", io.BytesIO(small_content), "text/plain")},
@@ -316,7 +316,7 @@ class TestFileSizeLimit:
 
         content = b"x" * 1000
 
-        with patch("hsync_server.api.files.HSYNC_MAX_UPLOAD_SIZE", 0):
+        with patch("hsync_server.api.files.upload.HSYNC_MAX_UPLOAD_SIZE", 0):
             response = await client.post(
                 "/api/v1/buckets/nolimitbucket/files",
                 files={"file": ("file.txt", io.BytesIO(content), "text/plain")},
@@ -454,7 +454,7 @@ class TestFileDeleteValidation:
         with open(file_path, "w") as f:
             f.write("content")
 
-        with patch("hsync_server.api.files.remove", side_effect=OSError("Permission denied")):
+        with patch("os.remove", side_effect=OSError("Permission denied")):
             response = await client.request(
                 "DELETE",
                 "/api/v1/buckets/deletebucket4/files",
