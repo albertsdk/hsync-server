@@ -2,8 +2,8 @@
 Integration tests for file operations API.
 """
 
-import os
 import io
+import os
 
 import pytest
 from httpx import AsyncClient
@@ -24,7 +24,7 @@ class TestFileUpload:
         response = await client.post(
             "/api/v1/buckets/uploadbucket/files",
             files={"file": ("test.txt", io.BytesIO(file_content), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"}
+            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
         )
 
         assert response.status_code == 201
@@ -46,7 +46,7 @@ class TestFileUpload:
         response = await client.post(
             "/api/v1/buckets/uploadbucket2/files",
             files={"file": ("nested.txt", io.BytesIO(b"nested"), "text/plain")},
-            data={"cid": "test-client-1", "path": "subdir/deep", "permissions": "-rw-r--r--"}
+            data={"cid": "test-client-1", "path": "subdir/deep", "permissions": "-rw-r--r--"},
         )
 
         assert response.status_code == 201
@@ -62,7 +62,7 @@ class TestFileUpload:
         response = await client.post(
             "/api/v1/buckets/newbucket/files",
             files={"file": ("test.txt", io.BytesIO(b"test"), "text/plain")},
-            data={"cid": "test-client-1", "path": "subdir", "permissions": "-rw-r--r--"}
+            data={"cid": "test-client-1", "path": "subdir", "permissions": "-rw-r--r--"},
         )
 
         # Upload succeeds and creates the directory structure
@@ -87,8 +87,7 @@ class TestFileDownload:
             f.write("Download content")
 
         response = await client.get(
-            "/api/v1/buckets/downloadbucket/files/download",
-            params={"filename": "download.txt"}
+            "/api/v1/buckets/downloadbucket/files/download", params={"filename": "download.txt"}
         )
 
         assert response.status_code == 200
@@ -101,8 +100,7 @@ class TestFileDownload:
         os.makedirs(bucket_path)
 
         response = await client.get(
-            "/api/v1/buckets/downloadbucket2/files/download",
-            params={"filename": "missing.txt"}
+            "/api/v1/buckets/downloadbucket2/files/download", params={"filename": "missing.txt"}
         )
 
         assert response.status_code == 404
@@ -158,7 +156,7 @@ class TestFileDelete:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/deletebucket/files",
-            data={"cid": "test-client-1", "filename": "todelete.txt"}
+            data={"cid": "test-client-1", "filename": "todelete.txt"},
         )
 
         assert response.status_code == 200
@@ -173,7 +171,7 @@ class TestFileDelete:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/deletebucket2/files",
-            data={"cid": "test-client-1", "filename": "missing.txt"}
+            data={"cid": "test-client-1", "filename": "missing.txt"},
         )
 
         assert response.status_code == 404
@@ -188,7 +186,7 @@ class TestFileUploadValidation:
         response = await client.post(
             "/api/v1/buckets/invalid..bucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"}
+            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
         )
         assert response.status_code == 400
         assert "HSYNC-1001" in response.text
@@ -202,7 +200,7 @@ class TestFileUploadValidation:
         response = await client.post(
             "/api/v1/buckets/securitybucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
-            data={"cid": "test-client-1", "path": "../../../tmp", "permissions": "-rw-r--r--"}
+            data={"cid": "test-client-1", "path": "../../../tmp", "permissions": "-rw-r--r--"},
         )
         assert response.status_code == 400
         assert "HSYNC-1002" in response.text
@@ -216,7 +214,7 @@ class TestFileUploadValidation:
         response = await client.post(
             "/api/v1/buckets/permbucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "invalid"}
+            data={"cid": "test-client-1", "path": "", "permissions": "invalid"},
         )
         assert response.status_code == 400
         assert "HSYNC-1003" in response.text
@@ -225,6 +223,7 @@ class TestFileUploadValidation:
     async def test_upload_file_already_exists(self, client: AsyncClient, temp_buckets_dir: str):
         """Upload identical file returns 409."""
         import hashlib
+
         bucket_path = os.path.join(temp_buckets_dir, "dupbucket")
         os.makedirs(bucket_path)
 
@@ -235,7 +234,12 @@ class TestFileUploadValidation:
         response = await client.post(
             "/api/v1/buckets/dupbucket/files",
             files={"file": ("dup.txt", io.BytesIO(file_content), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--", "md5sum": md5sum}
+            data={
+                "cid": "test-client-1",
+                "path": "",
+                "permissions": "-rw-r--r--",
+                "md5sum": md5sum,
+            },
         )
         assert response.status_code == 201
 
@@ -243,7 +247,12 @@ class TestFileUploadValidation:
         response = await client.post(
             "/api/v1/buckets/dupbucket/files",
             files={"file": ("dup.txt", io.BytesIO(file_content), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--", "md5sum": md5sum}
+            data={
+                "cid": "test-client-1",
+                "path": "",
+                "permissions": "-rw-r--r--",
+                "md5sum": md5sum,
+            },
         )
         assert response.status_code == 409
         assert "already present" in response.json()["info"]
@@ -257,7 +266,12 @@ class TestFileUploadValidation:
         response = await client.post(
             "/api/v1/buckets/checksumbucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--", "md5sum": "wrongchecksum"}
+            data={
+                "cid": "test-client-1",
+                "path": "",
+                "permissions": "-rw-r--r--",
+                "md5sum": "wrongchecksum",
+            },
         )
         assert response.status_code == 400
         assert "HSYNC-1005" in response.text
@@ -281,7 +295,7 @@ class TestFileSizeLimit:
             response = await client.post(
                 "/api/v1/buckets/sizelimitbucket/files",
                 files={"file": ("large.txt", io.BytesIO(large_content), "text/plain")},
-                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"}
+                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
             )
 
         assert response.status_code == 400
@@ -301,7 +315,7 @@ class TestFileSizeLimit:
             response = await client.post(
                 "/api/v1/buckets/sizelimitbucket2/files",
                 files={"file": ("small.txt", io.BytesIO(small_content), "text/plain")},
-                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"}
+                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
             )
 
         assert response.status_code == 201
@@ -320,7 +334,7 @@ class TestFileSizeLimit:
             response = await client.post(
                 "/api/v1/buckets/nolimitbucket/files",
                 files={"file": ("file.txt", io.BytesIO(content), "text/plain")},
-                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"}
+                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
             )
 
         assert response.status_code == 201
@@ -333,8 +347,7 @@ class TestFileDownloadValidation:
     async def test_download_invalid_bucket_name(self, client: AsyncClient):
         """Download from invalid bucket name returns 400."""
         response = await client.get(
-            "/api/v1/buckets/invalid..bucket/files/download",
-            params={"filename": "test.txt"}
+            "/api/v1/buckets/invalid..bucket/files/download", params={"filename": "test.txt"}
         )
         assert response.status_code == 400
         assert "HSYNC-1001" in response.text
@@ -347,7 +360,7 @@ class TestFileDownloadValidation:
 
         response = await client.get(
             "/api/v1/buckets/downloadbucket/files/download",
-            params={"filename": "../../../etc/passwd"}
+            params={"filename": "../../../etc/passwd"},
         )
         assert response.status_code == 400
         assert "HSYNC-1002" in response.text
@@ -370,8 +383,7 @@ class TestFileListValidation:
         os.makedirs(bucket_path)
 
         response = await client.get(
-            "/api/v1/buckets/listbucket/files",
-            params={"path": "../../../etc"}
+            "/api/v1/buckets/listbucket/files", params={"path": "../../../etc"}
         )
         assert response.status_code == 400
         assert "HSYNC-1002" in response.text
@@ -413,7 +425,7 @@ class TestFileDeleteValidation:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/invalid..bucket/files",
-            data={"cid": "test-client-1", "filename": "test.txt"}
+            data={"cid": "test-client-1", "filename": "test.txt"},
         )
         assert response.status_code == 400
         assert "HSYNC-1001" in response.text
@@ -424,7 +436,7 @@ class TestFileDeleteValidation:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/nonexistentbucket/files",
-            data={"cid": "test-client-1", "filename": "test.txt"}
+            data={"cid": "test-client-1", "filename": "test.txt"},
         )
         assert response.status_code == 404
         assert "HSYNC-2001" in response.text
@@ -438,7 +450,7 @@ class TestFileDeleteValidation:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/deletebucket3/files",
-            data={"cid": "test-client-1", "filename": "../../../etc/passwd"}
+            data={"cid": "test-client-1", "filename": "../../../etc/passwd"},
         )
         assert response.status_code == 400
         assert "HSYNC-1002" in response.text
@@ -458,9 +470,8 @@ class TestFileDeleteValidation:
             response = await client.request(
                 "DELETE",
                 "/api/v1/buckets/deletebucket4/files",
-                data={"cid": "test-client-1", "filename": "test.txt"}
+                data={"cid": "test-client-1", "filename": "test.txt"},
             )
 
         assert response.status_code == 500
         assert "HSYNC-4003" in response.text
-

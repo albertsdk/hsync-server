@@ -15,13 +15,18 @@ This module provides handler functions for different event types:
 - handle_symlink_event: Create or update symbolic links
 """
 
-from loguru import logger as log
-from os import makedirs, rename, remove, symlink as os_symlink, unlink
+from os import makedirs, remove, rename, unlink
+from os import symlink as os_symlink
 from os.path import dirname, exists, islink
 from shutil import rmtree
-from typing import Any, Dict, Optional
+from typing import Any
 
-from hsync_server.api.events_handlers.validation import is_path_within_bucket, is_safe_symlink_target
+from loguru import logger as log
+
+from hsync_server.api.events_handlers.validation import (
+    is_path_within_bucket,
+    is_safe_symlink_target,
+)
 from hsync_server.api.file_utils import cleanup_empty_dir, ensure_sentinel_in_dir, is_sentinel_file
 from hsync_server.api.utils import set_permissions
 from hsync_server.hashes import del_md5_hash
@@ -32,11 +37,11 @@ from hsync_server.models.symlink import Symlink
 
 
 async def handle_added_event(
-    src: Optional[Dict[str, Any]],
+    src: dict[str, Any] | None,
     bucket_dir: str,
     bucket: str,
     cid: str,
-) -> Optional[Event]:
+) -> Event | None:
     """
     Handle 'added' events - create new files/directories.
 
@@ -79,11 +84,11 @@ async def handle_added_event(
 
 
 async def handle_modified_event(
-    src: Optional[Dict[str, Any]],
+    src: dict[str, Any] | None,
     bucket_dir: str,
     bucket: str,
     cid: str,
-) -> Optional[Event]:
+) -> Event | None:
     """
     Handle 'modified' events - update existing files/directories.
 
@@ -125,11 +130,11 @@ async def handle_modified_event(
 
 
 async def handle_deleted_event(
-    src: Optional[Dict[str, Any]],
+    src: dict[str, Any] | None,
     bucket_dir: str,
     bucket: str,
     cid: str,
-) -> Optional[Event]:
+) -> Event | None:
     """
     Handle 'deleted' events - remove files/directories.
 
@@ -188,12 +193,12 @@ async def handle_deleted_event(
 
 
 async def handle_renamed_event(
-    src: Optional[Dict[str, Any]],
-    dst: Optional[Dict[str, Any]],
+    src: dict[str, Any] | None,
+    dst: dict[str, Any] | None,
     bucket_dir: str,
     bucket: str,
     cid: str,
-) -> Optional[Event]:
+) -> Event | None:
     """
     Handle 'renamed' events - rename/move files or directories.
 
@@ -246,11 +251,11 @@ async def handle_renamed_event(
 
 
 async def handle_symlink_event(
-    src: Optional[Dict[str, Any]],
+    src: dict[str, Any] | None,
     bucket_dir: str,
     bucket: str,
     cid: str,
-) -> Optional[Event]:
+) -> Event | None:
     """
     Handle 'symlink' events - create or update symbolic links.
 

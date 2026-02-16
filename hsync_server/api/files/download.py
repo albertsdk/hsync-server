@@ -13,29 +13,30 @@ This module provides the REST API endpoint for file download with:
 - Range request support (for resumable downloads)
 """
 
+from os.path import getsize
+
 from aiofiles.ospath import isfile
 from fastapi import Request
-from fastapi.responses import FileResponse, Response, JSONResponse
+from fastapi.responses import FileResponse, Response
 from loguru import logger as log
-from os.path import exists, getsize
 
 from hsync_server.api.utils import is_valid_bucket, is_valid_dir
-from hsync_server.compression import compress_data, should_compress, CONTENT_ENCODING_ZSTD
+from hsync_server.compression import CONTENT_ENCODING_ZSTD, compress_data, should_compress
 from hsync_server.config import HSYNC_BUCKETS, get_compression_enabled
 from hsync_server.exceptions import (
     FileNotFoundError as HSyncFileNotFoundError,
+)
+from hsync_server.exceptions import (
     InvalidBucketNameError,
     InvalidPathError,
 )
-from hsync_server.rate_limiter import limiter, RATE_LIMIT_DOWNLOAD
+from hsync_server.rate_limiter import RATE_LIMIT_DOWNLOAD, limiter
 from hsync_server.routers import auth_router
 
 
 @auth_router.get("/api/v1/buckets/{bucket}/files/download")
 @limiter.limit(RATE_LIMIT_DOWNLOAD)
-async def download_file(
-    request: Request, bucket: str, filename: str
-):
+async def download_file(request: Request, bucket: str, filename: str):
     """
     Download a file from a bucket with optional zstd compression.
 
@@ -73,9 +74,7 @@ async def download_file(
     # - No Range header (resume requests skip compression)
     has_range_header = "range" in request.headers
     use_compression = (
-        get_compression_enabled()
-        and should_compress(filename, file_size)
-        and not has_range_header
+        get_compression_enabled() and should_compress(filename, file_size) and not has_range_header
     )
 
     if use_compression:

@@ -42,10 +42,7 @@ class TestBucketEndpoints:
     async def test_create_bucket(self, client: AsyncClient, temp_buckets_dir: str):
         """Create a new bucket."""
         # bucket is a query parameter, not form data
-        response = await client.post(
-            "/api/v1/buckets",
-            params={"bucket": "testbucket"}
-        )
+        response = await client.post("/api/v1/buckets", params={"bucket": "testbucket"})
         assert response.status_code == 201
         data = response.json()
         assert data["info"] == "Bucket created successfully"
@@ -59,19 +56,13 @@ class TestBucketEndpoints:
         # Create bucket directory first
         os.makedirs(os.path.join(temp_buckets_dir, "existing"))
 
-        response = await client.post(
-            "/api/v1/buckets",
-            params={"bucket": "existing"}
-        )
+        response = await client.post("/api/v1/buckets", params={"bucket": "existing"})
         assert response.status_code == 409
 
     @pytest.mark.asyncio
     async def test_create_bucket_invalid_name(self, client: AsyncClient):
         """Invalid bucket names are rejected."""
-        response = await client.post(
-            "/api/v1/buckets",
-            params={"bucket": "../escape"}
-        )
+        response = await client.post("/api/v1/buckets", params={"bucket": "../escape"})
         assert response.status_code == 400
 
     @pytest.mark.asyncio
@@ -157,10 +148,7 @@ class TestAuthenticationRequired:
         assert response.status_code == 401
 
         # POST bucket
-        response = await client_no_auth.post(
-            "/api/v1/buckets",
-            data={"bucket": "test"}
-        )
+        response = await client_no_auth.post("/api/v1/buckets", data={"bucket": "test"})
         assert response.status_code == 401
 
         # DELETE bucket
@@ -176,8 +164,7 @@ class TestAuthenticationRequired:
 
         # Download file
         response = await client_no_auth.get(
-            "/api/v1/buckets/test/files/download",
-            params={"filename": "test.txt"}
+            "/api/v1/buckets/test/files/download", params={"filename": "test.txt"}
         )
         assert response.status_code == 401
 
@@ -185,13 +172,12 @@ class TestAuthenticationRequired:
     async def test_invalid_auth_token(self, test_app, temp_buckets_dir: str):
         """Invalid auth token is rejected."""
         from httpx import ASGITransport, AsyncClient
-        
+
         transport = ASGITransport(app=test_app)
         async with AsyncClient(
             transport=transport,
             base_url="http://test",
-            headers={"Authorization": "Bearer wrong-key"}
+            headers={"Authorization": "Bearer wrong-key"},
         ) as bad_client:
             response = await bad_client.get("/api/v1/buckets/test")
             assert response.status_code == 401
-

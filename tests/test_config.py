@@ -5,7 +5,6 @@
 
 import os
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -56,12 +55,12 @@ class TestSettings:
         """Test that default values are applied."""
         # Clear cache to ensure fresh settings
         config.get_settings.cache_clear()
-        
+
         # Clear environment variable that might override default
         env_backup = os.environ.get("HSYNC_LOG_LEVEL")
         if "HSYNC_LOG_LEVEL" in os.environ:
             del os.environ["HSYNC_LOG_LEVEL"]
-        
+
         try:
             settings = config.Settings()
 

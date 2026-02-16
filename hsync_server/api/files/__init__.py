@@ -14,10 +14,10 @@ This module provides REST API endpoints for file management:
 - File deletion with event broadcasting
 """
 
-from hsync_server.api.files.upload import upload_file
+from hsync_server.api.files.delete import delete_file
 from hsync_server.api.files.download import download_file
 from hsync_server.api.files.list import get_files, get_upload_status
-from hsync_server.api.files.delete import delete_file
+from hsync_server.api.files.upload import upload_file
 
 __all__ = [
     "upload_file",

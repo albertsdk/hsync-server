@@ -24,9 +24,9 @@ Usage:
 import ipaddress
 import os
 import socket
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -44,10 +44,10 @@ DEFAULT_KEY_SIZE = 2048
 def generate_self_signed_cert(
     cert_path: str,
     key_path: str,
-    hostname: Optional[str] = None,
+    hostname: str | None = None,
     validity_days: int = DEFAULT_CERT_VALIDITY_DAYS,
     key_size: int = DEFAULT_KEY_SIZE,
-) -> Tuple[str, str]:
+) -> tuple[str, str]:
     """
     Generate a self-signed certificate and private key.
 
@@ -76,17 +76,19 @@ def generate_self_signed_cert(
     )
 
     # Build certificate subject and issuer (same for self-signed)
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, "IT"),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Italy"),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, "Local"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "HSYNC"),
-        x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "Self-Signed"),
-        x509.NameAttribute(NameOID.COMMON_NAME, hostname),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "IT"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Italy"),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, "Local"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "HSYNC"),
+            x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "Self-Signed"),
+            x509.NameAttribute(NameOID.COMMON_NAME, hostname),
+        ]
+    )
 
     # Calculate validity period
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     not_valid_before = now
     not_valid_after = now + timedelta(days=validity_days)
 
@@ -131,11 +133,13 @@ def generate_self_signed_cert(
 
     # Write private key (with restrictive permissions)
     with open(key_path, "wb") as f:
-        f.write(private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.NoEncryption(),
-        ))
+        f.write(
+            private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        )
     os.chmod(key_path, 0o600)  # Read/write only for owner
 
     # Write certificate
@@ -154,8 +158,8 @@ def ensure_certificates(
     cert_dir: str,
     cert_filename: str = "server.crt",
     key_filename: str = "server.key",
-    hostname: Optional[str] = None,
-) -> Tuple[str, str]:
+    hostname: str | None = None,
+) -> tuple[str, str]:
     """
     Ensure SSL certificates exist, generating them if necessary.
 
@@ -181,10 +185,10 @@ def ensure_certificates(
 
 def get_ssl_config(
     ssl_enabled: bool,
-    ssl_certfile: Optional[str] = None,
-    ssl_keyfile: Optional[str] = None,
-    ssl_cert_dir: Optional[str] = None,
-) -> Dict[str, Any]:
+    ssl_certfile: str | None = None,
+    ssl_keyfile: str | None = None,
+    ssl_cert_dir: str | None = None,
+) -> dict[str, Any]:
     """
     Get SSL configuration for uvicorn.
 
@@ -223,4 +227,3 @@ def get_ssl_config(
         "SSL is enabled but no certificate paths or cert_dir provided. "
         "Set HSYNC_SSL_CERTFILE and HSYNC_SSL_KEYFILE, or HSYNC_SSL_CERT_DIR."
     )
-

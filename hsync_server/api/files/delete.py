@@ -12,10 +12,11 @@ This module provides the REST API endpoint for file deletion with:
 - Sentinel file management
 """
 
+from os.path import dirname, exists
+
 from fastapi import Form
 from fastapi.responses import JSONResponse
 from loguru import logger as log
-from os.path import dirname, exists
 
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import cleanup_empty_dir, ensure_sentinel_in_dir, is_sentinel_file
@@ -24,9 +25,11 @@ from hsync_server.config import HSYNC_BUCKETS
 from hsync_server.exceptions import (
     BucketNotFoundError,
     DeleteError,
-    FileNotFoundError as HSyncFileNotFoundError,
     InvalidBucketNameError,
     InvalidPathError,
+)
+from hsync_server.exceptions import (
+    FileNotFoundError as HSyncFileNotFoundError,
 )
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File as LocalFile
@@ -85,9 +88,7 @@ async def delete_file(
         local_bucket = f"{HSYNC_BUCKETS}/{bucket}"
         if src:
             manager = bucket_manager.get_manager(bucket)
-            await manager.send_message(
-                Event(cid, local_bucket, bucket, EventName.deleted, src)
-            )
+            await manager.send_message(Event(cid, local_bucket, bucket, EventName.deleted, src))
 
         # Remove the file
         remove(file)

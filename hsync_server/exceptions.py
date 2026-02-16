@@ -19,7 +19,7 @@ Error Code Format: HSYNC-XXXX
 - 5XXX: Internal server errors
 """
 
-from typing import Any, Optional
+from typing import Any
 
 
 class HSyncError(Exception):
@@ -37,8 +37,8 @@ class HSyncError(Exception):
 
     def __init__(
         self,
-        message: Optional[str] = None,
-        details: Optional[dict[str, Any]] = None,
+        message: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         self.message = message or self.default_message
         self.details = details or {}
@@ -199,4 +199,3 @@ class DeleteError(FileOperationError):
 
     error_code = "HSYNC-4003"
     default_message = "Delete failed"
-

@@ -12,10 +12,11 @@ This module provides the REST API endpoints for:
 - Getting upload status for resumable uploads
 """
 
-from fastapi import Request
-from fastapi.responses import JSONResponse
 from os import remove, walk
 from os.path import dirname, exists, getsize
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 from hsync_server.api.utils import is_valid_bucket, is_valid_dir
 from hsync_server.config import HSYNC_BUCKETS
@@ -25,10 +26,10 @@ from hsync_server.exceptions import (
     InvalidPathError,
 )
 from hsync_server.hashes import get_md5_hash
-from hsync_server.models.file import File as LocalFile
 from hsync_server.models.dir import is_hidden_dir
+from hsync_server.models.file import File as LocalFile
 from hsync_server.models.file import is_hidden_file
-from hsync_server.rate_limiter import limiter, RATE_LIMIT_DEFAULT
+from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
 
 
@@ -170,11 +171,7 @@ async def get_files(
             file_obj = LocalFile().get(file, root)
             if file_obj:
                 file_info = file_obj.to_dict()
-                file_data = (
-                    LocalFile()
-                    .from_dict(file_info, f"{HSYNC_BUCKETS}/{bucket}")
-                    .to_dict()
-                )
+                file_data = LocalFile().from_dict(file_info, f"{HSYNC_BUCKETS}/{bucket}").to_dict()
                 file_list.append(file_data)
 
     # Sort by mtime ascending (oldest first) to prioritize updating older files

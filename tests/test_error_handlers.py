@@ -7,25 +7,24 @@ import json
 import pytest
 from fastapi import FastAPI, status
 from fastapi.exceptions import RequestValidationError
-from pydantic import ValidationError as PydanticValidationError
 
 from hsync_server.error_handlers import (
-    ErrorResponse,
     EXCEPTION_STATUS_CODES,
+    ErrorResponse,
     get_status_code_for_exception,
-    hsync_exception_handler,
-    validation_exception_handler,
     global_exception_handler,
+    hsync_exception_handler,
     register_exception_handlers,
+    validation_exception_handler,
 )
 from hsync_server.exceptions import (
-    HSyncError,
-    ValidationError,
-    ResourceNotFoundError,
     AuthenticationError,
     FileOperationError,
+    HSyncError,
     InvalidApiKeyError,
     MissingApiKeyError,
+    ResourceNotFoundError,
+    ValidationError,
 )
 
 

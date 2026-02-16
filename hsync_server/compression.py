@@ -11,10 +11,10 @@ This module provides file compression/decompression using Zstandard (zstd),
 with intelligent decision-making on when compression is beneficial.
 """
 
-from loguru import logger as log
 from os.path import splitext
 
 import zstandard as zstd
+from loguru import logger as log
 
 # Compression level (1-22, default 3 is a good balance of speed/ratio)
 COMPRESSION_LEVEL = 3
@@ -40,30 +40,114 @@ MIN_SIZE_FOR_DOWNLOAD = 10 * 1024  # 10 KB
 MIN_SIZE_FOR_COMPRESSION = MIN_SIZE_FOR_DOWNLOAD
 
 # File extensions that are already compressed (compression won't help)
-PRECOMPRESSED_EXTENSIONS = frozenset({
-    # Archives
-    ".zip", ".gz", ".gzip", ".bz2", ".xz", ".7z", ".rar", ".tar.gz", ".tgz",
-    ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".zstd", ".lz4", ".lzma",
-    ".cab", ".dmg", ".pkg", ".msi", ".deb", ".rpm", ".apk", ".ipa",
-    ".jar", ".war", ".ear", ".nupkg",
-    # Images
-    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".heif",
-    ".jp2", ".j2k", ".jpf", ".jpm", ".jpx",
-    ".tiff", ".tif", ".psd", ".ico", ".icns",
-    ".raw", ".cr2", ".nef", ".arw", ".dng", ".orf", ".rw2",
-    # Audio
-    ".mp3", ".aac", ".ogg", ".opus", ".flac", ".m4a", ".wma", ".alac",
-    # Video
-    ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v",
-    ".mpeg", ".mpg", ".3gp", ".m2ts", ".mts", ".vob", ".ogv",
-    # Documents (already compressed internally)
-    ".pdf", ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp", ".epub",
-    ".pages", ".numbers", ".keynote", ".xps", ".cbz", ".cbr",
-    # Fonts
-    ".woff", ".woff2", ".eot", ".ttc",
-    # Other
-    ".sqlite", ".db",
-})
+PRECOMPRESSED_EXTENSIONS = frozenset(
+    {
+        # Archives
+        ".zip",
+        ".gz",
+        ".gzip",
+        ".bz2",
+        ".xz",
+        ".7z",
+        ".rar",
+        ".tar.gz",
+        ".tgz",
+        ".tar.bz2",
+        ".tbz2",
+        ".tar.xz",
+        ".txz",
+        ".zst",
+        ".zstd",
+        ".lz4",
+        ".lzma",
+        ".cab",
+        ".dmg",
+        ".pkg",
+        ".msi",
+        ".deb",
+        ".rpm",
+        ".apk",
+        ".ipa",
+        ".jar",
+        ".war",
+        ".ear",
+        ".nupkg",
+        # Images
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".avif",
+        ".heic",
+        ".heif",
+        ".jp2",
+        ".j2k",
+        ".jpf",
+        ".jpm",
+        ".jpx",
+        ".tiff",
+        ".tif",
+        ".psd",
+        ".ico",
+        ".icns",
+        ".raw",
+        ".cr2",
+        ".nef",
+        ".arw",
+        ".dng",
+        ".orf",
+        ".rw2",
+        # Audio
+        ".mp3",
+        ".aac",
+        ".ogg",
+        ".opus",
+        ".flac",
+        ".m4a",
+        ".wma",
+        ".alac",
+        # Video
+        ".mp4",
+        ".mkv",
+        ".avi",
+        ".mov",
+        ".wmv",
+        ".flv",
+        ".webm",
+        ".m4v",
+        ".mpeg",
+        ".mpg",
+        ".3gp",
+        ".m2ts",
+        ".mts",
+        ".vob",
+        ".ogv",
+        # Documents (already compressed internally)
+        ".pdf",
+        ".docx",
+        ".xlsx",
+        ".pptx",
+        ".odt",
+        ".ods",
+        ".odp",
+        ".epub",
+        ".pages",
+        ".numbers",
+        ".keynote",
+        ".xps",
+        ".cbz",
+        ".cbr",
+        # Fonts
+        ".woff",
+        ".woff2",
+        ".eot",
+        ".ttc",
+        # Other
+        ".sqlite",
+        ".db",
+    }
+)
 
 # Create reusable compressor/decompressor for efficiency
 _compressor = zstd.ZstdCompressor(level=COMPRESSION_LEVEL)
@@ -149,4 +233,3 @@ async def decompress_stream(data: bytes) -> bytes:
 
 
 log.debug(f"Module {__name__} loaded")
-

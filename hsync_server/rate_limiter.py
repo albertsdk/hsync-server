@@ -22,14 +22,12 @@ Examples: "100/minute", "1000/hour", "10/second"
 
 import os
 
-from fastapi import Request, Response
+from fastapi import Request
 from loguru import logger as log
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 from starlette.responses import JSONResponse
-
 
 # -----------------------------------------------------------------------------
 # Rate Limit Configuration (from environment variables)
@@ -66,7 +64,7 @@ def get_client_ip(request: Request) -> str:
     if forwarded_for:
         # Take the first IP in the chain (original client)
         return forwarded_for.split(",")[0].strip()
-    
+
     # Fall back to direct client address
     return get_remote_address(request)
 
@@ -79,9 +77,7 @@ limiter = Limiter(
 )
 
 
-async def rate_limit_exceeded_handler(
-    request: Request, exc: Exception
-) -> JSONResponse:
+async def rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     Custom handler for rate limit exceeded errors.
 
@@ -102,10 +98,7 @@ async def rate_limit_exceeded_handler(
             content={"error": "Internal server error"},
         )
 
-    log.warning(
-        f"Rate limit exceeded for {get_client_ip(request)}: "
-        f"{exc.detail}"
-    )
+    log.warning(f"Rate limit exceeded for {get_client_ip(request)}: {exc.detail}")
     return JSONResponse(
         status_code=429,
         content={
@@ -124,4 +117,3 @@ log.info(
     f"upload={RATE_LIMIT_UPLOAD}, download={RATE_LIMIT_DOWNLOAD}, "
     f"websocket={RATE_LIMIT_WEBSOCKET}"
 )
-

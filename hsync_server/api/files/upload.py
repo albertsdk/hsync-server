@@ -15,13 +15,14 @@ This module provides the REST API endpoint for file upload with:
 - Compression support
 """
 
+from os import makedirs, remove
+from os.path import exists, getsize
+from shutil import move
+
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from loguru import logger as log
-from os import makedirs, remove
-from os.path import exists, getsize
-from shutil import move
 
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import is_valid_permission_format, update_file_timestamp
@@ -37,11 +38,11 @@ from hsync_server.exceptions import (
     InvalidPermissionFormatError,
     UploadError,
 )
-from hsync_server.path_validation import is_valid_filename
 from hsync_server.hashes import get_md5_hash, set_md5_hash
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File as LocalFile
-from hsync_server.rate_limiter import limiter, RATE_LIMIT_UPLOAD
+from hsync_server.path_validation import is_valid_filename
+from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
 
 
@@ -152,13 +153,17 @@ async def upload_file(
             # Append to partial file
             total_bytes = offset
             import aiofiles
+
             async with aiofiles.open(partial_file_path, "ab") as f:
                 while chunk := await file.read(8192):
                     total_bytes += len(chunk)
                     if HSYNC_MAX_UPLOAD_SIZE > 0 and total_bytes > HSYNC_MAX_UPLOAD_SIZE:
                         raise FileTooLargeError(
                             message=f"File exceeds maximum size of {HSYNC_MAX_UPLOAD_SIZE} bytes",
-                            details={"max_size": HSYNC_MAX_UPLOAD_SIZE, "received_bytes": total_bytes},
+                            details={
+                                "max_size": HSYNC_MAX_UPLOAD_SIZE,
+                                "received_bytes": total_bytes,
+                            },
                         )
                     await f.write(chunk)
 
@@ -192,18 +197,20 @@ async def upload_file(
                     if HSYNC_MAX_UPLOAD_SIZE > 0 and total_bytes > HSYNC_MAX_UPLOAD_SIZE:
                         raise FileTooLargeError(
                             message=f"File exceeds maximum size of {HSYNC_MAX_UPLOAD_SIZE} bytes",
-                            details={"max_size": HSYNC_MAX_UPLOAD_SIZE, "received_bytes": total_bytes},
+                            details={
+                                "max_size": HSYNC_MAX_UPLOAD_SIZE,
+                                "received_bytes": total_bytes,
+                            },
                         )
                     await temp_file.write(chunk)
 
             # Handle compressed upload - decompress the file
             if is_compressed and total_bytes > 0:
                 import aiofiles
+
                 async with aiofiles.open(file_location_tmp, "rb") as f:
                     compressed_data = await f.read()
-                log.debug(
-                    f"Decompressing uploaded file: {total_bytes} bytes -> ~{size} bytes"
-                )
+                log.debug(f"Decompressing uploaded file: {total_bytes} bytes -> ~{size} bytes")
                 decompressed_data = decompress_data(compressed_data)
                 async with aiofiles.open(file_location_tmp, "wb") as f:
                     await f.write(decompressed_data)
@@ -250,9 +257,7 @@ async def upload_file(
         local_bucket = f"{HSYNC_BUCKETS}/{bucket}"
         if src:
             manager = bucket_manager.get_manager(bucket)
-            await manager.send_message(
-                Event(cid, local_bucket, bucket, EventName.added, src)
-            )
+            await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))
 
         return JSONResponse(
             status_code=201,
@@ -278,5 +283,9 @@ async def upload_file(
         )
     finally:
         # Clean up temporary file if it exists (but not partial files)
-        if file_location_tmp and exists(file_location_tmp) and not file_location_tmp.endswith(".part"):
+        if (
+            file_location_tmp
+            and exists(file_location_tmp)
+            and not file_location_tmp.endswith(".part")
+        ):
             remove(file_location_tmp)

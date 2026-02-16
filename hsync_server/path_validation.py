@@ -22,10 +22,20 @@ https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file
 # Windows: < > : " / \ | ? * and characters 0-31
 # Linux/macOS: / and NUL (\x00)
 # For cross-platform compatibility, we use the union of all restrictions.
-FORBIDDEN_FILENAME_CHARS: frozenset[str] = frozenset({
-    "<", ">", ":", '"', "/", "\\", "|", "?", "*",
-    "\x00",  # NUL - forbidden on all systems
-})
+FORBIDDEN_FILENAME_CHARS: frozenset[str] = frozenset(
+    {
+        "<",
+        ">",
+        ":",
+        '"',
+        "/",
+        "\\",
+        "|",
+        "?",
+        "*",
+        "\x00",  # NUL - forbidden on all systems
+    }
+)
 
 # Control characters (ASCII 1-31) - forbidden on Windows
 # These are checked separately for efficiency
@@ -33,10 +43,19 @@ CONTROL_CHARS: frozenset[str] = frozenset(chr(i) for i in range(1, 32))
 
 # Forbidden characters in path parts (allows / for path separator)
 # Same as FORBIDDEN_FILENAME_CHARS but without forward slash
-FORBIDDEN_PATH_CHARS: frozenset[str] = frozenset({
-    "<", ">", ":", '"', "\\", "|", "?", "*",
-    "\x00",  # NUL - forbidden on all systems
-})
+FORBIDDEN_PATH_CHARS: frozenset[str] = frozenset(
+    {
+        "<",
+        ">",
+        ":",
+        '"',
+        "\\",
+        "|",
+        "?",
+        "*",
+        "\x00",  # NUL - forbidden on all systems
+    }
+)
 
 # =============================================================================
 # Reserved Filenames
@@ -48,16 +67,41 @@ FORBIDDEN_PATH_CHARS: frozenset[str] = frozenset({
 #
 # Note: Windows also recognizes superscript digits ¹²³ (ISO 8859-1) as valid
 # parts of COM# and LPT# device names (e.g., COM¹ is reserved).
-RESERVED_FILENAMES: frozenset[str] = frozenset({
-    # Standard device names
-    "CON", "PRN", "AUX", "NUL",
-    # Serial ports COM1-COM9 and superscript variants
-    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-    "COM\u00b9", "COM\u00b2", "COM\u00b3",  # COM¹, COM², COM³
-    # Parallel ports LPT1-LPT9 and superscript variants
-    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
-    "LPT\u00b9", "LPT\u00b2", "LPT\u00b3",  # LPT¹, LPT², LPT³
-})
+RESERVED_FILENAMES: frozenset[str] = frozenset(
+    {
+        # Standard device names
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        # Serial ports COM1-COM9 and superscript variants
+        "COM1",
+        "COM2",
+        "COM3",
+        "COM4",
+        "COM5",
+        "COM6",
+        "COM7",
+        "COM8",
+        "COM9",
+        "COM\u00b9",
+        "COM\u00b2",
+        "COM\u00b3",  # COM¹, COM², COM³
+        # Parallel ports LPT1-LPT9 and superscript variants
+        "LPT1",
+        "LPT2",
+        "LPT3",
+        "LPT4",
+        "LPT5",
+        "LPT6",
+        "LPT7",
+        "LPT8",
+        "LPT9",
+        "LPT\u00b9",
+        "LPT\u00b2",
+        "LPT\u00b3",  # LPT¹, LPT², LPT³
+    }
+)
 
 # Characters that are problematic at the end of filenames (Windows)
 # Windows shell ignores trailing spaces and periods
@@ -128,4 +172,3 @@ def is_valid_filename(filename: str) -> bool:
         return False
 
     return True
-

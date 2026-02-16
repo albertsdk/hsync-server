@@ -19,12 +19,3 @@ This module provides handler functions for different event types:
 """
 
 # Re-export from subpackage for backward compatibility
-from hsync_server.api.events_handlers import (
-    is_path_within_bucket,
-    is_safe_symlink_target,
-    handle_added_event,
-    handle_deleted_event,
-    handle_modified_event,
-    handle_renamed_event,
-    handle_symlink_event,
-)

@@ -14,7 +14,6 @@ This module provides classes for managing WebSocket connections:
 
 from fastapi import WebSocket
 from loguru import logger as log
-from typing import Dict, Optional
 
 from hsync_server.models.event import Event
 
@@ -33,7 +32,7 @@ class ConnectionManager:
 
     def __init__(self):
         """Initialize the ConnectionManager with empty connections dict."""
-        self.active_connections: Dict[str, WebSocket] = {}
+        self.active_connections: dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket, client_id: str) -> None:
         """
@@ -84,7 +83,7 @@ class BucketConnectionManager:
 
     def __init__(self):
         """Initialize with empty buckets dictionary."""
-        self.buckets: Dict[str, ConnectionManager] = {}
+        self.buckets: dict[str, ConnectionManager] = {}
 
     def get_manager(self, bucket: str) -> ConnectionManager:
         """
@@ -101,7 +100,7 @@ class BucketConnectionManager:
             log.debug(f"Created ConnectionManager for bucket: {bucket}")
         return self.buckets[bucket]
 
-    def get_connection_count(self, bucket: Optional[str] = None) -> int:
+    def get_connection_count(self, bucket: str | None = None) -> int:
         """
         Get the number of active connections.
 
@@ -114,12 +113,9 @@ class BucketConnectionManager:
         if bucket:
             manager = self.buckets.get(bucket)
             return len(manager.active_connections) if manager else 0
-        return sum(
-            len(m.active_connections) for m in self.buckets.values()
-        )
+        return sum(len(m.active_connections) for m in self.buckets.values())
 
 
 # Global bucket connection manager instance for WebSocket connections
 # Provides per-bucket connection management for better scalability
 bucket_manager = BucketConnectionManager()
-

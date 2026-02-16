@@ -6,16 +6,17 @@ Tests the loguru-based logging configuration.
 
 import logging
 import os
+
 import pytest
 
 from hsync_server.logger import (
-    VALID_LOG_LEVELS,
     VALID_LOG_FORMATS,
+    VALID_LOG_LEVELS,
+    InterceptHandler,
     get_log_format,
     get_request_id,
     set_request_id,
     setup_logging,
-    InterceptHandler,
 )
 
 
@@ -25,7 +26,7 @@ class TestLogConstants:
     def test_valid_log_levels(self):
         """Test all expected log levels are defined."""
         expected = ("debug", "info", "warning", "error", "critical")
-        assert VALID_LOG_LEVELS == expected
+        assert expected == VALID_LOG_LEVELS
 
     def test_valid_log_formats(self):
         """Test valid log formats."""
@@ -139,4 +140,3 @@ class TestSetupLogging:
         hsync_logger = logging.getLogger("hsync")
         assert hsync_logger.propagate is False
         assert len(hsync_logger.handlers) >= 1
-

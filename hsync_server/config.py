@@ -20,7 +20,6 @@ from dotenv import load_dotenv
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 # =============================================================================
 # Constants
 # =============================================================================
@@ -114,7 +113,9 @@ class Settings(BaseSettings):
     cors_origins: str = Field(default="", description="Comma-separated allowed origins")
 
     # Compression Configuration
-    compression_enabled: bool = Field(default=True, description="Enable zstd compression for file transfers")
+    compression_enabled: bool = Field(
+        default=True, description="Enable zstd compression for file transfers"
+    )
 
     # SSL/TLS Configuration
     ssl_enabled: bool = Field(default=False, description="Enable HTTPS/WSS")
@@ -136,11 +137,7 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         """Parse comma-separated CORS origins into a list."""
-        return [
-            origin.strip()
-            for origin in self.cors_origins.split(",")
-            if origin.strip()
-        ]
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @property
     def path(self) -> str:
@@ -170,6 +167,7 @@ def get_settings() -> Settings:
 
 # These are evaluated at import time. For late binding after env file loading,
 # use get_settings() or the getter functions below.
+
 
 def _get_settings() -> Settings:
     """Get current settings (uncached, for backward compatibility)."""

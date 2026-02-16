@@ -2,19 +2,20 @@
 Tests for rate limiter module.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
 from fastapi import Request
 from slowapi.errors import RateLimitExceeded
 
 from hsync_server.rate_limiter import (
-    get_client_ip,
-    rate_limit_exceeded_handler,
-    limiter,
     RATE_LIMIT_DEFAULT,
-    RATE_LIMIT_UPLOAD,
     RATE_LIMIT_DOWNLOAD,
+    RATE_LIMIT_UPLOAD,
     RATE_LIMIT_WEBSOCKET,
+    get_client_ip,
+    limiter,
+    rate_limit_exceeded_handler,
 )
 
 
@@ -27,7 +28,7 @@ class TestGetClientIp:
         request.headers = {}
         request.client = MagicMock()
         request.client.host = "192.168.1.100"
-        
+
         ip = get_client_ip(request)
         assert ip == "192.168.1.100"
 
@@ -37,7 +38,7 @@ class TestGetClientIp:
         request.headers = {"X-Forwarded-For": "10.0.0.1"}
         request.client = MagicMock()
         request.client.host = "192.168.1.1"
-        
+
         ip = get_client_ip(request)
         assert ip == "10.0.0.1"
 
@@ -47,7 +48,7 @@ class TestGetClientIp:
         request.headers = {"X-Forwarded-For": "10.0.0.1, 10.0.0.2, 10.0.0.3"}
         request.client = MagicMock()
         request.client.host = "192.168.1.1"
-        
+
         ip = get_client_ip(request)
         assert ip == "10.0.0.1"
 
@@ -57,7 +58,7 @@ class TestGetClientIp:
         request.headers = {"X-Forwarded-For": "  10.0.0.1  ,  10.0.0.2  "}
         request.client = MagicMock()
         request.client.host = "192.168.1.1"
-        
+
         ip = get_client_ip(request)
         assert ip == "10.0.0.1"
 
@@ -124,6 +125,7 @@ class TestRateLimitConstants:
     def test_limits_are_valid_format(self):
         """All rate limits follow the expected format."""
         import re
+
         pattern = r"^\d+/(second|minute|hour|day)$"
         assert re.match(pattern, RATE_LIMIT_DEFAULT)
         assert re.match(pattern, RATE_LIMIT_UPLOAD)
@@ -141,4 +143,3 @@ class TestLimiterInstance:
     def test_limiter_has_default_limits(self):
         """Limiter has default limits configured."""
         assert limiter._default_limits is not None
-

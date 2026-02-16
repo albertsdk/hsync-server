@@ -3,14 +3,13 @@ Pytest fixtures for hsync-server tests.
 """
 
 import os
-import sys
 import tempfile
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
 from unittest.mock import patch
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 
 # Set test configuration before importing app
 os.environ["HSYNC_API_KEY"] = "test-api-key-12345"
@@ -27,18 +26,20 @@ def temp_buckets_dir() -> Generator[str, None, None]:
 def test_app(temp_buckets_dir: str) -> Generator[FastAPI, None, None]:
     """Create a test FastAPI application with temp buckets directory."""
     # Patch HSYNC_BUCKETS in all modules that use it
-    with patch("hsync_server.config.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.utils.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir):
-
-        from hsync_server.rate_limiter import limiter, rate_limit_exceeded_handler
-        from hsync_server.error_handlers import register_exception_handlers
+    with (
+        patch("hsync_server.config.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.utils.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir),
+    ):
         from slowapi.errors import RateLimitExceeded
         from slowapi.middleware import SlowAPIMiddleware
+
+        from hsync_server.error_handlers import register_exception_handlers
+        from hsync_server.rate_limiter import limiter, rate_limit_exceeded_handler
 
         # Create a fresh app for testing
         app = FastAPI(title="HSYNC Test")
@@ -51,13 +52,11 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI, None, None]:
 
         # Create new routers for test app (avoid reusing global routers)
         from fastapi import APIRouter, Depends
+
         from hsync_server.routers import verify_api_key
 
         test_public_router = APIRouter(tags=["Public Router"])
-        test_auth_router = APIRouter(
-            tags=["Auth Router"],
-            dependencies=[Depends(verify_api_key)]
-        )
+        test_auth_router = APIRouter(tags=["Auth Router"], dependencies=[Depends(verify_api_key)])
 
         # Register health endpoint
         @test_public_router.get("/health")
@@ -65,48 +64,25 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI, None, None]:
             return ""
 
         # Import bucket endpoints from buckets module
-        from hsync_server.api.buckets import (
-            get_bucket, create_bucket, delete_bucket
-        )
-        # Import file endpoints from files module
-        from hsync_server.api.files import (
-            upload_file, download_file, get_files, delete_file
-        )
+        from hsync_server.api.buckets import create_bucket, delete_bucket, get_bucket
 
+        # Import file endpoints from files module
+        from hsync_server.api.files import delete_file, download_file, get_files, upload_file
+
+        test_auth_router.add_api_route("/api/v1/buckets/{bucket}", get_bucket, methods=["GET"])
+        test_auth_router.add_api_route("/api/v1/buckets", create_bucket, methods=["POST"])
         test_auth_router.add_api_route(
-            "/api/v1/buckets/{bucket}",
-            get_bucket,
-            methods=["GET"]
+            "/api/v1/buckets/{bucket}", delete_bucket, methods=["DELETE"]
         )
         test_auth_router.add_api_route(
-            "/api/v1/buckets",
-            create_bucket,
-            methods=["POST"]
+            "/api/v1/buckets/{bucket}/files", upload_file, methods=["POST"]
         )
         test_auth_router.add_api_route(
-            "/api/v1/buckets/{bucket}",
-            delete_bucket,
-            methods=["DELETE"]
+            "/api/v1/buckets/{bucket}/files/download", download_file, methods=["GET"]
         )
+        test_auth_router.add_api_route("/api/v1/buckets/{bucket}/files", get_files, methods=["GET"])
         test_auth_router.add_api_route(
-            "/api/v1/buckets/{bucket}/files",
-            upload_file,
-            methods=["POST"]
-        )
-        test_auth_router.add_api_route(
-            "/api/v1/buckets/{bucket}/files/download",
-            download_file,
-            methods=["GET"]
-        )
-        test_auth_router.add_api_route(
-            "/api/v1/buckets/{bucket}/files",
-            get_files,
-            methods=["GET"]
-        )
-        test_auth_router.add_api_route(
-            "/api/v1/buckets/{bucket}/files",
-            delete_file,
-            methods=["DELETE"]
+            "/api/v1/buckets/{bucket}/files", delete_file, methods=["DELETE"]
         )
 
         app.include_router(test_public_router)
@@ -118,32 +94,34 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI, None, None]:
 @pytest.fixture
 async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[AsyncClient, None]:
     """Create an async test client."""
-    with patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir):
+    with (
+        patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir),
+    ):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(
             transport=transport,
             base_url="http://test",
-            headers={"Authorization": "Bearer test-api-key-12345"}
+            headers={"Authorization": "Bearer test-api-key-12345"},
         ) as ac:
             yield ac
 
 
 @pytest.fixture
-async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[AsyncClient, None]:
+async def client_no_auth(
+    test_app: FastAPI, temp_buckets_dir: str
+) -> AsyncGenerator[AsyncClient, None]:
     """Create an async test client without authentication."""
-    with patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir), \
-         patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir):
+    with (
+        patch("hsync_server.api.files.upload.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.download.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.list.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.files.delete.HSYNC_BUCKETS", temp_buckets_dir),
+        patch("hsync_server.api.buckets.HSYNC_BUCKETS", temp_buckets_dir),
+    ):
         transport = ASGITransport(app=test_app)
-        async with AsyncClient(
-            transport=transport,
-            base_url="http://test"
-        ) as ac:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac
-

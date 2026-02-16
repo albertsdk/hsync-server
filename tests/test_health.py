@@ -3,11 +3,11 @@ Tests for hsync_server.api.health module.
 """
 
 import pytest
-from httpx import AsyncClient, ASGITransport
 from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 
-from hsync_server.routers import public_router
 from hsync_server.api import health  # noqa: F401 - imports endpoint
+from hsync_server.routers import public_router
 
 
 @pytest.fixture
@@ -46,4 +46,3 @@ class TestHealthEndpoint:
         """Test that health endpoint returns plain text content type."""
         response = await client.get("/health")
         assert "text/plain" in response.headers.get("content-type", "")
-

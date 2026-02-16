@@ -4,17 +4,18 @@
 # Tests for middleware components.
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from starlette.requests import Request
-from starlette.responses import Response
-from starlette.testclient import TestClient
 from fastapi import FastAPI
+from starlette.testclient import TestClient
 
-from hsync_server.middleware import RequestIdMiddleware, VersionMiddleware, check_version_compatibility
+from hsync_server.constants import HEADER_CLIENT_VERSION, HEADER_SERVER_VERSION, HSYNC_VERSION
 from hsync_server.logger import get_request_id
-from hsync_server.constants import HSYNC_VERSION, HEADER_CLIENT_VERSION, HEADER_SERVER_VERSION
+from hsync_server.middleware import (
+    RequestIdMiddleware,
+    VersionMiddleware,
+    check_version_compatibility,
+)
 
 
 @pytest.fixture
@@ -324,10 +325,7 @@ class TestVersionMiddlewareIntegration:
         client = TestClient(app)
         response = client.get(
             "/test",
-            headers={
-                HEADER_CLIENT_VERSION: HSYNC_VERSION,
-                "X-Request-ID": "test-request-id"
-            }
+            headers={HEADER_CLIENT_VERSION: HSYNC_VERSION, "X-Request-ID": "test-request-id"},
         )
 
         assert response.status_code == 200
@@ -349,14 +347,9 @@ class TestVersionMiddlewareIntegration:
         # Incompatible version should return 426 without setting request ID
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get(
-            "/test",
-            headers={
-                HEADER_CLIENT_VERSION: "99.0.0",
-                "X-Request-ID": "should-not-appear"
-            }
+            "/test", headers={HEADER_CLIENT_VERSION: "99.0.0", "X-Request-ID": "should-not-appear"}
         )
 
         assert response.status_code == 426
         # Request ID should not be set since version check failed early
         assert "X-Request-ID" not in response.headers
-
