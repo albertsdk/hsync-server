@@ -18,7 +18,23 @@ from os.path import (
     join,
 )
 from re import match
-from typing import Optional
+from typing import Optional, TypedDict
+
+# =============================================================================
+# TypedDicts for type-safe serialization
+# =============================================================================
+
+
+class FileDict(TypedDict):
+    """Type-safe dictionary representation of a File."""
+
+    filepath: str | None
+    name: str | None
+    ctime: int | None
+    mtime: int | None
+    size: int
+    md5sum: str | None
+    permissions: str | None
 
 
 def is_hidden_file(file_path: str) -> bool:
@@ -164,22 +180,22 @@ class File:
         permissions = obj_stat.st_mode
         return stat.filemode(permissions)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> FileDict:
         """
         Convert the File instance to a dictionary.
 
         Returns:
-            Dictionary representation suitable for JSON serialization.
+            FileDict representation suitable for JSON serialization.
         """
-        return {
-            "filepath": self.filepath,
-            "name": self.name,
-            "ctime": self.ctime,
-            "mtime": self.mtime,
-            "size": self.size,
-            "md5sum": self.md5sum,
-            "permissions": self.permissions,
-        }
+        return FileDict(
+            filepath=self.filepath,
+            name=self.name,
+            ctime=self.ctime,
+            mtime=self.mtime,
+            size=self.size,
+            md5sum=self.md5sum,
+            permissions=self.permissions,
+        )
 
     @classmethod
     def get(cls, file_path: str, buckets_dir: str | None = None) -> Optional["File"]:
