@@ -16,13 +16,13 @@ from asyncio import to_thread
 from hashlib import md5
 from os import chmod
 from os import stat as os_stat
-from pathlib import Path
 
 import aiofiles
 from loguru import logger as log
 
 from hsync_server.config import HSYNC_BUCKETS
 from hsync_server.models.dir import Dir
+from hsync_server.path_validation import is_valid_path as validate_path_traversal
 
 
 def is_valid_bucket(value: str) -> bool:
@@ -57,13 +57,8 @@ def is_valid_dir(target_path: str) -> bool:
     Returns:
         True if the path is safe, False if it escapes the bucket root.
     """
-    reference = Path(HSYNC_BUCKETS).resolve()
-    target = Path(f"{HSYNC_BUCKETS}/{target_path}").resolve()
-    try:
-        target.relative_to(reference)
-        return True
-    except ValueError:
-        return False
+    # Use the new robust is_valid_path function
+    return validate_path_traversal(target_path, HSYNC_BUCKETS)
 
 
 async def compute_md5(filepath: str, chunk_size: int = 8192) -> str:

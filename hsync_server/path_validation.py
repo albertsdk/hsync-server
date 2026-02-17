@@ -149,6 +149,8 @@ def is_valid_filename(filename: str) -> bool:
     - Control characters (ASCII 1-31)
     - Reserved names on Windows (including with extensions, e.g., NUL.txt)
     - Problematic trailing characters (space, period)
+    - Path traversal attempts (../ or ..\\)
+    - Absolute paths
 
     Args:
         filename: The filename to validate (without path).
@@ -171,4 +173,125 @@ def is_valid_filename(filename: str) -> bool:
     if has_problematic_trailing(filename):
         return False
 
+    if not is_safe_path_component(filename):
+        return False
+
     return True
+
+
+def is_safe_path_component(path: str) -> bool:
+    """
+    Check if a path component is safe (no path traversal or absolute paths).
+
+    This function prevents path traversal attacks by ensuring the path:
+    - Does not contain ".." (parent directory references)
+    - Is not an absolute path (doesn't start with / or drive letter)
+    - Doesn't contain Windows drive letter references (C:, D:, etc.)
+
+    Args:
+        path: The path component to validate.
+
+    Returns:
+        True if the path is safe, False otherwise.
+    """
+    if not path:
+        return False
+
+    # Check for absolute paths
+    if path.startswith("/") or path.startswith("\\"):
+        return False
+
+    # Check for Windows drive letters (C:, D:, etc.)
+    if len(path) >= 2 and path[1] == ":":
+        return False
+
+    # Check for parent directory traversal
+    if ".." in path:
+        return False
+
+    # Normalize and check again (handles encoded traversals)
+    normalized = path.replace("\\", "/").replace("//", "/")
+    if ".." in normalized:
+        return False
+
+    return True
+
+
+def is_valid_path(path: str, base_dir: str) -> bool:
+    """
+    Validate a full path against a base directory to prevent path traversal.
+
+    This function ensures the resolved path stays within the base directory,
+    preventing attacks like ../../../etc/passwd.
+
+    Args:
+        path: The relative path to validate.
+        base_dir: The base directory that the path must be within.
+
+    Returns:
+        True if the path is safe, False if it escapes the base directory.
+    """
+    from pathlib import Path
+
+    if not path:
+        return True  # Empty path is valid (root)
+
+    # Resolve both paths and check if the target is within base_dir
+    try:
+        base = Path(base_dir).resolve()
+        target = (base / path).resolve()
+        target.relative_to(base)
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitize a filename by removing/replacing dangerous characters.
+
+    This function:
+    - Removes path separators
+    - Replaces forbidden characters with underscores
+    - Removes control characters
+    - Strips problematic trailing characters
+    - Truncates to safe length (255 chars)
+
+    Args:
+        filename: The filename to sanitize.
+
+    Returns:
+        A sanitized filename safe for storage.
+    """
+    if not filename:
+        return "unnamed"
+
+    # Remove path separators - extract just the filename
+    if "/" in filename:
+        filename = filename.rsplit("/", 1)[-1]
+    if "\\" in filename:
+        filename = filename.rsplit("\\", 1)[-1]
+
+    # Remove or replace forbidden characters
+    sanitized = []
+    for char in filename:
+        if char in FORBIDDEN_FILENAME_CHARS or char in CONTROL_CHARS:
+            sanitized.append("_")  # Replace with underscore
+        else:
+            sanitized.append(char)
+    filename = "".join(sanitized)
+
+    # Remove problematic trailing characters
+    filename = filename.rstrip(" .")
+
+    # Truncate to maximum filename length (255 chars is typical limit)
+    if len(filename) > 255:
+        name, ext = filename.rsplit(".", 1) if "." in filename else (filename, "")
+        max_name_len = 255 - len(ext) - 1  # -1 for the dot
+        filename = name[:max_name_len] + "." + ext if ext else name[:255]
+
+    # Handle empty or reserved names
+    if not filename or filename.lower() in RESERVED_FILENAMES:
+        filename = "unnamed"
+
+    return filename
