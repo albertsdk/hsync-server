@@ -96,6 +96,12 @@ async def delete_file(
         remove(file)
         log.info(f'File: "{file}" deleted successfully')
 
+        # Also remove any backup file associated with this file
+        backup_file = f"{file}.backup"
+        if exists(backup_file):
+            remove(backup_file)
+            log.info(f'Backup file: "{backup_file}" deleted successfully')
+
         parent = dirname(file)
         if is_sentinel_file(file):
             # Sentinel removed — clean up the now-empty directory

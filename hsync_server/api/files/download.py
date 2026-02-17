@@ -13,7 +13,7 @@ This module provides the REST API endpoint for file download with:
 - Range request support (for resumable downloads)
 """
 
-from os.path import getsize
+from os.path import exists, getsize
 
 from aiofiles.ospath import isfile
 from fastapi import Request
@@ -64,6 +64,12 @@ async def download_file(request: Request, bucket: str, filename: str):
         raise InvalidPathError(details={"path": filename})
 
     file = f"{HSYNC_BUCKETS}/{bucket}/{filename}"
+    backup_file = f"{file}.backup"
+
+    # If a backup file exists (due to ongoing upload), serve that instead
+    # This ensures clients always download a complete, valid file
+    if exists(backup_file):
+        file = backup_file
 
     if not await isfile(file):
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
