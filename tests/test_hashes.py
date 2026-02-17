@@ -15,7 +15,7 @@ class TestMD5HashManagement:
 
     def setup_method(self):
         """Reset hash storage before each test."""
-        hashes.FILE_HASHES = []
+        hashes.FILE_HASHES = {}
 
     def test_set_and_get_md5_hash(self):
         """Test storing and retrieving MD5 hash."""
@@ -70,12 +70,11 @@ class TestMD5HashManagement:
 
         hashes.set_md5_hash(filepath, md5sum)
 
-        # The filepath should not appear in the storage
-        for entry in hashes.FILE_HASHES:
-            for key in entry.keys():
-                assert key != filepath
-                # Key should be a SHA256 hex string (64 chars)
-                assert len(key) == 64
+        # The filepath should not appear as a key in storage
+        for key in hashes.FILE_HASHES.keys():
+            assert key != filepath
+            # Key should be a SHA256 hex string (64 chars)
+            assert len(key) == 64
 
 
 class TestSetMD5Hashes:
@@ -83,7 +82,7 @@ class TestSetMD5Hashes:
 
     def setup_method(self):
         """Reset hash storage before each test."""
-        hashes.FILE_HASHES = []
+        hashes.FILE_HASHES = {}
 
     def test_set_md5_hashes_directory(self):
         """Test computing hashes for directory contents."""
