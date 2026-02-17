@@ -47,6 +47,7 @@ Thumbs.db
 # Project specific
 /buckets/
 /certs/
+/state/
 .hsync-last-env-file
 
 # Logs
