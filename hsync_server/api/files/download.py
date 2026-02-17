@@ -23,7 +23,7 @@ from loguru import logger as log
 from hsync_server.api.utils import is_valid_bucket, is_valid_dir
 from hsync_server.compression import (
     CONTENT_ENCODING_ZSTD,
-    compress_data,
+    async_compress_file,
     should_compress,
 )
 from hsync_server.config import HSYNC_BUCKETS, get_compression_enabled
@@ -80,8 +80,8 @@ async def download_file(request: Request, bucket: str, filename: str):
     )
 
     if use_compression:
-        # Read and compress file
-        compressed_data = compress_data(open(file, "rb").read())
+        # Async streaming compression: reads file in chunks, produces single zstd frame
+        compressed_data = await async_compress_file(file)
         compression_ratio = len(compressed_data) / file_size * 100
         log.debug(
             f"Compressed download: {file_size} -> {len(compressed_data)} bytes "
