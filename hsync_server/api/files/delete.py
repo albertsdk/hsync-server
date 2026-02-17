@@ -19,7 +19,11 @@ from fastapi.responses import JSONResponse
 from loguru import logger as log
 
 from hsync_server.api.connection_manager import bucket_manager
-from hsync_server.api.file_utils import cleanup_empty_dir, ensure_sentinel_in_dir, is_sentinel_file
+from hsync_server.api.file_utils import (
+    cleanup_empty_dir,
+    ensure_sentinel_in_dir,
+    is_sentinel_file,
+)
 from hsync_server.api.utils import is_valid_bucket, is_valid_dir
 from hsync_server.config import HSYNC_BUCKETS
 from hsync_server.exceptions import (
@@ -28,9 +32,7 @@ from hsync_server.exceptions import (
     InvalidBucketNameError,
     InvalidPathError,
 )
-from hsync_server.exceptions import (
-    FileNotFoundError as HSyncFileNotFoundError,
-)
+from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File as LocalFile
 from hsync_server.routers import auth_router

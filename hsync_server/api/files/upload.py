@@ -25,8 +25,16 @@ from fastapi.responses import JSONResponse
 from loguru import logger as log
 
 from hsync_server.api.connection_manager import bucket_manager
-from hsync_server.api.file_utils import is_valid_permission_format, update_file_timestamp
-from hsync_server.api.utils import compute_md5, is_valid_bucket, is_valid_dir, set_permissions
+from hsync_server.api.file_utils import (
+    is_valid_permission_format,
+    update_file_timestamp,
+)
+from hsync_server.api.utils import (
+    compute_md5,
+    is_valid_bucket,
+    is_valid_dir,
+    set_permissions,
+)
 from hsync_server.compression import decompress_data
 from hsync_server.config import HSYNC_BUCKETS, HSYNC_MAX_UPLOAD_SIZE
 from hsync_server.exceptions import (

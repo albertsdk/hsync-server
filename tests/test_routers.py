@@ -10,7 +10,12 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from hsync_server.exceptions import MissingApiKeyError
-from hsync_server.routers import auth_router, mask_api_key, public_router, verify_api_key
+from hsync_server.routers import (
+    auth_router,
+    mask_api_key,
+    public_router,
+    verify_api_key,
+)
 
 
 class TestMaskApiKey:

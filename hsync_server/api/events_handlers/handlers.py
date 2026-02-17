@@ -27,7 +27,11 @@ from hsync_server.api.events_handlers.validation import (
     is_path_within_bucket,
     is_safe_symlink_target,
 )
-from hsync_server.api.file_utils import cleanup_empty_dir, ensure_sentinel_in_dir, is_sentinel_file
+from hsync_server.api.file_utils import (
+    cleanup_empty_dir,
+    ensure_sentinel_in_dir,
+    is_sentinel_file,
+)
 from hsync_server.api.utils import set_permissions
 from hsync_server.hashes import del_md5_hash
 from hsync_server.models.dir import Dir

@@ -37,7 +37,7 @@ import logging
 import os
 import sys
 from contextvars import ContextVar
-from typing import Final
+from typing import Any, Final
 
 from loguru import logger
 
@@ -113,12 +113,13 @@ class InterceptHandler(logging.Handler):
         """Redirect log record to loguru."""
         # Get corresponding loguru level
         try:
-            level = logger.level(record.levelname).name
+            level: str = logger.level(record.levelname).name
         except ValueError:
-            level = record.levelno
+            level = str(record.levelno)
 
         # Find caller from where originated the logged message
-        frame, depth = logging.currentframe(), 2
+        frame: Any = logging.currentframe()  # type: ignore[assignment]
+        depth = 2
         while frame and frame.f_code.co_filename == logging.__file__:
             frame = frame.f_back
             depth += 1

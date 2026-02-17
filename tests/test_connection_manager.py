@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hsync_server.api.connection_manager import BucketConnectionManager, ConnectionManager
+from hsync_server.api.connection_manager import (
+    BucketConnectionManager,
+    ConnectionManager,
+)
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File
 

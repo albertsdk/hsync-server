@@ -9,7 +9,11 @@ import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
-from hsync_server.constants import HEADER_CLIENT_VERSION, HEADER_SERVER_VERSION, HSYNC_VERSION
+from hsync_server.constants import (
+    HEADER_CLIENT_VERSION,
+    HEADER_SERVER_VERSION,
+    HSYNC_VERSION,
+)
 from hsync_server.logger import get_request_id
 from hsync_server.middleware import (
     RequestIdMiddleware,

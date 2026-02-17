@@ -21,11 +21,13 @@ from fastapi.responses import FileResponse, Response
 from loguru import logger as log
 
 from hsync_server.api.utils import is_valid_bucket, is_valid_dir
-from hsync_server.compression import CONTENT_ENCODING_ZSTD, compress_data, should_compress
-from hsync_server.config import HSYNC_BUCKETS, get_compression_enabled
-from hsync_server.exceptions import (
-    FileNotFoundError as HSyncFileNotFoundError,
+from hsync_server.compression import (
+    CONTENT_ENCODING_ZSTD,
+    compress_data,
+    should_compress,
 )
+from hsync_server.config import HSYNC_BUCKETS, get_compression_enabled
+from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.exceptions import (
     InvalidBucketNameError,
     InvalidPathError,
