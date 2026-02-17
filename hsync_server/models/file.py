@@ -228,7 +228,7 @@ class File:
     @classmethod
     def from_dict(
         cls,
-        data: dict,
+        data: dict | FileDict,
         dir_prefix: str | None = None,
         strip_dir_prefix: bool = True,
     ) -> "File":
