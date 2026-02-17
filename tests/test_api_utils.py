@@ -277,7 +277,10 @@ from hsync_server.path_validation import (
     has_forbidden_chars,
     has_problematic_trailing,
     is_reserved_name,
+    is_safe_path_component,
     is_valid_filename,
+    is_valid_path,
+    sanitize_filename,
 )
 
 
@@ -412,3 +415,84 @@ class TestHasProblematicTrailing:
     def test_trailing_period(self):
         """Returns True for trailing period."""
         assert has_problematic_trailing("file.") is True
+
+
+class TestIsSafePathComponent:
+    """Tests for is_safe_path_component function."""
+
+    def test_valid_paths(self):
+        """Valid path components are accepted."""
+        assert is_safe_path_component("file.txt") is True
+        assert is_safe_path_component("subdir") is True
+        assert is_safe_path_component("path/to/file") is True
+
+    def test_absolute_path_rejected(self):
+        """Absolute paths are rejected."""
+        assert is_safe_path_component("/etc/passwd") is False
+        assert is_safe_path_component("/absolute/path") is False
+
+    def test_windows_absolute_rejected(self):
+        """Windows absolute paths are rejected."""
+        assert is_safe_path_component("C:\\windows") is False
+        assert is_safe_path_component("D:\\data") is False
+
+    def test_traversal_rejected(self):
+        """Path traversal attempts are rejected."""
+        assert is_safe_path_component("../etc/passwd") is False
+        assert is_safe_path_component("..") is False
+        assert is_safe_path_component("../../etc") is False
+        assert is_safe_path_component("dir/../../../etc") is False
+
+
+class TestIsValidPath:
+    """Tests for is_valid_path function."""
+
+    def test_valid_paths(self, tmp_path):
+        """Valid paths within base directory are accepted."""
+        base = str(tmp_path)
+        assert is_valid_path("subdir", base) is True
+        assert is_valid_path("subdir/nested", base) is True
+
+    def test_traversal_rejected(self, tmp_path):
+        """Path traversal outside base directory is rejected."""
+        base = str(tmp_path)
+        assert is_valid_path("../etc/passwd", base) is False
+        assert is_valid_path("subdir/../../../etc", base) is False
+
+
+class TestSanitizeFilename:
+    """Tests for sanitize_filename function."""
+
+    def test_normal_filename_unchanged(self):
+        """Normal filenames are kept as-is."""
+        assert sanitize_filename("file.txt") == "file.txt"
+        assert sanitize_filename("document.pdf") == "document.pdf"
+
+    def test_path_removed(self):
+        """Path separators are removed, keeping only filename."""
+        assert sanitize_filename("path/to/file.txt") == "file.txt"
+        assert sanitize_filename("C:\\Windows\\file.txt") == "file.txt"
+
+    def test_forbidden_chars_replaced(self):
+        """Forbidden characters are replaced with underscores."""
+        assert sanitize_filename("file<name>.txt") == "file_name_.txt"
+        assert sanitize_filename("file:name.txt") == "file_name.txt"
+
+    def test_trailing_removed(self):
+        """Trailing spaces and periods are removed."""
+        assert sanitize_filename("file.txt ") == "file.txt"
+        assert sanitize_filename("file.txt.") == "file.txt"
+
+    def test_empty_becomes_unnamed(self):
+        """Empty strings become 'unnamed', reserved names keep original."""
+        assert sanitize_filename("") == "unnamed"
+        # Reserved names are handled by is_valid_filename, not sanitize
+        assert sanitize_filename("NUL") == "NUL"
+        assert sanitize_filename("   ") == "unnamed"
+
+    def test_long_filename_truncated(self):
+        """Filenames longer than 255 chars are truncated."""
+        long_name = "a" * 300 + ".txt"
+        result = sanitize_filename(long_name)
+        assert len(result) <= 255
+        assert result.endswith(".txt")
