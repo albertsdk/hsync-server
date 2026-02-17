@@ -16,8 +16,10 @@ The WebSocket endpoint handles:
 - Event validation and processing
 - Broadcasting events to all connected clients (except sender)
 - File system operations based on received events
+- Heartbeat/ping-pong for connection health monitoring
 """
 
+import asyncio
 import hmac
 from json import JSONDecodeError, loads
 
@@ -32,7 +34,13 @@ from hsync_server.api.event_handlers import (
     handle_renamed_event,
     handle_symlink_event,
 )
-from hsync_server.config import HSYNC_API_KEY, HSYNC_BUCKETS, get_compression_enabled
+from hsync_server.config import (
+    HSYNC_API_KEY,
+    HSYNC_BUCKETS,
+    get_compression_enabled,
+    get_ws_heartbeat_interval,
+    get_ws_heartbeat_timeout,
+)
 from hsync_server.constants import HSYNC_VERSION
 from hsync_server.middleware import check_version_compatibility
 from hsync_server.models.event import EventName
@@ -136,13 +144,51 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         manager = bucket_manager.get_manager(bucket)
         manager.active_connections[cid] = websocket
         log.info(f"[WEBSOCKET ] Client connected: {cid} (bucket: {bucket})")
+
+        # Get heartbeat configuration
+        heartbeat_interval = get_ws_heartbeat_interval()
+        heartbeat_timeout = get_ws_heartbeat_timeout()
+
+        # Create a cancel event for heartbeat task
+        heartbeat_cancel = asyncio.Event()
+
+        async def send_heartbeat() -> None:
+            """Send periodic ping messages to the client."""
+            while not heartbeat_cancel.is_set():
+                try:
+                    await asyncio.sleep(heartbeat_interval)
+                    if heartbeat_cancel.is_set():
+                        break
+                    await websocket.send_json({"type": "ping"})
+                except Exception:
+                    break
+
+        # Start heartbeat task
+        heartbeat_task = asyncio.create_task(send_heartbeat())
+
         try:
             # Main message processing loop
             while True:
-                data = await websocket.receive_text()
+                try:
+                    # Use wait_for to implement timeout
+                    data = await asyncio.wait_for(
+                        websocket.receive_text(), timeout=heartbeat_interval + heartbeat_timeout
+                    )
+                except TimeoutError:
+                    log.warning(f"[WEBSOCKET ] Heartbeat timeout for {cid}")
+                    await websocket.close(code=4004, reason="Heartbeat timeout")
+                    break
+
                 log.debug(f"[WEBSOCKET ] Received message: {_escape_braces(data)}")
                 try:
                     message = loads(data)
+
+                    # Handle ping/pong messages
+                    msg_type = message.get("type")
+                    if msg_type == "pong":
+                        # Client responded to ping, connection is alive
+                        log.debug(f"[WEBSOCKET ] Received pong from {cid}")
+                        continue
 
                     # Validate event type
                     if message.get("name") not in {
@@ -188,13 +234,20 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
 
         except WebSocketDisconnect:
             # Client disconnected normally
-            manager.disconnect(cid)
             log.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")
         except Exception as e:
             # Client disconnected with error
-            manager.disconnect(cid)
             log.warning(f"[WEBSOCKET ] Disconnected (CID: {cid}) ({e})")
             await websocket.close()
+        finally:
+            # Cancel heartbeat task and cleanup
+            heartbeat_cancel.set()
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            manager.disconnect(cid)
     except Exception:
         # Handle any outer exception (e.g., auth failure)
         log.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")

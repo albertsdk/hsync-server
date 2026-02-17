@@ -126,6 +126,18 @@ class Settings(BaseSettings):
         description="Directory for auto-generated certificates",
     )
 
+    # WebSocket Configuration
+    ws_heartbeat_interval: int = Field(
+        default=30,
+        ge=5,
+        description="WebSocket heartbeat interval in seconds",
+    )
+    ws_heartbeat_timeout: int = Field(
+        default=10,
+        ge=3,
+        description="WebSocket heartbeat timeout in seconds",
+    )
+
     @field_validator("log_level", mode="before")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
@@ -231,3 +243,13 @@ def get_ssl_cert_dir() -> str:
 def get_compression_enabled() -> bool:
     """Get compression enabled flag from environment (late binding)."""
     return get_settings().compression_enabled
+
+
+def get_ws_heartbeat_interval() -> int:
+    """Get WebSocket heartbeat interval in seconds (late binding)."""
+    return get_settings().ws_heartbeat_interval
+
+
+def get_ws_heartbeat_timeout() -> int:
+    """Get WebSocket heartbeat timeout in seconds (late binding)."""
+    return get_settings().ws_heartbeat_timeout
