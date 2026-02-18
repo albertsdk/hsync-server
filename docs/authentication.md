@@ -23,7 +23,7 @@ Client                              HSYNC Server
   │── {"type": "auth",                    │
   │    "token": "<HSYNC_API_KEY>",        │
   │    "app_version": "1.2.3",            │
-  │    "protocol_version": "ws/2",        │
+  │    "protocol_version": "ws/1",        │
   │    "capabilities": ["compression",    │
   │                     "delta"]} ───────▶│
   │                                       │── validate protocol_version
@@ -40,7 +40,7 @@ Client                              HSYNC Server
   │◀── {"type": "auth",                   │
   │     "status": "ok",                   │
   │     "app_version": "1.2.3",           │
-  │     "protocol_version": "ws/2",       │
+  │     "protocol_version": "ws/1",       │
   │     "capabilities": ["compression",   │
   │                      "delta"]} ───────│
   │                                       │
