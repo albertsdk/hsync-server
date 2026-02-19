@@ -26,6 +26,7 @@ from .exceptions import (
     AuthenticationError,
     FileOperationError,
     HSyncError,
+    InsufficientStorageError,
     InvalidApiKeyError,
     MissingApiKeyError,
     ResourceNotFoundError,
@@ -60,6 +61,7 @@ EXCEPTION_STATUS_CODES: dict[type, int] = {
     InvalidApiKeyError: status.HTTP_401_UNAUTHORIZED,
     MissingApiKeyError: status.HTTP_403_FORBIDDEN,
     AuthenticationError: status.HTTP_401_UNAUTHORIZED,
+    InsufficientStorageError: status.HTTP_507_INSUFFICIENT_STORAGE,
     FileOperationError: status.HTTP_500_INTERNAL_SERVER_ERROR,
     HSyncError: status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
