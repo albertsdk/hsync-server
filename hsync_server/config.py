@@ -99,9 +99,10 @@ class Settings(BaseSettings):
     )
 
     # Authentication
-    api_key: SecretStr = Field(
-        ...,
-        description="API key for authentication (required, min 16 chars)",
+    admin_key: SecretStr | None = Field(
+        default=None,
+        description="Secret for the bootstrap admin account (64 hex chars). "
+        "If absent, the server generates one and prints it once at startup.",
     )
 
     # Upload Limits
@@ -200,6 +201,10 @@ class Settings(BaseSettings):
         default="10/second",
         description="Rate limit for WebSocket event messages per connection",
     )
+    rate_limit_admin: str = Field(
+        default="20/minute",
+        description="Rate limit for admin account creation and key rotation",
+    )
     trusted_proxies: str = Field(
         default="",
         description="Comma-separated trusted reverse-proxy IPs for X-Forwarded-For",
@@ -268,20 +273,21 @@ class Settings(BaseSettings):
             return lowered if lowered in VALID_LOG_FORMATS else "text"
         return v
 
-    @field_validator("api_key", mode="after")
+    @field_validator("admin_key", mode="after")
     @classmethod
-    def validate_api_key(cls, v: SecretStr) -> SecretStr:
-        """Reject empty or too-short API keys at config load time."""
+    def validate_admin_key(cls, v: SecretStr | None) -> SecretStr | None:
+        """Reject malformed admin keys at config load time."""
+        if v is None:
+            return None
         raw = v.get_secret_value()
         if not raw:
+            return None
+        import re
+
+        if not re.fullmatch(r"[0-9a-f]{64}", raw):
             raise ValueError(
-                "HSYNC_API_KEY must be set to a secure random string. "
-                "Generate one at: https://it-tools.tech/token-generator"
-            )
-        if len(raw) < 16:
-            raise ValueError(
-                f"HSYNC_API_KEY must be at least 16 characters (got {len(raw)}). "
-                "Use 32+ characters for better security."
+                "HSYNC_ADMIN_KEY must be exactly 64 lowercase hex characters. "
+                "Generate one with: openssl rand -hex 32"
             )
         return v
 
@@ -292,6 +298,20 @@ class Settings(BaseSettings):
             raise ValueError(
                 "HSYNC_SSL_KEYFILE_PASSWORD is required when HSYNC_SSL_ENABLED=True. "
                 "SSL private keys must never be stored in clear text."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def warn_legacy_api_key(self) -> "Settings":
+        """Detect a leftover HSYNC_API_KEY and fail with an actionable message."""
+        import os
+
+        if os.environ.get("HSYNC_API_KEY"):
+            raise ValueError(
+                "HSYNC_API_KEY is no longer used. The server now uses per-account "
+                "tokens (hs_<id>_<secret>). Set HSYNC_ADMIN_KEY (64 hex) for the "
+                "bootstrap admin secret, or leave it unset to auto-generate. "
+                "Client-side HSYNC_API_KEY remains valid (it holds the account token)."
             )
         return self
 
@@ -355,9 +375,15 @@ def get_log_file() -> str:
     return get_settings().log_file
 
 
-def get_api_key() -> str:
-    """Get API key from environment (late binding)."""
-    return get_settings().api_key.get_secret_value()
+def get_admin_key() -> str | None:
+    """Get the bootstrap admin secret from environment (late binding).
+
+    Returns ``None`` if not set.  Consumed only during bootstrap (§9).
+    """
+    settings = get_settings()
+    if settings.admin_key is None:
+        return None
+    return settings.admin_key.get_secret_value()
 
 
 def get_buckets_path() -> str:
@@ -396,6 +422,11 @@ def get_rate_limit_websocket() -> str:
 def get_rate_limit_ws_messages() -> str:
     """Get WebSocket message rate limit from environment (late binding)."""
     return get_settings().rate_limit_ws_messages
+
+
+def get_rate_limit_admin() -> str:
+    """Get admin endpoint rate limit from environment (late binding)."""
+    return get_settings().rate_limit_admin
 
 
 def get_trusted_proxies() -> frozenset[str]:

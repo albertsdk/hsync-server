@@ -1,18 +1,39 @@
 # Authentication — Server Mode (Server-Side)
 
-This document describes how the **HSYNC Server** authenticates incoming WebSocket
-connections from clients in **Server Mode**. For the shared contracts (CID format,
+This document describes how the **HSYNC Server** authenticates clients in
+**Server Mode** using per-account tokens. For the shared contracts (CID format,
 message schema, protocol versioning), see
 [`hsync-common/docs/authentication.md`](https://github.com/albertobasso/hsync-common/blob/main/docs/authentication.md).
 
 ## Overview
 
-In Server Mode, the HSYNC Server is the central hub. Every client connects to it
-over WSS and presents an **API key** as a bearer token. The server validates the
-token, verifies protocol compatibility, and registers the client's CID for event
-attribution and echo suppression.
+The server authenticates each client with a **per-account token** of the form
+`hs_<account_id>_<secret>`. Each account has a role (`admin` or `client`) and
+bucket memberships. The admin role can manage accounts and access all buckets;
+a client role accesses only buckets it owns or is a member of.
 
-## Authentication flow
+## Token format
+
+```
+hs_<account_id 21 alnum>_<secret 64 hex>
+```
+
+The token is presented as `Authorization: Bearer <token>` (REST) and as the
+`token` field of the WS `auth` frame. Clients treat the token as an opaque
+string — no parsing is required on the client side.
+
+## Bootstrap
+
+On first start (empty account store), an admin account is created:
+
+- If `HSYNC_ADMIN_KEY` (64 lowercase hex) is set in the environment: used
+  silently as the admin secret. Ideal for CI/deploy automation.
+- If absent: a secret is generated and the full token `hs_<id>_<secret>` is
+  printed once to stdout with a warning. **It is not recoverable.**
+
+The admin account has `name=admin`, `id=HsyncAdminBootstrap01`, `role=admin`.
+
+## Authentication flow (WebSocket)
 
 ```
 Client                              HSYNC Server
@@ -21,48 +42,61 @@ Client                              HSYNC Server
   │     /api/v1/buckets/{bucket}/events/{cid} │
   │                                       │
   │── {"type": "auth",                    │
-  │    "token": "<HSYNC_API_KEY>",        │
+  │    "token": "hs_<id>_<secret>",       │
   │    "app_version": "1.2.3",            │
   │    "protocol_version": "ws/1",        │
   │    "capabilities": ["compression",    │
   │                     "delta"]} ───────▶│
   │                                       │── validate protocol_version
-  │                                       │   ├── ❌ incompatible → close
-  │                                       │   │    (reason: protocol_mismatch)
-  │                                       │   └── ✅ compatible → continue
-  │                                       │── validate CID format (is_valid_cid)
-  │                                       │   ├── ❌ malformed → close
-  │                                       │   └── ✅ → continue
-  │                                       │── validate API key
-  │                                       │   ├── ❌ wrong/expired → close
-  │                                       │   └── ✅ → register CID + connection
+  │                                       │── validate CID format
+  │                                       │── verify account token (scrypt)
+  │                                       │── check bucket access (membership)
+  │                                       │   ├── ❌ no access → close 4009
+  │                                       │   └── ✅ → register connection
   │                                       │
-  │◀── {"type": "auth",                   │
-  │     "status": "ok",                   │
-  │     "app_version": "1.2.3",           │
-  │     "protocol_version": "ws/1",       │
-  │     "capabilities": ["compression",   │
-  │                      "delta"]} ───────│
+  │◀── {"type": "auth", "status": "ok"} ──│
   │                                       │
   │◀── {"name": "added", ...} ────────────│  (file change events)
-  │◀── {"name": "modified", ...} ─────────│
-  │◀── {"name": "deleted", ...} ──────────│
 ```
+
+## Authorization
+
+| Action | Admin | Owner | Member | Others |
+|---|---|---|---|---|
+| Read/sync bucket data | ✅ all | ✅ own | ✅ member | 404 / WS 4009 |
+| Create bucket | ✅ | ✅ (becomes owner) | ✅ (becomes owner) | ✅ |
+| Delete bucket | ✅ | 403 | 403 | 404 |
+| Grant/revoke membership | ✅ any | ✅ own | 403 | 404 |
+| Transfer ownership | ✅ any | ✅ own | 403 | 404 |
+| Manage accounts | ✅ | 403 | 403 | 403 |
+
+Non-members and non-existent buckets return the same 404 (REST) or 4009 (WS) —
+no existence leak.
 
 ## Key points
 
-1. **WSS only**: there is no plain-WS fallback. The transport is encrypted end-to-end.
-2. **CID in the URL path**: the client's CID is part of the WebSocket URL (`/api/v1/buckets/{bucket}/events/{cid}`). The server extracts it from the path and validates it with `is_valid_cid()` before accepting the connection.
-3. **API key as bearer token**: the `token` field carries the server's API key (`HSYNC_API_KEY`). No key → no connection.
-4. **Protocol version enforcement**: a `protocol_version` mismatch between client and server is a hard disconnect. There is no fallback to an older protocol.
-5. **Capability negotiation**: the server advertises its capabilities (`compression`, `delta`) in the auth reply. The client must respect the server's advertised capabilities.
-6. **One CID per connection**: the CID is registered for the lifetime of the WebSocket. If a second connection arrives with the same CID, the older connection is evicted (stale connection replacement).
+1. **WSS only**: the transport is encrypted end-to-end.
+2. **CID in the URL path**: the session CID is part of the WebSocket URL. The
+   account id is inside the token — they are distinct identities.
+3. **Account token as bearer**: the `token` field carries the account token.
+   Invalid, disabled, or expired tokens close with 4003.
+4. **Bucket access check**: after auth, the server checks that the account has
+   access to the requested bucket. Failure closes with 4009 (indistinguishable
+   from "bucket not found").
+5. **Revocation**: rotate-key (immediate) and disable close WS connections on
+   the local worker; other workers re-check on every frame, ping, and broadcast.
+6. **CLI recovery**: `hsync-server admin client rotate-key --name admin` from
+   the host filesystem recovers access without a token.
 
 ## Source code
 
-| Component | File | Lines |
-|---|---|---|
-| CID validation on WS connect | `hsync_server/api/events.py` | `is_valid_cid(cid)` before accepting |
-| Auth frame handling | `hsync_server/api/events.py` | validate token, protocol version, capabilities |
-| Connection manager | `hsync_server/api/connection_manager.py` | register/evict CID, track active connections |
-| Protocol constants | `hsync_common/protocol/handshake.py` | `PROTOCOL_VERSION_REST`, `PROTOCOL_VERSION_WS` |
+| Component | File |
+|---|---|
+| Account store (tables, scrypt, bootstrap, CRUD) | `hsync_server/auth_store.py` |
+| Token verification + AuthContext + dependencies | `hsync_server/auth.py` |
+| Bucket endpoints (ownership, authz) | `hsync_server/api/buckets.py` |
+| Membership/owner API | `hsync_server/api/members.py` |
+| Admin REST API | `hsync_server/api/admin.py` |
+| WebSocket auth + re-checks | `hsync_server/api/events.py` |
+| Connection manager (account binding) | `hsync_server/api/connection_manager.py` |
+| CLI admin commands | `hsync_server/__main__.py` |

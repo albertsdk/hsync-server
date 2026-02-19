@@ -83,7 +83,7 @@ class TestClientUploadArbitrationE2E:
     # Fixture-local TLS server.
     @pytest.fixture
     def tls_server(self, tmp_path_factory):
-        from tests.conftest import BB_API_KEY
+        from tests.conftest import BB_ADMIN_SECRET, BB_API_KEY
 
         buckets_dir = tempfile.mkdtemp(prefix="hsync_bb_interop_")
         cert_dir = tmp_path_factory.mktemp("bbssl")
@@ -126,7 +126,12 @@ class TestClientUploadArbitrationE2E:
         env = {k: v for k, v in os.environ.items() if not k.startswith("HSYNC_")}
         env.update(
             {
-                "HSYNC_API_KEY": BB_API_KEY,
+                # The server reads the 64-hex bootstrap secret from
+                # HSYNC_ADMIN_KEY; the Bearer token (BB_API_KEY) is derived
+                # from it and is what the *client* sends.
+                "HSYNC_ADMIN_KEY": BB_ADMIN_SECRET,
+                "HSYNC_SCRYPT_N": "16",
+                "HSYNC_SCRYPT_MAXMEM": "33554432",
                 "HSYNC_BUCKETS": buckets_dir,
                 "HSYNC_STATE_DIR": buckets_dir + "_state",
                 "HSYNC_RATE_LIMIT_DEFAULT": "1000000/minute",
@@ -205,6 +210,8 @@ class TestClientUploadArbitrationE2E:
         (tmp_path / "from-real-client.txt").write_bytes(b"client-authored\n")
 
         env = {k: v for k, v in os.environ.items() if not k.startswith("HSYNC_")}
+        # Client env: hsync-client still reads HSYNC_API_KEY and sends its value
+        # verbatim as the Bearer token (the full hs_HsyncAdminBootstrap01_<secret>).
         env["HSYNC_API_KEY"] = api_key
         result = subprocess.run(
             [

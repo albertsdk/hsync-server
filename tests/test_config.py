@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from hsync_server import config
 
@@ -169,26 +169,29 @@ class TestSettings:
             config.Settings(workers=0)
 
 
-class TestApiKeyValidator:
-    """Tests for the api_key field_validator (fail-fast at config load)."""
+class TestAdminKeyValidator:
+    """Tests for the admin_key field_validator (fail-fast at config load)."""
 
-    def test_empty_api_key_rejected(self):
-        with pytest.raises(ValidationError, match="HSYNC_API_KEY must be set"):
-            config.Settings(api_key="")
+    def test_none_admin_key_accepted(self):
+        settings = config.Settings(admin_key=None)
+        assert settings.admin_key is None
 
-    def test_api_key_too_short_rejected(self):
-        with pytest.raises(ValidationError, match="at least 16 characters"):
-            config.Settings(api_key="short-key")
+    def test_empty_admin_key_accepted_as_none(self):
+        settings = config.Settings(admin_key=SecretStr(""))
+        assert settings.admin_key is None or settings.admin_key.get_secret_value() == ""
 
-    def test_api_key_exactly_16_chars_accepted(self):
-        settings = config.Settings(api_key="a" * 16)
-        assert settings.api_key.get_secret_value() == "a" * 16
+    def test_valid_hex_admin_key_accepted(self):
+        key = "0123456789abcdef" * 4  # 64 hex chars
+        settings = config.Settings(admin_key=SecretStr(key))
+        assert settings.admin_key.get_secret_value() == key
 
-    def test_api_key_long_accepted(self):
-        key = "a-valid-32-character-api-key!!!!"
-        assert len(key) >= 16
-        settings = config.Settings(api_key=key)
-        assert settings.api_key.get_secret_value() == key
+    def test_malformed_admin_key_rejected(self):
+        with pytest.raises(ValidationError, match="64 lowercase hex"):
+            config.Settings(admin_key=SecretStr("not-hex"))
+
+    def test_short_admin_key_rejected(self):
+        with pytest.raises(ValidationError, match="64 lowercase hex"):
+            config.Settings(admin_key=SecretStr("0123456789abcdef"))
 
 
 class TestSslKeyfilePasswordValidator:
@@ -272,7 +275,7 @@ class TestModuleLevelConstants:
         for name in (
             "get_port",
             "get_workers",
-            "get_api_key",
+            "get_admin_key",
             "get_buckets_path",
             "get_state_dir",
             "get_rate_limit_default",
@@ -280,6 +283,7 @@ class TestModuleLevelConstants:
             "get_rate_limit_download",
             "get_rate_limit_websocket",
             "get_rate_limit_ws_messages",
+            "get_rate_limit_admin",
             "get_trusted_proxies",
             "get_max_upload_size",
             "get_cors_enabled",

@@ -21,10 +21,11 @@ from os import fsync, remove, replace
 from pathlib import Path
 from shutil import copy2
 from time import monotonic
+from typing import Annotated
 
 import zstandard as zstd
 from aiofiles.tempfile import NamedTemporaryFile
-from fastapi import File, Form, Request, UploadFile
+from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from hsync_common.clock import clamp_incoming_corrected_mtime
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
@@ -37,6 +38,7 @@ from hsync_common.path_validation import is_internal_name, is_valid_filename, sa
 from hsync_common.permissions import is_valid_octal_permissions
 from loguru import logger as log
 
+from hsync_server.api.authz import ensure_bucket_access
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import (
     update_file_timestamp,
@@ -51,6 +53,7 @@ from hsync_server.arbitration import (
     arbitrate_upload,
     conflicted_copy_name,
 )
+from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import decompress_file_to_file
 from hsync_server.config import get_buckets_path, get_max_upload_size, get_settings
 from hsync_server.constants import DEFAULT_FILE_PERMISSIONS, ActionLabel
@@ -86,6 +89,7 @@ async def _flush_to_disk(handle) -> None:
 async def upload_file(
     request: Request,  # Required by rate limiter
     bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
     cid: str = Form(),
     file: UploadFile = File(...),
     path: str = Form(""),
@@ -134,8 +138,9 @@ async def upload_file(
         InvalidPermissionFormatError: If permission format is invalid.
         InvalidFilenameError: If filename contains forbidden characters or is reserved.
         ChecksumMismatchError: If SHA-256 checksum verification fails.
-        UploadError: If upload operation fails.
+            UploadError: If upload operation fails.
     """
+    ensure_bucket_access(bucket, ctx)
     file_location_tmp = None
     partial_file_path = None
     backup_path = None

@@ -143,6 +143,27 @@ class MissingApiKeyError(AuthenticationError):
     default_message = "API key required"
 
 
+class ForbiddenError(HSyncError):
+    """The caller is authenticated but lacks permission."""
+
+    error_code = "HSYNC-3003"
+    default_message = "Forbidden"
+
+
+class ConflictError(HSyncError):
+    """The operation conflicts with existing state."""
+
+    error_code = "HSYNC-3004"
+    default_message = "Conflict"
+
+
+class AccountNotFoundError(ResourceNotFoundError):
+    """An account referenced by id or name does not exist."""
+
+    error_code = "HSYNC-2003"
+    default_message = "Account not found"
+
+
 # =============================================================================
 # File Operation Errors (4XXX)
 # =============================================================================

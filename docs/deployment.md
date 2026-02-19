@@ -111,9 +111,9 @@ forwards them to Docker by name (not by value), keeping secrets off the command
 line:
 
 ```bash
-export HSYNC_API_KEY="$(openssl rand -base64 32)"
+export HSYNC_ADMIN_KEY="$(openssl rand -hex 32)"
 export HSYNC_SSL_ENABLED=true
-export HSYNC_SSL_KEYFILE_PASSWORD="$(openssl rand -base64 32)"
+export HSYNC_SSL_KEYFILE_PASSWORD="$(openssl rand -hex 32)"
 ./docker.sh start
 ```
 
@@ -123,8 +123,8 @@ Enable HTTPS/WSS by setting the relevant environment variables before starting:
 
 ```bash
 HSYNC_SSL_ENABLED=true \
-HSYNC_SSL_KEYFILE_PASSWORD="$(openssl rand -base64 32)" \
-HSYNC_API_KEY=secret \
+HSYNC_SSL_KEYFILE_PASSWORD="$(openssl rand -hex 32)" \
+HSYNC_ADMIN_KEY=secret \
 ./docker.sh start
 ```
 
@@ -242,7 +242,7 @@ Caddy automatically provisions and renews Let's Encrypt certificates. Replace
 
 ```bash
 # prod.env
-HSYNC_API_KEY=<generate-a-strong-random-key>
+HSYNC_ADMIN_KEY=<generate-a-strong-random-key>
 HSYNC_LOG_LEVEL=info
 HSYNC_LOG_FORMAT=json
 HSYNC_LOG_FILE=/project/logs/hsync-server.log
@@ -265,9 +265,9 @@ HSYNC_WS_MAX_CONNECTIONS=1000
 HSYNC_WS_MAX_CONNECTIONS_PER_IP=10
 ```
 
-> **Important**: Generate a strong random API key:
+> **Important**: Generate a strong random admin key (64 hex):
 > ```bash
-> openssl rand -base64 32
+> openssl rand -hex 32
 > ```
 
 ### Start the stack
@@ -311,11 +311,11 @@ sudo -u hsync env POETRY_VIRTUALENVS_IN_PROJECT=true poetry install --only main
 sudo -u hsync mkdir -p /opt/hsync/{buckets,state,certs,logs}
 ```
 
-Create `/opt/hsync/prod.env` with at least a strong `HSYNC_API_KEY` and these
+Create `/opt/hsync/prod.env` with at least a strong `HSYNC_ADMIN_KEY` and these
 host paths. If a reverse proxy terminates TLS, keep built-in SSL disabled:
 
 ```dotenv
-HSYNC_API_KEY=<generate-a-strong-random-key>
+HSYNC_ADMIN_KEY=<generate-a-strong-random-key>
 HSYNC_BUCKETS=/opt/hsync/buckets
 HSYNC_STATE_DIR=/opt/hsync/state
 HSYNC_SSL_CERT_DIR=/opt/hsync/certs
@@ -385,7 +385,7 @@ sudo lsof -i :9753
 ./docker.sh logs
 ```
 Common causes:
-- `HSYNC_API_KEY` not set — the server requires an API key.
+- `HSYNC_ADMIN_KEY` not set — the server requires an API key.
 - `HSYNC_SSL_KEYFILE_PASSWORD` missing when `HSYNC_SSL_ENABLED=true`.
 - Volume permissions — the container user (UID 1000) must be able to write to
   the buckets and certs directories.
@@ -415,8 +415,8 @@ sudo ufw allow 9753/tcp
   See the [Client Configuration → SSL/TLS](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration.md#ssltls-httpswss)
   guide.
 
-**API key mismatch:**
-- Verify that the client is using the same `HSYNC_API_KEY` as the server.
+**Admin key mismatch:**
+- Verify that the client is using the same `HSYNC_ADMIN_KEY` as the server.
 - Check the server logs for authentication failures.
 
 **Wrong WebSocket endpoint:**

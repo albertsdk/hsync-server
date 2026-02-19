@@ -59,8 +59,9 @@ def _validate_log_level(value: str | None) -> str | None:
     return value
 
 
-@app.command()
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     # -------------------------------------------------------------------------
     # Server options
     # -------------------------------------------------------------------------
@@ -186,7 +187,7 @@ def main(
 
     [bold]Environment Variables:[/bold]
 
-        HSYNC_API_KEY           API key for authentication (required)
+        HSYNC_ADMIN_KEY         Bootstrap admin secret (64 hex, optional)
         HSYNC_BUCKETS           Path to buckets directory
         HSYNC_STATE_DIR         Path to syncstate.db directory
         HSYNC_CORS_ENABLED      Enable CORS (true/false)
@@ -203,6 +204,10 @@ def main(
 
         Alberto Basso
     """
+    # If a subcommand was invoked (e.g. "admin"), let it handle the call.
+    if ctx.invoked_subcommand is not None:
+        return
+
     # Load environment file if specified (before reading any config)
     if env_file:
         try:
@@ -271,6 +276,356 @@ def main(
 def run() -> None:
     """Entry point for the CLI application."""
     app()
+
+
+# =============================================================================
+# Admin CLI (operates directly on the store, no auth required)
+# =============================================================================
+
+admin_app = typer.Typer(
+    name="admin",
+    help="Local administration commands (filesystem authority, no key required).",
+    add_completion=False,
+    rich_markup_mode="rich",
+)
+app.add_typer(admin_app, name="admin")
+
+client_app = typer.Typer(name="client", help="Account management.")
+bucket_cli_app = typer.Typer(name="bucket", help="Bucket and membership management.")
+admin_app.add_typer(client_app, name="client")
+admin_app.add_typer(bucket_cli_app, name="bucket")
+
+
+def _resolve_account_id(name: str | None, account_id: str | None) -> str:
+    """Resolve --name or --id to an account id."""
+    from hsync_server.auth_store import TargetNotFoundError, get_auth_store
+
+    if (name is None) == (account_id is None):
+        typer.echo("Error: provide exactly one of --name or --id", err=True)
+        raise typer.Exit(1)
+    store = get_auth_store()
+    try:
+        target = store.resolve_target(account_id, name)
+    except TargetNotFoundError:
+        typer.echo("Error: account not found", err=True)
+        raise typer.Exit(1) from None
+    return target.id
+
+
+@client_app.command("add")
+def client_add(
+    name: Annotated[str, typer.Option("--name", help="Account name.")],
+    role: Annotated[str, typer.Option("--role", help="Role: admin or client.")] = "client",
+    valid_days: Annotated[int | None, typer.Option("--valid-days", min=1)] = None,
+    expires_at: Annotated[str | None, typer.Option("--expires-at", help="RFC3339 UTC.")] = None,
+) -> None:
+    """Create a new account. The token is printed once."""
+    import time
+
+    from hsync_server.auth_store import ConflictError, get_auth_store, validate_name
+
+    try:
+        validate_name(name)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from None
+
+    if role not in ("admin", "client"):
+        typer.echo("Error: role must be 'admin' or 'client'", err=True)
+        raise typer.Exit(1)
+
+    expiry = _cli_parse_expiry(expires_at, valid_days)
+    store = get_auth_store()
+    try:
+        aid, token = store.create_account(name, role, expiry)
+    except ConflictError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from None
+
+    typer.echo(f"Account created: id={aid}, name={name}, role={role}")
+    typer.echo(f"Token (save now, not recoverable): {token}")
+
+
+@client_app.command("list")
+def client_list() -> None:
+    """List all accounts."""
+    from hsync_server.auth_store import get_auth_store
+
+    store = get_auth_store()
+    accounts = store.list_accounts()
+    if not accounts:
+        typer.echo("(no accounts)")
+        return
+    for a in accounts:
+        typer.echo(
+            f"{a.id}  {a.name:20s}  {a.role:7s}  {a.status:8s}  "
+            f"gen={a.key_generation}  prefix={a.key_prefix}  "
+            f"exp={a.key_expires_at or '-'}"
+        )
+
+
+@client_app.command("rotate-key")
+def client_rotate_key(
+    name: Annotated[str | None, typer.Option("--name")] = None,
+    account_id: Annotated[str | None, typer.Option("--id")] = None,
+    grace: Annotated[int | None, typer.Option("--grace", min=1)] = None,
+    valid_days: Annotated[int | None, typer.Option("--valid-days", min=1)] = None,
+    expires_at: Annotated[str | None, typer.Option("--expires-at")] = None,
+) -> None:
+    """Rotate an account's key. The new token is printed once."""
+    from hsync_server.auth_store import TargetNotFoundError, get_auth_store
+
+    aid = _resolve_account_id(name, account_id)
+    expiry = _cli_parse_expiry(expires_at, valid_days)
+    store = get_auth_store()
+    try:
+        token = store.rotate_key(aid, grace_seconds=grace, expires_at=expiry)
+    except TargetNotFoundError:
+        typer.echo("Error: account not found", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Token (save now, not recoverable): {token}")
+
+
+@client_app.command("set-expiry")
+def client_set_expiry(
+    name: Annotated[str | None, typer.Option("--name")] = None,
+    account_id: Annotated[str | None, typer.Option("--id")] = None,
+    valid_days: Annotated[int | None, typer.Option("--valid-days", min=1)] = None,
+    expires_at: Annotated[str | None, typer.Option("--expires-at")] = None,
+    none: Annotated[bool, typer.Option("--none", help="Remove expiry.")] = False,
+) -> None:
+    """Set, extend, or remove the key expiry."""
+    from hsync_server.auth_store import TargetNotFoundError, get_auth_store
+
+    aid = _resolve_account_id(name, account_id)
+    if none:
+        expiry = None
+    else:
+        expiry = _cli_parse_expiry(expires_at, valid_days)
+        if expiry is None:
+            typer.echo("Error: provide --valid-days, --expires-at, or --none", err=True)
+            raise typer.Exit(1)
+    store = get_auth_store()
+    try:
+        store.set_expiry(aid, expiry)
+    except TargetNotFoundError:
+        typer.echo("Error: account not found", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Expiry set: {expiry or 'none'}")
+
+
+@client_app.command("disable")
+def client_disable(
+    name: Annotated[str | None, typer.Option("--name")] = None,
+    account_id: Annotated[str | None, typer.Option("--id")] = None,
+    force: Annotated[bool, typer.Option("--force", help="Allow disabling the last admin.")] = False,
+) -> None:
+    """Disable an account."""
+    from hsync_server.auth_store import ConflictError, TargetNotFoundError, get_auth_store
+
+    aid = _resolve_account_id(name, account_id)
+    store = get_auth_store()
+    try:
+        store.disable(aid, force=force)
+    except TargetNotFoundError:
+        typer.echo("Error: account not found", err=True)
+        raise typer.Exit(1) from None
+    except ConflictError as e:
+        typer.echo(f"Error: {e} (use --force to override)", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Disabled: {aid}")
+
+
+@client_app.command("enable")
+def client_enable(
+    name: Annotated[str | None, typer.Option("--name")] = None,
+    account_id: Annotated[str | None, typer.Option("--id")] = None,
+) -> None:
+    """Enable a disabled account."""
+    from hsync_server.auth_store import TargetNotFoundError, get_auth_store
+
+    aid = _resolve_account_id(name, account_id)
+    store = get_auth_store()
+    try:
+        store.enable(aid)
+    except TargetNotFoundError:
+        typer.echo("Error: account not found", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Enabled: {aid}")
+
+
+@client_app.command("remove")
+def client_remove(
+    name: Annotated[str | None, typer.Option("--name")] = None,
+    account_id: Annotated[str | None, typer.Option("--id")] = None,
+    cascade: Annotated[bool, typer.Option("--cascade", help="Delete owned buckets.")] = False,
+    force: Annotated[bool, typer.Option("--force", help="Allow removing the last admin.")] = False,
+) -> None:
+    """Delete an account."""
+    from hsync_server.auth_store import ConflictError, TargetNotFoundError, get_auth_store
+
+    aid = _resolve_account_id(name, account_id)
+    store = get_auth_store()
+    try:
+        store.delete_account(aid, cascade=cascade, force=force)
+    except TargetNotFoundError:
+        typer.echo("Error: account not found", err=True)
+        raise typer.Exit(1) from None
+    except ConflictError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Deleted: {aid}")
+
+
+@bucket_cli_app.command("list")
+def bucket_list() -> None:
+    """List all buckets (FS ∪ membership)."""
+    from hsync_server.auth_store import get_auth_store
+
+    store = get_auth_store()
+    buckets = store.list_all_buckets()
+    if not buckets:
+        typer.echo("(no buckets)")
+        return
+    for b in buckets:
+        owner = b["owner"]
+        owner_str = f"{owner['name']} ({owner['id']})" if owner else "(orphan)"
+        members_str = ", ".join(m["name"] for m in b["members"]) or "(none)"
+        disk = "on-disk" if b["on_disk"] else "ghost"
+        typer.echo(f"{b['name']:20s}  {disk:8s}  owner={owner_str}  members=[{members_str}]")
+
+
+@bucket_cli_app.command("grant")
+def bucket_grant(
+    bucket: Annotated[str, typer.Option("--bucket")],
+    client: Annotated[str, typer.Option("--client", help="Account name or id.")],
+) -> None:
+    """Grant membership to an account on a bucket."""
+    from hsync_server.auth_store import (
+        BOOTSTRAP_ADMIN_ID,
+        ConflictError,
+        ForbiddenError,
+        TargetNotFoundError,
+        get_auth_store,
+    )
+
+    store = get_auth_store()
+    # CLI operates as admin (filesystem authority).
+    try:
+        target = store.resolve_target(
+            client if len(client) == 21 and client.isalnum() else None,
+            client if not (len(client) == 21 and client.isalnum()) else None,
+        )
+    except TargetNotFoundError:
+        typer.echo("Error: account not found", err=True)
+        raise typer.Exit(1) from None
+    try:
+        store.grant_member(bucket, target, BOOTSTRAP_ADMIN_ID, caller_is_admin=True)
+    except (ConflictError, ForbiddenError) as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Granted: {target.name} → member of {bucket}")
+
+
+@bucket_cli_app.command("revoke")
+def bucket_revoke(
+    bucket: Annotated[str, typer.Option("--bucket")],
+    client: Annotated[str, typer.Option("--client", help="Account name or id.")],
+) -> None:
+    """Revoke membership from a bucket."""
+    from hsync_server.auth_store import (
+        BOOTSTRAP_ADMIN_ID,
+        ConflictError,
+        ForbiddenError,
+        TargetNotFoundError,
+        get_auth_store,
+    )
+
+    store = get_auth_store()
+    try:
+        target = store.resolve_target(
+            client if len(client) == 21 and client.isalnum() else None,
+            client if not (len(client) == 21 and client.isalnum()) else None,
+        )
+    except TargetNotFoundError:
+        typer.echo("Error: account not found", err=True)
+        raise typer.Exit(1) from None
+    try:
+        store.revoke_member(bucket, target.id, BOOTSTRAP_ADMIN_ID, caller_is_admin=True)
+    except (ConflictError, ForbiddenError, TargetNotFoundError) as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Revoked: {target.name} from {bucket}")
+
+
+@bucket_cli_app.command("set-owner")
+def bucket_set_owner(
+    bucket: Annotated[str, typer.Option("--bucket")],
+    client: Annotated[str, typer.Option("--client", help="Account name or id.")],
+) -> None:
+    """Set or transfer bucket ownership."""
+    from pathlib import Path
+
+    from hsync_server.auth_store import (
+        BOOTSTRAP_ADMIN_ID,
+        ConflictError,
+        ForbiddenError,
+        TargetNotFoundError,
+        get_auth_store,
+    )
+    from hsync_server.config import get_buckets_path
+
+    store = get_auth_store()
+    try:
+        target = store.resolve_target(
+            client if len(client) == 21 and client.isalnum() else None,
+            client if not (len(client) == 21 and client.isalnum()) else None,
+        )
+    except TargetNotFoundError:
+        typer.echo("Error: account not found", err=True)
+        raise typer.Exit(1) from None
+
+    bucket_dir = Path(get_buckets_path()) / bucket
+    if not bucket_dir.exists():
+        typer.echo("Error: bucket directory does not exist", err=True)
+        raise typer.Exit(1)
+
+    current_owner = store.get_owner(bucket)
+    try:
+        if current_owner is None:
+            store.reclaim_orphan(bucket, target, caller_is_admin=True)
+            action = "reclaimed"
+        else:
+            store.transfer_owner(bucket, target, BOOTSTRAP_ADMIN_ID, caller_is_admin=True)
+            action = "transferred"
+    except (ConflictError, ForbiddenError) as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Ownership {action}: {bucket} → {target.name}")
+
+
+def _cli_parse_expiry(expires_at: str | None, valid_days: int | None) -> int | None:
+    """Parse expires_at or valid_days into a Unix UTC timestamp."""
+    if expires_at is not None and valid_days is not None:
+        typer.echo("Error: provide at most one of --expires-at or --valid-days", err=True)
+        raise typer.Exit(1)
+    if expires_at is not None:
+        from datetime import datetime
+
+        try:
+            dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                typer.echo("Error: timestamp must include timezone (UTC).", err=True)
+                raise typer.Exit(1)
+            return int(dt.timestamp())
+        except (ValueError, TypeError) as e:
+            typer.echo(f"Error: invalid expires_at: {e}", err=True)
+            raise typer.Exit(1) from None
+    if valid_days is not None:
+        import time
+
+        return int(time.time()) + valid_days * 86400
+    return None
 
 
 if __name__ == "__main__":

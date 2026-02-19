@@ -1,140 +1,137 @@
-# HSYNC Server - HTTP-based file synchronization server
-# Copyright (C) 2025 Alberto Basso
-#
-# Tests for routers module.
+"""Tests for the account-based authentication system (hsync_server.auth)."""
 
-from unittest.mock import MagicMock, patch
+from typing import Annotated
 
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from hsync_server.exceptions import MissingApiKeyError
-from hsync_server.routers import (
-    auth_router,
-    mask_api_key,
-    public_router,
-    verify_api_key,
-)
+from hsync_server.auth import AuthContext, require_admin, verify_api_key
+from hsync_server.auth_store import get_auth_store
+from hsync_server.error_handlers import register_exception_handlers
+from hsync_server.exceptions import ForbiddenError
 
 
-class TestMaskApiKey:
-    """Tests for mask_api_key function."""
-
-    def test_short_key_fully_masked(self):
-        """Test that short keys are fully masked."""
-        result = mask_api_key("abc")
-        assert result == "***"
-
-    def test_key_length_6_masked(self):
-        """Test that key with exactly 6 chars is fully masked."""
-        result = mask_api_key("abcdef")
-        assert result == "******"
-
-    def test_key_longer_than_6_shown_partially(self):
-        """Test that longer keys show first 3 and last 3 chars."""
-        result = mask_api_key("abcdefgh")
-        # Shows "abc" + (8-6=2 asterisks) + "fgh" = "abc**fgh"
-        assert result == "abc**fgh"
-
-    def test_very_long_key_masked(self):
-        """Test that very long keys are masked correctly."""
-        result = mask_api_key("1234567890abcdef")
-        # Shows first 3 + 10 asterisks + last 3 = "123**********def"
-        assert result == "123**********def"
-
-    def test_empty_key(self):
-        """Test that empty string is handled."""
-        result = mask_api_key("")
-        assert result == ""
+def _make_app() -> FastAPI:
+    """Create a minimal FastAPI app with exception handlers registered."""
+    app = FastAPI()
+    register_exception_handlers(app)
+    return app
 
 
-class TestVerifyApiKey:
-    """Tests for verify_api_key function."""
+class TestTokenVerification:
+    """Tests for token parsing and verification."""
 
-    def test_valid_api_key(self):
-        """Test that valid API key passes verification."""
-        app = FastAPI()
+    def test_valid_token_accepted(self, test_token):
+        """A valid admin token authenticates successfully."""
+        app = _make_app()
 
         @app.get("/test")
-        async def test_endpoint(api_key=Depends(verify_api_key)):
-            return {"status": "ok"}
+        async def test_endpoint(ctx: Annotated[AuthContext, Depends(verify_api_key)]):
+            return {"id": ctx.id, "name": ctx.name, "role": ctx.role}
 
         client = TestClient(app)
+        r = client.get("/test", headers={"Authorization": f"Bearer {test_token}"})
+        assert r.status_code == 200
+        assert r.json()["role"] == "admin"
 
-        with patch("hsync_server.routers.get_api_key", return_value="test-key-123"):
-            response = client.get("/test", headers={"Authorization": "Bearer test-key-123"})
-
-        assert response.status_code == 200
-
-    def test_missing_api_key_raises_missing_error(self):
-        """Test that missing API key raises MissingApiKeyError."""
-        app = FastAPI()
+    def test_missing_bearer_returns_401(self):
+        """Missing Authorization header returns 401."""
+        app = _make_app()
 
         @app.get("/test")
-        async def test_endpoint(api_key=Depends(verify_api_key)):
-            return {"status": "ok"}
+        async def test_endpoint(ctx: Annotated[AuthContext, Depends(verify_api_key)]):
+            return {"id": ctx.id}
 
-        client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/test")
+        client = TestClient(app)
+        r = client.get("/test")
+        assert r.status_code == 401
 
-        # HTTPBearer returns 401 when no credentials provided
-        assert response.status_code == 401
-
-    def test_invalid_api_key_returns_401(self):
-        """Test that invalid API key returns 401."""
-        from hsync_server.error_handlers import register_exception_handlers
-
-        app = FastAPI()
-        register_exception_handlers(app)
+    def test_invalid_token_returns_401(self, test_token):
+        """An invalid token returns 401."""
+        app = _make_app()
 
         @app.get("/test")
-        async def test_endpoint(api_key=Depends(verify_api_key)):
-            return {"status": "ok"}
+        async def test_endpoint(ctx: Annotated[AuthContext, Depends(verify_api_key)]):
+            return {"id": ctx.id}
 
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app)
+        r = client.get("/test", headers={"Authorization": "Bearer hs_invalid_token_here"})
+        assert r.status_code == 401
 
-        with patch("hsync_server.routers.get_api_key", return_value="correct-key"):
-            response = client.get("/test", headers={"Authorization": "Bearer wrong-key"})
-
-        assert response.status_code == 401
-
-    def test_empty_bearer_token_raises_error(self):
-        """Test that empty bearer token raises MissingApiKeyError."""
-        app = FastAPI()
+    def test_malformed_token_returns_401(self):
+        """A non-hs_ token returns 401."""
+        app = _make_app()
 
         @app.get("/test")
-        async def test_endpoint(api_key=Depends(verify_api_key)):
-            return {"status": "ok"}
+        async def test_endpoint(ctx: Annotated[AuthContext, Depends(verify_api_key)]):
+            return {"id": ctx.id}
 
-        # Create a mock credentials with empty credentials
-        with patch("hsync_server.routers.get_api_key", return_value="test-key"):
-            # Try to test with empty credentials - this is tricky via TestClient
-            # Instead, let's directly test the behavior
-
-            # The function checks if token.credentials is falsy
-            mock_credentials = MagicMock()
-            mock_credentials.credentials = ""
-
-            # This would trigger the missing key error
-            with pytest.raises(MissingApiKeyError):
-                verify_api_key(mock_credentials)
+        client = TestClient(app)
+        r = client.get("/test", headers={"Authorization": "Bearer not-a-valid-token"})
+        assert r.status_code == 401
 
 
-class TestRouters:
-    """Tests for router objects."""
+class TestRequireAdmin:
+    """Tests for the require_admin dependency."""
 
-    def test_auth_router_has_dependencies(self):
-        """Test that auth_router has authentication dependency."""
-        # Auth router should have dependencies
-        assert len(auth_router.dependencies) > 0
+    def test_admin_can_access_admin_endpoint(self, test_token):
+        """Admin role can access admin-only endpoints."""
+        app = _make_app()
 
-    def test_public_router_has_no_dependencies(self):
-        """Test that public_router has no authentication."""
-        # Public router should have no dependencies
-        assert len(public_router.dependencies) == 0
+        @app.get("/admin")
+        async def admin_endpoint(ctx: Annotated[AuthContext, Depends(require_admin)]):
+            return {"role": ctx.role}
 
-    def test_routers_have_correct_tags(self):
-        """Test that routers have correct tags."""
-        assert "Authenticated Router" in auth_router.tags
-        assert "Public Router" in public_router.tags
+        client = TestClient(app)
+        r = client.get("/admin", headers={"Authorization": f"Bearer {test_token}"})
+        assert r.status_code == 200
+        assert r.json()["role"] == "admin"
+
+    def test_non_admin_rejected_from_admin_endpoint(self):
+        """A client role account gets 403 on admin endpoints."""
+
+        store = get_auth_store()
+        _, token = store.create_account("test-client", "client")
+
+        app = _make_app()
+
+        @app.get("/admin")
+        async def admin_endpoint(ctx: Annotated[AuthContext, Depends(require_admin)]):
+            return {"role": ctx.role}
+
+        client = TestClient(app)
+        r = client.get("/admin", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 403
+
+
+class TestTokenParsing:
+    """Tests for the token format parser."""
+
+    def test_valid_token_parsed(self):
+        from hsync_server.auth_store import parse_token
+
+        result = parse_token("hs_HsyncAdminBootstrap01_" + "0" * 64)
+        assert result is not None
+        assert result[0] == "HsyncAdminBootstrap01"
+        assert result[1] == "0" * 64
+
+    def test_invalid_prefix_rejected(self):
+        from hsync_server.auth_store import parse_token
+
+        assert parse_token("xx_HsyncAdminBootstrap01_" + "0" * 64) is None
+
+    def test_missing_secret_rejected(self):
+        from hsync_server.auth_store import parse_token
+
+        assert parse_token("hs_HsyncAdminBootstrap01") is None
+
+    def test_short_secret_rejected(self):
+        from hsync_server.auth_store import parse_token
+
+        assert parse_token("hs_HsyncAdminBootstrap01_short") is None
+
+    def test_non_hex_secret_rejected(self):
+        from hsync_server.auth_store import parse_token
+
+        assert parse_token("hs_HsyncAdminBootstrap01_" + "g" * 64) is None

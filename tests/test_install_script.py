@@ -102,7 +102,7 @@ def test_no_start_generates_canonical_compose_and_private_secrets(tmp_path: Path
     assert "HSYNC_BIND_ADDRESS=192.168.1.10" in env_contents
     assert "HSYNC_CERT_HOSTNAME=192.168.1.10" in env_contents
     assert "HSYNC_PUBLIC_PORT=9443" in env_contents
-    assert "HSYNC_API_KEY=0123456789abcdef" in env_contents
+    assert "HSYNC_ADMIN_KEY=0123456789abcdef" in env_contents
     assert env_file.stat().st_mode & 0o777 == 0o600
     assert recorded[:2] == ["compose", "version"]
     assert "config" in recorded
@@ -128,7 +128,7 @@ def test_rerun_preserves_secrets_and_updates_selected_version(tmp_path: Path):
     assert second.returncode == 0, second.stderr
     assert "Endpoint: https://192.168.1.20:9443" in second.stdout
     updated = env_file.read_text()
-    api_key = next(line for line in original.splitlines() if line.startswith("HSYNC_API_KEY="))
+    api_key = next(line for line in original.splitlines() if line.startswith("HSYNC_ADMIN_KEY="))
     password = next(
         line for line in original.splitlines() if line.startswith("HSYNC_SSL_KEYFILE_PASSWORD=")
     )

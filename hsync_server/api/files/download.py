@@ -18,14 +18,17 @@ import stat as stat_module
 from os import stat as os_stat
 from pathlib import Path
 from time import monotonic
+from typing import Annotated
 
-from fastapi import BackgroundTasks, Request
+from fastapi import BackgroundTasks, Depends, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from hsync_common.format import format_bytes, format_duration
 from hsync_common.hashing import compute_sha256_async
 from loguru import logger as log
 
+from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
+from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import (
     CONTENT_ENCODING_ZSTD,
     async_compress_stream,
@@ -49,6 +52,7 @@ async def download_file(
     request: Request,  # Required by rate limiter
     background_tasks: BackgroundTasks,
     bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
     filename: str,
     cid: str = "",
 ):
@@ -71,6 +75,7 @@ async def download_file(
         InvalidPathError: If path is invalid.
         HSyncFileNotFoundError: If file does not exist.
     """
+    check_bucket_access(bucket, ctx)
     t0 = monotonic()
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})

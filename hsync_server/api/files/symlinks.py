@@ -14,13 +14,16 @@ and the server creates the link, never dereferencing a file or directory.
 
 from os import symlink as os_symlink
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import Request
+from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from hsync_common.path_validation import is_safe_symlink_target
 from loguru import logger as log
 
+from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
+from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.constants import ActionLabel
 from hsync_server.exceptions import InvalidBucketNameError, InvalidPathError
 from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
@@ -32,6 +35,7 @@ from hsync_server.routers import auth_router
 async def create_symlink(
     request: Request,  # Required by rate limiter
     bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
     path: str,
     target: str,
     cid: str = "",
@@ -57,6 +61,7 @@ async def create_symlink(
         InvalidBucketNameError: If bucket name is invalid.
         InvalidPathError: If path is invalid.
     """
+    check_bucket_access(bucket, ctx)
     cid_suffix = f" (CID: {cid})" if cid else ""
 
     if not is_valid_bucket(bucket):

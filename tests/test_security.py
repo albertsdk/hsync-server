@@ -25,6 +25,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from httpx import AsyncClient
 
 from hsync_server.api.events import ws_events
+from tests.conftest import TEST_TOKEN
 
 
 def _sha(content: bytes) -> str:
@@ -366,13 +367,12 @@ class TestWebSocketEventSecurity:
         outside.write_text("keep me")
 
         mock_websocket.receive_text.side_effect = [
-            self._auth_frame("test-key"),
+            self._auth_frame(TEST_TOKEN),
             '{"name": "deleted", "src": {"filepath": "../outside_keep.txt"}}',
             WebSocketDisconnect(),
         ]
 
         with (
-            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
             patch("hsync_server.api.events.get_buckets_path", return_value=str(buckets_root)),
         ):
             await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
@@ -387,7 +387,7 @@ class TestWebSocketEventSecurity:
         bucket_dir.mkdir(parents=True)
 
         mock_websocket.receive_text.side_effect = [
-            self._auth_frame("test-key"),
+            self._auth_frame(TEST_TOKEN),
             '{"name": "deleted", "src": {"filepath": "..\\\\..\\\\evil.txt"}}',
             WebSocketDisconnect(),
         ]
@@ -395,7 +395,6 @@ class TestWebSocketEventSecurity:
         mock_bucket_mgr = MagicMock()
 
         with (
-            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
             patch("hsync_server.api.events.get_buckets_path", return_value=str(buckets_root)),
             patch("hsync_server.api.events.bucket_manager", mock_bucket_mgr),
         ):
@@ -417,13 +416,12 @@ class TestWebSocketEventSecurity:
         marker.write_text("x")
 
         mock_websocket.receive_text.side_effect = [
-            self._auth_frame("test-key"),
+            self._auth_frame(TEST_TOKEN),
             '{"name": "renamed", "src": {"filepath": "real.txt"}, "dst": {"filepath": ".hsyncignore"}}',
             WebSocketDisconnect(),
         ]
 
         with (
-            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
             patch("hsync_server.api.events.get_buckets_path", return_value=str(buckets_root)),
         ):
             await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
@@ -433,7 +431,7 @@ class TestWebSocketEventSecurity:
 
     @pytest.mark.asyncio
     async def test_invalid_cid_connection_rejected(self, mock_websocket):
-        mock_websocket.receive_text.side_effect = [self._auth_frame("test-key")]
+        mock_websocket.receive_text.side_effect = [self._auth_frame(TEST_TOKEN)]
         await ws_events(mock_websocket, "testbucket", "bad cid/")
         mock_websocket.close.assert_called_once()
         assert mock_websocket.close.call_args.kwargs.get("code") == 4000 or (

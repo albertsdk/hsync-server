@@ -25,8 +25,16 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from .api import buckets, events, files, health  # noqa: F401
-from .config import get_api_key, get_buckets_path, get_cors_enabled, get_cors_origins, get_settings
+from .api import admin as admin_api  # noqa: F401
+from .api import (  # noqa: F401
+    buckets,
+    events,
+    files,
+    health,
+    members,  # noqa: F401
+)
+from .auth_store import get_auth_store
+from .config import get_buckets_path, get_cors_enabled, get_cors_origins, get_settings
 from .constants import HEADER_CLIENT_NAME, HEADER_CLIENT_VERSION, HSYNC_VERSION
 from .error_handlers import register_exception_handlers
 from .hashes import set_sha256_hashes
@@ -38,7 +46,7 @@ from .routers import auth_router, public_router
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
-    Validate runtime configuration and warm up server state.
+    Bootstrap admin account, warm up server state.
 
     Resolved during application startup (after env files have been loaded
     by the entry point) instead of at module-import time so that values
@@ -46,24 +54,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     start = time.time()
 
-    # API key validity (presence + min length) is guaranteed by the Settings
-    # field_validator at config load time, so the lifespan only logs status.
-    api_key = get_api_key()
-    log.info(f"API key configured ({len(api_key)} characters)")
+    # Bootstrap the admin account (creates one if the table is empty).
+    from .config import get_admin_key
 
-    # Preload SHA-256 checksums for all existing files in buckets
-    # This enables fast duplicate detection without recalculating hashes
+    env_secret = get_admin_key()
+    store = get_auth_store()
+    generated_token = store.bootstrap_admin(env_secret)
+    # generated_token is non-None only when a secret was generated and printed
+    # (the warning with the token is already logged inside bootstrap_admin).
+
+    # Log account status (no secrets).
+    accounts = store.list_accounts()
+    active = sum(1 for a in accounts if a.status == "active")
+    log.info(f"Accounts: {len(accounts)} total, {active} active")
+
+    # Preload SHA-256 checksums for all existing files in buckets.
     buckets_path = get_buckets_path()
     log.info(f"Loading SHA-256 file hashes from: {buckets_path}")
     sha256_files = set_sha256_hashes(buckets_path)
     log.info(f"{sha256_files} files stored.")
 
-    # Log available logging levels for debugging configuration
+    # Log available logging levels for debugging configuration.
     log.debug("Available logging: DEBUG")
     log.info("Available logging: INFO")
     log.warning("Available logging: WARNING")
 
-    # Log total startup time
+    # Log total startup time.
     tot_time = round(time.time() - start, 3)
     log.info(f"HSYNC Server started in: {tot_time} sec.")
 
@@ -93,9 +109,10 @@ register_exception_handlers(app)
 # Register API routers
 # Public router: endpoints that don't require authentication
 app.include_router(public_router)
-# Auth router: endpoints that require API key authentication
-# (buckets.py and files.py use auth_router directly via decorators)
+# Auth router: endpoints that require account token authentication
 app.include_router(auth_router)
+# Admin router: endpoints that require admin role
+app.include_router(admin_api.admin_router)
 
 # Add GZip compression middleware for responses larger than 1000 bytes
 app.add_middleware(GZipMiddleware, minimum_size=1000)

@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import BackgroundTasks, Request
+from fastapi import BackgroundTasks, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse
 
+from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.files.delta.tokens import delta_token_store
+from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import CONTENT_ENCODING_ZSTD
 from hsync_server.config import get_delta_enabled
 from hsync_server.constants import CONTENT_TYPE_OCTET_STREAM
@@ -37,8 +40,14 @@ def _delta_disabled() -> JSONResponse:
 
 @auth_router.get("/api/v1/buckets/{bucket}/files/delta/data/{token}")
 @limiter.limit(RATE_LIMIT_DELTA)
-async def get_delta_data(request: Request, bucket: str, token: str):
+async def get_delta_data(
+    request: Request,
+    bucket: str,
+    token: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
+):
     """Stream the parked literal payload for a valid download token."""
+    check_bucket_access(bucket, ctx)
     start_time = time.time()
 
     if not get_delta_enabled():

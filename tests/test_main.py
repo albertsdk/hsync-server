@@ -110,8 +110,11 @@ class TestFastApiApplication:
     async def test_lifespan_preloads_hashes_from_configured_bucket_path(
         self, tmp_path, monkeypatch
     ):
-        """Lifespan validates config and preloads hashes from the configured bucket path."""
+        """Lifespan bootstraps admin and preloads hashes from the configured bucket path."""
+        from hsync_common.models.sqlstore import reset_state_db_cache
+
         from hsync_server import main as app_main
+        from hsync_server.auth_store import reset_auth_cache
 
         calls = {}
 
@@ -119,9 +122,15 @@ class TestFastApiApplication:
             calls["path"] = path
             return 3
 
-        monkeypatch.setattr(app_main, "get_api_key", lambda: "test-api-key-12345")
         monkeypatch.setattr(app_main, "get_buckets_path", lambda: str(tmp_path))
         monkeypatch.setattr(app_main, "set_sha256_hashes", fake_set_sha256_hashes)
+        monkeypatch.setattr("hsync_server.config.get_state_dir", lambda: str(tmp_path / "_state"))
+        reset_auth_cache()
+        reset_state_db_cache()
 
-        async with app_main.lifespan(FastAPI()):
-            assert calls["path"] == str(tmp_path)
+        try:
+            async with app_main.lifespan(FastAPI()):
+                assert calls["path"] == str(tmp_path)
+        finally:
+            reset_auth_cache()
+            reset_state_db_cache()

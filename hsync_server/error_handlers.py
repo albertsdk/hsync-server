@@ -20,9 +20,12 @@ from hsync_common.text import safe_json_for_log
 from loguru import logger as log
 
 from .exceptions import (
+    AccountNotFoundError,
     AuthenticationError,
+    ConflictError,
     ConflictLostError,
     FileOperationError,
+    ForbiddenError,
     HSyncError,
     InsufficientStorageError,
     InvalidApiKeyError,
@@ -38,6 +41,8 @@ EXCEPTION_STATUS_CODES: dict[type, int] = {
     ResourceNotFoundError: status.HTTP_404_NOT_FOUND,
     InvalidApiKeyError: status.HTTP_401_UNAUTHORIZED,
     MissingApiKeyError: status.HTTP_403_FORBIDDEN,
+    ForbiddenError: status.HTTP_403_FORBIDDEN,
+    ConflictError: status.HTTP_409_CONFLICT,
     AuthenticationError: status.HTTP_401_UNAUTHORIZED,
     SupersededError: status.HTTP_409_CONFLICT,
     ConflictLostError: status.HTTP_409_CONFLICT,

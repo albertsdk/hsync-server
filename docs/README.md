@@ -75,7 +75,7 @@ instructions cannot drift between this index and the project README.
 | Document | What it covers |
 | -------- | -------------- |
 | [operations.md](operations.md) | Backup/restore, upgrade, monitoring, performance. |
-| [security-best-practices.md](security-best-practices.md) | Hardening checklist: API keys, firewall, TLS, rate limiting, logging. |
+| [security-best-practices.md](security-best-practices.md) | Hardening checklist: Admin keys, firewall, TLS, rate limiting, logging. |
 | [faq.md](faq.md) | Frequently asked questions, troubleshooting, and why to choose HSYNC. |
 | [log-labels.md](log-labels.md) | Every action label that can appear in the server logs and what it means. |
 
@@ -84,7 +84,7 @@ instructions cannot drift between this index and the project README.
 | Document | What it covers |
 | -------- | -------------- |
 | [api.md](api.md) | Complete REST + WebSocket API reference. |
-| [authentication.md](authentication.md) | Server-mode authentication flow: WebSocket handshake, API key validation, CID registration. |
+| [authentication.md](authentication.md) | Server-mode authentication flow: WebSocket handshake, account token validation, CID registration. |
 | [sync-flow.md](sync-flow.md) | Server-side sync flow: file storage, event broadcast, tombstones. |
 | [delta-transfer.md](delta-transfer.md) | Rsync-style block sync protocol — algorithm, endpoints, and configuration. |
 
@@ -110,7 +110,7 @@ all defaults.
 | `HSYNC_TZ` | `UTC` | Timezone (IANA format, e.g. `Europe/Rome`) |
 | `HSYNC_BUCKETS` | `./buckets` | Directory for bucket data storage |
 | `HSYNC_STATE_DIR` | `./state` | Directory for `syncstate.db` (causal versions and tombstones) |
-| `HSYNC_API_KEY` | *(required)* | API key for client authentication |
+| `HSYNC_ADMIN_KEY` | *(required)* | Bootstrap admin secret (64 hex, optional) |
 | `HSYNC_MAX_UPLOAD_SIZE` | `10737418240` (10 GiB) | Maximum upload size in bytes |
 | `HSYNC_MIN_FREE_DISK_SPACE` | `524288000` (500 MiB) | Minimum free disk before rejecting uploads (`0` = disabled) |
 | `HSYNC_CORS_ENABLED` | `false` | Enable CORS headers |

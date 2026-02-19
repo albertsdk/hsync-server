@@ -16,8 +16,9 @@ import hmac
 import os
 from os import remove, walk
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import Request
+from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
 from hsync_common.hashing import is_sha256_hex
@@ -28,7 +29,9 @@ from hsync_common.models.symlink import Symlink
 from hsync_common.path_validation import is_safe_symlink_target
 from loguru import logger as log
 
+from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
+from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
 from hsync_server.constants import ActionLabel
 from hsync_server.exceptions import (
@@ -48,6 +51,7 @@ from hsync_server.versions import server_version_info
 async def get_upload_status(
     request: Request,  # Required by rate limiter
     bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
     filename: str,
     sha256sum: str = "",
     size: int = 0,
@@ -74,6 +78,7 @@ async def get_upload_status(
         InvalidBucketNameError: If bucket name is invalid.
         InvalidPathError: If path is invalid.
     """
+    check_bucket_access(bucket, ctx)
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
     file_path = resolve_within_bucket(bucket, filename)
@@ -137,6 +142,7 @@ async def get_upload_status(
 async def get_files(
     request: Request,  # Required by rate limiter
     bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
     path: str | None = None,
 ) -> JSONResponse:
     """
@@ -158,6 +164,7 @@ async def get_files(
         InvalidPathError: If path is invalid.
         BucketNotFoundError: If bucket does not exist.
     """
+    check_bucket_access(bucket, ctx)
     # Validate inputs
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
@@ -261,6 +268,7 @@ async def get_files(
 async def get_tombstones(
     request: Request,  # Required by rate limiter
     bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
 ) -> JSONResponse:
     """
     List deletion markers (tombstones) for a bucket.
@@ -281,6 +289,7 @@ async def get_tombstones(
         InvalidBucketNameError: If bucket name is invalid.
         BucketNotFoundError: If bucket does not exist.
     """
+    check_bucket_access(bucket, ctx)
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
 
@@ -302,6 +311,7 @@ async def get_tombstones(
 async def post_tombstones(
     request: Request,  # Required by rate limiter
     bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
 ) -> JSONResponse:
     """
     Merge deletion markers (tombstones) pushed by a client.
@@ -328,6 +338,7 @@ async def post_tombstones(
         BucketNotFoundError: If bucket does not exist.
         InvalidPathError: If the body is not a JSON object.
     """
+    check_bucket_access(bucket, ctx)
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
 

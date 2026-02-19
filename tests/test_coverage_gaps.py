@@ -32,6 +32,7 @@ from hsync_server.api.file_utils import (
     is_sentinel_file,
     update_file_timestamp,
 )
+from tests.conftest import TEST_TOKEN
 
 # ---------------------------------------------------------------------------
 # api/files.py — compatibility layer re-exports
@@ -453,6 +454,17 @@ class TestListCoverageGaps:
 # ---------------------------------------------------------------------------
 
 
+def _ensure_test_bucket(bucket: str = "testbucket") -> None:
+    """Create *bucket* under the patched buckets path.
+
+    The WS flow checks bucket existence after auth (4009 on miss), so
+    success-path tests must create the directory first.
+    """
+    from hsync_server.config import get_buckets_path
+
+    os.makedirs(os.path.join(get_buckets_path(), bucket), exist_ok=True)
+
+
 class TestWebSocketCoverageGaps:
     """Cover protocol mismatch, pong, rate-limit, and heartbeat branches."""
 
@@ -472,10 +484,11 @@ class TestWebSocketCoverageGaps:
         """A protocol version mismatch sends an auth-error then closes with 4002."""
         from hsync_common.protocol.handshake import PROTOCOL_VERSION_WS
 
+        _ensure_test_bucket()
         mock_websocket.receive_text.return_value = dumps(
             {
                 "type": "auth",
-                "token": "test-api-key-12345",
+                "token": TEST_TOKEN,
                 "app_version": "1.0.0",
                 "protocol_version": "0.0.0-wrong",
                 "capabilities": [],
@@ -490,11 +503,12 @@ class TestWebSocketCoverageGaps:
     @pytest.mark.asyncio
     async def test_pong_message_handled(self, mock_websocket):
         """A pong message is handled without raising (coverage: pong branch)."""
+        _ensure_test_bucket()
         mock_websocket.receive_text.side_effect = [
             dumps(
                 {
                     "type": "auth",
-                    "token": "test-api-key-12345",
+                    "token": TEST_TOKEN,
                     "app_version": "1.0.0",
                     "protocol_version": None,
                     "capabilities": [],
@@ -517,11 +531,12 @@ class TestWebSocketCoverageGaps:
     @pytest.mark.asyncio
     async def test_rate_limit_exceeded_drops_event(self, mock_websocket):
         """When the rate limiter rejects, the event is silently dropped."""
+        _ensure_test_bucket()
         mock_websocket.receive_text.side_effect = [
             dumps(
                 {
                     "type": "auth",
-                    "token": "test-api-key-12345",
+                    "token": TEST_TOKEN,
                     "app_version": "1.0.0",
                     "protocol_version": None,
                     "capabilities": [],
@@ -549,11 +564,12 @@ class TestWebSocketCoverageGaps:
         # After a successful auth, the main receive loop wraps ``receive_text``
         # in ``asyncio.wait_for``; when that times out it raises ``TimeoutError``.
         # Simulate exactly that to exercise the 4004 close branch.
+        _ensure_test_bucket()
         mock_websocket.receive_text.side_effect = [
             dumps(
                 {
                     "type": "auth",
-                    "token": "test-api-key-12345",
+                    "token": TEST_TOKEN,
                     "app_version": "1.0.0",
                     "protocol_version": None,
                     "capabilities": [],

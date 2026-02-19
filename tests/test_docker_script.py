@@ -14,7 +14,7 @@ def _base_env(tmp_path: Path, args_file: Path) -> dict[str, str]:
     """Return a deterministic environment with a fake docker executable first in PATH."""
     env = os.environ.copy()
     for key in (
-        "HSYNC_API_KEY",
+        "HSYNC_ADMIN_KEY",
         "HSYNC_PORT",
         "HSYNC_LOG_LEVEL",
         "HSYNC_WORKERS",
@@ -75,14 +75,14 @@ def test_start_requires_api_key_when_no_env_file(tmp_path: Path):
     result, recorded = _run_script(tmp_path, "start")
 
     assert result.returncode == 1
-    assert "HSYNC_API_KEY is required" in result.stderr
+    assert "HSYNC_ADMIN_KEY is required" in result.stderr
     assert recorded == []
 
 
 def test_start_uses_env_file_without_leaking_api_key_value(tmp_path: Path):
     env_file = tmp_path / "server.env"
     env_file.write_text(
-        "HSYNC_API_KEY=test-placeholder-api-key-000000\nHSYNC_PORT=9999\nHSYNC_LOG_LEVEL=debug\n"
+        "HSYNC_ADMIN_KEY=test-placeholder-api-key-000000\nHSYNC_PORT=9999\nHSYNC_LOG_LEVEL=debug\n"
     )
 
     result, recorded = _run_script(tmp_path, "start", "--env-file", str(env_file))
@@ -93,20 +93,20 @@ def test_start_uses_env_file_without_leaking_api_key_value(tmp_path: Path):
     assert "--env-file" in recorded
     assert str(env_file) in recorded
     assert "9999:9999" in recorded
-    assert not any(arg.startswith("HSYNC_API_KEY=") for arg in recorded)
+    assert not any(arg.startswith("HSYNC_ADMIN_KEY=") for arg in recorded)
 
 
 def test_start_passes_parent_api_key_by_name_only(tmp_path: Path):
     result, recorded = _run_script(
         tmp_path,
         "start",
-        env_overrides={"HSYNC_API_KEY": "test-placeholder-api-key-000000"},
+        env_overrides={"HSYNC_ADMIN_KEY": "test-placeholder-api-key-000000"},
     )
 
     assert result.returncode == 0
     assert "-e" in recorded
-    assert "HSYNC_API_KEY" in recorded
-    assert not any(arg.startswith("HSYNC_API_KEY=") for arg in recorded)
+    assert "HSYNC_ADMIN_KEY" in recorded
+    assert not any(arg.startswith("HSYNC_ADMIN_KEY=") for arg in recorded)
 
 
 def test_build_uses_repository_root_as_context(tmp_path: Path):

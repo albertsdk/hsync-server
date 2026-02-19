@@ -13,8 +13,9 @@ This module provides the REST API endpoint for file deletion with:
 """
 
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import Form
+from fastapi import Depends, Form
 from fastapi.responses import JSONResponse
 from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
@@ -22,6 +23,7 @@ from hsync_common.models.file import invalidate_sha256_cache
 from hsync_common.models.tombstone import relpath_in_bucket
 from loguru import logger as log
 
+from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import (
     cleanup_empty_dir,
@@ -29,6 +31,7 @@ from hsync_server.api.file_utils import (
     is_sentinel_file,
 )
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
+from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
 from hsync_server.constants import ActionLabel
 from hsync_server.exceptions import (
@@ -46,6 +49,7 @@ from hsync_server.versions import clear_version, get_version_store
 @auth_router.delete("/api/v1/buckets/{bucket}/files")
 async def delete_file(
     bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
     cid: str = Form(),
     filename: str = Form(),
 ) -> JSONResponse:
@@ -70,6 +74,7 @@ async def delete_file(
         HSyncFileNotFoundError: If file does not exist.
         DeleteError: If deletion fails.
     """
+    check_bucket_access(bucket, ctx)
     # Validate bucket name
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})

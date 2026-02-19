@@ -32,7 +32,7 @@ readonly ENV_STATE_FILE="${SCRIPT_DIR}/.hsync-last-env-file"
 export HSYNC_PORT="${HSYNC_PORT:-9753}"
 export HSYNC_LOG_LEVEL="${HSYNC_LOG_LEVEL:-info}"
 export HSYNC_WORKERS="${HSYNC_WORKERS:-1}"
-export HSYNC_API_KEY="${HSYNC_API_KEY:-}"
+export HSYNC_ADMIN_KEY="${HSYNC_ADMIN_KEY:-}"
 export HSYNC_TZ="${HSYNC_TZ:-UTC}"
 
 # Environment file (can be set via --env-file option)
@@ -123,7 +123,7 @@ ${BOLD}Environment Variables:${RESET}
     HSYNC_PORT        Server port (default: 9753)
     HSYNC_LOG_LEVEL   Log level: debug, info, warning, error (default: info)
     HSYNC_WORKERS     Number of workers (default: 1)
-    HSYNC_API_KEY     API key for authentication (required)
+    HSYNC_ADMIN_KEY     API key for authentication (required)
     HSYNC_TZ          Timezone in IANA format (default: UTC)
     HSYNC_VERSION     Image tag version (default: 1.0.0)
 
@@ -169,8 +169,8 @@ cmd_start() {
         fi
     fi
 
-    if [[ -z "${HSYNC_API_KEY}" ]] && ! env_file_has_nonempty_key HSYNC_API_KEY; then
-        log_error "HSYNC_API_KEY is required"
+    if [[ -z "${HSYNC_ADMIN_KEY}" ]] && ! env_file_has_nonempty_key HSYNC_ADMIN_KEY; then
+        log_error "HSYNC_ADMIN_KEY is required"
         log_info "Set it via environment variable or use --env-file option"
         exit 1
     fi
@@ -206,8 +206,8 @@ cmd_start() {
 
     # Pass the API key by name only when it comes from the parent environment,
     # avoiding exposure as a command-line argument.
-    if [[ -n "${HSYNC_API_KEY}" ]]; then
-        docker_args+=(-e HSYNC_API_KEY)
+    if [[ -n "${HSYNC_ADMIN_KEY}" ]]; then
+        docker_args+=(-e HSYNC_ADMIN_KEY)
     fi
 
     # Forward SSL/TLS settings from the parent environment by name. Passing them

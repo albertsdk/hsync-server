@@ -1,29 +1,29 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-#
-# Copyright (C) 2025 Alberto Basso
+# License, v. 2.0. If received, this code can be found at the source:
+# https://github.com/albertobasso/hsync
 
 """
 Bucket operations API for HSYNC Server.
 
-This module provides REST API endpoints for bucket management:
-- Get bucket information
-- Create new buckets
-- Delete buckets
-
-All endpoints require API key authentication via Bearer token.
+REST endpoints for bucket management:
+- GET  /api/v1/buckets/{bucket}   — info (owner or member or admin).
+- POST /api/v1/buckets             — create (creator becomes owner).
+- DELETE /api/v1/buckets/{bucket}  — delete (admin only; cleans DB+FS).
 """
 
 from pathlib import Path
 from shutil import rmtree
+from typing import Annotated
 
-from fastapi import status
+from fastapi import Depends, status
 from fastapi.responses import JSONResponse
 from hsync_common.time_utils import to_iso
 from loguru import logger as log
 
+from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.utils import is_valid_bucket
+from hsync_server.auth import AuthContext, require_admin, verify_api_key
+from hsync_server.auth_store import get_auth_store
 from hsync_server.config import get_buckets_path
 from hsync_server.exceptions import (
     BucketNotFoundError,
@@ -38,38 +38,40 @@ def _bucket_path(bucket: str) -> str:
     return f"{get_buckets_path()}/{bucket}"
 
 
+def _check_bucket_owner_or_admin(bucket: str, ctx: AuthContext) -> None:
+    """Raise 403 if the caller is a member, 404 if no access or nonexistent."""
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
+    bucket_dir = _bucket_path(bucket)
+    if not Path(bucket_dir).exists():
+        raise BucketNotFoundError(details={"bucket": bucket})
+    if ctx.role == "admin":
+        return
+    store = get_auth_store()
+    role = store.get_member_role(bucket, ctx.id)
+    if role == "owner":
+        return
+    if role == "member":
+        from hsync_server.exceptions import ForbiddenError
+
+        raise ForbiddenError()
+    raise BucketNotFoundError(details={"bucket": bucket})
+
+
 @auth_router.get(
     "/api/v1/buckets/{bucket}",
     name="Get bucket information",
     summary="Get bucket information",
-    description="""Get bucket information including timestamps in ISO 8601 UTC with Z suffix (e.g. 2025-01-15T08:30:00.000Z).""",
+    description="Get bucket information including timestamps in ISO 8601 UTC with Z suffix.",
 )
-async def get_bucket(bucket: str) -> JSONResponse:
-    """
-    Retrieve information about a specific bucket.
-
-    Returns the bucket name and timestamps (access, creation, modification)
-    in ISO format.
-
-    Args:
-        bucket: Name of the bucket to query.
-
-    Returns:
-        JSON response with bucket name and timestamps.
-
-    Raises:
-        InvalidBucketNameError: If bucket name is invalid.
-        BucketNotFoundError: If bucket does not exist.
-    """
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
+async def get_bucket(
+    bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
+) -> JSONResponse:
+    """Retrieve information about a specific bucket (owner/member/admin only)."""
+    check_bucket_access(bucket, ctx)
 
     bucket_dir = _bucket_path(bucket)
-
-    if not Path(bucket_dir).exists():
-        raise BucketNotFoundError(details={"bucket": bucket})
-
-    # Fetch and format access, creation and modification times
     bucket_stat = Path(bucket_dir).stat()
     times = {
         "adate": bucket_stat.st_atime,
@@ -82,31 +84,19 @@ async def get_bucket(bucket: str) -> JSONResponse:
 
 
 @auth_router.post("/api/v1/buckets")
-async def create_bucket(bucket: str) -> JSONResponse:
-    """
-    Create a new storage bucket.
+async def create_bucket(
+    bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
+) -> JSONResponse:
+    """Create a new bucket. The creator becomes the owner.
 
-    Creates a directory in the buckets storage area with the specified name.
-    Bucket names must be alphanumeric (hyphens and underscores allowed,
-    but not at the beginning or end).
-
-    Args:
-        bucket: Name for the new bucket.
-
-    Returns:
-        JSON response confirming creation or conflict if exists.
-
-    Raises:
-        InvalidBucketNameError: If bucket name is invalid.
+    Returns 409 if the bucket name is already taken (directory exists).
     """
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
 
     bucket_directory = _bucket_path(bucket)
 
-    # Use atomic mkdir to avoid TOCTOU race: exist_ok=False ensures that
-    # two concurrent requests cannot both observe the directory missing and
-    # both return 201.
     try:
         Path(bucket_directory).mkdir(parents=True, exist_ok=False)
     except FileExistsError:
@@ -119,7 +109,25 @@ async def create_bucket(bucket: str) -> JSONResponse:
             },
         )
 
-    log.info(f'Bucket: "{bucket}" created')
+    # Record ownership in the auth store.
+    store = get_auth_store()
+    try:
+        store.set_owner_on_create(bucket, ctx.id)
+    except Exception:
+        # INSERT failed after mkdir — remove the orphan directory.
+        from shutil import rmtree
+
+        log.error(f"Failed to record ownership for bucket '{bucket}'", exc_info=True)
+        try:
+            rmtree(bucket_directory)
+        except OSError:
+            pass  # Best-effort cleanup.
+        raise DeleteError(
+            message=f"Failed to create bucket: {bucket}",
+            details={"bucket": bucket},
+        )
+
+    log.info(f'Bucket: "{bucket}" created (owner: {ctx.name})')
 
     return JSONResponse(
         status_code=201,
@@ -131,50 +139,42 @@ async def create_bucket(bucket: str) -> JSONResponse:
 
 
 @auth_router.delete("/api/v1/buckets/{bucket}")
-async def delete_bucket(bucket: str) -> JSONResponse:
-    """
-    Delete a bucket and all its contents.
+async def delete_bucket(
+    bucket: str,
+    ctx: Annotated[AuthContext, Depends(require_admin)],
+) -> JSONResponse:
+    """Delete a bucket and all its contents (admin only).
 
-    Permanently removes the bucket directory and all files/subdirectories.
-    This operation cannot be undone.
-
-    Args:
-        bucket: Name of the bucket to delete.
-
-    Returns:
-        JSON response confirming deletion.
-
-    Raises:
-        InvalidBucketNameError: If bucket name is invalid.
-        BucketNotFoundError: If bucket does not exist.
-        DeleteError: If deletion fails.
+    Cleans up: filesystem directory, DB rows (membership, versions,
+    tombstones, bucket mapping).  Non-admin callers get 403; non-existent
+    or inaccessible buckets return 404.
     """
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
 
     bucket_dir = _bucket_path(bucket)
-
     if not Path(bucket_dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket})
 
+    store = get_auth_store()
     try:
-        # Remove bucket and all contents
-        rmtree(bucket_dir)
-        log.info(f'Bucket: "{bucket}" deleted successfully')
-
-        return JSONResponse(
-            status_code=200,
-            content={
-                "info": "Bucket deleted successfully",
-                "bucket": bucket,
-            },
-        )
+        store.delete_bucket(bucket)
     except OSError as e:
         log.error(f"Failed to delete bucket {bucket}: {e}", exc_info=True)
         raise DeleteError(
             message=f"Failed to delete bucket: {bucket}",
             details={"bucket": bucket, "error": str(e)},
         )
+
+    log.info(f'Bucket: "{bucket}" deleted by admin {ctx.name}')
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "info": "Bucket deleted successfully",
+            "bucket": bucket,
+        },
+    )
 
 
 log.info(f"Module {__name__} loaded")

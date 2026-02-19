@@ -26,12 +26,12 @@ import json
 import time
 from os import replace
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import zstandard as zstd
 from aiofiles.ospath import isfile
 from aiofiles.tempfile import NamedTemporaryFile
-from fastapi import File, Form, Request, UploadFile
+from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from hsync_common.clock import clamp_incoming_corrected_mtime
 from hsync_common.constants import DELTA_MAX_LITERAL_SIZE, PARTIAL_DELTA_SUFFIX
@@ -50,6 +50,7 @@ from hsync_common.models.file import invalidate_sha256_cache, is_hidden_file
 from hsync_common.permissions import is_valid_octal_permissions
 from loguru import logger as log
 
+from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import update_file_timestamp
 from hsync_server.api.files.upload import _flush_to_disk
@@ -59,6 +60,7 @@ from hsync_server.arbitration import (
     arbitrate_upload,
     conflicted_copy_name,
 )
+from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import decompress_file_to_file
 from hsync_server.config import get_buckets_path, get_delta_enabled
 from hsync_server.exceptions import (
@@ -153,11 +155,13 @@ def _check_ops_bounds(
 async def delta_apply(
     request: Request,  # Required by rate limiter
     bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
     path: str = Form(...),
     metadata: str = Form(...),
     file: UploadFile = File(...),
 ) -> JSONResponse:
     """Apply a client-computed delta to the server-side base file."""
+    check_bucket_access(bucket, ctx)
     start_time = time.time()
 
     if not get_delta_enabled():

@@ -16,6 +16,7 @@ from hsync_common.protocol.handshake import (
 from hsync_server.api.events import _event_paths_safe, bucket_manager, ws_events
 from hsync_server.config import get_compression_enabled, get_delta_enabled
 from hsync_server.constants import HSYNC_VERSION
+from tests.conftest import TEST_TOKEN
 
 
 class TestWebSocketPathParamValidation:
@@ -93,6 +94,19 @@ def _expected_server_caps() -> set[Capability]:
     return caps
 
 
+def _ensure_test_bucket(bucket: str = "testbucket") -> None:
+    """Create *bucket* under the patched buckets path.
+
+    The WS flow checks bucket existence after auth (4009 on miss), so
+    success-path tests must create the directory first.
+    """
+    import os
+
+    from hsync_server.config import get_buckets_path
+
+    os.makedirs(os.path.join(get_buckets_path(), bucket), exist_ok=True)
+
+
 class TestWebSocketAuthentication:
     """Tests for WebSocket authentication."""
 
@@ -111,13 +125,13 @@ class TestWebSocketAuthentication:
         """Successful authentication allows connection."""
         from fastapi import WebSocketDisconnect
 
+        _ensure_test_bucket()
         mock_websocket.receive_text.side_effect = [
-            _auth_frame("test-api-key"),
+            _auth_frame(TEST_TOKEN),
             WebSocketDisconnect(),  # End the loop cleanly
         ]
 
-        with patch("hsync_server.api.events.get_api_key", return_value="test-api-key"):
-            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
+        await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.accept.assert_called_once()
         mock_websocket.send_json.assert_called_with(
@@ -129,8 +143,7 @@ class TestWebSocketAuthentication:
         """Invalid token closes connection with 4003."""
         mock_websocket.receive_text.return_value = _auth_frame("wrong-key")
 
-        with patch("hsync_server.api.events.get_api_key", return_value="correct-key"):
-            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
+        await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.close.assert_called_with(code=4003, reason="Invalid API key")
 
@@ -170,8 +183,7 @@ class TestWebSocketAuthentication:
         """Invalid auth message type closes connection with 4001."""
         mock_websocket.receive_text.return_value = '{"type": "not-auth", "token": "key"}'
 
-        with patch("hsync_server.api.events.get_api_key", return_value="key"):
-            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
+        await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.close.assert_called_with(code=4001, reason="Invalid auth message")
 
@@ -205,7 +217,7 @@ class TestWebSocketEvents:
         def _create(event_json):
             from fastapi import WebSocketDisconnect
 
-            return [_auth_frame("test-key"), event_json, WebSocketDisconnect()]
+            return [_auth_frame(TEST_TOKEN), event_json, WebSocketDisconnect()]
 
         return _create
 
@@ -214,14 +226,14 @@ class TestWebSocketEvents:
         """Invalid event names are ignored."""
         from fastapi import WebSocketDisconnect
 
+        _ensure_test_bucket()
         mock_websocket.receive_text.side_effect = [
-            _auth_frame("test-key"),
+            _auth_frame(TEST_TOKEN),
             '{"name": "invalid_event", "src": {}}',
             WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
-            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
+        await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Connection accepted and authenticated
         mock_websocket.accept.assert_called_once()
@@ -236,14 +248,14 @@ class TestWebSocketEvents:
         """Malformed event JSON is ignored."""
         from fastapi import WebSocketDisconnect
 
+        _ensure_test_bucket()
         mock_websocket.receive_text.side_effect = [
-            _auth_frame("test-key"),
+            _auth_frame(TEST_TOKEN),
             "not valid json",
             WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
-            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
+        await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Connection accepted and authenticated
         mock_websocket.accept.assert_called_once()
@@ -258,13 +270,13 @@ class TestWebSocketEvents:
         """Client disconnect removes from active connections."""
         from fastapi import WebSocketDisconnect
 
+        _ensure_test_bucket()
         mock_websocket.receive_text.side_effect = [
-            _auth_frame("test-key"),
+            _auth_frame(TEST_TOKEN),
             WebSocketDisconnect(),
         ]
 
-        with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
-            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
+        await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Client should be removed from connections
         manager = bucket_manager.get_manager("testbucket")
@@ -281,17 +293,14 @@ class TestWebSocketEvents:
         os.makedirs(bucket_dir, exist_ok=True)
 
         mock_websocket.receive_text.side_effect = [
-            _auth_frame("test-key"),
+            _auth_frame(TEST_TOKEN),
             '{"name": "added", "src": {"path": "newdir", "permissions": "755"}}',
             WebSocketDisconnect(),
         ]
 
-        with (
-            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
-            patch(
-                "hsync_server.api.events.get_buckets_path",
-                return_value=str(tmp_path / "buckets"),
-            ),
+        with patch(
+            "hsync_server.api.events.get_buckets_path",
+            return_value=str(tmp_path / "buckets"),
         ):
             await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
@@ -310,17 +319,14 @@ class TestWebSocketEvents:
         os.makedirs(target_dir, exist_ok=True)
 
         mock_websocket.receive_text.side_effect = [
-            _auth_frame("test-key"),
+            _auth_frame(TEST_TOKEN),
             '{"name": "modified", "src": {"path": "existingdir", "permissions": "700"}}',
             WebSocketDisconnect(),
         ]
 
-        with (
-            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
-            patch(
-                "hsync_server.api.events.get_buckets_path",
-                return_value=str(tmp_path / "buckets"),
-            ),
+        with patch(
+            "hsync_server.api.events.get_buckets_path",
+            return_value=str(tmp_path / "buckets"),
         ):
             await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
@@ -336,17 +342,14 @@ class TestWebSocketEvents:
         os.makedirs(target_dir, exist_ok=True)
 
         mock_websocket.receive_text.side_effect = [
-            _auth_frame("test-key"),
+            _auth_frame(TEST_TOKEN),
             '{"name": "deleted", "src": {"path": "todelete", "permissions": "755"}}',
             WebSocketDisconnect(),
         ]
 
-        with (
-            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
-            patch(
-                "hsync_server.api.events.get_buckets_path",
-                return_value=str(tmp_path / "buckets"),
-            ),
+        with patch(
+            "hsync_server.api.events.get_buckets_path",
+            return_value=str(tmp_path / "buckets"),
         ):
             await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
@@ -365,17 +368,14 @@ class TestWebSocketEvents:
         os.makedirs(src_dir, exist_ok=True)
 
         mock_websocket.receive_text.side_effect = [
-            _auth_frame("test-key"),
+            _auth_frame(TEST_TOKEN),
             '{"name": "renamed", "src": {"path": "olddir", "permissions": "755"}, "dst": {"path": "newdir", "permissions": "755"}}',
             WebSocketDisconnect(),
         ]
 
-        with (
-            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
-            patch(
-                "hsync_server.api.events.get_buckets_path",
-                return_value=str(tmp_path / "buckets"),
-            ),
+        with patch(
+            "hsync_server.api.events.get_buckets_path",
+            return_value=str(tmp_path / "buckets"),
         ):
             await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
@@ -397,17 +397,14 @@ class TestWebSocketEvents:
         Path(target_file).write_text("content")
 
         mock_websocket.receive_text.side_effect = [
-            _auth_frame("test-key"),
+            _auth_frame(TEST_TOKEN),
             '{"name": "symlink", "src": {"type": "symlink", "filepath": "link", "target": "target.txt"}}',
             WebSocketDisconnect(),
         ]
 
-        with (
-            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
-            patch(
-                "hsync_server.api.events.get_buckets_path",
-                return_value=str(tmp_path / "buckets"),
-            ),
+        with patch(
+            "hsync_server.api.events.get_buckets_path",
+            return_value=str(tmp_path / "buckets"),
         ):
             await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
@@ -422,20 +419,21 @@ class TestWebSocketEvents:
         test): writing to the repository's real ``buckets/`` tree would leak
         side effects between runs.
         """
+        import os
+
         from fastapi import WebSocketDisconnect
 
+        os.makedirs(tmp_path / "buckets" / "testbucket", exist_ok=True)
+
         mock_websocket.receive_text.side_effect = [
-            _auth_frame("test-key"),
+            _auth_frame(TEST_TOKEN),
             '{"name": "added", "src": {"path": "test", "permissions": "invalid"}}',
             WebSocketDisconnect(),
         ]
 
-        with (
-            patch("hsync_server.api.events.get_api_key", return_value="test-key"),
-            patch(
-                "hsync_server.api.events.get_buckets_path",
-                return_value=str(tmp_path / "buckets"),
-            ),
+        with patch(
+            "hsync_server.api.events.get_buckets_path",
+            return_value=str(tmp_path / "buckets"),
         ):
             await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
@@ -450,12 +448,12 @@ class TestWebSocketEvents:
     @pytest.mark.asyncio
     async def test_client_disconnect_with_error(self, mock_websocket):
         """Client disconnect with error is handled."""
+        _ensure_test_bucket()
         mock_websocket.receive_text.side_effect = [
-            _auth_frame("test-key"),
+            _auth_frame(TEST_TOKEN),
             Exception("Connection error"),
         ]
 
-        with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
-            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
+        await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.close.assert_called()

@@ -133,8 +133,8 @@ class TestBucketEndpoints:
         bucket_path = os.path.join(temp_buckets_dir, "oserror-bucket")
         os.makedirs(bucket_path)
 
-        # Mock rmtree to raise OSError
-        with patch("hsync_server.api.buckets.rmtree", side_effect=OSError("Permission denied")):
+        # Mock rmtree to raise OSError (now in auth_store._delete_bucket_fs)
+        with patch("shutil.rmtree", side_effect=OSError("Permission denied")):
             response = await client.delete("/api/v1/buckets/oserror-bucket")
 
         assert response.status_code == 500

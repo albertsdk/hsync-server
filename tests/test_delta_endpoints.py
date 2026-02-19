@@ -211,7 +211,7 @@ class TestGetDeltaData:
         assert resp.headers["Content-Type"] == "application/octet-stream"
         assert len(resp.content) == body["data_size"]
 
-    async def test_unknown_token_is_404(self, client):
+    async def test_unknown_token_is_404(self, client, bucket_dir):
         resp = await client.get("/api/v1/buckets/bucket1/files/delta/data/deadbeef")
         assert resp.status_code == 404
         assert resp.json()["detail"] == "token_not_found"

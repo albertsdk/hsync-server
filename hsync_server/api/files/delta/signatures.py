@@ -24,9 +24,10 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
+from typing import Annotated
 
 from aiofiles.ospath import isfile
-from fastapi import Request
+from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from hsync_common.constants import (
     DELTA_BLOCK_SIZE_LARGE,
@@ -51,8 +52,10 @@ from hsync_common.models.delta import (
 from loguru import logger as log
 from pydantic import BaseModel, Field
 
+from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.files.delta.tokens import delta_token_store
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
+from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import _ZSTD_COMPRESSOR, should_compress
 from hsync_server.config import get_compression_enabled, get_delta_enabled
 from hsync_server.exceptions import (
@@ -123,12 +126,18 @@ def _delta_disabled() -> JSONResponse:
 
 @auth_router.get("/api/v1/buckets/{bucket}/files/delta/signatures")
 @limiter.limit(RATE_LIMIT_DELTA)
-async def get_delta_signatures(request: Request, bucket: str, path: str) -> JSONResponse:
+async def get_delta_signatures(
+    request: Request,
+    bucket: str,
+    path: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
+) -> JSONResponse:
     """Return block signatures of the server-side base file (upload delta).
 
     The client compares ``sha256`` with its expected ``base_hash`` first
     (early-out) and then scans its newer file against these signatures.
     """
+    check_bucket_access(bucket, ctx)
     start_time = time.time()
 
     if not get_delta_enabled():
@@ -168,13 +177,18 @@ async def get_delta_signatures(request: Request, bucket: str, path: str) -> JSON
 
 @auth_router.post("/api/v1/buckets/{bucket}/files/delta/signatures")
 @limiter.limit(RATE_LIMIT_DELTA)
-async def post_delta_signatures(request: Request, bucket: str) -> JSONResponse:
+async def post_delta_signatures(
+    request: Request,
+    bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
+) -> JSONResponse:
     """Match client base signatures against the server file (download delta).
 
     Returns ``{delta: true, ...}`` with instructions and a token URL for the
     literal payload, or ``{delta: false, reason}`` when a full transfer is
     cheaper (the client then falls back to a plain download).
     """
+    check_bucket_access(bucket, ctx)
     start_time = time.time()
 
     # Read and validate body size before Pydantic parsing, regardless
