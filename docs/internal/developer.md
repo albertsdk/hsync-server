@@ -140,18 +140,21 @@ endpoints:
 
 | Router | Prefix | Auth | Endpoints |
 |--------|--------|------|-----------|
-| `auth_router` | `/api/v1` | Requires `Authorization: Bearer <HSYNC_API_KEY>` | Buckets, files, tombstones, delta transfer |
+| `auth_router` | `/api/v1` | Requires `Authorization: Bearer <account_token>` | Buckets, files, tombstones, delta transfer, membership |
+| `admin_router` | `/api/v1/admin` | Requires `admin` role | Account CRUD, bucket inventory |
 | `public_router` | (root) | None | `/health`, `/metrics`, `/api/v1/time`, WebSocket events |
 
-The `auth_router` dependency chain enforces API key validation on every request.
-The `public_router` carries no auth dependency, making health checks and
-metrics accessible to load balancers and monitoring tools without credentials.
+The `auth_router` dependency chain enforces account-token validation on every
+request. The `admin_router` adds the `admin`-role check on top. The
+`public_router` carries no auth dependency, making health checks and metrics
+accessible to load balancers and monitoring tools without credentials.
 
 ```python
 # Simplified wiring from main.py
 app = FastAPI()
 app.include_router(public_router)  # no auth
-app.include_router(auth_router)  # HSYNC_API_KEY required
+app.include_router(auth_router)   # account token required
+app.include_router(admin_router)  # admin role required
 ```
 
 ## WebSocket Lifecycle
@@ -164,7 +167,7 @@ Each WebSocket connection goes through a defined lifecycle:
                            Rejects if max connections per IP or total exceeded
 ③ Auth timeout       →  Client must send {"type": "auth", "token": "..."}
                            within HSYNC_WS_AUTH_TIMEOUT seconds (default 10)
-④ Authentication     →  API key validated against HSYNC_API_KEY
+④ Authentication     →  account token verified (scrypt) against the auth store
 ⑤ Registration       →  Client registered to bucket's connection pool
 ⑥ Heartbeat loop     →  Server sends ping every HSYNC_WS_HEARTBEAT_INTERVAL (30s)
                            Client must respond with pong within HSYNC_WS_HEARTBEAT_TIMEOUT (10s)

@@ -11,23 +11,28 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `CLAUDE.m
 - Typed accessors (used everywhere instead of touching `Settings` directly):
   `get_port` (`:317`), `get_workers` (`:322`), `get_buckets_path` (`:362`),
   `get_state_dir` (`config.py`),
-  `get_api_key` (`:357`), `get_max_upload_size` (`:397`),
+  `get_admin_key` (`:357`), `get_max_upload_size` (`:397`),
   `get_compression_enabled` (`:437`), SSL getters (`:412`–`:432`),
   WS getters (`:442`–`:462`), rate-limit getters (`:367`–`:392`),
   `get_tombstone_ttl_days` (`:472`), delta getters (`get_delta_enabled`,
   `get_delta_min_file_size`, `get_delta_max_change_ratio`, `get_delta_token_ttl`).
 - Validation sets: `VALID_LOG_LEVELS` (`:34`), `VALID_LOG_FORMATS` (`:43`).
-- API-key validity (presence + min length) enforced by a field_validator at load
-  time; the `lifespan` only logs status (`main.py:51`).
+- Admin-key validity (64 lowercase hex) enforced by a field_validator at load
+  time; the `lifespan` bootstraps the admin account (`main.py:51`). A leftover
+  `HSYNC_API_KEY` in the environment fails startup with a migration message.
 - Delta transfer config: `delta_enabled` (default `true`), `delta_min_file_size`
   (256 KB), `delta_max_change_ratio` (0.50 = 50%), `delta_token_ttl` (300s),
   `rate_limit_delta` ("100/minute").
 
-## Authentication (`routers.py`)
+## Authentication (`auth.py` + `auth_store.py`)
 
-`verify_api_key` (`routers.py:45`) — Bearer token, `hmac.compare_digest`
-(`routers.py:69`) to avoid timing attacks; `mask_api_key` (`routers.py:27`) for safe
-logging. Wired as a router-level dependency on `auth_router`.
+`verify_api_key` (`auth.py`) — Bearer account token `hs_<id>_<secret>`; scrypt
+verify against the account store (`auth_store.py`) with a KDF cache (SHA-256 of
+the token → account id + generation) and a per-request DB re-check of
+status/generation/expiry. `key_prefix` (8 hex) is logged instead of the secret.
+Wired as a router-level dependency on `auth_router`; `require_admin` gates
+`admin_router`. Bucket membership is enforced by `check_bucket_access`
+(`api/authz.py`).
 
 ## Rate limiting (`rate_limiter.py`)
 

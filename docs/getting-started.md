@@ -92,11 +92,16 @@ The installer waits for the container health check. You can verify it again with
 curl --insecure https://localhost:9753/health
 ```
 
-Read the generated API key locally:
+Read the generated admin token locally:
 
 ```bash
-grep '^HSYNC_API_KEY=' "$HOME/.local/share/hsync-server/.env"
+grep '^HSYNC_ADMIN_KEY=' "$HOME/.local/share/hsync-server/.env"
 ```
+
+> The installer generates a 64-hex `HSYNC_ADMIN_KEY`. The server uses it as the
+> bootstrap admin secret and prints the full account token
+> (`hs_HsyncAdminBootstrap01_<secret>`) once at first start. See
+> [Roles and Permissions](roles-and-permissions.md).
 
 Export the public certificate and copy it to each client over a trusted channel:
 
@@ -109,12 +114,12 @@ openssl x509 -in server.crt -noout -fingerprint -sha256
 Configure clients with:
 
 - server URL: `https://<server-ip>:9753`;
-- the generated `HSYNC_API_KEY` value;
+- the generated admin account token value;
 - `--ca-cert /trusted/path/server.crt` to verify the self-signed certificate.
 
 Verify the displayed certificate fingerprint out of band before trusting it.
 Do not use `--insecure` for authenticated synchronization: disabling certificate
-verification would expose the bearer API key to a network attacker.
+verification would expose the bearer token to a network attacker.
 
 See the client [Getting Started guide](https://github.com/albertobasso/hsync-client/blob/main/docs/getting-started.md)
 for client-side configuration.

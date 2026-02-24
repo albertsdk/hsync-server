@@ -19,6 +19,7 @@ contract is the generated OpenAPI snapshot in `hsync-common` (`protocol/rest/ope
 | `GET /files/download` | `files/download.download_file` (`download.py:43`) | key | download |
 | `DELETE /files` | `files/delete.delete_file` (`delete.py:44`) | key | default |
 | `POST /buckets/{bucket}/tombstones` | tombstone record (`list.py`) | key | default |
+| `GET /buckets/{bucket}/presence` | `presence.get_presence` (`presence.py:29`) | key | default |
 | `GET /health` | `health.root` (`health.py:28`) | none | — |
 | `GET /api/v1/time` | `health.get_time` (`health.py:45`) | none | — |
 | `GET /metrics` | Prometheus (`main.py:127`) | none | — |
@@ -103,6 +104,17 @@ in the `[DOWNLOAD]` log line for request attribution. The log is deferred to a
 (measured from request start to last byte sent) via
 `format_duration(..., subsecond=True)` — e.g.
 `[DOWNLOAD] "bucket/file" (1500000 bytes) in 5.2s`.
+
+## Presence (`api/presence.py`)
+
+`GET /buckets/{bucket}/presence` returns the display-ready `{connected, total}`
+pair for a bucket: `total` counts the non-admin bucket members
+(`AuthStore.get_share_member_ids`), `connected` counts those members with a
+live WebSocket on this worker (`BucketConnectionManager.presence_counts`). The
+same pair is broadcast as a `presence` WebSocket frame on every join/leave
+(see [websocket.md](websocket.md)) and, in LAN mode, advertised by the master
+through the `connected` TXT value. Access follows `check_bucket_access` (404
+when the bucket does not exist or the caller is not a member).
 
 ## List / upload-status / tombstones (`api/files/list.py`)
 

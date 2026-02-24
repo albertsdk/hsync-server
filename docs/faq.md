@@ -69,9 +69,11 @@ server configuration is needed. See the
 
 ### How is access controlled?
 
-Authenticated endpoints require an `Authorization: Bearer <HSYNC_API_KEY>` token,
-compared in constant time. Set the key via the `HSYNC_API_KEY` environment
-variable. See [API → Authentication](api.md#authentication-flow).
+Authenticated endpoints require an `Authorization: Bearer hs_<id>_<secret>`
+account token. Each account has a role (`admin` or `client`) and bucket
+memberships; a `client` account can only access buckets it owns or is a member
+of. See [Roles and Permissions](roles-and-permissions.md) and
+[API → Authentication](api.md#authentication).
 
 ### Is communication encrypted?
 
@@ -183,7 +185,9 @@ Either stop the conflicting process or change the server port with `HSYNC_PORT`.
 docker logs hsync-server
 ```
 Common causes:
-- `HSYNC_API_KEY` not set — the server requires an API key.
+- `HSYNC_ADMIN_KEY` malformed — must be exactly 64 lowercase hex characters
+  (generate with `openssl rand -hex 32`). If unset, the server generates and
+  prints a one-time admin token instead.
 - `HSYNC_SSL_KEYFILE_PASSWORD` missing when `HSYNC_SSL_ENABLED=true`.
 - Volume permissions — the container user (UID 1000) must be able to write to
   the buckets and certs directories.
@@ -217,9 +221,11 @@ sudo ufw allow 9753/tcp
   over plain HTTP.
 
 **"401 Unauthorized" or "403 Forbidden":**
-- Verify the client is sending the correct `Authorization: Bearer <key>` header.
-- Check that `HSYNC_API_KEY` on the server matches the client's key.
-- The server compares API keys in constant time to prevent timing attacks.
+- Verify the client is sending the correct `Authorization: Bearer <token>` header.
+- Check that the account token is valid, active, and not expired. A `403` means
+  the account is authenticated but lacks permission (e.g. a `client` account on
+  an `/admin` endpoint, or a member on an owner-only operation).
+- The server compares token hashes in constant time to prevent timing attacks.
 
 **WebSocket connection fails:**
 - Ensure the client sends an `auth` frame as the first message after connecting.

@@ -11,9 +11,11 @@ on `public_router` (WS can't use header auth; auth is the first frame).
 ## Handshake (shared SSOT)
 
 Uses `hsync_common.protocol.handshake` (imported `events.py:28`):
-- Client sends an auth frame; server validates token (`hmac.compare_digest` vs
-  `get_api_key()`) and **hard-fails on `protocol_version` mismatch** against
-  `PROTOCOL_VERSION_WS`.
+- Client sends an auth frame; server verifies the account token via
+  `verify_token` (`auth.py`, scrypt + KDF cache) and **hard-fails on
+  `protocol_version` mismatch** against `PROTOCOL_VERSION_WS`.
+- After auth, the server checks bucket existence + membership; failure closes
+  with `4009` (indistinguishable from "bucket not found").
 - Replies with `build_ws_auth_ok` / `build_ws_auth_error`; client capabilities
   via `decode_capabilities`; the reply advertises the server's **honest**
   capability set (ADR-0024): `tombstones` + `vector_clocks` unconditionally,

@@ -9,7 +9,7 @@ your data.
 
 ## Table of Contents
 
-- [API Key Management](#api-key-management)
+- [Account and Key Management](#account-and-key-management)
 - [Network Exposure](#network-exposure)
 - [TLS Configuration](#tls-configuration)
 - [Filesystem Permissions](#filesystem-permissions)
@@ -20,34 +20,40 @@ your data.
 
 ---
 
-## API Key Management
+## Account and Key Management
 
-### Generate a strong key
+HSYNC authenticates clients with per-account tokens (`hs_<id>_<secret>`), each
+with a role and bucket memberships. See
+[Roles and Permissions](roles-and-permissions.md) for the full model.
 
-Use a cryptographically random key of at least 32 bytes:
+### Generate a strong admin secret
+
+The bootstrap admin secret (`HSYNC_ADMIN_KEY`) must be exactly 64 lowercase hex
+characters:
 
 ```bash
-openssl rand -base64 32
-# Output: aGk7Xp2Qm9vR3sL1wN8yB4tF6dH0jK5cA...
+openssl rand -hex 32
+# Output: 3f9c2b7a... (64 hex chars)
 ```
 
-### Rotate the key
+### Rotate keys
 
-Rotate the API key periodically (e.g., every 90 days) and immediately if a key
-is suspected compromised:
+Rotate an account's key periodically (e.g., every 90 days) and immediately if a
+key is suspected compromised. Rotation is built in and does not require a
+server restart:
 
-1. Generate a new key
-2. Update `prod.env` with the new key
-3. Restart the server: `./docker.sh restart`
-4. Distribute the new key to all clients
+```bash
+hsync-server admin client rotate-key --name <account> --grace 3600
+```
 
-> There is no built-in mechanism for dual-key rotation windows. During rotation,
-> existing clients will briefly fail to connect until they receive the new key.
+The `--grace` window keeps the old key valid briefly so clients can migrate
+without a hard disconnect. Disable an account immediately with
+`hsync-server admin client disable --name <account>` to revoke access outright.
 
-### Never expose the key
+### Never expose tokens or secrets
 
-- Store the API key **only** in `prod.env`, never in shell history or version
-  control
+- Store `HSYNC_ADMIN_KEY` **only** in `prod.env`, never in shell history or
+  version control
 - Add `prod.env` and `dev.env` to `.gitignore` (already done in the template)
 - Use environment variable injection from a secrets manager (Vault, SOPS, etc.)
   in automated deployments
@@ -128,8 +134,8 @@ add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; prelo
 - **Server certificates**: Always use a valid CA-signed certificate (Let's
   Encrypt is free and automated). Self-signed certs require `--ca-cert` or
   `--insecure` on every client, which is error-prone and insecure.
-- **Client authentication**: HSYNC uses API key Bearer tokens, not client
-  certificates. The API key is only sent over HTTPS — the client refuses to
+- **Client authentication**: HSYNC uses account-token Bearer tokens, not client
+  certificates. The token is only sent over HTTPS — the client refuses to
   send it over plain HTTP.
 
 ---
@@ -151,7 +157,7 @@ sudo chown -R 1000:1000 ./buckets ./certs ./logs
 chmod 600 prod.env dev.env
 ```
 
-These files contain the API key and other secrets. Only the user running the
+These files contain the admin secret and other secrets. Only the user running the
 server should be able to read them.
 
 ### Isolate bucket storage
@@ -232,7 +238,7 @@ HSYNC_LOG_FILE=/project/logs/hsync-server.log
 
 ### What does NOT get logged
 
-- API key values (only the presence/absence is checked)
+- Token/secret values (only the key prefix and account id/name are logged)
 - File contents
 - Request bodies
 
@@ -246,8 +252,8 @@ pattern.
 
 ## Checklist
 
-- [ ] API key is at least 32 bytes, generated with `openssl rand -base64 32`
-- [ ] API key is stored in `prod.env` (chmod 600), never in version control
+- [ ] `HSYNC_ADMIN_KEY` is 64 hex chars, generated with `openssl rand -hex 32`
+- [ ] `HSYNC_ADMIN_KEY` is stored in `prod.env` (chmod 600), never in version control
 - [ ] Server port 9753 is **not** exposed to the internet
 - [ ] Reverse proxy terminates TLS with a valid Let's Encrypt certificate
 - [ ] HTTP → HTTPS redirect is configured

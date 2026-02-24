@@ -38,11 +38,17 @@ graph LR
 
 ## Authentication
 
-All authenticated endpoints require the `Authorization` header:
+All authenticated endpoints require the `Authorization` header with an account
+token:
 
 ```
-Authorization: Bearer {HSYNC_API_KEY}
+Authorization: Bearer hs_<account_id>_<secret>
 ```
+
+The token identifies an account with a role (`admin` or `client`) and bucket
+memberships. See [Roles and Permissions](roles-and-permissions.md) for the full
+access-control model. The admin endpoints (`/api/v1/admin/*`) additionally
+require the `admin` role.
 
 ## REST API Endpoints
 
@@ -57,6 +63,36 @@ Authorization: Bearer {HSYNC_API_KEY}
 | `POST` | `/api/v1/buckets?bucket={name}` | Create a new bucket | 500/min |
 | `DELETE` | `/api/v1/buckets/{bucket}` | Delete a bucket | 500/min |
 
+### Membership and Ownership
+
+Membership endpoints are scoped to a bucket and enforce the owner/admin
+permissions described in [Roles and Permissions](roles-and-permissions.md).
+
+| Method | Endpoint | Description | Rate Limit |
+|--------|----------|-------------|------------|
+| `GET` | `/api/v1/buckets/{bucket}/members` | List members (owner/admin) | 500/min |
+| `POST` | `/api/v1/buckets/{bucket}/members` | Grant membership (owner/admin) | 500/min |
+| `DELETE` | `/api/v1/buckets/{bucket}/members/{client_id}` | Revoke membership (owner/admin) | 500/min |
+| `POST` | `/api/v1/buckets/{bucket}/owner` | Transfer ownership or reclaim an orphan (owner/admin) | 500/min |
+
+### Admin
+
+Admin endpoints require the `admin` role. See
+[Roles and Permissions](roles-and-permissions.md) for account and key
+lifecycle.
+
+| Method | Endpoint | Description | Rate Limit |
+|--------|----------|-------------|------------|
+| `GET` | `/api/v1/admin/clients` | List all accounts | 20/min |
+| `POST` | `/api/v1/admin/clients` | Create an account (returns the token once) | 20/min |
+| `POST` | `/api/v1/admin/clients/{client_id}/rotate-key` | Rotate an account's key | 20/min |
+| `PATCH` | `/api/v1/admin/clients/{client_id}/expiry` | Set/extend/remove key expiry | 20/min |
+| `POST` | `/api/v1/admin/clients/{client_id}/disable` | Disable an account | 20/min |
+| `POST` | `/api/v1/admin/clients/{client_id}/enable` | Re-enable an account | 20/min |
+| `DELETE` | `/api/v1/admin/clients/{client_id}` | Delete an account (`?cascade=true`) | 20/min |
+| `GET` | `/api/v1/admin/buckets` | List all buckets (FS ∪ membership) | 20/min |
+| `POST` | `/api/v1/admin/buckets` | Create a bucket on behalf of an owner | 20/min |
+
 ### Files
 
 | Method | Endpoint | Description | Rate Limit |
@@ -66,6 +102,16 @@ Authorization: Bearer {HSYNC_API_KEY}
 | `GET` | `/api/v1/buckets/{bucket}/files/download?filename={path}` | Download a file | 1000/min |
 | `GET` | `/api/v1/buckets/{bucket}/files/upload-status?filename={path}` | Check resumable-upload status (offset) | 500/min |
 | `DELETE` | `/api/v1/buckets/{bucket}/files` | Delete a file | 500/min |
+
+### Presence
+
+| Method | Endpoint | Description | Rate Limit |
+|--------|----------|-------------|------------|
+| `GET` | `/api/v1/buckets/{bucket}/presence` | Group presence: `{connected, total}` clients (non-admin members, self included) | 500/min |
+
+The same pair is pushed to connected clients as a WebSocket `presence` frame
+on every join/leave; in LAN mode the master advertises its `connected` count
+via the mDNS TXT record.
 
 ### Tombstones
 
@@ -139,7 +185,7 @@ per-operation:
 
 ```http
 POST /api/v1/buckets/mybucket/files HTTP/1.1
-Authorization: Bearer your-api-key
+Authorization: Bearer hs_<account_id>_<secret>
 Content-Type: multipart/form-data
 
 cid=Client123
@@ -192,7 +238,7 @@ corrected_mtime=1737072000
 
 ```http
 GET /api/v1/buckets/mybucket/files HTTP/1.1
-Authorization: Bearer your-api-key
+Authorization: Bearer hs_<account_id>_<secret>
 ```
 
 **Response (200 OK):**
@@ -237,7 +283,7 @@ Authorization: Bearer your-api-key
 
 ```http
 GET /api/v1/buckets/mybucket/files/upload-status?filename=documents/big.iso&sha256sum=...&size=1048576 HTTP/1.1
-Authorization: Bearer your-api-key
+Authorization: Bearer hs_<account_id>_<secret>
 ```
 
 **Response (200 OK):**
@@ -256,7 +302,7 @@ upload from `offset` bytes.
 
 ```http
 GET /api/v1/buckets/mybucket/tombstones HTTP/1.1
-Authorization: Bearer your-api-key
+Authorization: Bearer hs_<account_id>_<secret>
 ```
 
 **Response (200 OK):** mapping of hashed bucket-relative path → deletion marker.
@@ -325,7 +371,7 @@ sequenceDiagram
 ```
 
 The first frame must follow the shared handshake contract
-(`hsync_common.protocol.handshake`): `{"type": "auth", "token": "<api_key>",
+(`hsync_common.protocol.handshake`): `{"type": "auth", "token": "<account_token>",
 "app_version": "...", "protocol_version": "<peer protocol>", "capabilities": [...]}`.
 The server hard-fails on a `protocol_version` mismatch (sending an
 `auth`/`error` reply first) and otherwise responds with its own
@@ -340,9 +386,10 @@ use the intersection for transfer gating.
 | `4000` | Invalid client ID or bucket name; connection replaced by a newer one |
 | `4001` | Invalid auth message (first frame was not a valid `auth` message) |
 | `4002` | Version incompatible (client/server protocol mismatch) |
-| `4003` | Invalid API key / authentication failed |
+| `4003` | Invalid token / authentication failed (invalid, disabled, expired, revoked) |
 | `4004` | Heartbeat timeout (no pong received within the timeout window) |
 | `4008` | Authentication timeout (no auth frame within the timeout window) |
+| `4009` | Bucket not found / no access (indistinguishable) |
 | `1013` | Connection limit reached (global or per-IP cap exceeded) |
 
 ### Event Types
@@ -384,10 +431,10 @@ use the intersection for transfer gating.
 | Status | Description |
 |--------|-------------|
 | 400 | Bad Request - Invalid parameters or validation error |
-| 401 | Unauthorized - Invalid API key |
-| 403 | Forbidden - Missing API key |
-| 404 | Not Found - Resource not found |
-| 409 | Conflict — file already present (same SHA-256), stale upload (`superseded`), tie-break loser (`conflict_lost`), or delta base changed |
+| 401 | Unauthorized - Invalid token |
+| 403 | Forbidden - Insufficient permissions (non-admin on `/admin`, member on an administrative operation) |
+| 404 | Not Found - Resource not found or inaccessible (indistinguishable) |
+| 409 | Conflict — file already present (same SHA-256), stale upload (`superseded`), tie-break loser (`conflict_lost`), delta base changed, or an auth conflict (name taken, last admin, self-target) |
 | 422 | Unprocessable Entity - Request body validation failed |
 | 429 | Too Many Requests - Rate limit exceeded |
 | 500 | Internal Server Error |
@@ -446,16 +493,19 @@ Errors are categorized by prefix:
 | Code | Name | Description |
 |------|------|-------------|
 | `HSYNC-2000` | ResourceNotFoundError | Generic resource not found |
-| `HSYNC-2001` | BucketNotFoundError | Bucket does not exist |
+| `HSYNC-2001` | BucketNotFoundError | Bucket does not exist (or is inaccessible) |
 | `HSYNC-2002` | FileNotFoundError | File does not exist |
+| `HSYNC-2003` | AccountNotFoundError | Account referenced by id or name does not exist |
 
 #### Authentication Errors (3XXX)
 
 | Code | Name | Description |
 |------|------|-------------|
 | `HSYNC-3000` | AuthenticationError | Generic authentication failure |
-| `HSYNC-3001` | InvalidApiKeyError | API key is invalid |
-| `HSYNC-3002` | MissingApiKeyError | API key was not provided |
+| `HSYNC-3001` | InvalidApiKeyError | Token is invalid |
+| `HSYNC-3002` | MissingApiKeyError | Token was not provided |
+| `HSYNC-3003` | ForbiddenError | Authenticated but not permitted |
+| `HSYNC-3004` | ConflictError | Auth conflict (name taken, last admin, self-target, target already owner/member/disabled) |
 
 #### File Operation Errors (4XXX)
 
@@ -476,7 +526,7 @@ Errors are categorized by prefix:
 
 ### Example Error Responses
 
-**Invalid API Key (401):**
+**Invalid Token (401):**
 ```json
 {
   "error": "HSYNC-3001",

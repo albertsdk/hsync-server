@@ -212,9 +212,9 @@ docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR"
 curl --cacert "$INSTALL_DIR/server.crt" "$SERVER_URL/health"
 
 # List files in each bucket
-HSYNC_API_KEY="$(grep '^HSYNC_API_KEY=' "$INSTALL_DIR/.env" | cut -d= -f2-)"
+ADMIN_TOKEN="hs_HsyncAdminBootstrap01_$(grep '^HSYNC_ADMIN_KEY=' "$INSTALL_DIR/.env" | cut -d= -f2-)"
 curl --cacert "$INSTALL_DIR/server.crt" \
-  -H "Authorization: Bearer $HSYNC_API_KEY" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
   "$SERVER_URL/api/v1/buckets/mybucket/files"
 ```
 

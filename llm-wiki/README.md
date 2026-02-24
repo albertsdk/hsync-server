@@ -31,7 +31,9 @@ utilities.
 - API prefix: `/api/v1` (`hsync_server/constants.py:38`).
 - Protocol versions enforced from common SSOT (`hsync_common.protocol.handshake`):
   REST in `VersionMiddleware` (`middleware.py:111`), WS in `events.py` handshake.
-- Auth: Bearer API key, constant-time compare (`routers.py:69`).
+- Auth: per-account tokens (`hs_<id>_<secret>`) verified via scrypt against the
+  auth store (`auth.py` → `auth_store.py`); roles (`admin`/`client`) + bucket
+  membership gate access.
 - Persistence: files under `get_buckets_path()`; causal versions/tombstones in
   `get_state_dir()/syncstate.db` (ADR-0025). SHA-256 cache is in-memory.
 

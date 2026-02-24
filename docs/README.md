@@ -85,6 +85,7 @@ instructions cannot drift between this index and the project README.
 | -------- | -------------- |
 | [api.md](api.md) | Complete REST + WebSocket API reference. |
 | [authentication.md](authentication.md) | Server-mode authentication flow: WebSocket handshake, account token validation, CID registration. |
+| [roles-and-permissions.md](roles-and-permissions.md) | Roles (`admin`/`owner`/`member`), permissions, bucket properties, key management, CLI and API tools. |
 | [sync-flow.md](sync-flow.md) | Server-side sync flow: file storage, event broadcast, tombstones. |
 | [delta-transfer.md](delta-transfer.md) | Rsync-style block sync protocol — algorithm, endpoints, and configuration. |
 
@@ -110,7 +111,7 @@ all defaults.
 | `HSYNC_TZ` | `UTC` | Timezone (IANA format, e.g. `Europe/Rome`) |
 | `HSYNC_BUCKETS` | `./buckets` | Directory for bucket data storage |
 | `HSYNC_STATE_DIR` | `./state` | Directory for `syncstate.db` (causal versions and tombstones) |
-| `HSYNC_ADMIN_KEY` | *(required)* | Bootstrap admin secret (64 hex, optional) |
+| `HSYNC_ADMIN_KEY` | *(optional)* | Bootstrap admin secret (64 hex). If unset, the server generates and prints a one-time admin token. |
 | `HSYNC_MAX_UPLOAD_SIZE` | `10737418240` (10 GiB) | Maximum upload size in bytes |
 | `HSYNC_MIN_FREE_DISK_SPACE` | `524288000` (500 MiB) | Minimum free disk before rejecting uploads (`0` = disabled) |
 | `HSYNC_CORS_ENABLED` | `false` | Enable CORS headers |

@@ -19,14 +19,30 @@ process-local state and the installation SQLite store.
 | State | Location | Lifetime | Persistence |
 | ----- | -------- | -------- | ----------- |
 | SHA-256 cache `FILE_HASHES` | `hashes.py` | process memory | rebuilt at startup from disk (`set_sha256_hashes`) |
-| Per-bucket WS pools | `connection_manager.py:166` (`bucket_manager`) | process memory | none (live connections) |
+| Per-bucket WS pools | `connection_manager.py:187` (`bucket_manager`) | process memory | none (live connections) |
 | Tombstone stores (per bucket) | `tombstones.py` cache | process memory + SQLite | `syncstate.db` (`tombstones` table) |
 | Version stores (per bucket) | `versions.py` cache | process memory + SQLite | `syncstate.db` (`versions` table) |
+| Accounts + membership | `auth_store.py` | SQLite | `syncstate.db` (`clients`, `bucket_members` tables) |
 
 The SHA-256 cache maps `sha256(filepath) -> (file_sha256, mtime_ns, size)`: a
 cached digest is served only while the file's current metadata matches the
 captured pair, otherwise the entry is dropped and callers recompute (see
 [modules/infrastructure.md](modules/infrastructure.md) — Hash cache).
+
+## Accounts and membership (`auth_store.py`)
+
+Server-only tables on `syncstate.db` (not part of the common `sqlstore` schema):
+
+- **`clients`** — `id` (PK, 21-alnum), `name` (UNIQUE, immutable), `role`
+  (`admin`/`client`), `status` (`active`/`disabled`), `key_hash` (PHC scrypt),
+  `key_prefix` (8 hex for logs), `key_generation`, `key_expires_at`,
+  `prior_key_hash`/`prior_expires_at` (grace rotation), `created_at`,
+  `last_used_at`.
+- **`bucket_members`** — PK `(bucket, client_id)`, `role` (`owner`/`member`);
+  partial UNIQUE index enforces exactly one owner per bucket.
+
+`AuthStore` (`auth_store.py`) is the single source of truth for account CRUD,
+membership, transfer/reclaim, cascade delete, and the last-admin invariant.
 
 ## Tombstones (`tombstones.py`)
 

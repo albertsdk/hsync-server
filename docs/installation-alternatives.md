@@ -25,7 +25,7 @@ HSYNC_IMAGE=ghcr.io/albertobasso/hsync-server:v1.0.0
 HSYNC_BIND_ADDRESS=192.168.1.20
 HSYNC_CERT_HOSTNAME=192.168.1.20
 HSYNC_PUBLIC_PORT=9753
-HSYNC_API_KEY=<strong-random-secret>
+HSYNC_ADMIN_KEY=<strong-random-secret>
 HSYNC_SSL_ENABLED=true
 HSYNC_SSL_KEYFILE_PASSWORD=<different-strong-random-secret>
 HSYNC_BUCKETS=/project/buckets
@@ -55,7 +55,7 @@ installation:
 ```bash
 docker run --rm -d --name hsync-server-test \
   -p 127.0.0.1:9753:9753 \
-  -e HSYNC_API_KEY=<temporary-random-key> \
+  -e HSYNC_ADMIN_KEY=<temporary-random-key> \
   ghcr.io/albertobasso/hsync-server:v1.0.0
 curl http://127.0.0.1:9753/health
 docker stop hsync-server-test
@@ -85,7 +85,7 @@ Use Poetry for development or when the host cannot run Docker:
 
 ```bash
 poetry install --only main
-HSYNC_API_KEY=<strong-random-secret> poetry run hsync-server
+HSYNC_ADMIN_KEY=<strong-random-secret> poetry run hsync-server
 ```
 
 Python 3.12 or newer and the sibling `hsync-common` dependency are required. For
