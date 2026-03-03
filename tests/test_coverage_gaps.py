@@ -521,12 +521,16 @@ class TestWebSocketCoverageGaps:
         with patch("hsync_server.api.events.PROTOCOL_VERSION_WS", None):
             await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
-        # The pong message must not crash the handler. send_json is called
-        # once for the auth reply with a dict, not for the pong.
-        assert mock_websocket.send_json.call_count == 1
-        auth_reply = mock_websocket.send_json.call_args[0][0]
-        assert isinstance(auth_reply, dict)
-        assert auth_reply.get("status") == "ok"
+        # The pong message must not crash the handler. Among the frames sent
+        # (auth reply + presence broadcast) there is an auth-ok dict; the pong
+        # must not add any frame.
+        auth_replies = [
+            c[0][0]
+            for c in mock_websocket.send_json.call_args_list
+            if c[0] and isinstance(c[0][0], dict) and c[0][0].get("type") == "auth"
+        ]
+        assert len(auth_replies) == 1
+        assert auth_replies[0].get("status") == "ok"
 
     @pytest.mark.asyncio
     async def test_rate_limit_exceeded_drops_event(self, mock_websocket):

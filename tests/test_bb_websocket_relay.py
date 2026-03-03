@@ -90,6 +90,18 @@ async def _connect_auth(
     return ws, reply
 
 
+async def _recv_event(ws, timeout: float = 5.0) -> dict:
+    """Receive the next frame, skipping the ``presence`` broadcast frames.
+
+    Presence frames arrive whenever another client joins/leaves the bucket;
+    black-box event assertions are only interested in file events.
+    """
+    while True:
+        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
+        if msg.get("type") != "presence":
+            return msg
+
+
 class TestWsHandshake:
     async def test_successful_handshake_returns_capabilities(
         self, live_server: tuple[str, str], bb_bucket: str
@@ -129,7 +141,7 @@ class TestWsRelay:
             bb_upload(bb_http, bb_bucket, "relay.bin", b"relayed", cid=cid_a)
 
             # Then subscriber B receives the added event originated by A
-            msg = json.loads(await asyncio.wait_for(sub_b.recv(), timeout=5))
+            msg = await _recv_event(sub_b)
             assert msg["name"] == "added"
             assert msg["cid"] == cid_a
             assert msg["src"]["name"] == "relay.bin"
@@ -153,9 +165,12 @@ class TestWsRelay:
             first, _ = await _connect_auth(ws_base, bb_bucket, _cid("dup"), api_key)
             # When a second connection reuses the same cid
             second, _ = await _connect_auth(ws_base, bb_bucket, _cid("dup"), api_key)
-            # Then the first connection is closed by the server
+            # Then the first connection is closed by the server (presence
+            # frames may arrive before the closure).
             with pytest.raises(ConnectionClosed):
-                await asyncio.wait_for(first.recv(), timeout=5)
+                while True:
+                    msg = json.loads(await asyncio.wait_for(first.recv(), timeout=5))
+                    assert msg.get("type") == "presence"
         finally:
             if second is not None:
                 await second.close()
@@ -188,7 +203,7 @@ class TestWsRelay:
             bb_upload(bb_http, bb_bucket, "fanout.bin", b"fan-out", cid=cid_a)
 
             # Then subscriber B still receives the broadcast
-            msg = json.loads(await asyncio.wait_for(sub_b.recv(), timeout=5))
+            msg = await _recv_event(sub_b)
             assert msg["name"] == "added"
             assert msg["cid"] == cid_a
             assert msg["src"]["name"] == "fanout.bin"

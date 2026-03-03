@@ -66,6 +66,46 @@ class ConnectionManager:
         """Remove this manager from its parent if it has no connections."""
         pass  # Called by BucketConnectionManager after disconnect
 
+    async def _send_to_all(self, payload: dict, skip_cid: str | None = None) -> None:
+        """Send *payload* to every connected client, re-checking authz per recipient.
+
+        ``skip_cid`` excludes one sender (file events must not be echoed back
+        to the connection that produced them; broadcast frames use ``None``).
+        Dead sockets and revoked accounts are dropped silently — the same
+        re-checks ``send_message`` has always applied.
+        """
+        store = get_auth_store()
+        for cid, entry in tuple(self.active_connections.items()):
+            if skip_cid is not None and cid == skip_cid:
+                continue
+            # Re-check recipient access before delivering.
+            account = store.get_account(entry.account_id)
+            if account is None or account.status != "active":
+                if (
+                    self.active_connections.get(cid) is not None
+                    and self.active_connections[cid].websocket is entry.websocket
+                ):
+                    self.active_connections.pop(cid, None)
+                continue
+            if not store.has_access(
+                entry.account_id, entry.bucket, is_admin=(account.role == "admin")
+            ):
+                if (
+                    self.active_connections.get(cid) is not None
+                    and self.active_connections[cid].websocket is entry.websocket
+                ):
+                    self.active_connections.pop(cid, None)
+                continue
+            try:
+                await entry.websocket.send_json(payload)
+            except Exception as e:
+                log.warning(f"{ActionLabel.WS} Dropping dead connection for {cid}: {e}")
+                if (
+                    self.active_connections.get(cid) is not None
+                    and self.active_connections[cid].websocket is entry.websocket
+                ):
+                    self.active_connections.pop(cid, None)
+
     async def send_message(self, event: Event) -> None:
         """Broadcast an event to all connected clients except the sender.
 
@@ -73,36 +113,16 @@ class ConnectionManager:
         re-checked (membership/status/generation) against the auth store.
         Dead sockets and revoked accounts are dropped silently.
         """
-        store = get_auth_store()
-        for cid, entry in tuple(self.active_connections.items()):
-            if cid != event.cid:
-                # Re-check recipient access before delivering.
-                account = store.get_account(entry.account_id)
-                if account is None or account.status != "active":
-                    if (
-                        self.active_connections.get(cid) is not None
-                        and self.active_connections[cid].websocket is entry.websocket
-                    ):
-                        self.active_connections.pop(cid, None)
-                    continue
-                if not store.has_access(
-                    entry.account_id, entry.bucket, is_admin=(account.role == "admin")
-                ):
-                    if (
-                        self.active_connections.get(cid) is not None
-                        and self.active_connections[cid].websocket is entry.websocket
-                    ):
-                        self.active_connections.pop(cid, None)
-                    continue
-                try:
-                    await entry.websocket.send_json(event.to_dict())
-                except Exception as e:
-                    log.warning(f"{ActionLabel.WS} Dropping dead connection for {cid}: {e}")
-                    if (
-                        self.active_connections.get(cid) is not None
-                        and self.active_connections[cid].websocket is entry.websocket
-                    ):
-                        self.active_connections.pop(cid, None)
+        await self._send_to_all(event.to_dict(), skip_cid=event.cid)
+
+    async def send_presence(self, payload: dict) -> None:
+        """Broadcast a presence frame to every connected client.
+
+        Uses the exact recipient re-checks of :meth:`send_message` but without
+        the sender filter: presence is bucket-wide state, not a reply to one
+        connection.
+        """
+        await self._send_to_all(payload)
 
 
 class BucketConnectionManager:
@@ -142,6 +162,23 @@ class BucketConnectionManager:
             self.buckets[bucket] = manager
             log.debug(f"Created ConnectionManager for bucket: {bucket}")
         return manager
+
+    def presence_counts(self, bucket: str) -> tuple[int, int]:
+        """Compute ``(connected, total)`` presence counters for *bucket*.
+
+        ``total`` is the number of clients (accounts, non-admin) with bucket
+        membership — the share as the central registry defines it. ``connected``
+        is the number of those accounts with a live WebSocket on this worker.
+        Admins are operators, not share members: they are excluded from both
+        counters.
+        """
+        store = get_auth_store()
+        member_ids = store.get_share_member_ids(bucket)
+        manager = self.buckets.get(bucket)
+        connected_ids = (
+            {e.account_id for e in manager.active_connections.values()} if manager else set()
+        )
+        return len(connected_ids & member_ids), len(member_ids)
 
     def _prune_empty_managers(self) -> None:
         """Remove bucket managers with no active connections."""

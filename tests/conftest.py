@@ -223,9 +223,15 @@ def test_app() -> Generator[FastAPI]:
         upload_file,
     )
 
+    # Import presence endpoint from presence module
+    from hsync_server.api.presence import get_presence
+
     test_auth_router.add_api_route("/api/v1/buckets/{bucket}", get_bucket, methods=["GET"])
     test_auth_router.add_api_route("/api/v1/buckets", create_bucket, methods=["POST"])
     test_auth_router.add_api_route("/api/v1/buckets/{bucket}", delete_bucket, methods=["DELETE"])
+    test_auth_router.add_api_route(
+        "/api/v1/buckets/{bucket}/presence", get_presence, methods=["GET"]
+    )
     test_auth_router.add_api_route("/api/v1/buckets/{bucket}/files", upload_file, methods=["POST"])
     test_auth_router.add_api_route(
         "/api/v1/buckets/{bucket}/files/download", download_file, methods=["GET"]

@@ -32,6 +32,7 @@ from .api import (  # noqa: F401
     files,
     health,
     members,  # noqa: F401
+    presence,
 )
 from .auth_store import get_auth_store
 from .config import get_buckets_path, get_cors_enabled, get_cors_origins, get_settings

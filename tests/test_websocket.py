@@ -134,7 +134,10 @@ class TestWebSocketAuthentication:
         await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.accept.assert_called_once()
-        mock_websocket.send_json.assert_called_with(
+        # Presence broadcast guards only the JSON type; the real assertion is
+        # that the auth-ok frame (among the frames sent) carries the protocol
+        # version and the advertised capabilities.
+        mock_websocket.send_json.assert_any_call(
             build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=_expected_server_caps())
         )
 
@@ -237,7 +240,7 @@ class TestWebSocketEvents:
 
         # Connection accepted and authenticated
         mock_websocket.accept.assert_called_once()
-        mock_websocket.send_json.assert_called_with(
+        mock_websocket.send_json.assert_any_call(
             build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=_expected_server_caps())
         )
         # Invalid event should not close the connection
@@ -259,7 +262,7 @@ class TestWebSocketEvents:
 
         # Connection accepted and authenticated
         mock_websocket.accept.assert_called_once()
-        mock_websocket.send_json.assert_called_with(
+        mock_websocket.send_json.assert_any_call(
             build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=_expected_server_caps())
         )
         # Malformed JSON should not close the connection
@@ -439,7 +442,7 @@ class TestWebSocketEvents:
 
         # Connection was accepted and authenticated before the event
         mock_websocket.accept.assert_called_once()
-        mock_websocket.send_json.assert_called_with(
+        mock_websocket.send_json.assert_any_call(
             build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=_expected_server_caps())
         )
         # Exception during processing should not close the connection

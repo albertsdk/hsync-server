@@ -824,6 +824,24 @@ class AuthStore:
             ).fetchone()
         return row["role"] if row else None
 
+    def get_share_member_ids(self, bucket: str) -> set[str]:
+        """Return the non-admin member ids of *bucket*.
+
+        Admins are operators, not share members: presence counters and any
+        other "who is in this share" surface must exclude them even when an
+        admin also owns the bucket.
+        """
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT m.client_id FROM bucket_members m
+                JOIN clients c ON c.id = m.client_id
+                WHERE m.bucket = ? AND c.role != 'admin'
+                """,
+                (bucket,),
+            ).fetchall()
+        return {r["client_id"] for r in rows}
+
     def set_owner_on_create(self, bucket: str, account_id: str) -> None:
         """Insert the owner row when a bucket is created."""
         with self._lock:

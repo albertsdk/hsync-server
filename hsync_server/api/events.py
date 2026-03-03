@@ -38,12 +38,14 @@ from hsync_common.protocol.handshake import (
     Capability,
     build_ws_auth_error,
     build_ws_auth_ok,
+    build_ws_presence,
     decode_capabilities,
 )
 from hsync_common.text import escape_loguru_markup
 from loguru import logger as log
 
 from hsync_server.api.connection_manager import (
+    BucketConnectionManager,
     ConnectionManager,
     bucket_manager,
 )
@@ -238,6 +240,21 @@ def _register_client(
         bucket=bucket,
     )
     log.info(f"{ActionLabel.WS} Client connected: {cid} (bucket: {bucket}, account: {ctx.name})")
+
+
+async def _broadcast_presence(
+    bucket: str, manager: ConnectionManager, registry: BucketConnectionManager
+) -> None:
+    """Broadcast the bucket's presence counters to every connected client.
+
+    Called right after a client registers and again after it disconnects (in
+    ws_events), so join/leave events refresh the counter on all peers. Admins
+    are operators, not share members, so both counters exclude them. The frame
+    is diagnostic information, delivered through the same authz re-checks as
+    file events. *registry* is the manager the connection was registered with.
+    """
+    connected, total = registry.presence_counts(bucket)
+    await manager.send_presence(dict(build_ws_presence(connected=connected, total=total)))
 
 
 async def _process_one_message(
@@ -456,6 +473,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         # Register with per-bucket connection manager.
         manager = bucket_manager.get_manager(bucket)
         _register_client(manager, bucket, cid, websocket, ctx)
+        await _broadcast_presence(bucket, manager, bucket_manager)
 
         # Per-connection rate limiter and heartbeat setup.
         ws_bucket = create_ws_message_bucket()
@@ -478,6 +496,9 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             heartbeat_task,
             ctx,
         )
+        # The message loop removed the registration on exit (disconnect,
+        # heartbeat timeout or revocation): refresh the remaining presence.
+        await _broadcast_presence(bucket, manager, bucket_manager)
 
     except Exception:
         _log_disconnect(cid)
