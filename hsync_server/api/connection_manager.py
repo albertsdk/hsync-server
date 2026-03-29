@@ -14,6 +14,11 @@ WebSocket connection management for HSYNC Server.
 The registry is in-memory per worker.  Cross-worker revocation is handled by
 re-checking the DB on every inbound frame, every ping, and before every
 broadcast (see ``events.py``).
+
+**Single-worker contract**: the server is deployed and supported as a single
+worker only. Presence counters (``BucketConnectionManager.presence_counts``)
+and broadcasts therefore always observe the authoritative registry — a
+multi-worker deployment would under-count ``connected``.
 """
 
 from __future__ import annotations
@@ -171,6 +176,10 @@ class BucketConnectionManager:
         is the number of those accounts with a live WebSocket on this worker.
         Admins are operators, not share members: they are excluded from both
         counters.
+
+        Correct only under the supported single-worker deployment (see the
+        module docstring); in a multi-worker setup ``connected`` would only
+        count this worker's sockets.
         """
         store = get_auth_store()
         member_ids = store.get_share_member_ids(bucket)

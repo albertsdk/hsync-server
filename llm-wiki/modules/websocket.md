@@ -44,6 +44,12 @@ REST endpoint `GET /api/v1/buckets/{bucket}/presence` exposes the same pair
 (`api/presence.py`). Slot caps: `get_ws_max_connections` (`config.py:457`) and
 `get_ws_max_connections_per_ip` (`config.py:462`).
 
+**Deployment contract**: the server supports a **single worker only**. The
+connection registry and presence counters are in-process, so a multi-worker
+deployment would under-count `connected` (and break broadcast fan-out). If a
+multi-worker setup is ever introduced, the registry must move to shared storage
+first.
+
 ## Heartbeat & message rate
 
 - Ping/pong using `get_ws_heartbeat_interval` (`config.py:442`) and

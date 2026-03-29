@@ -10,6 +10,10 @@ counters for a bucket: ``connected`` clients (accounts with a live WebSocket)
 over ``total`` clients (accounts with bucket membership). Admins are operators,
 not share members, so they are excluded from both counters — the same source of
 truth the WebSocket ``presence`` broadcast frame uses.
+
+The counts come from the in-process connection registry, valid only under the
+supported single-worker deployment (see
+``hsync_server.api.connection_manager``).
 """
 
 from typing import Annotated
