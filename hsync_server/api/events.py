@@ -429,6 +429,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
     """WebSocket endpoint for real-time file system event synchronization."""
     slot_acquired = False
     client_ip = "unknown"
+    registered: ConnectionManager | None = None
     try:
         await websocket.accept()
 
@@ -473,6 +474,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         # Register with per-bucket connection manager.
         manager = bucket_manager.get_manager(bucket)
         _register_client(manager, bucket, cid, websocket, ctx)
+        registered = manager
         await _broadcast_presence(bucket, manager, bucket_manager)
 
         # Per-connection rate limiter and heartbeat setup.
@@ -496,14 +498,21 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             heartbeat_task,
             ctx,
         )
-        # The message loop removed the registration on exit (disconnect,
-        # heartbeat timeout or revocation): refresh the remaining presence.
-        await _broadcast_presence(bucket, manager, bucket_manager)
 
     except Exception:
         _log_disconnect(cid)
         await websocket.close()
     finally:
+        # The message loop removed the registration on exit (disconnect,
+        # heartbeat timeout or revocation): refresh the remaining presence.
+        # Doing it here — instead of after the loop — also covers the paths
+        # that never reach that line (exceptions raised by the loop, asyncio
+        # cancellation during shutdown), so peers never keep a stale counter.
+        if registered is not None:
+            try:
+                await _broadcast_presence(bucket, registered, bucket_manager)
+            except Exception:
+                log.warning(f"{ActionLabel.WS} Presence refresh failed for {cid}")
         if slot_acquired:
             bucket_manager.release_slot(client_ip)
 
