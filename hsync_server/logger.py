@@ -33,7 +33,6 @@ Log formats:
 - JSON: {"timestamp": "...", "level": "INFO", "pid": 12345, "request_id": "...", ...}
 """
 
-import logging
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 

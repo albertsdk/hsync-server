@@ -30,14 +30,12 @@ from hsync_server.api.file_utils import (
     ensure_sentinel_in_dir,
     is_sentinel_file,
 )
-from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
+from hsync_server.api.utils import resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
 from hsync_server.constants import ActionLabel
 from hsync_server.exceptions import (
-    BucketNotFoundError,
     DeleteError,
-    InvalidBucketNameError,
     InvalidPathError,
 )
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
@@ -75,14 +73,6 @@ async def delete_file(
         DeleteError: If deletion fails.
     """
     check_bucket_access(bucket, ctx)
-    # Validate bucket name
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-
-    bucket_dir = f"{get_buckets_path()}/{bucket}"
-    if not Path(bucket_dir).exists():
-        raise BucketNotFoundError(details={"bucket": bucket})
-
     # Confine to *this* bucket: the filename is untrusted input and must
     # never escape into a sibling bucket or outside the storage root. The
     # final component is NOT dereferenced: deleting a symlink path removes
@@ -153,7 +143,7 @@ async def delete_file(
             # Sentinel removed — clean up the now-empty directory.
             # bucket_root must never be removed: a sentinel deletion at the
             # bucket root would otherwise wipe the whole bucket folder.
-            cleanup_empty_dir(parent, bucket_root=bucket_dir)
+            cleanup_empty_dir(parent, bucket_root=local_bucket)
         else:
             # Regular file removed — preserve directory with sentinel
             ensure_sentinel_in_dir(parent)

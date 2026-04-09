@@ -24,6 +24,7 @@ from fastapi import BackgroundTasks, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from hsync_server.api.authz import check_bucket_access
+from hsync_server.api.files.delta._util import delta_disabled_response
 from hsync_server.api.files.delta.tokens import delta_token_store
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import CONTENT_ENCODING_ZSTD
@@ -31,11 +32,6 @@ from hsync_server.config import get_delta_enabled
 from hsync_server.constants import CONTENT_TYPE_OCTET_STREAM
 from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
 from hsync_server.routers import auth_router
-
-
-def _delta_disabled() -> JSONResponse:
-    """404 response when the feature is off."""
-    return JSONResponse(status_code=404, content={"detail": "delta_disabled"})
 
 
 @auth_router.get("/api/v1/buckets/{bucket}/files/delta/data/{token}")
@@ -51,7 +47,7 @@ async def get_delta_data(
     start_time = time.time()
 
     if not get_delta_enabled():
-        return _delta_disabled()
+        return delta_disabled_response()
 
     entry = delta_token_store.lookup(token)
     if entry is None:

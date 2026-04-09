@@ -290,13 +290,6 @@ async def get_tombstones(
         BucketNotFoundError: If bucket does not exist.
     """
     check_bucket_access(bucket, ctx)
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-
-    bucket_dir = f"{get_buckets_path()}/{bucket}"
-    if not Path(bucket_dir).exists():
-        raise BucketNotFoundError(details={"bucket": bucket})
-
     store = get_tombstone_store(bucket)
     store.prune()
 
@@ -339,13 +332,6 @@ async def post_tombstones(
         InvalidPathError: If the body is not a JSON object.
     """
     check_bucket_access(bucket, ctx)
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-
-    bucket_dir = f"{get_buckets_path()}/{bucket}"
-    if not Path(bucket_dir).exists():
-        raise BucketNotFoundError(details={"bucket": bucket})
-
     try:
         payload = await request.json()
     except Exception:

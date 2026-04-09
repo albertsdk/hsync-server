@@ -12,7 +12,6 @@ REST endpoints for bucket management:
 """
 
 from pathlib import Path
-from shutil import rmtree
 from typing import Annotated
 
 from fastapi import Depends, status
@@ -36,26 +35,6 @@ from hsync_server.routers import auth_router
 def _bucket_path(bucket: str) -> str:
     """Return the filesystem path for *bucket* inside the configured storage root."""
     return f"{get_buckets_path()}/{bucket}"
-
-
-def _check_bucket_owner_or_admin(bucket: str, ctx: AuthContext) -> None:
-    """Raise 403 if the caller is a member, 404 if no access or nonexistent."""
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-    bucket_dir = _bucket_path(bucket)
-    if not Path(bucket_dir).exists():
-        raise BucketNotFoundError(details={"bucket": bucket})
-    if ctx.role == "admin":
-        return
-    store = get_auth_store()
-    role = store.get_member_role(bucket, ctx.id)
-    if role == "owner":
-        return
-    if role == "member":
-        from hsync_server.exceptions import ForbiddenError
-
-        raise ForbiddenError()
-    raise BucketNotFoundError(details={"bucket": bucket})
 
 
 @auth_router.get(

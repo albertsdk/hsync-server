@@ -60,9 +60,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     env_secret = get_admin_key()
     store = get_auth_store()
-    generated_token = store.bootstrap_admin(env_secret)
-    # generated_token is non-None only when a secret was generated and printed
-    # (the warning with the token is already logged inside bootstrap_admin).
+    # The bootstrap returns its generated token only when a secret was minted;
+    # the warning with the token is already logged inside bootstrap_admin.
+    store.bootstrap_admin(env_secret)
 
     # Log account status (no secrets).
     accounts = store.list_accounts()

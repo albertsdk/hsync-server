@@ -30,7 +30,6 @@ from loguru import logger as log
 
 from hsync_server.api.utils import is_valid_bucket
 from hsync_server.auth_store import (
-    TOKEN_PREFIX,
     AccountRow,
     AuthStore,
     get_auth_store,

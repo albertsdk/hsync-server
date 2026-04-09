@@ -2,14 +2,12 @@
 
 from typing import Annotated
 
-import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from hsync_server.auth import AuthContext, require_admin, verify_api_key
 from hsync_server.auth_store import get_auth_store
 from hsync_server.error_handlers import register_exception_handlers
-from hsync_server.exceptions import ForbiddenError
 
 
 def _make_app() -> FastAPI:

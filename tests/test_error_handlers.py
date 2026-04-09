@@ -167,9 +167,6 @@ class TestRegisterExceptionHandlers:
 
     def test_registers_all_handlers(self):
         """Test that the three core handlers are registered on a fresh app."""
-        from fastapi.exceptions import RequestValidationError
-
-        from hsync_server.exceptions import HSyncError
 
         app = FastAPI()
 

@@ -53,6 +53,7 @@ from loguru import logger as log
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import update_file_timestamp
+from hsync_server.api.files.delta._util import delta_disabled_response
 from hsync_server.api.files.upload import _flush_to_disk
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket, set_permissions
 from hsync_server.arbitration import (
@@ -80,11 +81,6 @@ from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import clear_deletion
 from hsync_server.versions import record_version, server_version_info
-
-
-def _delta_disabled() -> JSONResponse:
-    """404 response when the feature is off — same as a pre-delta peer."""
-    return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
 
 def _unprocessable(detail: str, **extra: Any) -> JSONResponse:
@@ -165,7 +161,7 @@ async def delta_apply(
     start_time = time.time()
 
     if not get_delta_enabled():
-        return _delta_disabled()
+        return delta_disabled_response()
 
     literal_tmp: str | None = None
     decompressed_tmp: str | None = None

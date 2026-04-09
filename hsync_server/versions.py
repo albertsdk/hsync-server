@@ -27,16 +27,15 @@ cid** — a stable 21-char id minted once and persisted next to the DB.
 
 from __future__ import annotations
 
-import os
 import secrets
-import threading
 from pathlib import Path
 
 from hsync_common.constants import SYNCSTATE_DB_FILENAME
-from hsync_common.models.sqlstore import get_state_db, reset_state_db_cache
+from hsync_common.models.sqlstore import get_state_db
 from hsync_common.models.version import SyncStateStore, relpath_in_bucket
 
 from hsync_server.config import get_state_dir
+from hsync_server.store_registry import PerBucketStores
 
 __all__ = [
     "clear_version",
@@ -48,35 +47,11 @@ __all__ = [
     "server_version_info",
 ]
 
-_stores: dict[str, SyncStateStore] = {}
-_locks: dict[str, threading.RLock] = {}
-_locks_guard = threading.Lock()
-_pid: int | None = None
+# Fork-safe, thread-safe per-bucket registry (shared scaffolding with
+# ``tombstones.py``; see ``store_registry.PerBucketStores``).
+_registry: PerBucketStores[SyncStateStore] = PerBucketStores()
 
 _SERVER_CID_FILENAME = ".hsyncnodeid"
-
-
-def _rebind_after_fork() -> None:
-    """Drop inherited SQLite handles after a worker fork."""
-    global _pid
-    current = os.getpid()
-    if _pid is None:
-        _pid = current
-        return
-    if _pid != current:
-        _stores.clear()
-        _locks.clear()
-        reset_state_db_cache()
-        _pid = current
-
-
-def _bucket_lock(bucket: str) -> threading.RLock:
-    with _locks_guard:
-        lock = _locks.get(bucket)
-        if lock is None:
-            lock = threading.RLock()
-            _locks[bucket] = lock
-        return lock
 
 
 def _db_path() -> str:
@@ -85,9 +60,8 @@ def _db_path() -> str:
 
 def get_version_store(bucket: str) -> SyncStateStore:
     """Return the cached store for a bucket, loading it on first use."""
-    _rebind_after_fork()
-    store = _stores.get(bucket)
-    if store is None:
+
+    def _build() -> SyncStateStore:
         db_path = _db_path()
         folder_id = get_state_db(db_path).ensure_bucket_id(bucket)
         store = SyncStateStore(
@@ -96,8 +70,9 @@ def get_version_store(bucket: str) -> SyncStateStore:
             canonical_path=f"bucket:{bucket}",
         )
         store.load()
-        _stores[bucket] = store
-    return store
+        return store
+
+    return _registry.get_or_create(bucket, _build)
 
 
 def record_version(
@@ -119,7 +94,7 @@ def record_version(
     relpath = relpath_in_bucket(abs_path, bucket_dir)
     if not relpath:
         return
-    with _bucket_lock(bucket):
+    with _registry.lock(bucket):
         store = get_version_store(bucket)
         store.record(
             relpath,
@@ -137,7 +112,7 @@ def clear_version(bucket: str, bucket_dir: str, abs_path: str) -> None:
     relpath = relpath_in_bucket(abs_path, bucket_dir)
     if not relpath:
         return
-    with _bucket_lock(bucket):
+    with _registry.lock(bucket):
         store = get_version_store(bucket)
         if store.clear(relpath):
             store.save()
@@ -153,7 +128,7 @@ def move_version(bucket: str, bucket_dir: str, src_abs: str, dst_abs: str) -> No
     dst_rel = relpath_in_bucket(dst_abs, bucket_dir)
     if not src_rel or not dst_rel:
         return
-    with _bucket_lock(bucket):
+    with _registry.lock(bucket):
         store = get_version_store(bucket)
         entry = store.get(src_rel)
         if entry is None:
@@ -178,7 +153,7 @@ def server_version_info(bucket: str, bucket_dir: str, abs_path: str):
     relpath = relpath_in_bucket(abs_path, bucket_dir)
     if not relpath:
         return None
-    with _bucket_lock(bucket):
+    with _registry.lock(bucket):
         entry = get_version_store(bucket).get(relpath)
     if entry is None:
         return None
@@ -212,5 +187,4 @@ def get_server_cid() -> str:
 
 def reset_cache() -> None:
     """Clear the in-memory store cache (primarily for tests)."""
-    _stores.clear()
-    _locks.clear()
+    _registry.clear()

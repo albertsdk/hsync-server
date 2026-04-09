@@ -320,8 +320,6 @@ def client_add(
     expires_at: Annotated[str | None, typer.Option("--expires-at", help="RFC3339 UTC.")] = None,
 ) -> None:
     """Create a new account. The token is printed once."""
-    import time
-
     from hsync_server.auth_store import ConflictError, get_auth_store, validate_name
 
     try:

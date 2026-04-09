@@ -221,7 +221,7 @@ class TestGetDeltaData:
         new = b"HEAD" + base
         body = await _prepare_delta(client, bucket_dir, tmp_path, base, new)
         token = body["data_url"].rsplit("/", 1)[-1]
-        entry = delta_token_store.lookup(token)
+        delta_token_store.lookup(token)
         monkeypatch.setattr(
             "hsync_server.api.files.delta.data.delta_token_store.is_expired",
             lambda e: True,

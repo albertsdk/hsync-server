@@ -34,7 +34,7 @@ from hsync_server.compression import (
     async_compress_stream,
     should_compress,
 )
-from hsync_server.config import get_buckets_path, get_compression_enabled
+from hsync_server.config import get_compression_enabled
 from hsync_server.constants import CONTENT_TYPE_OCTET_STREAM, ActionLabel
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.exceptions import (

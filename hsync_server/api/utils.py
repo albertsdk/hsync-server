@@ -15,7 +15,6 @@ from asyncio import to_thread
 from os import chmod
 from pathlib import Path
 
-from hsync_common.hashing import compute_sha256_async
 from hsync_common.models.dir import Dir
 from hsync_common.path_validation import (
     is_valid_bucket_name,

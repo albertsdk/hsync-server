@@ -27,7 +27,7 @@ tests, how to write new tests, and cross-project testing with `hsync-common`.
 .venv/bin/python -m pytest
 
 # Run a specific file
-.venv/bin/python -m pytest tests/test_api_files.py
+.venv/bin/python -m pytest tests/test_api_files_crud.py
 
 # Run with verbose output
 .venv/bin/python -m pytest -v

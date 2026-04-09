@@ -61,7 +61,10 @@ class TestVersionStorePersistence:
         store = get_version_store("photos")
         from hsync_server import versions
 
-        versions._pid = os.getpid() + 1
+        # Simulate a worker fork: the registry's recorded PID differs from the
+        # current one, so the next access must drop the cached store and the
+        # shared DB-handle cache before rebuilding.
+        versions._registry._pid = os.getpid() + 1
         reloaded = get_version_store("photos")
         assert reloaded is not store
         assert reloaded.base_hash("a.txt") == "ab" * 32

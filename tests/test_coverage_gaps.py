@@ -2,7 +2,6 @@
 Tests targeting coverage gaps identified by pytest-cov.
 
 Covers edge-case branches in:
-- api/files.py compatibility-layer re-exports
 - api/file_utils.py sentinel/cleanup edge cases
 - api/files/upload.py compressed, backup, partial cleanup paths
 - api/files/delete.py backup removal + sentinel cleanup
@@ -33,29 +32,6 @@ from hsync_server.api.file_utils import (
     update_file_timestamp,
 )
 from tests.conftest import TEST_TOKEN
-
-# ---------------------------------------------------------------------------
-# api/files.py — compatibility layer re-exports
-# ---------------------------------------------------------------------------
-
-
-class TestFilesCompatLayer:
-    """The compatibility shim in api/files.py must re-export all endpoints."""
-
-    def test_compat_layer_reexports(self):
-        import hsync_server.api.files as compat
-        from hsync_server.api.files.delete import delete_file
-        from hsync_server.api.files.download import download_file
-        from hsync_server.api.files.list import get_files, get_tombstones, get_upload_status
-        from hsync_server.api.files.upload import upload_file
-
-        assert compat.delete_file is delete_file
-        assert compat.download_file is download_file
-        assert compat.get_files is get_files
-        assert compat.get_tombstones is get_tombstones
-        assert compat.get_upload_status is get_upload_status
-        assert compat.upload_file is upload_file
-
 
 # ---------------------------------------------------------------------------
 # api/file_utils.py — sentinel + cleanup edge cases
@@ -482,7 +458,6 @@ class TestWebSocketCoverageGaps:
     @pytest.mark.asyncio
     async def test_protocol_mismatch_rejected(self, mock_websocket):
         """A protocol version mismatch sends an auth-error then closes with 4002."""
-        from hsync_common.protocol.handshake import PROTOCOL_VERSION_WS
 
         _ensure_test_bucket()
         mock_websocket.receive_text.return_value = dumps(

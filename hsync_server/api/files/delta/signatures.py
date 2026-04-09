@@ -53,6 +53,7 @@ from loguru import logger as log
 from pydantic import BaseModel, Field
 
 from hsync_server.api.authz import check_bucket_access
+from hsync_server.api.files.delta._util import delta_disabled_response
 from hsync_server.api.files.delta.tokens import delta_token_store
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
@@ -119,11 +120,6 @@ class DeltaSignaturesRequest(BaseModel):
     signatures: list[BlockSignatureDict]
 
 
-def _delta_disabled() -> JSONResponse:
-    """404 response when the feature is off."""
-    return JSONResponse(status_code=404, content={"detail": "delta_disabled"})
-
-
 @auth_router.get("/api/v1/buckets/{bucket}/files/delta/signatures")
 @limiter.limit(RATE_LIMIT_DELTA)
 async def get_delta_signatures(
@@ -141,7 +137,7 @@ async def get_delta_signatures(
     start_time = time.time()
 
     if not get_delta_enabled():
-        return _delta_disabled()
+        return delta_disabled_response()
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
     file = resolve_within_bucket(bucket, path)
@@ -207,7 +203,7 @@ async def post_delta_signatures(
     body = DeltaSignaturesRequest.model_validate_json(body_bytes)
 
     if not get_delta_enabled():
-        return _delta_disabled()
+        return delta_disabled_response()
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
     file = resolve_within_bucket(bucket, body.path)

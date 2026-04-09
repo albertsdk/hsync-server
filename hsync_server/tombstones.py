@@ -16,51 +16,25 @@ deletion time avoid resurrecting the file during a full reconciliation.
 
 from __future__ import annotations
 
-import os
-import threading
 from pathlib import Path
 
 from hsync_common.constants import SYNCSTATE_DB_FILENAME
-from hsync_common.models.sqlstore import get_state_db, reset_state_db_cache
+from hsync_common.models.sqlstore import get_state_db
 from hsync_common.models.tombstone import TombstoneStore, relpath_in_bucket
 
 from hsync_server.config import get_state_dir, get_tombstone_ttl_days
+from hsync_server.store_registry import PerBucketStores
 
 __all__ = [
     "clear_deletion",
     "get_tombstone_store",
     "record_deletion",
-    "relpath_in_bucket",
     "reset_cache",
 ]
 
-_stores: dict[str, TombstoneStore] = {}
-_locks: dict[str, threading.RLock] = {}
-_locks_guard = threading.Lock()
-_pid: int | None = None
-
-
-def _rebind_after_fork() -> None:
-    """Drop inherited SQLite handles after a worker fork."""
-    global _pid
-    current = os.getpid()
-    if _pid is None:
-        _pid = current
-        return
-    if _pid != current:
-        _stores.clear()
-        _locks.clear()
-        reset_state_db_cache()
-        _pid = current
-
-
-def _bucket_lock(bucket: str) -> threading.RLock:
-    with _locks_guard:
-        lock = _locks.get(bucket)
-        if lock is None:
-            lock = threading.RLock()
-            _locks[bucket] = lock
-        return lock
+# Fork-safe, thread-safe per-bucket registry (shared scaffolding with
+# ``versions.py``; see ``store_registry.PerBucketStores``).
+_registry: PerBucketStores[TombstoneStore] = PerBucketStores()
 
 
 def _db_path() -> str:
@@ -69,9 +43,8 @@ def _db_path() -> str:
 
 def get_tombstone_store(bucket: str) -> TombstoneStore:
     """Return the cached store for a bucket, loading and pruning it on first use."""
-    _rebind_after_fork()
-    store = _stores.get(bucket)
-    if store is None:
+
+    def _build() -> TombstoneStore:
         db_path = _db_path()
         folder_id = get_state_db(db_path).ensure_bucket_id(bucket)
         store = TombstoneStore(
@@ -82,8 +55,9 @@ def get_tombstone_store(bucket: str) -> TombstoneStore:
         )
         store.load()
         store.prune()
-        _stores[bucket] = store
-    return store
+        return store
+
+    return _registry.get_or_create(bucket, _build)
 
 
 def record_deletion(
@@ -104,7 +78,7 @@ def record_deletion(
     relpath = relpath_in_bucket(abs_path, bucket_dir)
     if not relpath:
         return
-    with _bucket_lock(bucket):
+    with _registry.lock(bucket):
         store = get_tombstone_store(bucket)
         store.record(
             relpath,
@@ -126,7 +100,7 @@ def clear_deletion(bucket: str, bucket_dir: str, abs_path: str) -> None:
     relpath = relpath_in_bucket(abs_path, bucket_dir)
     if not relpath:
         return
-    with _bucket_lock(bucket):
+    with _registry.lock(bucket):
         store = get_tombstone_store(bucket)
         if store.clear(relpath):
             store.save()
@@ -134,5 +108,4 @@ def clear_deletion(bucket: str, bucket_dir: str, abs_path: str) -> None:
 
 def reset_cache() -> None:
     """Clear the in-memory store cache (primarily for tests)."""
-    _stores.clear()
-    _locks.clear()
+    _registry.clear()

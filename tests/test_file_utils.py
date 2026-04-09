@@ -154,7 +154,7 @@ class TestUpdateFileTimestamp:
 
     def test_update_mtime_iso_format(self, tmp_path):
         """Update mtime with ISO format timestamp (treated as UTC)."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         test_file = tmp_path / "test.txt"
         test_file.write_text("content")

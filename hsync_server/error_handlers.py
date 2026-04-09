@@ -20,7 +20,6 @@ from hsync_common.text import safe_json_for_log
 from loguru import logger as log
 
 from .exceptions import (
-    AccountNotFoundError,
     AuthenticationError,
     ConflictError,
     ConflictLostError,

@@ -24,15 +24,12 @@ from pydantic import BaseModel, Field
 
 from hsync_server.auth import AuthContext, require_admin
 from hsync_server.auth_store import (
-    BOOTSTRAP_ADMIN_ID,
     ConflictError,
-    ForbiddenError,
     TargetNotFoundError,
     get_auth_store,
     validate_name,
 )
 from hsync_server.exceptions import ValidationError
-from hsync_server.routers import auth_router
 
 # Sub-router under /api/v1/admin — all endpoints inherit auth_router's
 # verify_api_key dependency, plus require_admin.
