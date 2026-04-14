@@ -158,6 +158,15 @@ WS_MESSAGES_DEFAULT: str = get_rate_limit_ws_messages()
 
 _WS_RATE_PATTERN = re.compile(r"^(\d+)/(second|minute|hour|day)$")
 
+# Precomputed period multipliers (tokens/second) for _parse_ws_rate: built once
+# at import instead of re-allocating the dict on every WS connection.
+_WS_RATE_MULTIPLIERS: dict[str, float] = {
+    "second": 1.0,
+    "minute": 1.0 / 60,
+    "hour": 1.0 / 3600,
+    "day": 1.0 / 86400,
+}
+
 
 def _parse_ws_rate(rate_str: str) -> tuple[float, int]:
     """
@@ -179,9 +188,10 @@ def _parse_ws_rate(rate_str: str) -> tuple[float, int]:
     amount = float(match.group(1))
     period = match.group(2)
 
-    multipliers = {"second": 1.0, "minute": 1.0 / 60, "hour": 1.0 / 3600, "day": 1.0 / 86400}
-    rate = amount * multipliers[period]
-    burst = max(int(amount * 2 * multipliers[period]), 2)  # at least 2 for heartbeat safety
+    rate = amount * _WS_RATE_MULTIPLIERS[period]
+    burst = max(
+        int(amount * 2 * _WS_RATE_MULTIPLIERS[period]), 2
+    )  # at least 2 for heartbeat safety
     if burst < 2:
         burst = 2
     return rate, burst

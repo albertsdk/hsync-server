@@ -26,6 +26,7 @@ Close codes:
 """
 
 import asyncio
+import time
 from json import JSONDecodeError, loads
 from pathlib import Path
 
@@ -127,7 +128,7 @@ def _check_ws_access(ctx: AuthContext, bucket: str) -> bool:
         return False
     if account.key_generation != ctx.key_generation:
         return False
-    now = int(__import__("time").time())
+    now = int(time.time())
     if account.key_expires_at is not None and now >= account.key_expires_at:
         return False
     if not store.has_access(ctx.id, bucket, is_admin=(ctx.role == "admin")):
