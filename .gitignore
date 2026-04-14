@@ -49,6 +49,10 @@ Thumbs.db
 /certs/
 /state/
 .hsync-last-env-file
+# Defensive copies left behind by docker.sh's one-shot
+# bind-mount → named-volume data migration.
+/state.migrated-*/
+/buckets.migrated-*/
 
 # Logs
 *.log

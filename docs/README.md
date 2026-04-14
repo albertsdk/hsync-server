@@ -128,7 +128,7 @@ all defaults.
 | `HSYNC_WS_MAX_CONNECTIONS` | `1000` | Maximum total WebSocket connections |
 | `HSYNC_WS_MAX_CONNECTIONS_PER_IP` | `10` | Maximum WebSocket connections per IP |
 | `HSYNC_TOMBSTONE_TTL_DAYS` | `30` | Deletion marker retention (days; `0` = forever) |
-| `HSYNC_SSL_ENABLED` | `false` | Enable HTTPS/WSS with auto-generated self-signed certs |
+| `HSYNC_SSL_ENABLED` | `false` (app default) | Enable HTTPS/WSS with auto-generated self-signed certs. The shipped `dev.env` and `prod.env` profiles set it to `true`, so the Docker quickstart serves **https** on this port |
 | `HSYNC_SSL_KEYFILE_PASSWORD` | — | Password for the SSL private key (required when SSL enabled) |
 | `HSYNC_SSL_CERTFILE` | — | Custom SSL certificate path (auto-generated if not set) |
 | `HSYNC_SSL_KEYFILE` | — | Custom SSL private key path (auto-generated if not set) |
@@ -145,7 +145,7 @@ all defaults.
 | `HSYNC_DELTA_TOKEN_TTL` | `300` | Seconds a literal-payload download token stays valid |
 | `HSYNC_RATE_LIMIT_DELTA` | `100/minute` | Rate limit for delta transfer endpoints |
 | `HSYNC_RELOAD` | `false` | Enable uvicorn auto-reload (development only) |
-| `HSYNC_ENABLE_DOCS` | `false` | Expose `/docs` (Swagger UI) and `/redoc` |
+| `HSYNC_ENABLE_DOCS` | `false` (app default) | Expose `/docs` (Swagger UI) and `/redoc`. Set it to `true` in your env-file to browse the API interactively (`prod.env` leaves it off) |
 
 > **Note**: The server does not include a built-in TLS terminator for production
 > use. For production deployments, run the server behind a reverse proxy (nginx,

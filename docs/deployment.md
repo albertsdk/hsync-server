@@ -62,8 +62,18 @@ management, and SSL configuration. It is not the release quick start; use the
 ./docker.sh status      # Show container status
 ./docker.sh logs        # Show container logs (use -f to follow)
 ./docker.sh shell       # Open a shell in the running container
-./docker.sh clean       # Remove container, image, and SSL certificate volume
+./docker.sh clean       # Remove container, image, and SSL-cert volume (keeps data volumes)
+./docker.sh clean --all # Also drop the state and buckets volumes (ALL user data lost)
 ```
+
+> **Data lives in named volumes.** The script persists everything in the
+> `hsync-server-state` (causal database) and `hsync-server-buckets` (bucket
+> files) volumes, so `build`, `stop`/`restart`, and OS reboots never lose data.
+> The first `start` after upgrading from an older script version copies any
+> pre-existing host `./state` / `./buckets` folders into the new volumes
+> automatically and preserves the originals as `*.migrated-*` (never
+> deleted). New volumes inherit the image's `hsync:hsync` ownership, so no
+> `chown` is ever needed — including on a fresh machine.
 
 ### Build and start from source
 
@@ -74,12 +84,26 @@ management, and SSL configuration. It is not the release quick start; use the
 # 2. Start the server with an environment file
 ./docker.sh start --env-file prod.env
 
-# 3. Check that it's running
+# 3a. The script waits for the server to answer /health and prints the URL to use:
+#     ✔ HSYNC Server is live → https://localhost:9753
+#     ✔ API documentation: https://localhost:9753/docs   (only when HSYNC_ENABLE_DOCS=true)
+#     ⚠ Self-signed certificate: use curl -k or accept the browser warning
+#
+# 3b. Optional manual check:
 ./docker.sh status
 
-# 4. View logs
+# 4. View logs (the startup log also prints "Serving at <url>" lines)
 ./docker.sh logs -f
+
+# 5. Smoke test (self-signed cert, hence -k)
+curl -k https://localhost:9753/health
 ```
+
+> The URL scheme printed by `docker.sh start` is derived from the env-file:
+> `HSYNC_SSL_ENABLED=true` (the default in both `dev.env` and `prod.env`)
+> means **https**, otherwise http. To browse the interactive API docs,
+> set `HSYNC_ENABLE_DOCS=true` in your env-file (it defaults to `false`
+> and `prod.env` keeps it off).
 
 ### Container-aware behavior
 
@@ -151,7 +175,9 @@ you don't need to specify it again:
 
 This stops and removes the container, deletes the Docker image, and removes the
 SSL certificate volume (forcing a fresh self-signed certificate on the next
-start).
+start). The `hsync-server-state` and `hsync-server-buckets` data volumes are
+**kept**; pass `--all` (`./docker.sh clean --all`) to delete them together with
+all user data.
 
 ---
 
@@ -387,8 +413,9 @@ sudo lsof -i :9753
 Common causes:
 - `HSYNC_ADMIN_KEY` not set — the server requires an API key.
 - `HSYNC_SSL_KEYFILE_PASSWORD` missing when `HSYNC_SSL_ENABLED=true`.
-- Volume permissions — the container user (UID 1000) must be able to write to
-  the buckets and certs directories.
+- Volume permissions — with `docker.sh` the named volumes are created with the
+  correct ownership automatically; if you use plain `docker run` bind-mounts,
+  the host directories must be writable by the container user (UID 100).
 
 **SSL keyfile password missing:**
 ```
@@ -400,8 +427,9 @@ Set `HSYNC_SSL_KEYFILE_PASSWORD` when `HSYNC_SSL_ENABLED=true`.
 
 **Connection refused:**
 ```bash
-# Verify the server is listening
-curl http://localhost:9753/health
+# Verify the server is listening (use -k for the self-signed certificate
+# when HSYNC_SSL_ENABLED=true, as in the shipped env-file profiles)
+curl -k https://localhost:9753/health
 
 # Check firewall rules
 sudo ufw status

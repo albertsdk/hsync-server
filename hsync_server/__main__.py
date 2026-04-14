@@ -19,6 +19,7 @@ from hsync_server.config import (
     get_log_level,
     get_port,
     get_reload,
+    get_settings,
     get_ssl_cert_dir,
     get_ssl_certfile,
     get_ssl_enabled,
@@ -255,6 +256,13 @@ def main(
     else:
         log.info(f"Starting HSYNC server with HTTP/WS on port {effective_port}")
         log.warning("SSL is disabled. Communication is NOT encrypted!")
+
+    # Canonical "serving" line: operators can find the exact URL (and whether
+    # the API docs are exposed) without deriving SSL settings by themselves.
+    scheme = "https" if effective_ssl_enabled else "http"
+    log.info(f"Serving at {scheme}://localhost:{effective_port}")
+    if get_settings().enable_docs:
+        log.info(f"API documentation: {scheme}://localhost:{effective_port}/docs")
 
     # Auto-reload (dev mode) and multiple workers are mutually exclusive in
     # uvicorn: reload always runs single-process. Honor HSYNC_WORKERS only when

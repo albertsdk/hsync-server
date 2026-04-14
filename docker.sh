@@ -24,9 +24,21 @@ readonly CONTAINER_NAME="hsync-server"
 # client's TOFU fingerprint pin) stable. A named volume inherits the image's
 # hsync:hsync ownership, so the unprivileged user can write the encrypted key.
 readonly CERTS_VOLUME="${CONTAINER_NAME}-certs"
+# Named volumes for user data: unlike the previous host bind-mounts, a fresh
+# named volume inherits the image's hsync:hsync ownership, so the unprivileged
+# user can always write syncstate.db — no manual chown, no first-boot crash.
+# Both volumes survive container/image recreation (persistent data ACROSS
+# restarts). `./docker.sh clean` keeps them; `clean --all` drops them too.
+readonly STATE_VOLUME="${CONTAINER_NAME}-state"
+readonly BUCKETS_VOLUME="${CONTAINER_NAME}-buckets"
 # Remembers the env-file used by the last successful `start`, so `restart` can
 # transparently reuse it without re-specifying --env-file. Local state only.
 readonly ENV_STATE_FILE="${SCRIPT_DIR}/.hsync-last-env-file"
+# Seconds to wait for the freshly started container to answer /health before
+# declaring the start successful. First boot generates the TLS certificate,
+# which can take a few seconds. Set HSYNC_STARTUP_HEALTH_TIMEOUT=0 to skip the
+# check (the URL is then printed without waiting).
+STARTUP_HEALTH_TIMEOUT="${HSYNC_STARTUP_HEALTH_TIMEOUT:-30}"
 
 # Default environment variables
 export HSYNC_PORT="${HSYNC_PORT:-9753}"
@@ -112,7 +124,7 @@ ${BOLD}Commands:${RESET}
     status      Show container status
     logs        Show container logs (use -f to follow)
     shell       Open a shell in the running container
-    clean       Remove container and image
+    clean       Remove container and image (add --all to also drop state/buckets/certs)
 
 ${BOLD}Options:${RESET}
     -e, --env-file  Environment file to pass to Docker (e.g., dev.env, prod.env)
@@ -140,7 +152,98 @@ ${BOLD}Examples:${RESET}
     ./docker.sh start --env-file prod.env
     ./docker.sh logs -f
     ./docker.sh shell
+
+Start prints the server URL (e.g. https://localhost:9753) as soon as the
+container answers /health; no need to read the logs. The URL uses HTTPS
+when HSYNC_SSL_ENABLED=true in the env-file (the default in dev.env and
+prod.env) with a self-signed certificate: use curl -k or accept the browser
+warning on first visit.
+
+State and buckets live in the named volumes "${CONTAINER_NAME}-state" and
+"${CONTAINER_NAME}-buckets" and survive restarts (clean keeps them).
 EOF
+}
+
+# -----------------------------------------------------------------------------
+# Named-volume migration (one-shot: copies any pre-existing host data into the
+# new named volumes the first time this script version starts) and helpers.
+# -----------------------------------------------------------------------------
+volume_empty() {
+    local vol="$1"
+    [[ -z "$(docker volume ls -q -f "name=^${vol}$")" ]] && return 0
+    local count
+    count="$(docker run --rm --user root -v "${vol}:/mnt" "${IMAGE_NAME}:${IMAGE_TAG}" \
+        sh -c 'ls -A /mnt | wc -l' 2>/dev/null || echo 0)"
+    [[ "${count:-0}" == "0" ]]
+}
+
+migrate_host_dir_to_volume() {
+    local host_dir="$1" vol="$2" label="$3"
+    [[ -d "${host_dir}" ]] || return 0
+    if [[ -z "$(ls -A "${host_dir}" 2>/dev/null)" ]]; then
+        log_info "${label}: host directory empty, using a fresh volume"
+        return 0
+    fi
+    if ! volume_empty "${vol}"; then
+        log_info "${label}: volume ${vol} already has data, leaving ${host_dir} untouched"
+        return 0
+    fi
+    log_step "Migrating existing ${label} data into the named volume ${vol}..."
+    if ! docker run --rm --user root \
+        -v "${host_dir}:/src:ro" \
+        -v "${vol}:/dst" \
+        "${IMAGE_NAME}:${IMAGE_TAG}" \
+        sh -c 'cp -a /src/. /dst/ && chown -R hsync:hsync /dst'; then
+        log_error "Migration of ${label} failed; aborting to avoid data loss"
+        exit 1
+    fi
+    local src_count dst_count
+    src_count="$(find "${host_dir}" -mindepth 1 | wc -l)"
+    dst_count="$(docker run --rm --user root -v "${vol}:/mnt" "${IMAGE_NAME}:${IMAGE_TAG}" \
+        sh -c 'find /mnt -mindepth 1 | wc -l')"
+    if [[ "${src_count}" != "${dst_count}" ]]; then
+        log_error "Migration verification failed (${label}: host ${src_count} entries vs volume ${dst_count}); keeping host copy untouched"
+        exit 1
+    fi
+    mv "${host_dir}" "${host_dir}.migrated-$(date +%Y%m%d%H%M%S)"
+    log_ok "${label} migrated to ${vol}; old copy preserved as ${host_dir}.migrated-*"
+}
+
+ssl_enabled() {
+    local value="${HSYNC_SSL_ENABLED:-}"
+    [[ -z "${value}" ]] && value="$(get_env_file_value HSYNC_SSL_ENABLED || true)"
+    [[ "${value,,}" == "true" || "${value}" == "1" ]]
+}
+
+docs_enabled() {
+    local value="${HSYNC_ENABLE_DOCS:-}"
+    [[ -z "${value}" ]] && value="$(get_env_file_value HSYNC_ENABLE_DOCS || true)"
+    [[ "${value,,}" == "true" || "${value}" == "1" ]]
+}
+
+health_scheme() {
+    if ssl_enabled; then
+        printf 'https'
+    else
+        printf 'http'
+    fi
+}
+
+wait_for_health() {
+    local scheme url code deadline
+    scheme="$(health_scheme)"
+    url="${scheme}://localhost:${HSYNC_PORT}/health"
+    deadline=$(( $(date +%s) + STARTUP_HEALTH_TIMEOUT ))
+    while (( $(date +%s) < deadline )); do
+        if ssl_enabled; then
+            code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 2 "${url}" 2>/dev/null || true)"
+        else
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "${url}" 2>/dev/null || true)"
+        fi
+        [[ "${code}" == "200" ]] && return 0
+        sleep 1
+    done
+    return 1
 }
 
 cmd_build() {
@@ -182,14 +285,19 @@ cmd_start() {
 
     log_step "Starting container ${CONTAINER_NAME}..."
 
+    # One-shot migration of any legacy host bind-mount data into the named
+    # volumes (only when the volume is still empty). Safe no-ops afterwards.
+    migrate_host_dir_to_volume "${SCRIPT_DIR}/state" "${STATE_VOLUME}" "state database"
+    migrate_host_dir_to_volume "${SCRIPT_DIR}/buckets" "${BUCKETS_VOLUME}" "buckets"
+
     # Build docker run command with env file support
     local docker_args=(
         run -d
         --name "${CONTAINER_NAME}"
         --restart unless-stopped
         -p "${HSYNC_PORT}:${HSYNC_PORT}"
-        -v "${SCRIPT_DIR}/buckets:/project/buckets"
-        -v "${SCRIPT_DIR}/state:/project/state"
+        -v "${BUCKETS_VOLUME}:/project/buckets"
+        -v "${STATE_VOLUME}:/project/state"
         -v "${CERTS_VOLUME}:/project/certs"
     )
 
@@ -231,8 +339,33 @@ cmd_start() {
         rm -f "${ENV_STATE_FILE}"
     fi
 
-    log_ok "Container started: ${CONTAINER_NAME}"
+    local scheme
+    scheme="$(health_scheme)"
+
     log_info "Port: ${HSYNC_PORT}, Workers: ${HSYNC_WORKERS}, Log Level: ${HSYNC_LOG_LEVEL}, TZ: ${HSYNC_TZ}"
+
+    if [[ "${STARTUP_HEALTH_TIMEOUT}" =~ ^[0-9]+$ ]] && (( STARTUP_HEALTH_TIMEOUT > 0 )); then
+        log_step "Waiting for the server to answer /health (up to ${STARTUP_HEALTH_TIMEOUT}s)..."
+        if ! wait_for_health; then
+            log_error "Server did not answer ${scheme}://localhost:${HSYNC_PORT}/health within ${STARTUP_HEALTH_TIMEOUT}s"
+            log_error "Last container logs:"
+            docker logs --tail 30 "${CONTAINER_NAME}" >&2 || true
+            exit 1
+        fi
+        log_ok "HSYNC Server is live → ${scheme}://localhost:${HSYNC_PORT}"
+    else
+        log_info "Health check skipped (HSYNC_STARTUP_HEALTH_TIMEOUT=0): server may still be starting"
+        log_info "Expected server URL → ${scheme}://localhost:${HSYNC_PORT}"
+    fi
+
+    if docs_enabled; then
+        log_ok "API documentation: ${scheme}://localhost:${HSYNC_PORT}/docs"
+    else
+        log_info "API docs are disabled (set HSYNC_ENABLE_DOCS=true in the env-file to expose /docs)"
+    fi
+    if ssl_enabled; then
+        log_warn "Self-signed certificate: use curl -k or accept the browser warning"
+    fi
 }
 
 cmd_stop() {
@@ -276,6 +409,8 @@ cmd_shell() {
 }
 
 cmd_clean() {
+    local clean_all=0
+    [[ "${1:-}" == "--all" ]] && clean_all=1
     log_step "Cleaning up..."
     docker stop "${CONTAINER_NAME}" 2>/dev/null || true
     docker rm "${CONTAINER_NAME}" 2>/dev/null || true
@@ -283,6 +418,13 @@ cmd_clean() {
     # Drop the persisted SSL material too: a fresh image deserves a fresh
     # self-signed identity. Connecting clients will re-pin on next handshake.
     docker volume rm "${CERTS_VOLUME}" 2>/dev/null || true
+    if (( clean_all )); then
+        log_warn "Removing data volumes ${STATE_VOLUME} and ${BUCKETS_VOLUME} (ALL user data will be lost)"
+        docker volume rm "${STATE_VOLUME}" 2>/dev/null || true
+        docker volume rm "${BUCKETS_VOLUME}" 2>/dev/null || true
+    else
+        log_info "Keeping data volumes ${STATE_VOLUME} and ${BUCKETS_VOLUME} (use 'clean --all' to drop them)"
+    fi
     # Forget the remembered env-file: a clean slate should not auto-reuse it.
     rm -f "${ENV_STATE_FILE}"
     log_ok "Cleanup complete"
@@ -334,7 +476,7 @@ main() {
         status)  cmd_status ;;
         logs)    cmd_logs "${2:-}" ;;
         shell)   cmd_shell ;;
-        clean)   cmd_clean ;;
+        clean)   cmd_clean "${2:-}" ;;
         -h|--help|help|"") show_help ;;
         *) log_error "Unknown command: $1"; show_help; exit 1 ;;
     esac

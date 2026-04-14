@@ -19,10 +19,14 @@ def _base_env(tmp_path: Path, args_file: Path) -> dict[str, str]:
         "HSYNC_LOG_LEVEL",
         "HSYNC_WORKERS",
         "HSYNC_TZ",
+        "HSYNC_STARTUP_HEALTH_TIMEOUT",
     ):
         env.pop(key, None)
     env["PATH"] = f"{tmp_path}{os.pathsep}{env['PATH']}"
     env["HSYNC_FAKE_DOCKER_ARGS"] = str(args_file)
+    # Unit tests use a fake docker (no real server): skip the post-start
+    # /health poll so `start` returns immediately with the printed URLs.
+    env["HSYNC_STARTUP_HEALTH_TIMEOUT"] = "0"
     return env
 
 
@@ -90,9 +94,12 @@ def test_start_uses_env_file_without_leaking_api_key_value(tmp_path: Path):
     assert result.returncode == 0
     assert "Port: 9999" in result.stdout
     assert "Log Level: debug" in result.stdout
+    assert "http://localhost:9999" in result.stdout
     assert "--env-file" in recorded
     assert str(env_file) in recorded
     assert "9999:9999" in recorded
+    assert "hsync-server-state:/project/state" in recorded
+    assert "hsync-server-buckets:/project/buckets" in recorded
     assert not any(arg.startswith("HSYNC_ADMIN_KEY=") for arg in recorded)
 
 
@@ -106,6 +113,8 @@ def test_start_passes_parent_api_key_by_name_only(tmp_path: Path):
     assert result.returncode == 0
     assert "-e" in recorded
     assert "HSYNC_ADMIN_KEY" in recorded
+    assert "http://localhost:9753" in result.stdout
+    assert "hsync-server-state:/project/state" in recorded
     assert not any(arg.startswith("HSYNC_ADMIN_KEY=") for arg in recorded)
 
 
