@@ -19,7 +19,6 @@ from hsync_common.compression import (  # noqa: F401
     COMPRESSION_LEVEL,
     CONTENT_ENCODING_ZSTD,
     MIN_SIZE_FOR_COMPRESSION,
-    MIN_SIZE_FOR_DOWNLOAD,
     PRECOMPRESSED_EXTENSIONS,
     compress_data,
     compress_file,

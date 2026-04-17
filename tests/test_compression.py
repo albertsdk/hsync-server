@@ -231,10 +231,6 @@ class TestConstants:
         """Content encoding should be 'zstd'."""
         assert compression.CONTENT_ENCODING_ZSTD == "zstd"
 
-    def test_min_size_for_download(self):
-        """Minimum download size should be 10KB."""
-        assert compression.MIN_SIZE_FOR_DOWNLOAD == 10 * 1024
-
-    def test_min_size_for_compression_alias(self):
-        """Backward compatibility alias should match."""
-        assert compression.MIN_SIZE_FOR_COMPRESSION == compression.MIN_SIZE_FOR_DOWNLOAD
+    def test_min_size_for_compression(self):
+        """Minimum compression (download) size should be 10KB."""
+        assert compression.MIN_SIZE_FOR_COMPRESSION == 10 * 1024
