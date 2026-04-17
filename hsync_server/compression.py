@@ -13,16 +13,9 @@ Extends hsync_common.compression with server-specific async helpers.
 from collections.abc import AsyncIterator
 
 import zstandard as zstd
-
-# Re-export core compression from hsync-common
-from hsync_common.compression import (  # noqa: F401
+from hsync_common.compression import (  # noqa: F401  # CONTENT_ENCODING_ZSTD, should_compress re-exported
     COMPRESSION_LEVEL,
     CONTENT_ENCODING_ZSTD,
-    MIN_SIZE_FOR_COMPRESSION,
-    PRECOMPRESSED_EXTENSIONS,
-    compress_data,
-    compress_file,
-    decompress_data,
     decompress_stream,
     should_compress,
 )

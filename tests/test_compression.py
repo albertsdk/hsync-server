@@ -3,6 +3,12 @@ Tests for compression utilities.
 """
 
 import pytest
+from hsync_common.compression import (
+    MIN_SIZE_FOR_COMPRESSION,
+    compress_data,
+    compress_file,
+    decompress_data,
+)
 
 from hsync_server import compression
 
@@ -20,18 +26,18 @@ class TestCompression:
         """Test data compression round-trip."""
         # Use larger data to benefit from compression
         original_data = b"Hello, World! " * 100
-        compressed = compression.compress_data(original_data)
+        compressed = compress_data(original_data)
         assert compressed != original_data
         assert len(compressed) < len(original_data)
         # Verify round-trip: decompress must restore original data
-        decompressed = compression.decompress_data(compressed)
+        decompressed = decompress_data(compressed)
         assert decompressed == original_data
 
     def test_decompress_data(self):
         """Test data decompression."""
         original_data = b"Hello, World! This is test data for compression."
-        compressed = compression.compress_data(original_data)
-        decompressed = compression.decompress_data(compressed)
+        compressed = compress_data(original_data)
+        decompressed = decompress_data(compressed)
         assert decompressed == original_data
 
     def test_decompress_stream(self):
@@ -39,7 +45,7 @@ class TestCompression:
         import io
 
         original_data = b"Test data for streaming decompression " * 1000
-        compressed = compression.compress_data(original_data)
+        compressed = compress_data(original_data)
 
         chunks = list(
             compression.decompress_stream(
@@ -55,7 +61,7 @@ class TestCompression:
         import zstandard as zstd
 
         original_data = b"B" * 100_000
-        compressed = compression.compress_data(original_data)
+        compressed = compress_data(original_data)
 
         with pytest.raises(zstd.ZstdError):
             list(compression.decompress_stream(io.BytesIO(compressed), max_output_size=100))
@@ -67,11 +73,11 @@ class TestCompression:
         test_content = b"Test content for compression " * 50
         test_file.write_bytes(test_content)
 
-        compressed = compression.compress_file(str(test_file))
+        compressed = compress_file(str(test_file))
         assert compressed != test_content
         assert len(compressed) < len(test_content)
         # Verify round-trip: decompress must restore original content
-        decompressed = compression.decompress_data(compressed)
+        decompressed = decompress_data(compressed)
         assert decompressed == test_content
 
     def test_async_compress_file(self, tmp_path):
@@ -91,7 +97,7 @@ class TestCompression:
         assert len(compressed) < len(test_content)
 
         # Verify it decompresses correctly (single frame, client-compatible)
-        decompressed = compression.decompress_data(compressed)
+        decompressed = decompress_data(compressed)
         assert decompressed == test_content
 
     def test_async_compress_file_matches_sync(self, tmp_path):
@@ -102,7 +108,7 @@ class TestCompression:
         test_content = b"Match test data " * 8000  # ~128KB
         test_file.write_bytes(test_content)
 
-        sync_compressed = compression.compress_file(str(test_file))
+        sync_compressed = compress_file(str(test_file))
 
         async def run_test():
             return await _compress_whole(str(test_file))
@@ -110,8 +116,8 @@ class TestCompression:
         async_compressed = asyncio.run(run_test())
 
         # Both should decompress to the same content
-        assert compression.decompress_data(sync_compressed) == test_content
-        assert compression.decompress_data(async_compressed) == test_content
+        assert decompress_data(sync_compressed) == test_content
+        assert decompress_data(async_compressed) == test_content
 
     def test_async_compress_file_small_file(self, tmp_path):
         """Test async compression works for files smaller than chunk size."""
@@ -125,7 +131,7 @@ class TestCompression:
             return await _compress_whole(str(test_file))
 
         compressed = asyncio.run(run_test())
-        decompressed = compression.decompress_data(compressed)
+        decompressed = decompress_data(compressed)
         assert decompressed == test_content
 
     def test_async_compress_stream_yields_decompressible_frame(self, tmp_path):
@@ -151,7 +157,7 @@ class TestCompression:
         compressed = b"".join(chunks)
         assert len(compressed) < len(test_content)
         # One-shot decompression must work (size embedded in the frame header).
-        assert compression.decompress_data(compressed) == test_content
+        assert decompress_data(compressed) == test_content
 
     def test_async_compress_stream_matches_whole_file(self, tmp_path):
         """Streaming and whole-file compression produce identical bytes."""
@@ -233,4 +239,4 @@ class TestConstants:
 
     def test_min_size_for_compression(self):
         """Minimum compression (download) size should be 10KB."""
-        assert compression.MIN_SIZE_FOR_COMPRESSION == 10 * 1024
+        assert MIN_SIZE_FOR_COMPRESSION == 10 * 1024
