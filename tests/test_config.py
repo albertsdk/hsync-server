@@ -74,7 +74,6 @@ class TestSettings:
         assert settings.rate_limit_default == "500/minute"
         assert settings.rate_limit_upload == "200/minute"
         assert settings.rate_limit_download == "1000/minute"
-        assert settings.rate_limit_websocket == "50/minute"
         assert settings.rate_limit_ws_messages == "10/second"
         assert settings.trusted_proxies_set == frozenset()
 
@@ -280,7 +279,6 @@ class TestModuleLevelConstants:
             "get_rate_limit_default",
             "get_rate_limit_upload",
             "get_rate_limit_download",
-            "get_rate_limit_websocket",
             "get_rate_limit_ws_messages",
             "get_rate_limit_admin",
             "get_trusted_proxies",

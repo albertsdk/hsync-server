@@ -36,6 +36,7 @@ from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import invalidate_sha256_cache, is_hidden_file, is_partial_file
 from hsync_common.path_validation import is_internal_name, is_valid_filename, sanitize_filename
 from hsync_common.permissions import is_valid_octal_permissions
+from hsync_common.time_utils import conflict_timestamp
 from loguru import logger as log
 
 from hsync_server.api.authz import ensure_bucket_access
@@ -100,7 +101,6 @@ async def upload_file(
     offset: int = Form(0),
     size: int = Form(0),
     compressed: str = Form("false"),
-    compressed_size: int = Form(0),  # Reserved for future use
     vclock: str = Form(""),  # JSON-encoded causal vector clock (ADR-0022)
     version_id: str = Form(""),  # opaque version lineage id from the uploader
     corrected_mtime: int = Form(0),  # ADR-0023 offset-corrected mtime (0 ⇒ unknown)
@@ -500,8 +500,6 @@ async def upload_file(
             if result.outcome is ArbitrationOutcome.conflict_lost:
                 # Incoming loses the tie-break: preserve its bytes as a
                 # conflicted copy, keep the winner on disk, reject the upload.
-                from hsync_common.time_utils import conflict_timestamp
-
                 ts = conflict_timestamp()
                 conflicted = conflicted_copy_name(file_location, result.loser_cid, ts)
                 replace(file_location_tmp, conflicted)
@@ -525,8 +523,6 @@ async def upload_file(
                 and backup_path
                 and Path(backup_path).exists()
             ):
-                from hsync_common.time_utils import conflict_timestamp
-
                 ts = conflict_timestamp()
                 conflicted = conflicted_copy_name(file_location, result.loser_cid, ts)
                 replace(backup_path, conflicted)

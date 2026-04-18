@@ -65,18 +65,6 @@ def _check_owner_or_admin(bucket: str, ctx: AuthContext) -> None:
     raise BucketNotFoundError(details={"bucket": bucket})
 
 
-def _check_access(bucket: str, ctx: AuthContext) -> None:
-    """Raise 404 if no access or nonexistent."""
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-    bucket_dir = Path(get_buckets_path()) / bucket
-    if not bucket_dir.exists():
-        raise BucketNotFoundError(details={"bucket": bucket})
-    store = get_auth_store()
-    if not store.has_access(ctx.id, bucket, is_admin=(ctx.role == "admin")):
-        raise BucketNotFoundError(details={"bucket": bucket})
-
-
 @auth_router.get("/api/v1/buckets/{bucket}/members")
 async def list_members(
     bucket: str,

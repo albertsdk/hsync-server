@@ -288,39 +288,3 @@ def require_bucket_access(bucket: str):
             raise BucketNotFoundError(details={"bucket": bucket})
 
         return ctx
-
-    return _check
-
-
-def require_bucket_owner_or_admin(bucket: str):
-    """Return a dependency: caller must be owner of *bucket* or admin.
-
-    - admin: allowed.
-    - owner: allowed.
-    - member: ``ForbiddenError`` (403 — they know the bucket exists).
-    - others / nonexistent: ``BucketNotFoundError`` (404).
-    """
-
-    def _check(
-        ctx: Annotated[AuthContext, Depends(verify_api_key)],
-    ) -> AuthContext:
-        if not is_valid_bucket(bucket):
-            raise InvalidBucketNameError(details={"bucket": bucket})
-
-        bucket_dir = Path(get_buckets_path()) / bucket
-        if not bucket_dir.exists():
-            raise BucketNotFoundError(details={"bucket": bucket})
-
-        store = get_auth_store()
-        if ctx.role == "admin":
-            return ctx
-
-        role = store.get_member_role(bucket, ctx.id)
-        if role == "owner":
-            return ctx
-        if role == "member":
-            raise ForbiddenError()
-        # Non-member: 404 (no existence leak).
-        raise BucketNotFoundError(details={"bucket": bucket})
-
-    return _check

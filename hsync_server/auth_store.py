@@ -30,11 +30,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from hsync_common.constants import SYNCSTATE_DB_FILENAME
 from hsync_common.models.sqlstore import get_state_db, reset_state_db_cache
 from loguru import logger as log
 
-from hsync_server.config import get_state_dir
+from hsync_server.config import get_state_db_path
 from hsync_server.exceptions import ConflictError, ForbiddenError, ResourceNotFoundError
 
 __all__ = [
@@ -272,13 +271,7 @@ def _verify_secret(secret: str, phc_hash: str) -> bool:
 
 
 # Pre-computed dummy hash for timing-safe "account unknown" path.
-_DUMMY_SALT = secrets.token_bytes(SALT_LEN)
-_DUMMY_PHC = _hash_secret("hsync-dummy", _DUMMY_SALT)
-
-
-def _dummy_verify() -> None:
-    """Burn CPU to match the cost of a real scrypt verify (anti-enumeration)."""
-    _verify_secret("hsync-dummy", _hash_secret("hsync-dummy", _DUMMY_SALT))
+_DUMMY_PHC = _hash_secret("hsync-dummy", secrets.token_bytes(SALT_LEN))
 
 
 def _key_prefix(secret: str) -> str:
@@ -303,6 +296,31 @@ def validate_secret_hex(secret: str) -> str:
     return secret
 
 
+def parse_expiry(expires_at: str | None, valid_days: int | None) -> int | None:
+    """Convert ``expires_at`` (RFC3339 UTC) or ``valid_days`` to a Unix UTC timestamp.
+
+    Raises ``ValueError`` when both are given, or when ``expires_at`` is not a
+    valid timezone-aware timestamp. Returns ``None`` when neither is given.
+
+    Consumers: ``hsync_server.api.admin`` (REST), ``hsync_server.__main__`` (CLI).
+    """
+    if expires_at is not None and valid_days is not None:
+        raise ValueError("Provide at most one of 'expires_at' or 'valid_days'.")
+    if expires_at is not None:
+        from datetime import datetime
+
+        try:
+            dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid expires_at: {e}") from None
+        if dt.tzinfo is None:
+            raise ValueError("Timestamp must include timezone (UTC).")
+        return int(dt.timestamp())
+    if valid_days is not None:
+        return int(time.time()) + valid_days * 86400
+    return None
+
+
 # =============================================================================
 # Store
 # =============================================================================
@@ -325,14 +343,10 @@ def _rebind_after_fork() -> None:
         _pid = current
 
 
-def _db_path() -> str:
-    return str(Path(get_state_dir()) / SYNCSTATE_DB_FILENAME)
-
-
 def get_auth_store() -> AuthStore:
     """Return the cached :class:`AuthStore` for the installation DB."""
     _rebind_after_fork()
-    path = _db_path()
+    path = get_state_db_path()
     with _cache_lock:
         store = _store_cache.get(path)
         if store is None:
@@ -756,10 +770,6 @@ class AuthStore:
     # ------------------------------------------------------------------
     # Verify (called by auth.py)
     # ------------------------------------------------------------------
-
-    def verify_secret(self, secret: str, account: AccountRow) -> bool:
-        """Verify *secret* against the active or prior key hash."""
-        return self.verify_secret_with_kind(secret, account) is not None
 
     def verify_secret_with_kind(self, secret: str, account: AccountRow) -> str | None:
         """Verify *secret* and return 'active', 'prior', or None."""

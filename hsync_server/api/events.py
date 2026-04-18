@@ -49,7 +49,7 @@ from hsync_server.api.connection_manager import (
     ConnectionManager,
     bucket_manager,
 )
-from hsync_server.api.event_handlers import (
+from hsync_server.api.events_handlers.handlers import (
     handle_added_event,
     handle_deleted_event,
     handle_modified_event,
@@ -98,13 +98,10 @@ def _event_paths_safe(payload: object) -> bool:
 
 def _log_disconnect(cid: str, *, error: str | None = None) -> None:
     """Log a WebSocket disconnection."""
-    try:
-        msg = f"{ActionLabel.WS} Disconnected (CID: {cid})"
-        if error:
-            msg += f" ({error})"
-        log.warning(msg)
-    except ValueError:
-        pass
+    msg = f"{ActionLabel.WS} Disconnected (CID: {cid})"
+    if error:
+        msg += f" ({error})"
+    log.warning(msg)
 
 
 def _bucket_exists(bucket: str) -> bool:

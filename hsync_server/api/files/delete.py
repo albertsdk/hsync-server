@@ -100,7 +100,8 @@ async def delete_file(
         # persistence never causes a resurrection. Sentinel files are per-peer
         # and never exchanged — no marker needed.
         if not is_sentinel_file(file):
-            stored = get_version_store(bucket).get(relpath_in_bucket(file, local_bucket))
+            rel = relpath_in_bucket(file, local_bucket)
+            stored = get_version_store(bucket).get(rel) if rel is not None else None
             record_deletion(
                 bucket,
                 local_bucket,

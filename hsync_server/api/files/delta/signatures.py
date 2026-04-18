@@ -68,6 +68,12 @@ from hsync_server.exceptions import (
     ValidationError,
 )
 from hsync_server.hashes import get_sha256_hash
+from hsync_server.metrics import (
+    record_bytes_saved,
+    record_change_ratio,
+    record_delta_transfer,
+    record_transfer_duration,
+)
 from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
 from hsync_server.routers import auth_router
 
@@ -154,8 +160,6 @@ async def get_delta_signatures(
     sig_duration = time.time() - sig_start
 
     # Record metrics for upload delta signatures request
-    from hsync_server.metrics import record_delta_transfer, record_transfer_duration
-
     record_delta_transfer("upload", "success")
     record_transfer_duration("upload", "signatures", sig_duration)
     record_transfer_duration("upload", "total", time.time() - start_time)
@@ -248,8 +252,6 @@ async def post_delta_signatures(
     ratio = changed_block_ratio(ops, base_size, body.block_size)
 
     # Record change ratio metric
-    from hsync_server.metrics import record_change_ratio
-
     record_change_ratio("download", ratio)
 
     if not is_delta_worthwhile(ops, base_size, len(literals), body.block_size):
@@ -261,8 +263,6 @@ async def post_delta_signatures(
         log.info(f"Delta not worthwhile for {body.path}: {reason} (ratio={ratio:.2f})")
 
         # Record rejected transfer
-        from hsync_server.metrics import record_delta_transfer, record_transfer_duration
-
         record_delta_transfer("download", "rejected")
         record_transfer_duration("download", "total", time.time() - start_time)
 
@@ -290,12 +290,6 @@ async def post_delta_signatures(
     )
 
     # Record successful transfer and bytes saved
-    from hsync_server.metrics import (
-        record_bytes_saved,
-        record_delta_transfer,
-        record_transfer_duration,
-    )
-
     record_delta_transfer("download", "success")
     record_transfer_duration("download", "match", match_duration)
     record_transfer_duration("download", "total", time.time() - start_time)

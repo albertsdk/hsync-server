@@ -38,11 +38,11 @@ from slowapi.util import get_remote_address
 from starlette.responses import JSONResponse
 
 from hsync_server.config import (
+    get_rate_limit_admin,
     get_rate_limit_default,
     get_rate_limit_delta,
     get_rate_limit_download,
     get_rate_limit_upload,
-    get_rate_limit_websocket,
     get_rate_limit_ws_messages,
     get_trusted_proxies,
 )
@@ -60,11 +60,11 @@ RATE_LIMIT_UPLOAD: str = get_rate_limit_upload()
 # Rate limit for download endpoints (more permissive for high-traffic systems)
 RATE_LIMIT_DOWNLOAD: str = get_rate_limit_download()
 
+# Rate limit for admin endpoints (account/key management — stricter than default)
+RATE_LIMIT_ADMIN: str = get_rate_limit_admin()
+
 # Rate limit for delta transfer endpoints (signature/matching is CPU-bound)
 RATE_LIMIT_DELTA: str = get_rate_limit_delta()
-
-# Rate limit for WebSocket connections
-RATE_LIMIT_WEBSOCKET: str = get_rate_limit_websocket()
 
 # Trusted reverse-proxy IPs allowed to set X-Forwarded-For. Empty by default so
 # the header is ignored unless the deployment explicitly opts in.
@@ -143,8 +143,7 @@ async def rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONR
 
 log.info(
     f"Rate limits configured: default={RATE_LIMIT_DEFAULT}, "
-    f"upload={RATE_LIMIT_UPLOAD}, download={RATE_LIMIT_DOWNLOAD}, "
-    f"websocket={RATE_LIMIT_WEBSOCKET}"
+    f"upload={RATE_LIMIT_UPLOAD}, download={RATE_LIMIT_DOWNLOAD}"
 )
 
 
@@ -192,8 +191,6 @@ def _parse_ws_rate(rate_str: str) -> tuple[float, int]:
     burst = max(
         int(amount * 2 * _WS_RATE_MULTIPLIERS[period]), 2
     )  # at least 2 for heartbeat safety
-    if burst < 2:
-        burst = 2
     return rate, burst
 
 

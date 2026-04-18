@@ -26,7 +26,7 @@ import json
 import time
 from os import replace
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, cast
 
 import zstandard as zstd
 from aiofiles.ospath import isfile
@@ -48,6 +48,7 @@ from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import invalidate_sha256_cache, is_hidden_file
 from hsync_common.permissions import is_valid_octal_permissions
+from hsync_common.time_utils import conflict_timestamp
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
@@ -77,6 +78,11 @@ from hsync_server.exceptions import (
 )
 from hsync_server.file_lock_manager import get_file_lock_manager
 from hsync_server.hashes import get_sha256_hash, set_sha256_hash
+from hsync_server.metrics import (
+    record_bytes_saved,
+    record_delta_transfer,
+    record_transfer_duration,
+)
 from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import clear_deletion
@@ -86,6 +92,12 @@ from hsync_server.versions import record_version, server_version_info
 def _unprocessable(detail: str, **extra: Any) -> JSONResponse:
     """422 response for malformed instructions or failed verification."""
     return JSONResponse(status_code=422, content={"detail": detail, **extra})
+
+
+def _record_delta_upload(start_time: float, status: str) -> None:
+    """Record a delta upload outcome and its total duration."""
+    record_delta_transfer("upload", status)
+    record_transfer_duration("upload", "total", time.time() - start_time)
 
 
 def _parse_metadata(raw: str) -> dict[str, Any]:
@@ -113,7 +125,7 @@ def _validate_instructions(meta: dict[str, Any]) -> tuple[str, str, int, list[De
         raise ValidationError(message="Invalid ops in delta metadata")
     parsed = [
         DeltaOp(
-            type=o["type"],
+            type=cast(Literal["copy", "data"], o["type"]),
             offset=o["offset"],
             length=o["length"],
             data_offset=o["data_offset"],
@@ -210,11 +222,7 @@ async def delta_apply(
             if current_base != base_sha256:
                 log.info(f"Delta apply rejected (base changed): {file_location}")
 
-                # Record metrics for rejected transfer
-                from hsync_server.metrics import record_delta_transfer, record_transfer_duration
-
-                record_delta_transfer("upload", "rejected")
-                record_transfer_duration("upload", "total", time.time() - start_time)
+                _record_delta_upload(start_time, "rejected")
 
                 return JSONResponse(
                     status_code=409,
@@ -269,11 +277,11 @@ async def delta_apply(
 
             rebuild_start = time.time()
 
-            def _rebuild() -> int:
+            def _rebuild(target: str) -> int:
                 with open(literal_tmp, "rb") as literal_stream:
-                    return apply_delta(file_location, ops, literal_stream, part_path)
+                    return apply_delta(file_location, ops, literal_stream, target)
 
-            await asyncio.to_thread(_rebuild)
+            await asyncio.to_thread(_rebuild, part_path)
             rebuild_duration = time.time() - rebuild_start
 
             rebuilt_sha256 = await compute_sha256_async(part_path)
@@ -324,8 +332,6 @@ async def delta_apply(
                     details={"sha256sum": rebuilt_sha256[:12]},
                 )
             if delta_result.outcome is ArbitrationOutcome.conflict_lost:
-                from hsync_common.time_utils import conflict_timestamp
-
                 ts = conflict_timestamp()
                 # Use the FINAL path (regression: the temporary `.delta.part`
                 # name would produce `<stem>.delta_conflicted_copy_….part`,
@@ -349,8 +355,6 @@ async def delta_apply(
                 delta_result.outcome is ArbitrationOutcome.accepted_conflict_won
                 and Path(file_location).exists()
             ):
-                from hsync_common.time_utils import conflict_timestamp
-
                 ts = conflict_timestamp()
                 conflicted = conflicted_copy_name(file_location, delta_result.loser_cid, ts)
                 # Preserve the previous (losing) content before overwriting.
@@ -392,13 +396,6 @@ async def delta_apply(
                     Event(cid, local_bucket, bucket, EventName.modified, src)
                 )
 
-            # Record metrics for successful transfer
-            from hsync_server.metrics import (
-                record_bytes_saved,
-                record_delta_transfer,
-                record_transfer_duration,
-            )
-
             record_delta_transfer("upload", "success")
             record_transfer_duration("upload", "apply", rebuild_duration)
             record_transfer_duration("upload", "total", time.time() - start_time)
@@ -427,25 +424,13 @@ async def delta_apply(
         ConflictLostError,
         ValidationError,
     ):
-        # Record metrics for failed transfer
-        from hsync_server.metrics import record_delta_transfer, record_transfer_duration
-
-        record_delta_transfer("upload", "failure")
-        record_transfer_duration("upload", "total", time.time() - start_time)
+        _record_delta_upload(start_time, "failure")
         raise
     except DeltaError as exc:
-        # Record metrics for failed transfer
-        from hsync_server.metrics import record_delta_transfer, record_transfer_duration
-
-        record_delta_transfer("upload", "failure")
-        record_transfer_duration("upload", "total", time.time() - start_time)
+        _record_delta_upload(start_time, "failure")
         return _unprocessable("delta_apply_failed", error=exc.message)
     except Exception as exc:
-        # Record metrics for failed transfer
-        from hsync_server.metrics import record_delta_transfer, record_transfer_duration
-
-        record_delta_transfer("upload", "failure")
-        record_transfer_duration("upload", "total", time.time() - start_time)
+        _record_delta_upload(start_time, "failure")
         log.error(f"Delta apply failed for {path}: {exc}", exc_info=True)
         raise UploadError(
             message="Delta apply failed",

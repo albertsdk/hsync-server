@@ -320,6 +320,22 @@ def _resolve_account_id(name: str | None, account_id: str | None) -> str:
     return target.id
 
 
+def _resolve_client_target(client: str):
+    """Resolve a --client value (account id or name) to an account.
+
+    A 21-char alphanumeric value is treated as an id, anything else as a name.
+    """
+    from hsync_server.auth_store import TargetNotFoundError, get_auth_store
+
+    store = get_auth_store()
+    is_id = len(client) == 21 and client.isalnum()
+    try:
+        return store.resolve_target(client if is_id else None, None if is_id else client)
+    except TargetNotFoundError:
+        typer.echo("Error: account not found", err=True)
+        raise typer.Exit(1) from None
+
+
 @client_app.command("add")
 def client_add(
     name: Annotated[str, typer.Option("--name", help="Account name.")],
@@ -511,20 +527,12 @@ def bucket_grant(
         BOOTSTRAP_ADMIN_ID,
         ConflictError,
         ForbiddenError,
-        TargetNotFoundError,
         get_auth_store,
     )
 
     store = get_auth_store()
     # CLI operates as admin (filesystem authority).
-    try:
-        target = store.resolve_target(
-            client if len(client) == 21 and client.isalnum() else None,
-            client if not (len(client) == 21 and client.isalnum()) else None,
-        )
-    except TargetNotFoundError:
-        typer.echo("Error: account not found", err=True)
-        raise typer.Exit(1) from None
+    target = _resolve_client_target(client)
     try:
         store.grant_member(bucket, target, BOOTSTRAP_ADMIN_ID, caller_is_admin=True)
     except (ConflictError, ForbiddenError) as e:
@@ -548,14 +556,7 @@ def bucket_revoke(
     )
 
     store = get_auth_store()
-    try:
-        target = store.resolve_target(
-            client if len(client) == 21 and client.isalnum() else None,
-            client if not (len(client) == 21 and client.isalnum()) else None,
-        )
-    except TargetNotFoundError:
-        typer.echo("Error: account not found", err=True)
-        raise typer.Exit(1) from None
+    target = _resolve_client_target(client)
     try:
         store.revoke_member(bucket, target.id, BOOTSTRAP_ADMIN_ID, caller_is_admin=True)
     except (ConflictError, ForbiddenError, TargetNotFoundError) as e:
@@ -576,20 +577,12 @@ def bucket_set_owner(
         BOOTSTRAP_ADMIN_ID,
         ConflictError,
         ForbiddenError,
-        TargetNotFoundError,
         get_auth_store,
     )
     from hsync_server.config import get_buckets_path
 
     store = get_auth_store()
-    try:
-        target = store.resolve_target(
-            client if len(client) == 21 and client.isalnum() else None,
-            client if not (len(client) == 21 and client.isalnum()) else None,
-        )
-    except TargetNotFoundError:
-        typer.echo("Error: account not found", err=True)
-        raise typer.Exit(1) from None
+    target = _resolve_client_target(client)
 
     bucket_dir = Path(get_buckets_path()) / bucket
     if not bucket_dir.exists():
@@ -612,26 +605,13 @@ def bucket_set_owner(
 
 def _cli_parse_expiry(expires_at: str | None, valid_days: int | None) -> int | None:
     """Parse expires_at or valid_days into a Unix UTC timestamp."""
-    if expires_at is not None and valid_days is not None:
-        typer.echo("Error: provide at most one of --expires-at or --valid-days", err=True)
-        raise typer.Exit(1)
-    if expires_at is not None:
-        from datetime import datetime
+    from hsync_server.auth_store import parse_expiry
 
-        try:
-            dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                typer.echo("Error: timestamp must include timezone (UTC).", err=True)
-                raise typer.Exit(1)
-            return int(dt.timestamp())
-        except (ValueError, TypeError) as e:
-            typer.echo(f"Error: invalid expires_at: {e}", err=True)
-            raise typer.Exit(1) from None
-    if valid_days is not None:
-        import time
-
-        return int(time.time()) + valid_days * 86400
-    return None
+    try:
+        return parse_expiry(expires_at, valid_days)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from None
 
 
 if __name__ == "__main__":

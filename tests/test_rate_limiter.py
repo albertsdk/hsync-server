@@ -12,7 +12,6 @@ from hsync_server.rate_limiter import (
     RATE_LIMIT_DEFAULT,
     RATE_LIMIT_DOWNLOAD,
     RATE_LIMIT_UPLOAD,
-    RATE_LIMIT_WEBSOCKET,
     get_client_ip,
     limiter,
     rate_limit_exceeded_handler,
@@ -149,10 +148,6 @@ class TestRateLimitConstants:
         """Download rate limit is set for high-traffic systems."""
         assert RATE_LIMIT_DOWNLOAD == "1000/minute"
 
-    def test_websocket_limit(self):
-        """WebSocket rate limit is set."""
-        assert RATE_LIMIT_WEBSOCKET == "50/minute"
-
     def test_limits_are_valid_format(self):
         """All rate limits follow the expected format."""
         import re
@@ -161,7 +156,6 @@ class TestRateLimitConstants:
         assert re.match(pattern, RATE_LIMIT_DEFAULT)
         assert re.match(pattern, RATE_LIMIT_UPLOAD)
         assert re.match(pattern, RATE_LIMIT_DOWNLOAD)
-        assert re.match(pattern, RATE_LIMIT_WEBSOCKET)
 
 
 class TestLimiterInstance:

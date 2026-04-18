@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import WebSocket
 from hsync_common.models.event import Event
@@ -67,11 +68,7 @@ class ConnectionManager:
         if websocket is None or entry.websocket is websocket:
             self.active_connections.pop(client_id, None)
 
-    def _prune_if_empty(self) -> None:
-        """Remove this manager from its parent if it has no connections."""
-        pass  # Called by BucketConnectionManager after disconnect
-
-    async def _send_to_all(self, payload: dict, skip_cid: str | None = None) -> None:
+    async def _send_to_all(self, payload: dict[str, Any], skip_cid: str | None = None) -> None:
         """Send *payload* to every connected client, re-checking authz per recipient.
 
         ``skip_cid`` excludes one sender (file events must not be echoed back
@@ -118,9 +115,9 @@ class ConnectionManager:
         re-checked (membership/status/generation) against the auth store.
         Dead sockets and revoked accounts are dropped silently.
         """
-        await self._send_to_all(event.to_dict(), skip_cid=event.cid)
+        await self._send_to_all(dict(event.to_dict()), skip_cid=event.cid)
 
-    async def send_presence(self, payload: dict) -> None:
+    async def send_presence(self, payload: dict[str, Any]) -> None:
         """Broadcast a presence frame to every connected client.
 
         Uses the exact recipient re-checks of :meth:`send_message` but without

@@ -93,16 +93,17 @@ async def _handle_create_or_modify(
 
     elif "filepath" in src:
         file_obj = File.from_dict(src, bucket_dir, False)
-        if not _validate_path(file_obj.filepath, bucket_dir):
+        filepath = file_obj.filepath
+        if filepath is None or not _validate_path(filepath, bucket_dir):
             return None
         log.info(
             f"{ActionLabel.CREATE if create_dir else ActionLabel.MODIFY} "
-            f'{"Added" if create_dir else "Modified"} file "{file_obj.filepath}" (CID: {cid})'
+            f'{"Added" if create_dir else "Modified"} file "{filepath}" (CID: {cid})'
         )
         # A (re-)created file invalidates any prior deletion marker so peers
         # do not delete the freshly added file on their next full sync.
-        if not is_sentinel_file(file_obj.filepath):
-            clear_deletion(bucket, bucket_dir, file_obj.filepath)
+        if not is_sentinel_file(filepath):
+            clear_deletion(bucket, bucket_dir, filepath)
         return Event(cid, bucket_dir, bucket, event_name, file_obj)
 
     return None
@@ -171,8 +172,11 @@ def _record_tombstones_for_tree(dir_path: str, bucket_dir: str, bucket: str, cid
             if is_sentinel_file(child):
                 clear_deletion(bucket, bucket_dir, child)
                 continue
+            rel = relpath_in_bucket(child, bucket_dir)
+            if rel is None:
+                continue
             try:
-                stored = version_store.get(relpath_in_bucket(child, bucket_dir))
+                stored = version_store.get(rel)
                 record_deletion(
                     bucket,
                     bucket_dir,
@@ -248,9 +252,8 @@ async def handle_deleted_event(
                 # Causal tombstone (ADR-0003): inherit the stored version clock
                 # for the path and tick it by the deleting peer, so
                 # delete-vs-recreate and delete-vs-delete resolve causally.
-                stored = get_version_store(bucket).get(
-                    relpath_in_bucket(file_obj.filepath, bucket_dir)
-                )
+                rel = relpath_in_bucket(file_obj.filepath, bucket_dir)
+                stored = get_version_store(bucket).get(rel) if rel is not None else None
                 record_deletion(
                     bucket,
                     bucket_dir,

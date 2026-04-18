@@ -16,7 +16,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, Literal
 
-from hsync_common.constants import DELTA_TOKEN_TTL
+from hsync_common.constants import DELTA_TOKEN_TTL, SYNCSTATE_DB_FILENAME
 from hsync_common.env import load_env_file as _load_env_file
 from hsync_common.logger import (
     DEFAULT_LOG_COMPRESSION,
@@ -192,10 +192,6 @@ class Settings(BaseSettings):
     rate_limit_download: str = Field(
         default="1000/minute",
         description="Rate limit for download endpoints",
-    )
-    rate_limit_websocket: str = Field(
-        default="50/minute",
-        description="Rate limit for WebSocket connections",
     )
     rate_limit_ws_messages: str = Field(
         default="10/second",
@@ -399,6 +395,15 @@ def get_state_dir() -> str:
     return get_settings().state_dir
 
 
+def get_state_db_path() -> str:
+    """Get the installation ``syncstate.db`` path (late binding).
+
+    Single source for the causal-state DB location (ADR-0025), shared by the
+    version/tombstone stores and the auth store.
+    """
+    return str(Path(get_state_dir()) / SYNCSTATE_DB_FILENAME)
+
+
 def get_rate_limit_default() -> str:
     """Get default API rate limit from environment (late binding)."""
     return get_settings().rate_limit_default
@@ -412,11 +417,6 @@ def get_rate_limit_upload() -> str:
 def get_rate_limit_download() -> str:
     """Get download endpoint rate limit from environment (late binding)."""
     return get_settings().rate_limit_download
-
-
-def get_rate_limit_websocket() -> str:
-    """Get WebSocket connection rate limit from environment (late binding)."""
-    return get_settings().rate_limit_websocket
 
 
 def get_rate_limit_ws_messages() -> str:

@@ -16,13 +16,10 @@ deletion time avoid resurrecting the file during a full reconciliation.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from hsync_common.constants import SYNCSTATE_DB_FILENAME
 from hsync_common.models.sqlstore import get_state_db
 from hsync_common.models.tombstone import TombstoneStore, relpath_in_bucket
 
-from hsync_server.config import get_state_dir, get_tombstone_ttl_days
+from hsync_server.config import get_state_db_path, get_tombstone_ttl_days
 from hsync_server.store_registry import PerBucketStores
 
 __all__ = [
@@ -37,15 +34,11 @@ __all__ = [
 _registry: PerBucketStores[TombstoneStore] = PerBucketStores()
 
 
-def _db_path() -> str:
-    return str(Path(get_state_dir()) / SYNCSTATE_DB_FILENAME)
-
-
 def get_tombstone_store(bucket: str) -> TombstoneStore:
     """Return the cached store for a bucket, loading and pruning it on first use."""
 
     def _build() -> TombstoneStore:
-        db_path = _db_path()
+        db_path = get_state_db_path()
         folder_id = get_state_db(db_path).ensure_bucket_id(bucket)
         store = TombstoneStore(
             db_path=db_path,

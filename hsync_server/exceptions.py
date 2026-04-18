@@ -157,13 +157,6 @@ class ConflictError(HSyncError):
     default_message = "Conflict"
 
 
-class AccountNotFoundError(ResourceNotFoundError):
-    """An account referenced by id or name does not exist."""
-
-    error_code = "HSYNC-2003"
-    default_message = "Account not found"
-
-
 # =============================================================================
 # File Operation Errors (4XXX)
 # =============================================================================

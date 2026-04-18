@@ -79,7 +79,6 @@ def fast_scrypt(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
     monkeypatch.setattr(auth_store, "SCRYPT_P", 1)
     monkeypatch.setattr(auth_store, "SCRYPT_MAXMEM", 32 * 1024 * 1024)
     dummy_salt = _secrets.token_bytes(auth_store.SALT_LEN)
-    monkeypatch.setattr(auth_store, "_DUMMY_SALT", dummy_salt)
     # _DUMMY_PHC is the PHC string auth._dummy_verify reads; rebuild it with
     # the patched low scrypt params so the anti-enumeration burn stays fast.
     monkeypatch.setattr(
@@ -99,10 +98,8 @@ def fast_scrypt(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
     for mod_name, attr, val in [
         ("hsync_server.config", "get_state_dir", lambda: state),
         ("hsync_server.config", "get_buckets_path", lambda: buckets),
-        ("hsync_server.auth_store", "get_state_dir", lambda: state),
         ("hsync_server.auth", "get_buckets_path", lambda: buckets),
         ("hsync_server.versions", "get_state_dir", lambda: state),
-        ("hsync_server.tombstones", "get_state_dir", lambda: buckets),
         ("hsync_server.api.authz", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.buckets", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.utils", "get_buckets_path", lambda: buckets),
@@ -288,8 +285,6 @@ async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGener
         patch("hsync_server.api.files.list.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.files.delete.get_buckets_path", return_value=temp_buckets_dir),
         patch("hsync_server.api.buckets.get_buckets_path", return_value=temp_buckets_dir),
-        patch("hsync_server.tombstones.get_state_dir", return_value=temp_buckets_dir),
-        patch("hsync_server.versions.get_state_dir", return_value=temp_buckets_dir),
     ):
         transport = ASGITransport(app=test_app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:

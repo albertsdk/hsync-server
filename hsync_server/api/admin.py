@@ -14,10 +14,9 @@ Consumers: ``hsync_server.main`` (router inclusion).
 
 from __future__ import annotations
 
-import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from loguru import logger as log
 from pydantic import BaseModel, Field
@@ -27,9 +26,11 @@ from hsync_server.auth_store import (
     ConflictError,
     TargetNotFoundError,
     get_auth_store,
+    parse_expiry,
     validate_name,
 )
 from hsync_server.exceptions import ValidationError
+from hsync_server.rate_limiter import RATE_LIMIT_ADMIN, limiter
 
 # Sub-router under /api/v1/admin — all endpoints inherit auth_router's
 # verify_api_key dependency, plus require_admin.
@@ -78,21 +79,10 @@ class CreateBucketRequest(BaseModel):
 
 def _parse_expiry(expires_at: str | None, valid_days: int | None) -> int | None:
     """Convert expires_at (RFC3339) or valid_days to Unix UTC, or None."""
-    if expires_at is not None and valid_days is not None:
-        raise ValidationError("Provide at most one of 'expires_at' or 'valid_days'.")
-    if expires_at is not None:
-        from datetime import datetime
-
-        try:
-            dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                raise ValueError("Timestamp must include timezone (UTC).")
-            return int(dt.timestamp())
-        except (ValueError, TypeError) as e:
-            raise ValidationError(f"Invalid expires_at: {e}") from None
-    if valid_days is not None:
-        return int(time.time()) + valid_days * 86400
-    return None
+    try:
+        return parse_expiry(expires_at, valid_days)
+    except ValueError as e:
+        raise ValidationError(str(e)) from None
 
 
 def _account_to_dict(a) -> dict:
@@ -116,7 +106,8 @@ def _account_to_dict(a) -> dict:
 
 
 @admin_router.get("/clients")
-async def list_clients() -> JSONResponse:
+@limiter.limit(RATE_LIMIT_ADMIN)
+async def list_clients(request: Request) -> JSONResponse:
     """List all accounts (never includes hashes or secrets)."""
     store = get_auth_store()
     accounts = store.list_accounts()
@@ -127,7 +118,8 @@ async def list_clients() -> JSONResponse:
 
 
 @admin_router.post("/clients", status_code=status.HTTP_201_CREATED)
-async def create_client(req: CreateClientRequest) -> JSONResponse:
+@limiter.limit(RATE_LIMIT_ADMIN)
+async def create_client(request: Request, req: CreateClientRequest) -> JSONResponse:
     """Create a new account. Returns the token once."""
     try:
         validate_name(req.name)
@@ -163,7 +155,8 @@ async def create_client(req: CreateClientRequest) -> JSONResponse:
 
 
 @admin_router.post("/clients/{client_id}/rotate-key")
-async def rotate_key(client_id: str, req: RotateKeyRequest) -> JSONResponse:
+@limiter.limit(RATE_LIMIT_ADMIN)
+async def rotate_key(request: Request, client_id: str, req: RotateKeyRequest) -> JSONResponse:
     """Rotate the account's key. Returns the new token once."""
     expires_at = _parse_expiry(req.expires_at, req.valid_days)
 
@@ -187,7 +180,8 @@ async def rotate_key(client_id: str, req: RotateKeyRequest) -> JSONResponse:
 
 
 @admin_router.patch("/clients/{client_id}/expiry")
-async def set_expiry(client_id: str, req: SetExpiryRequest) -> JSONResponse:
+@limiter.limit(RATE_LIMIT_ADMIN)
+async def set_expiry(request: Request, client_id: str, req: SetExpiryRequest) -> JSONResponse:
     """Set, extend, or remove the key expiry."""
     if req.none:
         expires_at = None
@@ -212,7 +206,9 @@ async def set_expiry(client_id: str, req: SetExpiryRequest) -> JSONResponse:
 
 
 @admin_router.post("/clients/{client_id}/disable")
+@limiter.limit(RATE_LIMIT_ADMIN)
 async def disable_client(
+    request: Request,
     client_id: str,
     ctx: Annotated[AuthContext, Depends(require_admin)],
 ) -> JSONResponse:
@@ -246,7 +242,8 @@ async def disable_client(
 
 
 @admin_router.post("/clients/{client_id}/enable")
-async def enable_client(client_id: str) -> JSONResponse:
+@limiter.limit(RATE_LIMIT_ADMIN)
+async def enable_client(request: Request, client_id: str) -> JSONResponse:
     """Enable a previously disabled account."""
     store = get_auth_store()
     try:
@@ -264,7 +261,9 @@ async def enable_client(client_id: str) -> JSONResponse:
 
 
 @admin_router.delete("/clients/{client_id}")
+@limiter.limit(RATE_LIMIT_ADMIN)
 async def delete_client(
+    request: Request,
     client_id: str,
     cascade: bool = False,
 ) -> JSONResponse:
@@ -296,7 +295,8 @@ async def delete_client(
 
 
 @admin_router.get("/buckets")
-async def list_all_buckets() -> JSONResponse:
+@limiter.limit(RATE_LIMIT_ADMIN)
+async def list_all_buckets(request: Request) -> JSONResponse:
     """List all buckets (FS ∪ membership), including orphans and ghosts."""
     store = get_auth_store()
     buckets = store.list_all_buckets()
@@ -307,7 +307,8 @@ async def list_all_buckets() -> JSONResponse:
 
 
 @admin_router.post("/buckets", status_code=status.HTTP_201_CREATED)
-async def create_bucket_on_behalf(req: CreateBucketRequest) -> JSONResponse:
+@limiter.limit(RATE_LIMIT_ADMIN)
+async def create_bucket_on_behalf(request: Request, req: CreateBucketRequest) -> JSONResponse:
     """Create a bucket on behalf of a specified owner (admin only)."""
     from pathlib import Path
 

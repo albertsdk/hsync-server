@@ -137,6 +137,26 @@ async def get_upload_status(
     )
 
 
+def _emit_symlink(file_path: str, bucket_root: str) -> dict | None:
+    """Return a bucket-relative symlink entry, or None to skip it."""
+    try:
+        link = Symlink.get(file_path)
+    except OSError:
+        return None
+    if link is None:
+        return None
+    if link.target is None or not is_safe_symlink_target(file_path, link.target, bucket_root):
+        log.warning(
+            f"{ActionLabel.SECURITY} Symlink target escapes bucket, "
+            f'skipping: "{file_path}" -> "{link.target}"'
+        )
+        return None
+    rel = os.path.relpath(file_path, bucket_root)
+    entry = link.to_dict()
+    entry["filepath"] = rel
+    return entry
+
+
 @auth_router.get("/api/v1/buckets/{bucket}/files")
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def get_files(
@@ -200,23 +220,8 @@ async def get_files(
             # A peer will recreate the link structurally from the target field,
             # and a escaping symlink is skipped entirely.
             if Path(file_path).is_symlink():
-                try:
-                    link = Symlink.get(file_path)
-                except OSError:
-                    link = None
-                if link is not None and not is_safe_symlink_target(
-                    file_path, link.target, bucket_root
-                ):
-                    log.warning(
-                        f"{ActionLabel.SECURITY} Symlink target escapes bucket, "
-                        f'skipping: "{file_path}" -> "{link.target}"'
-                    )
-                    continue
-                if link is not None:
-                    # Normalize to bucket-relative filepath (mirror File.from_dict).
-                    rel = os.path.relpath(file_path, bucket_root)
-                    entry = link.to_dict()
-                    entry["filepath"] = rel
+                entry = _emit_symlink(file_path, bucket_root)
+                if entry is not None:
                     file_list.append(entry)
                 continue
 
@@ -236,22 +241,8 @@ async def get_files(
         for d in dirs:
             d_path = f"{root}/{d}"
             if Path(d_path).is_symlink():
-                try:
-                    link = Symlink.get(d_path)
-                except OSError:
-                    link = None
-                if link is not None and not is_safe_symlink_target(
-                    d_path, link.target, bucket_root
-                ):
-                    log.warning(
-                        f"{ActionLabel.SECURITY} Symlink target escapes bucket, "
-                        f'skipping: "{d_path}" -> "{link.target}"'
-                    )
-                    continue
-                if link is not None:
-                    rel = os.path.relpath(d_path, bucket_root)
-                    entry = link.to_dict()
-                    entry["filepath"] = rel
+                entry = _emit_symlink(d_path, bucket_root)
+                if entry is not None:
                     file_list.append(entry)
 
     # Sort by mtime ascending (oldest first) to prioritize updating older files

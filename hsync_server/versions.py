@@ -30,11 +30,10 @@ from __future__ import annotations
 import secrets
 from pathlib import Path
 
-from hsync_common.constants import SYNCSTATE_DB_FILENAME
 from hsync_common.models.sqlstore import get_state_db
 from hsync_common.models.version import SyncStateStore, relpath_in_bucket
 
-from hsync_server.config import get_state_dir
+from hsync_server.config import get_state_db_path, get_state_dir
 from hsync_server.store_registry import PerBucketStores
 
 __all__ = [
@@ -54,15 +53,11 @@ _registry: PerBucketStores[SyncStateStore] = PerBucketStores()
 _SERVER_CID_FILENAME = ".hsyncnodeid"
 
 
-def _db_path() -> str:
-    return str(Path(get_state_dir()) / SYNCSTATE_DB_FILENAME)
-
-
 def get_version_store(bucket: str) -> SyncStateStore:
     """Return the cached store for a bucket, loading it on first use."""
 
     def _build() -> SyncStateStore:
-        db_path = _db_path()
+        db_path = get_state_db_path()
         folder_id = get_state_db(db_path).ensure_bucket_id(bucket)
         store = SyncStateStore(
             db_path=db_path,

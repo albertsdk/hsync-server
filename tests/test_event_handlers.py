@@ -7,24 +7,27 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from hsync_common.path_validation import is_safe_symlink_target
 
 import hsync_server.tombstones as tombstones
-from hsync_server.api.event_handlers import (
+from hsync_server.api.events_handlers.handlers import (
     handle_added_event,
     handle_deleted_event,
     handle_modified_event,
     handle_renamed_event,
     handle_symlink_event,
-    is_path_within_bucket,
-    is_safe_symlink_target,
 )
+from hsync_server.api.events_handlers.validation import is_path_within_bucket
 
 
 @pytest.fixture(autouse=True)
 def _isolate_tombstones(tmp_path):
     """Keep tombstone state inside the test tmp dir and reset the cache."""
+    from hsync_common.constants import SYNCSTATE_DB_FILENAME
+
     tombstones.reset_cache()
-    with patch.object(tombstones, "get_state_dir", return_value=str(tmp_path)):
+    db_path = str(tmp_path / SYNCSTATE_DB_FILENAME)
+    with patch.object(tombstones, "get_state_db_path", return_value=db_path):
         yield
     tombstones.reset_cache()
 

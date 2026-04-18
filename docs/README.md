@@ -119,7 +119,7 @@ all defaults.
 | `HSYNC_RATE_LIMIT_DEFAULT` | `500/minute` | Default per-IP rate limit |
 | `HSYNC_RATE_LIMIT_UPLOAD` | `200/minute` | Upload endpoint rate limit |
 | `HSYNC_RATE_LIMIT_DOWNLOAD` | `1000/minute` | Download endpoint rate limit |
-| `HSYNC_RATE_LIMIT_WEBSOCKET` | `50/minute` | WebSocket connection rate limit |
+| `HSYNC_RATE_LIMIT_ADMIN` | `20/minute` | Admin endpoint rate limit |
 | `HSYNC_RATE_LIMIT_WS_MESSAGES` | `10/second` | WebSocket message rate limit |
 | `HSYNC_TRUSTED_PROXIES` | — | Comma-separated reverse-proxy IPs for `X-Forwarded-For` |
 | `HSYNC_WS_HEARTBEAT_INTERVAL` | `30` | WebSocket heartbeat interval (seconds) |

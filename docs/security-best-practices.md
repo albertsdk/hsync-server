@@ -183,7 +183,6 @@ reasonable for most deployments, but adjust them based on your workload:
 |----------|---------|-----------------|
 | `HSYNC_RATE_LIMIT_UPLOAD` | 200/min | Many clients uploading simultaneously |
 | `HSYNC_RATE_LIMIT_DOWNLOAD` | 1000/min | High-traffic read-heavy workloads |
-| `HSYNC_RATE_LIMIT_WEBSOCKET` | 50/min | Many clients reconnecting after network blips |
 | `HSYNC_RATE_LIMIT_WS_MESSAGES` | 10/sec | High-frequency file change events |
 
 > Setting any limit to `0` disables it entirely — not recommended for production.
