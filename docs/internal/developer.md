@@ -153,7 +153,7 @@ accessible to load balancers and monitoring tools without credentials.
 # Simplified wiring from main.py
 app = FastAPI()
 app.include_router(public_router)  # no auth
-app.include_router(auth_router)   # account token required
+app.include_router(auth_router)  # account token required
 app.include_router(admin_router)  # admin role required
 ```
 
