@@ -3,11 +3,38 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+from collections.abc import Generator
 from pathlib import Path
+
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOCKER_SCRIPT = PROJECT_ROOT / "docker.sh"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_host_dirs(tmp_path: Path) -> Generator[None]:
+    """Hide leftover host ``state/``/``buckets/`` dirs during each test.
+
+    ``docker.sh`` migrates ``state/`` and ``buckets/`` into named volumes and
+    verifies the copy by counting entries; a leftover dev directory would make
+    that verification fail against the fake docker (which records args without
+    copying). Move any existing dirs aside and restore them afterwards.
+    """
+    moved: list[tuple[Path, Path]] = []
+    for name in ("state", "buckets"):
+        src = PROJECT_ROOT / name
+        if src.exists():
+            dst = tmp_path / f"{name}.hidden"
+            shutil.move(str(src), str(dst))  # cross-device safe (tmp_path is on /tmp)
+            moved.append((src, dst))
+    try:
+        yield
+    finally:
+        for src, dst in moved:
+            shutil.move(str(dst), str(src))
 
 
 def _base_env(tmp_path: Path, args_file: Path) -> dict[str, str]:
