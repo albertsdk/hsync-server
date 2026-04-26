@@ -153,11 +153,15 @@ control its behavior:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HSYNC_DELTA_ENABLED` | `true` | Enable/disable delta transfer entirely |
-| `HSYNC_DELTA_MIN_FILE_SIZE` | `262144` (256 KB) | Minimum file size for delta in server mode |
-| `HSYNC_DELTA_MAX_CHANGE_RATIO` | `0.50` | Maximum ratio of changed blocks (0.50 = 50%) before delta is rejected |
+| `HSYNC_DELTA_ENABLED` | `true` | Enable/disable delta transfer endpoints on the server |
 | `HSYNC_DELTA_TOKEN_TTL` | `300` | Seconds a literal-payload download token stays valid |
 | `HSYNC_RATE_LIMIT_DELTA` | `100/minute` | Rate limit for delta transfer endpoints |
+
+`HSYNC_DELTA_MIN_FILE_SIZE` and `HSYNC_DELTA_MAX_CHANGE_RATIO` may appear in
+the settings model but the **server does not read them**. Worthwhileness
+(minimum size, max change ratio) is decided by the client using
+`hsync-common` constants. Changing those two variables on the server has no
+effect.
 
 Disable delta transfer with:
 

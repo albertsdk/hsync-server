@@ -221,7 +221,7 @@ authorization is determined by `(account role, bucket membership)`.
 | Setting | Default | Description |
 |---|---|---|
 | `HSYNC_TOMBSTONE_TTL_DAYS` | configured (0 = forever) | Days to retain deletion markers before garbage collection. |
-| `HSYNC_DELTA_TOKEN_TTL` | 600 s (min 30) | Validity of delta download tokens. |
+| `HSYNC_DELTA_TOKEN_TTL` | 300 s (min 30) | Validity of delta download tokens. |
 | `key_expires_at` (per account) | no expiry | Optional expiry of an account's key. |
 
 ### Other global properties
@@ -229,8 +229,7 @@ authorization is determined by `(account role, bucket membership)`.
 | Setting | Default | Description |
 |---|---|---|
 | `HSYNC_COMPRESSION_ENABLED` | `true` | zstd compression of transfers. |
-| `HSYNC_DELTA_ENABLED` | `true` | rsync-style delta transfer. |
-| `HSYNC_DELTA_MIN_FILE_SIZE` | 256 KB | Minimum size to use delta transfer. |
+| `HSYNC_DELTA_ENABLED` | `true` | rsync-style delta transfer endpoints. |
 | `HSYNC_MAX_UPLOAD_SIZE` | configured | Upload size limit. |
 | `HSYNC_CORS_ENABLED` / `HSYNC_CORS_ORIGINS` | `false` / — | CORS control. |
 | Rate limits (`HSYNC_RATE_LIMIT_*`) | various | Per-IP limits; admin endpoints use a stricter limit (`20/minute`). |

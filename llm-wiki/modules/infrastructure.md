@@ -14,15 +14,17 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `CLAUDE.m
   `get_admin_key` (`:357`), `get_max_upload_size` (`:397`),
   `get_compression_enabled` (`:437`), SSL getters (`:412`–`:432`),
   WS getters (`:442`–`:462`), rate-limit getters (`:367`–`:392`),
-  `get_tombstone_ttl_days` (`:472`), delta getters (`get_delta_enabled`,
-  `get_delta_min_file_size`, `get_delta_max_change_ratio`, `get_delta_token_ttl`).
+  `get_tombstone_ttl_days` (`:527`), delta getters (`get_delta_enabled`,
+  `get_delta_token_ttl` only — **no** `get_delta_min_file_size` /
+  `get_delta_max_change_ratio`; those Settings fields are unused).
 - Validation sets: `VALID_LOG_LEVELS` (`:34`), `VALID_LOG_FORMATS` (`:43`).
 - Admin-key validity (64 lowercase hex) enforced by a field_validator at load
   time; the `lifespan` bootstraps the admin account (`main.py:51`). A leftover
   `HSYNC_API_KEY` in the environment fails startup with a migration message.
-- Delta transfer config: `delta_enabled` (default `true`), `delta_min_file_size`
-  (256 KB), `delta_max_change_ratio` (0.50 = 50%), `delta_token_ttl` (300s),
-  `rate_limit_delta` ("100/minute").
+- Delta transfer config that **takes effect**: `delta_enabled` (default
+  `true`), `delta_token_ttl` (300s), `rate_limit_delta` ("100/minute").
+  `delta_min_file_size` / `delta_max_change_ratio` exist on `Settings` but
+  are never read; worthwhileness is client-side (`hsync_common` constants).
 
 ## Authentication (`auth.py` + `auth_store.py`)
 
@@ -62,8 +64,9 @@ Wired as a router-level dependency on `auth_router`; `require_admin` gates
 
 ## Hash cache (`hashes.py`)
 
-In-memory `FILE_HASHES: dict[str, tuple[str, int, int]]` (`hashes.py`) mapping
-`sha256(filepath) -> (file_sha256, mtime_ns, size)`. `set_sha256_hash` captures
+In-memory unbounded `FILE_HASHES: dict[str, tuple[str, int, int]]` (`hashes.py`)
+mapping `sha256(filepath) -> (file_sha256, mtime_ns, size)`. **Not LRU** — no
+eviction except stale mtime/size on read. `set_sha256_hash` captures
 the current (mtime_ns, size) with the digest; `get_sha256_hash` serves the
 digest **only while the file's current metadata matches the captured pair** —
 a changed or vanished file drops the stale entry and returns `None`, so

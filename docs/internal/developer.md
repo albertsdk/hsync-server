@@ -19,16 +19,14 @@ developers working on the HSYNC Server codebase.
 
 ## Metadata Overhead
 
-The server stores files as plain files on disk — there is no database. The only
-additional metadata is:
+Synced file bytes are plain files on disk. Causal metadata is SQLite
+(`<state_dir>/syncstate.db`: versions, tombstones, accounts, membership).
 
-- **SHA-256 cache**: an in-memory LRU cache (not persisted). Size depends on the
-  number of unique files uploaded since the last restart. Roughly 32 bytes per
-  entry plus key overhead.
-- **Tombstones**: one small JSON file per bucket, typically a few KB even for
-  thousands of deletion markers.
-
-Neither should exceed a few MB in practice.
+- **SHA-256 cache**: in-memory `FILE_HASHES` dict in `hashes.py` (not
+  persisted, **not** LRU). Rebuilt at startup; stale on mtime/size mismatch;
+  unbounded for the process lifetime.
+- **Tombstones / versions**: SQLite tables via `tombstones.py` / `versions.py`,
+  not per-bucket JSON files.
 
 For production capacity planning, see
 [System Requirements](../deployment.md#system-requirements).
@@ -107,7 +105,7 @@ graph LR
 | Application entry | `main.py` | FastAPI app creation, lifespan, middleware wiring |
 | Configuration | `config.py` | Pydantic-settings model for all `HSYNC_*` env vars |
 | Routes | `routers.py` | Top-level router aggregation |
-| Hashing | `hashes.py` | SHA-256 computation and LRU cache |
+| Hashing | `hashes.py` | SHA-256 computation and in-memory (unbounded) cache |
 | Rate limiting | `rate_limiter.py` | Per-endpoint rate limits via slowapi |
 | Middleware | `middleware.py` | Request logging, CORS, trusted proxy handling |
 | Error handlers | `error_handlers.py` | Global exception handlers |

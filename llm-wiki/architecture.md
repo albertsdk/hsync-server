@@ -1,7 +1,8 @@
 # HSYNC Server — Architecture (agent view)
 
 Single FastAPI process. REST for file transfer + bucket management; WebSocket for
-real-time event fan-out. No database — buckets are directories on disk.
+real-time event fan-out. Bucket **bytes** are directories on disk; causal
+versions, tombstones, and accounts live in SQLite `syncstate.db` (ADR-0025).
 
 ## Bootstrap (`main.py`)
 
@@ -89,7 +90,9 @@ partial uploads use the `.part` suffix (common `constants.py`), and deletions le
 tombstones (`tombstones.py`). Causal versions/tombstones live in
 `get_state_dir()/syncstate.db` (ADR-0025); accounts and bucket membership live in
 the same file via the server-only `clients`/`bucket_members` tables
-(`auth_store.py`). The SHA-256 cache is in-memory and rebuilt at startup.
+(`auth_store.py`). The SHA-256 cache is an in-memory unbounded dict, rebuilt at startup (not LRU).
 
-> Human-oriented diagrams (system overview, upload/WS sequences): `../docs/architecture.md`.
-> Decision rationale: [decisions.md](decisions.md) → `../../hsync-common/docs/adr/`.
+> Human-oriented diagrams (system overview, upload/WS sequences):
+> `../docs/internal/architecture.md`.
+> Decision rationale: [decisions.md](decisions.md) →
+> `../../hsync-common/docs/internal/adr/`.

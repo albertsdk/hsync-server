@@ -18,7 +18,7 @@ process-local state and the installation SQLite store.
 
 | State | Location | Lifetime | Persistence |
 | ----- | -------- | -------- | ----------- |
-| SHA-256 cache `FILE_HASHES` | `hashes.py` | process memory | rebuilt at startup from disk (`set_sha256_hashes`) |
+| SHA-256 cache `FILE_HASHES` | `hashes.py` | process memory (unbounded dict, not LRU) | rebuilt at startup from disk (`set_sha256_hashes`) |
 | Per-bucket WS pools | `connection_manager.py:187` (`bucket_manager`) | process memory | none (live connections) |
 | Tombstone stores (per bucket) | `tombstones.py` cache | process memory + SQLite | `syncstate.db` (`tombstones` table) |
 | Version stores (per bucket) | `versions.py` cache | process memory + SQLite | `syncstate.db` (`versions` table) |

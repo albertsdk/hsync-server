@@ -7,9 +7,11 @@ links to the relevant guide.
 
 ### Why run an HSYNC server instead of another sync backend?
 
-- **One container, no database.** The server is a single FastAPI app that stores
-  files as plain files in per-bucket directories — there is no database to
-  provision, tune, or back up separately. See [Architecture](internal/architecture.md).
+- **One container, files on disk.** The server is a single FastAPI app that
+  stores synced bytes as plain files in per-bucket directories. Causal
+  versions, tombstones, and accounts live in SQLite (`syncstate.db` in the
+  state directory) — back that file up with the buckets. See
+  [Architecture](internal/architecture.md).
 - **Run it anywhere.** Pull the prebuilt multi-arch image (`amd64`/`arm64`) from
   GHCR with the [recommended installer](getting-started.md), or choose a source
   or native method from [Installation Alternatives](installation-alternatives.md).
@@ -281,8 +283,9 @@ sudo ufw allow 9753/tcp
 **High memory usage:**
 - Each WebSocket connection uses approximately 50–100 KB of RAM.
 - Reduce `HSYNC_WS_MAX_CONNECTIONS` if memory is constrained.
-- The SHA-256 cache is in-memory and grows with the number of unique files
-  uploaded since the last restart. It is automatically evicted (LRU).
+- The SHA-256 cache is an in-memory dict rebuilt at startup. It is **not**
+  LRU-capped: entries are dropped only when the file's mtime/size no longer
+  match. Memory grows with the number of hashed paths for the process lifetime.
 
 **Slow uploads/downloads:**
 - Check network bandwidth and latency.

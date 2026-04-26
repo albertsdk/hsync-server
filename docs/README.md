@@ -26,16 +26,19 @@ events to connected clients over WebSocket.
 
 ### Metadata overhead
 
-The server stores files as plain files on disk — there is no database. The only
-additional metadata is:
+Synced **file bytes** live as plain files under the buckets directory. Causal
+metadata does **not**: versions, tombstones, accounts, and bucket membership
+are stored in a SQLite database `syncstate.db` under the state directory
+(ADR-0025). Back up that file together with the buckets volume.
 
-- **SHA-256 cache**: an in-memory LRU cache (not persisted). Size depends on the
-  number of unique files uploaded since the last restart. Roughly 32 bytes per
-  entry plus key overhead.
-- **Tombstones**: one small JSON file per bucket, typically a few KB even for
-  thousands of deletion markers.
+Additional process-local metadata:
 
-Neither should exceed a few MB in practice.
+- **SHA-256 cache**: an in-memory `dict` (not persisted, **not** LRU). It is
+  rebuilt at startup by walking the buckets tree and grows with every hashed
+  path for the life of the process. Stale entries are dropped when mtime/size
+  no longer match; there is no size cap.
+- **Tombstones / versions**: SQLite tables in `syncstate.db`, not per-bucket
+  JSON files. Tombstone TTL (default 90 days) only garbage-collects markers.
 
 For detailed performance and scalability guidelines, see the
 [Operations Guide → Performance and Limits](operations.md#performance-and-limits).
@@ -127,7 +130,7 @@ all defaults.
 | `HSYNC_WS_AUTH_TIMEOUT` | `10` | WebSocket authentication timeout (seconds) |
 | `HSYNC_WS_MAX_CONNECTIONS` | `1000` | Maximum total WebSocket connections |
 | `HSYNC_WS_MAX_CONNECTIONS_PER_IP` | `10` | Maximum WebSocket connections per IP |
-| `HSYNC_TOMBSTONE_TTL_DAYS` | `30` | Deletion marker retention (days; `0` = forever) |
+| `HSYNC_TOMBSTONE_TTL_DAYS` | `90` | Deletion marker retention (days; `0` = forever). Markers only; not a recycle bin |
 | `HSYNC_SSL_ENABLED` | `false` (app default) | Enable HTTPS/WSS with auto-generated self-signed certs. The shipped `dev.env` and `prod.env` profiles set it to `true`, so the Docker quickstart serves **https** on this port |
 | `HSYNC_SSL_KEYFILE_PASSWORD` | — | Password for the SSL private key (required when SSL enabled) |
 | `HSYNC_SSL_CERTFILE` | — | Custom SSL certificate path (auto-generated if not set) |
@@ -140,8 +143,6 @@ all defaults.
 | `HSYNC_LOG_COMPRESSION` | `xz` | Compression for rotated logs |
 | `HSYNC_COMPRESSION_ENABLED` | `true` | Enable zstd compression for file transfers |
 | `HSYNC_DELTA_ENABLED` | `true` | Enable rsync-style delta transfer endpoints |
-| `HSYNC_DELTA_MIN_FILE_SIZE` | `262144` (256 KB) | Minimum file size in bytes for delta transfer (files smaller are transferred in full) |
-| `HSYNC_DELTA_MAX_CHANGE_RATIO` | `0.50` | Maximum ratio of changed blocks (0.50 = 50%) before delta is rejected |
 | `HSYNC_DELTA_TOKEN_TTL` | `300` | Seconds a literal-payload download token stays valid |
 | `HSYNC_RATE_LIMIT_DELTA` | `100/minute` | Rate limit for delta transfer endpoints |
 | `HSYNC_RELOAD` | `false` | Enable uvicorn auto-reload (development only) |
