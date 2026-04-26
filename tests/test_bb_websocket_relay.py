@@ -91,14 +91,15 @@ async def _connect_auth(
 
 
 async def _recv_event(ws, timeout: float = 5.0) -> dict:
-    """Receive the next frame, skipping the ``presence`` broadcast frames.
+    """Receive the next file event, skipping ``presence``/``ping`` frames.
 
     Presence frames arrive whenever another client joins/leaves the bucket;
-    black-box event assertions are only interested in file events.
+    heartbeat ``ping`` frames arrive every ``HSYNC_WS_HEARTBEAT_INTERVAL``.
+    Black-box event assertions are only interested in file events.
     """
     while True:
         msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
-        if msg.get("type") != "presence":
+        if msg.get("type") not in ("presence", "ping"):
             return msg
 
 
@@ -148,7 +149,7 @@ class TestWsRelay:
 
             # And subscriber A does NOT receive its own event (echo suppression)
             with pytest.raises(asyncio.TimeoutError):
-                await asyncio.wait_for(sub_a.recv(), timeout=1.5)
+                await _recv_event(sub_a, timeout=1.5)
         finally:
             await sub_a.close()
             await sub_b.close()
@@ -210,7 +211,7 @@ class TestWsRelay:
 
             # And subscriber A is not echoed
             with pytest.raises(asyncio.TimeoutError):
-                await asyncio.wait_for(sub_a.recv(), timeout=1.5)
+                await _recv_event(sub_a, timeout=1.5)
         finally:
             for ws in (sub_a, sub_b):
                 if ws is not None:
