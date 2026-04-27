@@ -26,11 +26,14 @@ utilities.
 
 - Package root: `hsync_server/` (`hsync_server/__init__.py:1`).
 - ASGI app object: `app` in `hsync_server/main.py:77` (FastAPI, lifespan-managed).
-- Version SSOT: `HSYNC_VERSION = VERSION` (`hsync_server/constants.py:29`), sourced
-  from `hsync_common.constants`.
-- API prefix: `/api/v1` (`hsync_server/constants.py:38`).
+- Version SSOT: `HSYNC_VERSION` re-exported from `hsync_common.constants`
+  (`hsync_server/constants.py:25`); wire header names (`HEADER_*`) and the
+  `X-Client-Name` validator (`is_valid_client_name`) are re-exported from the
+  same SSOT (`:21`); `CONTENT_TYPE_OCTET_STREAM` at `:20`.
+- API prefix: `/api/v1` hardcoded per route (e.g. `api/buckets.py:41`); admin
+  sub-router prefix at `api/admin.py:12`.
 - Protocol versions enforced from common SSOT (`hsync_common.protocol.handshake`):
-  REST in `VersionMiddleware` (`middleware.py:111`), WS in `events.py` handshake.
+  REST in `VersionMiddleware` (`middleware.py:130`), WS in `events.py` handshake.
 - Auth: per-account tokens (`hs_<id>_<secret>`) verified via scrypt against the
   auth store (`auth.py` → `auth_store.py`); roles (`admin`/`client`) + bucket
   membership gate access.

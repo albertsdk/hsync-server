@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from hsync_server.constants import (
+    HEADER_CLIENT_NAME,
     HEADER_PROTOCOL_VERSION,
     HEADER_SERVER_VERSION,
     HSYNC_VERSION,
@@ -217,6 +218,67 @@ class TestVersionMiddleware:
         assert "error" in data
         assert data["client_protocol_version"] == "api/999"
         assert data["server_protocol_version"] == PROTOCOL_VERSION_REST
+
+    def test_accepts_valid_client_name(self):
+        """A request identifying a real product is accepted."""
+        app = FastAPI()
+        app.add_middleware(VersionMiddleware)
+
+        @app.get("/test")
+        async def test_endpoint():
+            return {"status": "ok"}
+
+        client = TestClient(app)
+        response = client.get("/test", headers={HEADER_CLIENT_NAME: "hsync-client"})
+
+        assert response.status_code == 200
+
+    def test_rejects_malformed_client_name(self):
+        """A client name that looks like a module file is rejected with 400."""
+        app = FastAPI()
+        app.add_middleware(VersionMiddleware)
+
+        @app.get("/test")
+        async def test_endpoint():
+            return {"status": "ok"}
+
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/test", headers={HEADER_CLIENT_NAME: "main_logic.py"})
+
+        assert response.status_code == 400
+        assert response.headers[HEADER_SERVER_VERSION] == HSYNC_VERSION
+        assert response.headers[HEADER_PROTOCOL_VERSION] == PROTOCOL_VERSION_REST
+        data = response.json()
+        assert data["error"] == "Malformed client name"
+        assert data["client_name"] == "main_logic.py"
+
+    def test_rejects_ws_client_name_whitespace(self):
+        """Whitespace or mixed-case product names are rejected."""
+        app = FastAPI()
+        app.add_middleware(VersionMiddleware)
+
+        @app.get("/test")
+        async def test_endpoint():
+            return {"status": "ok"}
+
+        client = TestClient(app, raise_server_exceptions=False)
+        for bad_name in ("HSYNC Client", "hsync_client"):
+            response = client.get("/test", headers={HEADER_CLIENT_NAME: bad_name})
+            assert response.status_code == 400, bad_name
+
+    def test_missing_client_name_accepted(self):
+        """Requests without the client name (health checks) keep working."""
+        app = FastAPI()
+        app.add_middleware(VersionMiddleware)
+
+        @app.get("/test")
+        async def test_endpoint():
+            return {"status": "ok"}
+
+        client = TestClient(app)
+        response = client.get("/test")
+
+        assert response.status_code == 200
 
     def test_works_without_protocol_header(self):
         """Requests without the protocol header are accepted."""

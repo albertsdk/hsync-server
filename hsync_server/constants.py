@@ -17,18 +17,20 @@ throughout the application, making them easy to find and modify.
 
 # Re-export shared constants from hsync-common
 from hsync_common.constants import (  # noqa: E402, F401
+    CONTENT_TYPE_OCTET_STREAM,
+    HEADER_CLIENT_NAME,
+    HEADER_CLIENT_VERSION,
+    HEADER_PROTOCOL_VERSION,
+    HEADER_SERVER_VERSION,
+    HSYNC_VERSION,
     HSYNCKEEP_FILENAME,
-    VERSION,
+    is_valid_client_name,
 )
 from hsync_common.labels import ActionLabel  # noqa: E402, F401
 from hsync_common.protocol.handshake import (  # noqa: E402, F401
     PROTOCOL_VERSION_REST,
     PROTOCOL_VERSION_WS,
 )
-
-# Application version (re-exported from hsync-common)
-HSYNC_VERSION = VERSION
-
 
 # =============================================================================
 # File Defaults
@@ -42,20 +44,19 @@ DEFAULT_FILE_PERMISSIONS = "664"
 # HTTP Headers
 # =============================================================================
 
-# Custom headers used in responses
-HEADER_CLIENT_NAME = "X-Client-Name"
-HEADER_CLIENT_VERSION = "X-Client-Version"
-HEADER_SERVER_VERSION = "X-Server-Version"
-# Wire-protocol version (single source of truth in hsync_common.protocol). Unlike
-# the app version above, a mismatch here is a hard failure (no legacy support).
-HEADER_PROTOCOL_VERSION = "X-Protocol-Version"
+# Custom headers (values re-exported from hsync_common.constants, the SSOT):
+# HEADER_CLIENT_NAME / HEADER_CLIENT_VERSION / HEADER_SERVER_VERSION.
+# HEADER_PROTOCOL_VERSION carries the wire-protocol version (single source of
+# truth in hsync_common.protocol). Unlike the app version, a mismatch here is
+# a hard failure (no legacy support).
 
 
 # =============================================================================
 # Content Types
 # =============================================================================
 
-CONTENT_TYPE_OCTET_STREAM = "application/octet-stream"
+# CONTENT_TYPE_OCTET_STREAM is re-exported from hsync_common.constants above
+# (SSOT shared with hsync-client and mirrored by hsync-android).
 
 
 # =============================================================================

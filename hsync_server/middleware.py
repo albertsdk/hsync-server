@@ -20,10 +20,12 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse, Response
 
 from .constants import (
+    HEADER_CLIENT_NAME,
     HEADER_PROTOCOL_VERSION,
     HEADER_SERVER_VERSION,
     HSYNC_VERSION,
     PROTOCOL_VERSION_REST,
+    is_valid_client_name,
 )
 from .logger import set_request_id
 
@@ -82,10 +84,13 @@ class VersionMiddleware(BaseHTTPMiddleware):
     2. Hard-fails with 426 when it is present and differs from the server's
        protocol version (there is no legacy protocol to negotiate down to)
     3. Adds X-Server-Version and X-Protocol-Version to every response
+    4. Validates the X-Client-Name slug when present: it must identify a
+       product ("hsync-client", "hsync-android"), never an internal module
+       or file, so values like "main_logic.py" are rejected with 400
 
-    A missing header is accepted so non-client consumers (health checks, the
-    interactive docs, browsers) keep working; only an explicit mismatch is
-    rejected.
+    Missing headers are accepted so non-client consumers (health checks, the
+    interactive docs, browsers) keep working; only an explicit mismatch or
+    malformed value is rejected.
 
     Usage:
         app.add_middleware(VersionMiddleware)
@@ -103,6 +108,24 @@ class VersionMiddleware(BaseHTTPMiddleware):
             The HTTP response with X-Server-Version and X-Protocol-Version
             headers, or 426 Upgrade Required on a protocol-version mismatch.
         """
+        # Validate the client-name slug first: a malformed product identifier
+        # is rejected outright (400), regardless of its protocol version. The
+        # validation rule is the SSOT in hsync_common.constants.
+        client_name = request.headers.get(HEADER_CLIENT_NAME, "")
+        if client_name and not is_valid_client_name(client_name):
+            log.warning(f"Rejecting client with malformed name {client_name!r}")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "Malformed client name",
+                    "client_name": client_name,
+                },
+                headers={
+                    HEADER_SERVER_VERSION: HSYNC_VERSION,
+                    HEADER_PROTOCOL_VERSION: PROTOCOL_VERSION_REST,
+                },
+            )
+
         # Get the client's protocol version from the header (if any)
         client_protocol = request.headers.get(HEADER_PROTOCOL_VERSION, "")
 

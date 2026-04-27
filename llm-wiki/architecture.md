@@ -18,7 +18,7 @@ Added in `main.py` (order matters — last added runs first):
 
 | Order | Middleware | Location | Role |
 | ----- | ---------- | -------- | ---- |
-| 1 | `VersionMiddleware` | `middleware.py:77` | hard-fail 426 on REST protocol mismatch; stamps `X-Server-Version`/`X-Protocol-Version` (`middleware.py:111`) |
+| 1 | `VersionMiddleware` | `middleware.py:78` | hard-fail 426 on REST protocol mismatch; rejects a malformed `X-Client-Name` with 400 (shared `is_valid_client_name` SSOT); stamps `X-Server-Version`/`X-Protocol-Version` (`middleware.py:155`) |
 | 2 | `RequestIdMiddleware` | `middleware.py:31` | per-request id for tracing (`logger.py:63` context) |
 | 3 | `CORSMiddleware` (optional) | `main.py:107` | gated by `get_cors_enabled()` (`config.py:402`) |
 | 4 | `GZipMiddleware` | `main.py:101` | compress responses > 1000 B |
