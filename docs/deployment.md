@@ -6,7 +6,8 @@ with automatic TLS, reverse proxy configuration, and running as a systemd servic
 > For day-to-day operations (backup, upgrade, monitoring, performance) see the
 > [Operations Guide](operations.md).
 >
-> For a private-LAN quick start, see [Getting Started](getting-started.md).
+> For a private-LAN quick start, see [Path A — Docker](getting-started-docker.md)
+> or [Path B — Native](getting-started-native.md).
 > For source builds and other methods, see
 > [Installation Alternatives](installation-alternatives.md).
 
@@ -49,8 +50,8 @@ with automatic TLS, reverse proxy configuration, and running as a systemd servic
 
 The project includes a [`docker.sh`](../docker.sh) script for contributors and
 source deployments. It handles image building, container lifecycle, volume
-management, and SSL configuration. It is not the release quick start; use the
-[verified Compose bootstrap](getting-started.md) unless you need a local build.
+management, and SSL configuration. It is not the release quick start; use
+[Path A — Docker](getting-started-docker.md) unless you need a local build.
 
 ### Available commands
 
@@ -96,7 +97,7 @@ management, and SSL configuration. It is not the release quick start; use the
 ./docker.sh logs -f
 
 # 5. Smoke test (self-signed cert, hence -k)
-curl -k https://localhost:9753/health
+curl -k https://localhost:9753/health && echo "SERVER OK!"
 ```
 
 > The URL scheme printed by `docker.sh start` is derived from the env-file:
@@ -411,7 +412,10 @@ sudo lsof -i :9753
 ./docker.sh logs
 ```
 Common causes:
-- `HSYNC_ADMIN_KEY` not set — the server requires an API key.
+- `HSYNC_ADMIN_KEY` malformed — must be exactly 64 lowercase hex characters
+  (generate with `openssl rand -hex 32`). When unset, the server generates a
+  secret itself and prints the admin token once; it does not require the
+  variable to start.
 - `HSYNC_SSL_KEYFILE_PASSWORD` missing when `HSYNC_SSL_ENABLED=true`.
 - Volume permissions — with `docker.sh` the named volumes are created with the
   correct ownership automatically; if you use plain `docker run` bind-mounts,
@@ -429,7 +433,7 @@ Set `HSYNC_SSL_KEYFILE_PASSWORD` when `HSYNC_SSL_ENABLED=true`.
 ```bash
 # Verify the server is listening (use -k for the self-signed certificate
 # when HSYNC_SSL_ENABLED=true, as in the shipped env-file profiles)
-curl -k https://localhost:9753/health
+curl -k https://localhost:9753/health && echo "SERVER OK!"
 
 # Check firewall rules
 sudo ufw status
@@ -440,11 +444,15 @@ sudo ufw allow 9753/tcp
 **TLS certificate error:**
 - Ensure the reverse proxy is properly configured and the certificate is valid.
 - Clients connecting with self-signed certificates need `--ca-cert` or `--insecure`.
-  See the [Client Configuration → SSL/TLS](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration.md#ssltls-httpswss)
+  See the [Client Configuration — Server Mode → Server Connection Options](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration-server.md#server-connection-options)
   guide.
 
-**Admin key mismatch:**
-- Verify that the client is using the same `HSYNC_ADMIN_KEY` as the server.
+**Authentication failure (`401` / WS close `4003`):**
+- The client must present a valid account token (`hs_<id>_<secret>`) via its
+  `HSYNC_API_KEY` environment variable. `HSYNC_ADMIN_KEY` is a server-side
+  bootstrap secret only — never set it on clients.
+- Issue tokens with `hsync-server admin client add --name <name> --role client`
+  (see [Roles and Permissions → CLI Tools](roles-and-permissions.md#cli-tools)).
 - Check the server logs for authentication failures.
 
 **Wrong WebSocket endpoint:**
@@ -475,7 +483,8 @@ Or set `HSYNC_LOG_LEVEL=debug` in your environment file.
 ## See also
 
 - [Operations Guide](operations.md) — backup, upgrade, monitoring, performance.
-- [Getting Started](getting-started.md) — recommended private-LAN install.
+- [Getting Started](getting-started.md) — chooser between the Docker and native
+  install paths.
 - [Installation Alternatives](installation-alternatives.md) — source and manual installs.
 - [API Reference](api.md) — complete REST + WebSocket contract.
 - [Architecture](internal/architecture.md) — server components and module structure.

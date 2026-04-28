@@ -45,60 +45,55 @@ For detailed performance and scalability guidelines, see the
 
 ## Start here
 
-- **Private LAN:** follow the single [Getting Started guide](getting-started.md).
-- **Public production server:** follow the [Deployment Guide](deployment.md).
-- **Manual or development setup:** choose from
-  [Installation Alternatives](installation-alternatives.md).
+This guide is organised as a linear journey; pick the step that matches where
+you are.
 
-The quick-start commands live only in `getting-started.md` so installation
-instructions cannot drift between this index and the project README.
+### 1. Choose your server
 
-## Where to start
+Decide which installation fits you, then follow that path end to end:
 
-- **New to HSYNC?** → Start with the [Architecture overview](internal/architecture.md).
-- **Deploying for the first time?** → Go to the [Deployment Guide](deployment.md).
-- **Already running?** → See [Operations Guide](operations.md) for day-to-day tasks.
-- **Hardening a production instance?** → Follow the [Security Best Practices](security-best-practices.md) checklist.
-- **Integrating with the API?** → Read the [API Reference](api.md).
-- **Contributing to the project?** → Start with the [Developer Guide](internal/developer.md).
+- [Path A — Docker](getting-started-docker.md): released container image,
+  Docker Compose, certificate management. **Best for private LAN, least
+  setup.**
+- [Path B — Native (Poetry/systemd)](getting-started-native.md): pure Python
+  process or systemd unit, no containers. **Best for development machines and
+  hosts without Docker.**
 
-## Documentation map
+Start from the [Getting Started](getting-started.md) chooser for a comparison
+table that helps you pick a path.
 
-### Getting Started & Deployment
+### 2. Connect your clients
 
-| Document | What it covers |
-| -------- | -------------- |
-| [getting-started.md](getting-started.md) | Canonical private-LAN installation and first connection. |
-| [installation-alternatives.md](installation-alternatives.md) | Manual Compose, direct Docker, source build, and Poetry. |
-| [deployment.md](deployment.md) | Production deployment: Docker Compose, systemd service, troubleshooting. |
-| [reverse-proxy.md](reverse-proxy.md) | Reverse proxy configuration: Nginx and Traefik examples. |
+Each client authenticates with an account token (`hs_<id>_<secret>`) in
+`HSYNC_API_KEY`. The path you chose shows the exact commands to create the
+account, create the bucket, and grant access. The full command reference —
+including how to invoke the CLI on each installation type — is in
+[Roles and Permissions](roles-and-permissions.md#cli-tools).
 
-### Day-to-Day Operations
+### 3. Administrate and operate
 
-| Document | What it covers |
-| -------- | -------------- |
-| [operations.md](operations.md) | Backup/restore, upgrade, monitoring, performance. |
-| [security-best-practices.md](security-best-practices.md) | Hardening checklist: Admin keys, firewall, TLS, rate limiting, logging. |
-| [faq.md](faq.md) | Frequently asked questions, troubleshooting, and why to choose HSYNC. |
-| [log-labels.md](log-labels.md) | Every action label that can appear in the server logs and what it means. |
+| Task | Guide |
+| --- | --- |
+| Backup, restore, upgrade, monitoring | [Operations Guide](operations.md) |
+| Roles, permissions, keys, bucket membership | [Roles and Permissions](roles-and-permissions.md) |
+| Public Internet production (reverse proxy, systemd) | [Deployment Guide](deployment.md) |
+| Reverse proxy examples (nginx/Traefik) | [Reverse Proxy Guide](reverse-proxy.md) |
+| Security hardening checklist | [Security Best Practices](security-best-practices.md) |
+| Troubleshooting and FAQ | [FAQ](faq.md) |
 
-### Technical Reference
-
-| Document | What it covers |
-| -------- | -------------- |
-| [api.md](api.md) | Complete REST + WebSocket API reference. |
-| [authentication.md](authentication.md) | Server-mode authentication flow: WebSocket handshake, account token validation, CID registration. |
-| [roles-and-permissions.md](roles-and-permissions.md) | Roles (`admin`/`owner`/`member`), permissions, bucket properties, key management, CLI and API tools. |
-| [sync-flow.md](sync-flow.md) | Server-side sync flow: file storage, event broadcast, tombstones. |
-| [delta-transfer.md](delta-transfer.md) | Rsync-style block sync protocol — algorithm, endpoints, and configuration. |
-
-### Internal / For Contributors
+### 4. Reference & internals
 
 | Document | What it covers |
 | -------- | -------------- |
-| [internal/architecture.md](internal/architecture.md) | Server components: FastAPI app, connection manager, storage, hashing. |
-| [internal/developer.md](internal/developer.md) | Internal implementation details: module structure and component reference. |
-| [internal/testing.md](internal/testing.md) | Test suite guide: structure, fixtures, mocking, contract tests. |
+| [api.md](api.md) | Complete REST + WebSocket contract (endpoints, payloads, error codes). |
+| [authentication.md](authentication.md) | Auth flow: WebSocket handshake, account token validation, CID registration. |
+| [sync-flow.md](sync-flow.md) | Server-side sync flow: storage, event broadcast, tombstones. |
+| [delta-transfer.md](delta-transfer.md) | Rsync-style block sync protocol. |
+| [installation-alternatives.md](installation-alternatives.md) | Manual Compose, direct Docker run, source Docker build, Poetry. |
+| [log-labels.md](log-labels.md) | Every action label the server can write to its logs. |
+| [internal/architecture.md](internal/architecture.md) | Server internals (FastAPI app, connection manager, storage, hashing). |
+| [internal/developer.md](internal/developer.md) | Contributor: module structure and component reference. |
+| [internal/testing.md](internal/testing.md) | Contributor: test suite structure, fixtures, contract tests. |
 
 ## Environment Variables
 

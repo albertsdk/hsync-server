@@ -98,25 +98,71 @@ tests/
 
 | Fixture | Scope | Purpose |
 |---------|-------|---------|
-| `test_client` | function | FastAPI `TestClient` instance for sync HTTP testing |
-| `temp_bucket` | function | Temporary bucket directory with test files |
-| `auth_headers` | function | Pre-built `Authorization: Bearer` headers |
-| `api_key` | session | Random API key valid for the test session |
-| `mock_config` | function | Patched configuration for isolated tests |
+| `fast_scrypt` (autouse) | function | Low-cost scrypt params, isolated temp `state/` and `buckets/` dirs (monkeypatched per module), cache resets, admin bootstrap |
+| `no_tests_touch_real_repo_state` (autouse) | function | Fails any test that mutates the repository's real `state/syncstate.db` or creates/removes dirs under the real `buckets/` |
+| `deterministic_cli_output` (autouse) | function | Forced plain, uncolored CLI output (CI-safe assertions) |
+| `_prevent_os_environ_leakage` (autouse) | function | Removes env vars added by a test on teardown |
+| `client` / `client_no_auth` | function | Async HTTPX clients against a fresh FastAPI test app, with/without admin auth |
+| `test_app` | function | Assembled router/handler stack on isolated state (no uvicorn) |
+| `live_server` / `start_live_server` / `bb_http` / `bb_bucket` | module/function | Black-box harness: real server subprocess on an ephemeral port with scrubbed `HSYNC_*` env and temp dirs |
 
 ### Using fixtures
 
+All file paths inside a test go through `get_buckets_path()` / `get_state_dir()`,
+which the `fast_scrypt` fixture has already pointed at the test's temp dirs:
+
 ```python
-def test_upload_file(test_client, temp_bucket, auth_headers):
+import os
+from pathlib import Path
+
+import pytest
+
+from hsync_server.config import get_buckets_path
+
+
+@pytest.mark.asyncio
+async def test_upload_file(client):
     """Upload a file and verify it's stored correctly."""
-    response = test_client.post(
+    os.makedirs(Path(get_buckets_path()) / "test-bucket", exist_ok=True)
+    response = await client.post(
         "/api/v1/buckets/test-bucket/files",
-        headers=auth_headers,
         files={"file": ("hello.txt", b"Hello, World!", "text/plain")},
     )
     assert response.status_code == 201
-    assert (temp_bucket / "hello.txt").read_text() == "Hello, World!"
+    stored = Path(get_buckets_path()) / "test-bucket" / "hello.txt"
+    assert stored.read_text() == "Hello, World!"
 ```
+
+## Test isolation — never touch the repository's real state
+
+The server's settings default to the repository layout (`./buckets`, `./state`
+relative to the project root, `config.py:_HSYNC_PATH`), so a test that forgets
+to isolate its state would silently pollute the developer's real
+`syncstate.db` and `buckets/` with test rows and directories (the historical
+cause of "ghost" test buckets such as `bb-*` shown by `admin bucket list`).
+The suite enforces isolation at **three independent levels**:
+
+1. **`fast_scrypt` (autouse)** — every in-process test runs against temporary
+   `state/` and `buckets/` dirs: `get_state_dir` and `get_buckets_path` are
+   monkeypatched in every module that binds them at import time (the list in
+   `conftest.py` is the single place to extend when a new module imports those
+   helpers), followed by cache resets and admin bootstrap.
+2. **Black-box harness** — the live server runs as a **subprocess** whose
+   environment is scrubbed of every `HSYNC_*` variable and re-pointed to
+   `tempfile.mkdtemp` directories (`conftest.py:_start_live_server`).
+3. **`no_tests_touch_real_repo_state` (autouse safety net)** — before and after
+   each test it takes a read-only logical snapshot of the repository's real
+   `state/syncstate.db` (tables `clients`, `bucket_members`, `buckets`,
+   `folders`, `versions`, `tombstones`; opened with `mode=ro`, so the snapshot
+   itself can never create `-wal`/`-shm` side files) and of the real `buckets/`
+   directory set. Any difference fails the **offending test** with an
+   explanatory message — leftovers become a red test instead of silent
+   pollution.
+
+> If a run ever leaves test rows behind anyway (for example from an older run),
+> clean them up with
+> `hsync-server admin bucket delete --bucket <name> --db-only`, which removes
+> only the DB rows of a ghost bucket whose directory no longer exists.
 
 ## Writing new tests
 

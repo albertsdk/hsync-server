@@ -5,11 +5,13 @@ Pytest fixtures for hsync-server tests.
 import os
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
 import time
 from collections.abc import AsyncGenerator, Generator
+from pathlib import Path
 from unittest.mock import patch
 
 import httpx
@@ -41,6 +43,77 @@ def _prevent_os_environ_leakage(monkeypatch: pytest.MonkeyPatch) -> Generator[No
     added = after - before
     for key in sorted(added):
         monkeypatch.delenv(key, raising=False)
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REAL_STATE_DIR = _REPO_ROOT / "state"
+_REAL_BUCKETS_DIR = _REPO_ROOT / "buckets"
+
+
+def _real_db_snapshot() -> tuple[tuple[str, tuple], ...] | None:
+    """Return a read-only logical snapshot of the repo's real ``syncstate.db``.
+
+    Returns ``None`` when the DB does not exist (nothing to protect).
+    Opening is strictly read-only (``mode=ro``) so taking the snapshot can
+    never create ``-wal``/``-shm`` side files in the real state dir.
+    """
+    db = _REAL_STATE_DIR / "syncstate.db"
+    if not db.exists():
+        return None
+    tables = ("clients", "bucket_members", "buckets", "folders", "versions", "tombstones")
+    try:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    except sqlite3.OperationalError:
+        return None
+    try:
+        return tuple(
+            (table, row)
+            for table in tables
+            for row in conn.execute(f"SELECT * FROM {table}").fetchall()
+        )
+    finally:
+        conn.close()
+
+
+def _real_buckets_snapshot() -> frozenset[str]:
+    """Return the set of directory names currently in the repo's real buckets dir."""
+    if not _REAL_BUCKETS_DIR.exists():
+        return frozenset()
+    return frozenset(entry.name for entry in _REAL_BUCKETS_DIR.iterdir() if entry.is_dir())
+
+
+@pytest.fixture(autouse=True)
+def no_tests_touch_real_repo_state(
+    request: pytest.FixtureRequest, fast_scrypt: None
+) -> Generator[None]:
+    """Fail loudly if a test writes to the repository's real state/buckets.
+
+    The ``fast_scrypt`` fixture isolates every in-process test to a temporary
+    state dir and buckets dir; the black-box harness scrubs ``HSYNC_*`` and
+    points the subprocess server at temp dirs too. This fixture is the safety
+    net for the residual risk: if any code path still resolves to the repo's
+    real ``state/syncstate.db`` (or creates directories under ``buckets/``),
+    the logical snapshot changes and the offending test fails instead of
+    silently leaving test buckets behind (see the ``bb-*`` ghost rows that
+    motivated it).
+    """
+    before_db = _real_db_snapshot()
+    before_buckets = _real_buckets_snapshot()
+    yield
+    after_db = _real_db_snapshot()
+    after_buckets = _real_buckets_snapshot()
+    if after_db != before_db:
+        pytest.fail(
+            f"{request.node.nodeid} mutated the repository's real {_REAL_STATE_DIR}/syncstate.db. "
+            "Tests must use the isolated tmp dirs provided by the fast_scrypt fixture "
+            "or scrub HSYNC_* in subprocess servers."
+        )
+    if after_buckets != before_buckets:
+        pytest.fail(
+            f"{request.node.nodeid} created or removed directories under the repository's real "
+            f"{_REAL_BUCKETS_DIR}. Tests must use the isolated tmp dirs provided by the "
+            "fast_scrypt fixture or scrub HSYNC_* in subprocess servers."
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -112,6 +185,7 @@ def fast_scrypt(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
         ("hsync_server.api.files.delta.apply", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.files.delta.tokens", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.admin", "get_buckets_path", lambda: buckets),
+        ("hsync_server.bucket_provisioning", "get_buckets_path", lambda: buckets),
     ]:
         try:
             mod = __import__(mod_name, fromlist=[attr])

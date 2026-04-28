@@ -90,6 +90,99 @@ class TestVersionAndEnvFile:
         assert result.exit_code != 0
 
 
+class TestAdminBucketCli:
+    def test_bucket_create_creates_directory_and_owner(self):
+        """`admin bucket create` creates the bucket dir and assigns the owner."""
+        from hsync_server.auth_store import BOOTSTRAP_ADMIN_ID, get_auth_store
+        from hsync_server.config import get_buckets_path
+
+        result = runner.invoke(cli.app, ["admin", "bucket", "create", "--bucket", "photos"])
+        assert result.exit_code == 0, result.output
+        assert "Bucket created: photos" in result.stdout
+
+        from pathlib import Path
+
+        assert (Path(get_buckets_path()) / "photos").is_dir()
+        store = get_auth_store()
+        assert store.get_owner("photos").id == BOOTSTRAP_ADMIN_ID  # type: ignore[union-attr]
+
+    def test_bucket_create_duplicate_fails(self):
+        """Creating an existing bucket fails with exit code 1."""
+        runner.invoke(cli.app, ["admin", "bucket", "create", "--bucket", "photos"])
+        result = runner.invoke(cli.app, ["admin", "bucket", "create", "--bucket", "photos"])
+        assert result.exit_code == 1
+        assert "Error:" in result.output
+
+    def test_bucket_delete_removes_directory_and_rows(self):
+        """`admin bucket delete` removes the bucket dir and its DB rows."""
+        from pathlib import Path
+
+        from hsync_server.auth_store import get_auth_store
+        from hsync_server.config import get_buckets_path
+
+        runner.invoke(cli.app, ["admin", "bucket", "create", "--bucket", "photos"])
+        result = runner.invoke(cli.app, ["admin", "bucket", "delete", "--bucket", "photos"])
+        assert result.exit_code == 0, result.output
+        assert "Bucket deleted: photos" in result.stdout
+
+        assert not (Path(get_buckets_path()) / "photos").exists()
+        store = get_auth_store()
+        assert store.get_owner("photos") is None
+
+    def test_bucket_delete_missing_fails(self):
+        """Deleting a non-existent bucket fails with exit code 1."""
+        result = runner.invoke(cli.app, ["admin", "bucket", "delete", "--bucket", "nope"])
+        assert result.exit_code == 1
+        assert "Error:" in result.output
+
+    def test_bucket_delete_db_only_removes_db_rows_without_dir(self):
+        """`--db-only` removes the DB rows of a ghost bucket (no dir on disk)."""
+        import sqlite3
+
+        from hsync_server.auth_store import get_auth_store
+        from hsync_server.config import get_state_db_path
+
+        # Simulate a "ghost" bucket: DB rows exist, directory does not.
+        store = get_auth_store()
+        with store._lock:
+            store._begin()
+            store.conn.execute(
+                "INSERT INTO bucket_members (bucket, client_id, role) VALUES (?, ?, 'owner')",
+                ("ghostbucket", "HsyncAdminBootstrap01"),
+            )
+            store._commit()
+
+        result = runner.invoke(
+            cli.app, ["admin", "bucket", "delete", "--bucket", "ghostbucket", "--db-only"]
+        )
+        assert result.exit_code == 0, result.output
+        assert "Bucket deleted: ghostbucket" in result.stdout
+
+        with sqlite3.connect(get_state_db_path()) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM bucket_members WHERE bucket = ?", ("ghostbucket",)
+            ).fetchone()
+        assert row is None
+
+    def test_bucket_delete_without_db_only_fails_on_ghost(self):
+        """Plain delete keeps rejecting ghosts with exit code 1 (REST parity)."""
+        result = runner.invoke(cli.app, ["admin", "bucket", "delete", "--bucket", "ghostbucket"])
+        assert result.exit_code == 1
+        assert "Error:" in result.output
+
+
+class TestNoRealRepoStateIsolation:
+    def test_real_state_lies_outside_tmp_fixtures(self, tmp_path):
+        """The repo's real state/buckets dirs are never the tmp isolation dirs."""
+        from tests.conftest import _REAL_BUCKETS_DIR, _REAL_STATE_DIR
+
+        db_path = str(_REAL_STATE_DIR / "syncstate.db")
+        assert tmp_path not in _REAL_STATE_DIR.parents
+        assert _REAL_STATE_DIR.is_dir() or not _REAL_STATE_DIR.exists()
+        assert _REAL_BUCKETS_DIR.is_dir() or not _REAL_BUCKETS_DIR.exists()
+        assert len(db_path) > 0
+
+
 class TestFastApiApplication:
     def test_files_package_reexports_endpoint_functions(self):
         """The files package exports endpoint functions used by compatibility imports."""

@@ -13,8 +13,9 @@ links to the relevant guide.
   state directory) — back that file up with the buckets. See
   [Architecture](internal/architecture.md).
 - **Run it anywhere.** Pull the prebuilt multi-arch image (`amd64`/`arm64`) from
-  GHCR with the [recommended installer](getting-started.md), or choose a source
-  or native method from [Installation Alternatives](installation-alternatives.md).
+  GHCR with the recommended Docker installer ([Path A](getting-started-docker.md)),
+  or choose a source or native method from
+  [Installation Alternatives](installation-alternatives.md).
 - **Secure by default.** Every authenticated endpoint requires a Bearer API key
   (constant-time comparison) and is meant to run behind HTTPS/WSS.
 - **Real-time fan-out.** A WebSocket hub relays change events to all connected
@@ -46,8 +47,8 @@ for the complete list with defaults and descriptions.
 
 ### What port does the server use?
 
-`9753` by default. Map or override it as needed when you start the container. See
-[Getting Started](getting-started.md).
+`9753` by default. Map or override it as needed when you start the server. See
+the [Getting Started paths](getting-started.md).
 
 ### Can I put the server behind a reverse proxy?
 
@@ -65,7 +66,7 @@ When clients sync with `--ignore-delete` (pure backup mode), the bucket
 accumulates append-only history: files removed on the client stay on the
 server, and copying the buckets directory captures all of it — no special
 server configuration is needed. See the
-[client backup examples](https://github.com/albertobasso/hsync-client/blob/main/docs/examples.md#13-push-only-backup-to-a-remote-server).
+[client backup examples](https://github.com/albertobasso/hsync-client/blob/main/docs/examples-server.md#13-push-only-backup-to-a-remote-server).
 
 ## Security
 
@@ -135,7 +136,7 @@ The server-side defences are:
   [Operations → Backup and Restore](operations.md#backup-and-restore).
 
 See the
-[client mass-deletion safety guard](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration.md#mass-deletion-safety-guard)
+[client mass-deletion safety guard](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration.md#mass-deletion-guard)
 for the client-side protection.
 
 ### What happens if a client disconnects mid-upload?
@@ -217,7 +218,7 @@ sudo ufw allow 9753/tcp
   valid.
 - If using self-signed certificates, clients need `--ca-cert <file>` or
   `--insecure`. See the
-  [Client Configuration → SSL/TLS](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration.md#ssltls-httpswss)
+  [Client Configuration — Server Mode → Server Connection Options](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration-server.md#server-connection-options)
   guide.
 - Clients always connect with `https://` / `wss://` and refuse to send API keys
   over plain HTTP.

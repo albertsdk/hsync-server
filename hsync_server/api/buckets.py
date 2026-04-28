@@ -20,15 +20,11 @@ from hsync_common.time_utils import to_iso
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
-from hsync_server.api.utils import is_valid_bucket
 from hsync_server.auth import AuthContext, require_admin, verify_api_key
-from hsync_server.auth_store import get_auth_store
+from hsync_server.bucket_provisioning import create_bucket as _create_bucket
+from hsync_server.bucket_provisioning import delete_bucket as _delete_bucket
 from hsync_server.config import get_buckets_path
-from hsync_server.exceptions import (
-    BucketNotFoundError,
-    DeleteError,
-    InvalidBucketNameError,
-)
+from hsync_server.exceptions import ConflictError
 from hsync_server.routers import auth_router
 
 
@@ -71,15 +67,9 @@ async def create_bucket(
 
     Returns 409 if the bucket name is already taken (directory exists).
     """
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-
-    bucket_directory = _bucket_path(bucket)
-
     try:
-        Path(bucket_directory).mkdir(parents=True, exist_ok=False)
-    except FileExistsError:
-        log.warning(f"Bucket already exists: {bucket_directory}")
+        _create_bucket(bucket, owner_account_id=ctx.id, owner_name=ctx.name)
+    except ConflictError:
         return JSONResponse(
             status_code=409,
             content={
@@ -87,26 +77,6 @@ async def create_bucket(
                 "bucket": bucket,
             },
         )
-
-    # Record ownership in the auth store.
-    store = get_auth_store()
-    try:
-        store.set_owner_on_create(bucket, ctx.id)
-    except Exception:
-        # INSERT failed after mkdir — remove the orphan directory.
-        from shutil import rmtree
-
-        log.error(f"Failed to record ownership for bucket '{bucket}'", exc_info=True)
-        try:
-            rmtree(bucket_directory)
-        except OSError:
-            pass  # Best-effort cleanup.
-        raise DeleteError(
-            message=f"Failed to create bucket: {bucket}",
-            details={"bucket": bucket},
-        )
-
-    log.info(f'Bucket: "{bucket}" created (owner: {ctx.name})')
 
     return JSONResponse(
         status_code=201,
@@ -128,23 +98,7 @@ async def delete_bucket(
     tombstones, bucket mapping).  Non-admin callers get 403; non-existent
     or inaccessible buckets return 404.
     """
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-
-    bucket_dir = _bucket_path(bucket)
-    if not Path(bucket_dir).exists():
-        raise BucketNotFoundError(details={"bucket": bucket})
-
-    store = get_auth_store()
-    try:
-        store.delete_bucket(bucket)
-    except OSError as e:
-        log.error(f"Failed to delete bucket {bucket}: {e}", exc_info=True)
-        raise DeleteError(
-            message=f"Failed to delete bucket: {bucket}",
-            details={"bucket": bucket, "error": str(e)},
-        )
-
+    _delete_bucket(bucket)
     log.info(f'Bucket: "{bucket}" deleted by admin {ctx.name}')
 
     return JSONResponse(

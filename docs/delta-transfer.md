@@ -240,7 +240,7 @@ rate(hsync_delta_transfer_total{status="conflict"}[5m])
 - [Sync Flow](sync-flow.md) — server-side synchronization flow
 - [ADR 0016: Delta Transfer](https://github.com/albertobasso/hsync-common/blob/main/docs/internal/adr/0016-delta-transfer.md)
   — architecture decision record with rationale and alternatives
-- [Client Sync Flow](https://github.com/albertobasso/hsync-client/blob/main/docs/sync-flow.md#delta-transfer-rsync-style-block-sync)
+- [Client Sync Flow — Server Mode](https://github.com/albertobasso/hsync-client/blob/main/docs/sync-flow-server.md)
   — client-side delta transfer documentation
-- [Client Configuration](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration.md#delta-transfer)
+- [Client Configuration → Delta Transfer](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration.md#delta-transfer-rsync-style-block-sync)
   — client-side delta transfer configuration

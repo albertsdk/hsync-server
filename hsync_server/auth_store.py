@@ -1093,10 +1093,18 @@ class AuthStore:
         if bucket_dir.exists():
             rmtree(bucket_dir)
 
-    def delete_bucket(self, bucket: str) -> None:
-        """Delete a bucket: DB rows + FS directory (admin only, checked by caller)."""
+    def delete_bucket_db(self, bucket: str) -> None:
+        """Delete all DB rows for *bucket* without touching the filesystem.
+
+        Used to clean up "ghost" buckets: membership/versions rows that remain
+        in the DB while the bucket directory no longer exists on disk.
+        """
         with self._lock:
             self._begin()
             self._delete_bucket_db(bucket)
             self._commit()
+
+    def delete_bucket(self, bucket: str) -> None:
+        """Delete a bucket: DB rows + FS directory (admin only, checked by caller)."""
+        self.delete_bucket_db(bucket)
         self._delete_bucket_fs(bucket)

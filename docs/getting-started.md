@@ -1,161 +1,46 @@
 # HSYNC Server — Getting Started
 
-This is the single recommended quick start. It installs a
-released multi-architecture container with Docker Compose, generates the required
-secrets, persists bucket data and certificates in Docker volumes, and verifies
-that the server becomes healthy.
+HSYNC Server is a file-sync hub: clients upload/download buckets, and changes
+propagate to every connected client in real time.
 
-> This profile uses a persistent self-signed certificate. It is suitable for a
-> trusted private LAN, but not for exposing HSYNC directly to the Internet. For a
-> public server, follow the [Production Deployment Guide](deployment.md).
+Follow this guide in two steps:
 
-## Prerequisites
+1. **Choose your server** (Docker or native) — select one path below.
+2. **Connect your clients** — create the account, the bucket, and grant access
+   with the commands shown in the path you chose.
 
-- Linux or macOS with Docker Engine or Docker Desktop running
-- Docker Compose v2 (`docker compose version`)
-- OpenSSL
-- `curl` and `sha256sum` for the verified download shown below
+## Choose your path
 
-Docker must already be installed. The HSYNC installer never invokes `sudo`,
-changes firewall rules, or installs system packages.
+| If you… | Follow |
+| --- | --- |
+| Have Docker (Linux or macOS) and want a ready-made setup with certificate management | [Path A — Docker](getting-started-docker.md) |
+| Prefer a native Python service without containers (development machine, or a host you manage with systemd) | [Path B — Native (Poetry/systemd)](getting-started-native.md) |
 
-## Install
+Both paths result in a running server on `https://<server-ip>:9753` with a
+self-signed certificate; the difference is only the toolchain:
 
-### Quick install (one command, latest stable release)
+| | Path A — Docker | Path B — Native |
+| --- | --- | --- |
+| Install | `install.sh` installer (Compose) | Poetry + `hsync-common` sibling repo |
+| Service | Docker containers + named volumes | Process, optionally a systemd unit |
+| Admin CLI | `docker compose exec server python -m hsync_server admin …` | `poetry run hsync-server admin …` |
+| Upgrade | run the installer again | `git pull` + `poetry install` |
+| Best for | private LAN, least setup | development, no-Docker / managed host |
 
-```bash
-curl -fsSL https://github.com/albertobasso/hsync-server/releases/latest/download/install.sh | bash
-```
+> For a public Internet-facing server, complete a path first and then follow
+> the [Production Deployment Guide](deployment.md).
 
-This downloads and runs the installer in one step. The default installation
-listens on `localhost` only — see [LAN setup](#lan-setup) below to bind a
-concrete LAN address.
+## What's next after the server is running
 
-### Verified install (checksum)
+- **Connect your clients** — every client authenticates with an account token
+  (`hs_<id>_<secret>`) via its `HSYNC_API_KEY` variable. The path you chose
+  shows the exact commands to create the account, create the bucket, and
+  attribute it.
+- **Administrate** — accounts and buckets via the local CLI; the full command
+  reference (and how to invoke it per installation type) is in
+  [Roles and Permissions](roles-and-permissions.md).
+- **Operate** — backup, restore, upgrade and monitoring in the
+  [Operations Guide](operations.md).
 
-If you prefer to verify the download before running it:
-
-```bash
-curl -fLO "https://github.com/albertobasso/hsync-server/releases/latest/download/install.sh"
-curl -fLO "https://github.com/albertobasso/hsync-server/releases/latest/download/SHA256SUMS"
-sha256sum --ignore-missing -c SHA256SUMS
-chmod 700 install.sh
-./install.sh
-```
-
-On macOS, use `shasum -a 256 install.sh` and compare the result
-with the matching line in `SHA256SUMS`.
-
-The default installation:
-
-- stores configuration in `~/.local/share/hsync-server`;
-- runs the latest stable `ghcr.io/albertobasso/hsync-server:vX.Y.Z` image;
-- listens on port `9753` on localhost only;
-- enables built-in HTTPS with a persistent self-signed certificate;
-- stores files and certificates in Docker named volumes;
-- generates the API key and private-key password locally without printing them.
-
-### LAN setup
-
-To connect from other devices on a private LAN, provide the server's concrete
-LAN address on the **first installation**. The installer also uses this address
-as the container hostname so the generated certificate contains a matching IP
-Subject Alternative Name:
-
-```bash
-# Quick install with a LAN bind address
-curl -fsSL https://github.com/albertobasso/hsync-server/releases/latest/download/install.sh | bash -s -- --bind-address 192.168.1.20
-
-# Or, with the verified download:
-./install.sh --bind-address 192.168.1.20
-```
-
-The installer refuses to change the address later because the persisted
-certificate identifies the original address. Moving the service to another IP
-requires an explicit certificate rotation or a separate installation, followed
-by re-establishing client trust.
-
-Run `./install.sh --help` for version, port, install-directory,
-validation-only, and dry-run options.
-
-To install a **specific version** instead of the latest stable one, download the
-installer from that release (replace `latest/download` with `download/vX.Y.Z`
-in the URLs above) or pass the version explicitly:
-`./install.sh --version v1.0.0`. Conversely, `--version latest` makes any
-installer resolve and pin the latest stable release automatically.
-
-## Verify and connect
-
-The installer waits for the container health check. You can verify it again with:
-
-```bash
-curl --insecure https://localhost:9753/health
-```
-
-Read the generated admin token locally:
-
-```bash
-grep '^HSYNC_ADMIN_KEY=' "$HOME/.local/share/hsync-server/.env"
-```
-
-> The installer generates a 64-hex `HSYNC_ADMIN_KEY`. The server uses it as the
-> bootstrap admin secret and prints the full account token
-> (`hs_HsyncAdminBootstrap01_<secret>`) once at first start. See
-> [Roles and Permissions](roles-and-permissions.md).
-
-Export the public certificate and copy it to each client over a trusted channel:
-
-```bash
-cd "$HOME/.local/share/hsync-server"
-docker compose cp server:/project/certs/server.crt ./server.crt
-openssl x509 -in server.crt -noout -fingerprint -sha256
-```
-
-Configure clients with:
-
-- server URL: `https://<server-ip>:9753`;
-- the generated admin account token value;
-- `--ca-cert /trusted/path/server.crt` to verify the self-signed certificate.
-
-Verify the displayed certificate fingerprint out of band before trusting it.
-Do not use `--insecure` for authenticated synchronization: disabling certificate
-verification would expose the bearer token to a network attacker.
-
-See the client [Getting Started guide](https://github.com/albertobasso/hsync-client/blob/main/docs/getting-started.md)
-for client-side configuration.
-
-## Manage the server
-
-```bash
-INSTALL_DIR="$HOME/.local/share/hsync-server"
-cd "$INSTALL_DIR"
-docker compose ps
-docker compose logs -f
-docker compose restart
-docker compose down
-docker compose up -d --wait
-```
-
-`docker compose down` does not delete the named data volumes. Do not add `-v`
-unless you intentionally want to delete all server files and persisted
-certificates.
-
-## Update
-
-Download the installer from the target release, verify it, and run it again with
-the same installation directory. It updates the pinned image version while
-preserving secrets and volumes:
-
-```bash
-./install.sh
-```
-
-Review the release notes and back up the buckets before updating. See the
-[Operations Guide](operations.md) for backup and restore procedures.
-
-## Other installation methods
-
-The bootstrap above is the supported quick start, not the only deployment
-method. See [Installation Alternatives](installation-alternatives.md) for a
-manual Compose setup, a temporary `docker run`, a source build, and a native
-Poetry/systemd installation.
+> The client side of this flow is covered by the
+> [client Getting Started](https://github.com/albertobasso/hsync-client/blob/main/docs/getting-started.md).

@@ -517,6 +517,53 @@ def bucket_list() -> None:
         typer.echo(f"{b['name']:20s}  {disk:8s}  owner={owner_str}  members=[{members_str}]")
 
 
+@bucket_cli_app.command("create")
+def bucket_create(
+    bucket: Annotated[
+        str,
+        typer.Option("--bucket", help="Bucket name."),
+    ],
+) -> None:
+    """Create a new bucket. The bootstrap admin becomes its owner."""
+    from hsync_server.auth_store import BOOTSTRAP_ADMIN_ID
+    from hsync_server.bucket_provisioning import create_bucket
+    from hsync_server.exceptions import ConflictError
+
+    try:
+        create_bucket(
+            bucket,
+            owner_account_id=BOOTSTRAP_ADMIN_ID,
+            owner_name="admin",
+        )
+    except ConflictError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Bucket created: {bucket}")
+
+
+@bucket_cli_app.command("delete")
+def bucket_delete(
+    bucket: Annotated[str, typer.Option("--bucket", help="Bucket name.")],
+    db_only: Annotated[
+        bool,
+        typer.Option(
+            "--db-only",
+            help="Remove only the DB rows (cleanup of ghost buckets whose directory no longer exists).",
+        ),
+    ] = False,
+) -> None:
+    """Delete a bucket and all its contents."""
+    from hsync_server.bucket_provisioning import delete_bucket
+    from hsync_server.exceptions import BucketNotFoundError
+
+    try:
+        delete_bucket(bucket, delete_files=not db_only)
+    except BucketNotFoundError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Bucket deleted: {bucket}")
+
+
 @bucket_cli_app.command("grant")
 def bucket_grant(
     bucket: Annotated[str, typer.Option("--bucket")],

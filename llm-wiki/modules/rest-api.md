@@ -10,8 +10,8 @@ contract is the generated OpenAPI snapshot in `hsync-common` (`protocol/rest/ope
 | Method + path | Handler | Auth | Rate limit |
 | ------------- | ------- | ---- | ---------- |
 | `GET /buckets/{bucket}` | `buckets.get_bucket` (`buckets.py:42`) | key | default |
-| `POST /buckets` | `buckets.create_bucket` (`buckets.py:82`) | key | default |
-| `DELETE /buckets/{bucket}` | `buckets.delete_bucket` (`buckets.py:128`) | key | default |
+| `POST /buckets` | `buckets.create_bucket` (`buckets.py:62`) | key | default |
+| `DELETE /buckets/{bucket}` | `buckets.delete_bucket` (`buckets.py:91`) | key | default |
 | `GET /buckets/{bucket}/files` | `files/list.get_files` (`list.py:124`) | key | default |
 | `GET /buckets/{bucket}/files/upload-status` | `files/list.get_upload_status` (`list.py:40`) | key | default |
 | `GET /buckets/{bucket}/tombstones` | `files/list.get_tombstones` (`list.py:194`) | key | default |
@@ -26,11 +26,30 @@ contract is the generated OpenAPI snapshot in `hsync-common` (`protocol/rest/ope
 
 Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–`60`).
 
-## Buckets (`api/buckets.py`)
+## Buckets (`api/buckets.py` + `bucket_provisioning.py`)
 
-- Name validation via `is_valid_bucket` (`api/utils.py:30`) → `InvalidBucketNameError`.
-- `create_bucket` mkdir under `get_buckets_path()` with `OWNER_DIRECTORY_ACCESS = 0o700`
-  (`api/utils.py:27`); `delete_bucket` uses `shutil.rmtree` (`buckets.py:20`).
+- Name validation via `is_valid_bucket_name` (shared SSOT,
+  `hsync_common.path_validation`) → `InvalidBucketNameError`.
+- Filesystem + ownership logic lives in `bucket_provisioning.py`, the single
+  path shared by the REST endpoint AND the local admin CLI
+  (`admin bucket create` / `admin bucket delete`, `__main__.py`):
+  - `create_bucket` (`bucket_provisioning.py:34`) mkdir under
+    `get_buckets_path()` + `AuthStore.set_owner_on_create`; on ownership
+    failure the orphan directory is removed before raising `DeleteError`.
+    Existing name → `ConflictError` (REST maps it to 409).
+  - `delete_bucket` (`bucket_provisioning.py:88`) validates the name, then
+    delegates to `AuthStore.delete_bucket` (DB rows + `shutil.rmtree`). With
+    `delete_files=False` it calls `AuthStore.delete_bucket_db` only — the CLI
+    exposes it as `admin bucket delete --bucket <name> --db-only` to clean up
+    "ghost" rows whose directory no longer exists.
+- `buckets.py` only translates outcomes to HTTP: create catches
+  `ConflictError` → 409, delete re-raises for the standard handler mapping
+  (the REST endpoint never uses `delete_files=False`).
+- **Test isolation net**: `tests/conftest.py` adds autouse
+  `no_tests_touch_real_repo_state`, which snapshots the repository's real
+  `state/syncstate.db` and `buckets/` around each test and fails the
+  offending test on any mutation (protection against test rows leaking into
+  the developer's real DB).
 - Missing bucket → `BucketNotFoundError` (`exceptions.py:111`).
 
 ## Upload (`api/files/upload.py:70`)

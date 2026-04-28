@@ -20,8 +20,7 @@ property management, authentication-key management, and the available tools
 - [Bucket Property Management](#bucket-property-management)
 - [Authentication-Key Management](#authentication-key-management)
 - [CLI Tools](#cli-tools)
-- [REST API](#rest-api)
-- [Status Codes and WebSocket Close Codes](#status-codes-and-websocket-close-codes)
+- [REST API](#rest-api) — links to the API reference
 - [Security Guarantees](#security-guarantees)
 
 ---
@@ -290,32 +289,49 @@ The CLI operates **directly on the store's filesystem** (filesystem authority),
 so it does **not** require a token. It is the local administration and recovery
 tool. All commands live under `hsync-server admin`.
 
+### Invoke the CLI on your installation
+
+Replace `…` with the actual subcommand. The start-up commands are the same for
+installation and administration.
+
+| Installation | Invocation |
+| --- | --- |
+| Docker via `install.sh` (Path A) | `cd "$INSTALL_DIR" && docker compose exec server python -m hsync_server admin …` |
+| Docker from source (`docker.sh`) | `./docker.sh shell`, then `python -m hsync_server admin …` inside the container |
+| Native Poetry (Path B) | `poetry run hsync-server admin …` (or the `hsync-server` console script in the venv) |
+| Native systemd (`/opt/hsync`) | as the `hsync` user, source `/opt/hsync/prod.env` and run `/opt/hsync/hsync-server/.venv/bin/hsync-server admin …` |
+
+For native installs, run the CLI from the same directory (or with the same
+`HSYNC_STATE_DIR`/`HSYNC_BUCKETS`) as the server being administered; when it
+shares the SQLite database with a running server, stop the server first to
+avoid write-lock contention.
+
 ### Account management (`admin client`)
 
 ```bash
 # Create an account (the token is printed once)
-hsync-server admin client add --name phone --role client
+hsync-server admin client add --name <client-name> --role client
 hsync-server admin client add --name ops --role admin --valid-days 90
 
 # List accounts (id, name, role, status, generation, prefix, expiry)
 hsync-server admin client list
 
 # Rotate a key (the new token is printed once)
-hsync-server admin client rotate-key --name phone
+hsync-server admin client rotate-key --name <client-name>
 hsync-server admin client rotate-key --id <account_id> --grace 3600
 
 # Set/extend/remove expiry
-hsync-server admin client set-expiry --name phone --valid-days 30
-hsync-server admin client set-expiry --name phone --expires-at 2026-12-31T00:00:00Z
-hsync-server admin client set-expiry --name phone --none
+hsync-server admin client set-expiry --name <client-name> --valid-days 30
+hsync-server admin client set-expiry --name <client-name> --expires-at 2026-12-31T00:00:00Z
+hsync-server admin client set-expiry --name <client-name> --none
 
 # Disable / re-enable an account
-hsync-server admin client disable --name phone
-hsync-server admin client enable --name phone
+hsync-server admin client disable --name <client-name>
+hsync-server admin client enable --name <client-name>
 
 # Delete an account (--cascade deletes owned buckets)
-hsync-server admin client remove --name phone
-hsync-server admin client remove --name phone --cascade
+hsync-server admin client remove --name <client-name>
+hsync-server admin client remove --name <client-name> --cascade
 
 # Force deletion of the last admin (recovery)
 hsync-server admin client remove --name admin --force
@@ -324,17 +340,26 @@ hsync-server admin client remove --name admin --force
 ### Bucket and membership management (`admin bucket`)
 
 ```bash
+# Create a bucket (the bootstrap admin becomes its owner)
+hsync-server admin bucket create --bucket <bucket>
+
+# Delete a bucket and all its contents
+hsync-server admin bucket delete --bucket <bucket>
+
+# Cleanup only the DB rows of a ghost bucket (directory no longer on disk)
+hsync-server admin bucket delete --bucket <bucket> --db-only
+
 # List all buckets (FS ∪ membership), including orphans and ghosts
 hsync-server admin bucket list
 
 # Grant membership (member role only)
-hsync-server admin bucket grant --bucket photos --client phone
+hsync-server admin bucket grant --bucket <bucket> --client <client-name>
 
 # Revoke membership
-hsync-server admin bucket revoke --bucket photos --client phone
+hsync-server admin bucket revoke --bucket <bucket> --client <client-name>
 
 # Set/transfer ownership (also reclaims orphans)
-hsync-server admin bucket set-owner --bucket photos --client laptop
+hsync-server admin bucket set-owner --bucket <bucket> --client laptop
 ```
 
 ### Recovery
@@ -348,148 +373,20 @@ hsync-server admin client rotate-key --name admin
 
 ## REST API
 
-All endpoints require `Bearer` authentication. The `/admin/*` endpoints also
-require the `admin` role.
+The complete REST contract — endpoints, payloads, examples and error codes —
+is the single source in [API Reference](api.md). This page links the
+administrative endpoints to the role model above:
 
-### Account management (`/api/v1/admin/clients`)
+| Group | Endpoints | Role required | Details |
+| --- | --- | --- | --- |
+| Account management | `GET|POST /api/v1/admin/clients`, `rotate-key`, `expiry`, `disable`, `enable`, `DELETE /clients/{id}` | `admin` | [api.md → Admin](api.md#admin) |
+| Bucket inventory | `GET|POST /api/v1/admin/buckets` | `admin` | [api.md → Admin](api.md#admin) |
+| Bucket ops (create/list/delete) | `/api/v1/buckets…` | creator becomes owner; delete `admin` | [api.md → Buckets](api.md#buckets) |
+| Membership & ownership | `GET|POST /api/v1/buckets/{bucket}/members`, `POST …/owner` | `owner`/`admin` | [api.md → Membership and Ownership](api.md#membership-and-ownership) |
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/clients` | List all accounts (never hashes/secrets). |
-| `POST` | `/clients` | Create an account; returns the token once. |
-| `POST` | `/clients/{id}/rotate-key` | Rotate the key; returns the new token. |
-| `PATCH` | `/clients/{id}/expiry` | Set/extend/remove expiry. |
-| `POST` | `/clients/{id}/disable` | Disable the account. |
-| `POST` | `/clients/{id}/enable` | Re-enable the account. |
-| `DELETE` | `/clients/{id}` | Delete the account (`?cascade=true`). |
-
-**Examples:**
-
-```bash
-# Create a client account
-curl -X POST http://localhost:9000/api/v1/admin/clients \
-  -H "Authorization: Bearer hs_HsyncAdminBootstrap01_<secret>" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "phone", "role": "client", "valid_days": 90}'
-
-# Rotate an account's key
-curl -X POST http://localhost:9000/api/v1/admin/clients/<id>/rotate-key \
-  -H "Authorization: Bearer hs_HsyncAdminBootstrap01_<secret>" \
-  -H "Content-Type: application/json" \
-  -d '{"grace_seconds": 3600}'
-
-# Disable an account
-curl -X POST http://localhost:9000/api/v1/admin/clients/<id>/disable \
-  -H "Authorization: Bearer hs_HsyncAdminBootstrap01_<secret>"
-
-# List accounts
-curl http://localhost:9000/api/v1/admin/clients \
-  -H "Authorization: Bearer hs_HsyncAdminBootstrap01_<secret>"
-```
-
-### Bucket inventory (`/api/v1/admin/buckets`)
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/buckets` | List all buckets (FS ∪ membership), including orphans (`owner=null`) and ghosts (`on_disk=false`). |
-| `POST` | `/buckets` | Create a bucket on behalf of a specified owner. |
-
-**Examples:**
-
-```bash
-# Global inventory
-curl http://localhost:9000/api/v1/admin/buckets \
-  -H "Authorization: Bearer hs_HsyncAdminBootstrap01_<secret>"
-
-# Create a bucket on behalf of an owner
-curl -X POST http://localhost:9000/api/v1/admin/buckets \
-  -H "Authorization: Bearer hs_HsyncAdminBootstrap01_<secret>" \
-  -H "Content-Type: application/json" \
-  -d '{"bucket": "photos", "owner": "laptop"}'
-```
-
-### Membership and ownership (bucket path)
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/v1/buckets/{bucket}/members` | List members (owner/admin). |
-| `POST` | `/api/v1/buckets/{bucket}/members` | Grant membership (owner/admin). |
-| `DELETE` | `/api/v1/buckets/{bucket}/members/{client_id}` | Revoke membership (owner/admin). |
-| `POST` | `/api/v1/buckets/{bucket}/owner` | Transfer ownership or reclaim orphan (owner/admin). |
-
-**Examples:**
-
-```bash
-# Grant membership (by id or by name, exactly one)
-curl -X POST http://localhost:9000/api/v1/buckets/photos/members \
-  -H "Authorization: Bearer hs_HsyncAdminBootstrap01_<secret>" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "phone"}'
-
-# Revoke membership
-curl -X DELETE http://localhost:9000/api/v1/buckets/photos/members/<client_id> \
-  -H "Authorization: Bearer hs_HsyncAdminBootstrap01_<secret>"
-
-# Transfer ownership
-curl -X POST http://localhost:9000/api/v1/buckets/photos/owner \
-  -H "Authorization: Bearer hs_HsyncAdminBootstrap01_<secret>" \
-  -H "Content-Type: application/json" \
-  -d '{"client_id": "<new_owner_id>"}'
-
-# List members
-curl http://localhost:9000/api/v1/buckets/photos/members \
-  -H "Authorization: Bearer hs_HsyncAdminBootstrap01_<secret>"
-```
-
-### Bucket operations
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/v1/buckets/{bucket}` | Bucket info (owner/member/admin). |
-| `POST` | `/api/v1/buckets` | Create a bucket (the creator becomes owner). |
-| `DELETE` | `/api/v1/buckets/{bucket}` | Delete the bucket (admin only). |
-
-**Examples:**
-
-```bash
-# Create a bucket (the caller becomes owner)
-curl -X POST http://localhost:9000/api/v1/buckets \
-  -H "Authorization: Bearer hs_<account_id>_<secret>" \
-  -d '{"bucket": "documents"}'
-
-# Delete a bucket (admin only)
-curl -X DELETE http://localhost:9000/api/v1/buckets/documents \
-  -H "Authorization: Bearer hs_HsyncAdminBootstrap01_<secret>"
-```
-
----
-
-## Status Codes and WebSocket Close Codes
-
-### REST
-
-| Code | Meaning |
-|---|---|
-| `200` | Operation succeeded. |
-| `201` | Resource created (bucket, account, membership). |
-| `400` | Invalid bucket/account name, malformed payload. |
-| `401` | Missing or invalid token. |
-| `403` | Authenticated but not permitted (member on an administrative operation, non-admin on `/admin`). |
-| `404` | Bucket nonexistent **or** inaccessible (indistinguishable). |
-| `409` | Conflict: name taken, last admin, self-target, target already owner/member/disabled. |
-
-### WebSocket
-
-| Close code | Meaning |
-|---|---|
-| `4000` | Invalid CID, invalid bucket name, CORS, replaced connection. |
-| `4001` | First frame is not `auth`. |
-| `4002` | Incompatible protocol version. |
-| `4003` | Authentication failed (invalid, disabled, expired, revoked token). |
-| `4004` | Heartbeat timeout. |
-| `4008` | Authentication timeout. |
-| `4009` | Bucket not found / no access (indistinguishable). |
-| `1013` | Connection limit reached. |
+Status codes and WebSocket close codes with their meanings are listed in
+[api.md → Error Responses](api.md#error-responses) and
+[api.md → WebSocket API](api.md#websocket-api).
 
 ---
 

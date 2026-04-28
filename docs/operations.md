@@ -436,6 +436,7 @@ automatically. Configure rotation with:
 ## See also
 
 - [Deployment Guide](deployment.md) — Docker Compose, reverse proxy, systemd.
-- [Getting Started](getting-started.md) — recommended private-LAN install.
+- [Getting Started](getting-started.md) — chooser between the Docker and native
+  install paths.
 - [API Reference](api.md) — complete REST + WebSocket contract.
 - [FAQ](faq.md) — frequently asked questions and troubleshooting.

@@ -1,19 +1,21 @@
 # HSYNC Server — Installation Alternatives
 
-Use the [recommended quick start](getting-started.md) unless one of the cases
-below applies. These procedures are intentionally separate so development,
-diagnostic, and production assumptions are not mixed into the normal install.
+Use one of the two [Getting Started paths](getting-started.md) unless one of
+the cases below applies. These procedures are intentionally separate so
+development, diagnostic, and production assumptions are not mixed into the
+normal install.
 
 ## Choose a method
 
 | Scenario | Method |
 | --- | --- |
-| Private LAN, least setup | [Verified Compose bootstrap](getting-started.md) |
+| Private LAN, least setup | [Path A — Docker](getting-started-docker.md) |
+| No Docker / native systemd host | [Path B — Native](getting-started-native.md) |
 | Public Internet server | [Production Deployment Guide](deployment.md) |
 | Existing Compose automation | [Manual Compose](#manual-compose) |
 | Temporary image diagnostic | [Direct Docker run](#direct-docker-run) |
 | Modify or contribute code | [Build from source](#build-from-source) |
-| Host where Docker is unavailable | [Poetry and systemd](#poetry-and-systemd) |
+| Host where Docker is unavailable | [Path B — Native](getting-started-native.md) |
 
 ## Manual Compose
 
@@ -81,11 +83,16 @@ the GHCR image or build automatically. See the
 
 ## Poetry and systemd
 
-Use Poetry for development or when the host cannot run Docker:
+The native quick start (installation, first start, client connection) is
+covered end-to-end in [Path B — Native](getting-started-native.md). Here only
+the minimum to launch for development:
 
 ```bash
 poetry install --only main
-HSYNC_ADMIN_KEY=<strong-random-secret> poetry run hsync-server
+HSYNC_ADMIN_KEY="$(openssl rand -hex 32)" \
+HSYNC_SSL_ENABLED=true \
+HSYNC_SSL_KEYFILE_PASSWORD="$(openssl rand -hex 32)" \
+HSYNC_SSL_CERT_DIR=./certs poetry run hsync-server
 ```
 
 Python 3.12 or newer and the sibling `hsync-common` dependency are required. For
