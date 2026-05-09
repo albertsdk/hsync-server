@@ -160,8 +160,11 @@ exposes Prometheus metrics (both unauthenticated). See
 
 ### How do I manage buckets?
 
-Create, inspect, and delete buckets through the REST API. See
-[API → Buckets](api.md#buckets).
+Create, inspect, and delete buckets either through the REST API
+([API → Buckets](api.md#buckets)) or through the local admin CLI
+(`hsync-server admin bucket create/list/delete …` — see
+[Roles and Permissions → CLI Tools](roles-and-permissions.md#cli-tools)
+for the full syntax and per-installation invocation).
 
 ### How do I pin a specific server version?
 
