@@ -40,7 +40,8 @@ poetry run hsync-server
 
 - The server listens on `https://localhost:9753` (default port).
 - Bucket data is stored under `buckets/` and the causal-state database under
-  `state/`, both relative to the project root (the settings default).
+  `state/`, both under the project root (the settings default; the paths are
+  resolved to absolute form at startup).
 - On the **first start** the certificate is generated in `certs/`
   (`server.crt` / `server.key`); with `HSYNC_ADMIN_KEY` set, the bootstrap
   account is created **silently**.
@@ -126,7 +127,7 @@ git pull
 poetry install --only main
 ```
 
-Review the release notes and back up the buckets before updating. See
+Review the release notes and back up the data directory before updating. See
 [Operations → Upgrade](operations.md#upgrade-guide) for details.
 
 ## Other installation methods

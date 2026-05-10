@@ -22,7 +22,7 @@ self-signed certificate; the difference is only the toolchain:
 | | Path A — Docker | Path B — Native |
 | --- | --- | --- |
 | Install | `install.sh` installer (Compose) | Poetry + `hsync-common` sibling repo |
-| Service | Docker containers + named volumes | Process, optionally a systemd unit |
+| Service | Docker containers + host data directory (bind mounts) | Process, optionally a systemd unit |
 | Admin CLI | `docker compose exec server python -m hsync_server admin …` | `poetry run hsync-server admin …` |
 | Upgrade | run the installer again | `git pull` + `poetry install` |
 | Best for | private LAN, least setup | development, no-Docker / managed host |

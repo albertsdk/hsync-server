@@ -29,7 +29,7 @@ events to connected clients over WebSocket.
 Synced **file bytes** live as plain files under the buckets directory. Causal
 metadata does **not**: versions, tombstones, accounts, and bucket membership
 are stored in a SQLite database `syncstate.db` under the state directory
-(ADR-0025). Back up that file together with the buckets volume.
+(ADR-0025). Back up that file together with the buckets directory.
 
 Additional process-local metadata:
 
@@ -107,8 +107,8 @@ all defaults.
 | `HSYNC_WORKERS` | `1` | Number of worker processes (must be `1` — WebSocket state is not shared) |
 | `HSYNC_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error` |
 | `HSYNC_TZ` | `UTC` | Timezone (IANA format, e.g. `Europe/Rome`) |
-| `HSYNC_BUCKETS` | `./buckets` | Directory for bucket data storage |
-| `HSYNC_STATE_DIR` | `./state` | Directory for `syncstate.db` (causal versions and tombstones) |
+| `HSYNC_BUCKETS` | `<app>/buckets` (absolute) | Directory for bucket data storage (relative values are resolved against the process CWD) |
+| `HSYNC_STATE_DIR` | `<app>/state` (absolute) | Directory for `syncstate.db` (causal versions and tombstones) |
 | `HSYNC_ADMIN_KEY` | *(optional)* | Bootstrap admin secret (64 hex). If unset, the server generates and prints a one-time admin token. |
 | `HSYNC_MAX_UPLOAD_SIZE` | `10737418240` (10 GiB) | Maximum upload size in bytes |
 | `HSYNC_MIN_FREE_DISK_SPACE` | `524288000` (500 MiB) | Minimum free disk before rejecting uploads (`0` = disabled) |

@@ -269,6 +269,19 @@ class Settings(BaseSettings):
             return lowered if lowered in VALID_LOG_FORMATS else "text"
         return v
 
+    @field_validator("buckets_path", "state_dir", mode="after")
+    @classmethod
+    def resolve_storage_paths(cls, v: str) -> str:
+        """Return storage paths in absolute, resolved form.
+
+        Every bucket-relative computation (listing relativisation, version/
+        tombstone stores, upload arbitration) compares paths under these
+        roots. A relative config value (e.g. ``./buckets``) would otherwise
+        make some comparisons fail and leak absolute paths onto the wire, so
+        the root is canonicalised once at config time.
+        """
+        return str(Path(v).resolve())
+
     @field_validator("admin_key", mode="after")
     @classmethod
     def validate_admin_key(cls, v: SecretStr | None) -> SecretStr | None:

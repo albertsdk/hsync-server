@@ -30,6 +30,10 @@ HSYNC_PUBLIC_PORT=9753
 HSYNC_ADMIN_KEY=<strong-random-secret>
 HSYNC_SSL_ENABLED=true
 HSYNC_SSL_KEYFILE_PASSWORD=<different-strong-random-secret>
+# Host data directory bind-mounted at /project/{buckets,state,certs}.
+HSYNC_DATA_DIR=./hsync-data
+HSYNC_UID=1000
+HSYNC_GID=1000
 HSYNC_BUCKETS=/project/buckets
 HSYNC_STATE_DIR=/project/state
 HSYNC_SSL_CERT_DIR=/project/certs

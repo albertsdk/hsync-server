@@ -196,7 +196,12 @@ async def get_files(
         raise InvalidPathError(details={"path": path})
 
     buckets_path = get_buckets_path()
-    bucket_root = f"{buckets_path}/{bucket}"
+    # Absolute, resolved root: every path compared against it (walk root and
+    # file paths inside) is built the same resolved way, so the wire listing
+    # always carries bucket-relative paths. A raw (possibly relative) config
+    # string here would make File.from_dict's relative_to fall back to the
+    # verbatim ABSOLUTE path, which peers then reject as unsafe.
+    bucket_root = str(Path(f"{buckets_path}/{bucket}").resolve())
 
     if not Path(dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket, "path": path})

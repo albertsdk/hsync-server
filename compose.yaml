@@ -5,14 +5,15 @@ services:
     image: ${HSYNC_IMAGE:?Set HSYNC_IMAGE in .env}
     hostname: ${HSYNC_CERT_HOSTNAME:-127.0.0.1}
     restart: unless-stopped
+    user: "${HSYNC_UID:-1000}:${HSYNC_GID:-1000}"
     ports:
       - "${HSYNC_BIND_ADDRESS:-127.0.0.1}:${HSYNC_PUBLIC_PORT:-9753}:9753"
     env_file:
       - .env
     volumes:
-      - hsync-buckets:/project/buckets
-      - hsync-state:/project/state
-      - hsync-certs:/project/certs
+      - ${HSYNC_DATA_DIR:-./hsync-data}/buckets:/project/buckets
+      - ${HSYNC_DATA_DIR:-./hsync-data}/state:/project/state
+      - ${HSYNC_DATA_DIR:-./hsync-data}/certs:/project/certs
     healthcheck:
       test:
         - CMD
@@ -26,11 +27,3 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
-
-volumes:
-  hsync-buckets:
-    name: hsync-server-buckets
-  hsync-state:
-    name: hsync-server-state
-  hsync-certs:
-    name: hsync-server-certs

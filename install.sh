@@ -33,7 +33,7 @@ Options:
 
 The installer never installs Docker, invokes sudo, opens firewall ports, or
 overwrites an existing partial installation. Re-running it updates the selected
-image version while preserving existing secrets and Docker volumes.
+image version while preserving existing secrets and data.
 EOF
 }
 
@@ -135,14 +135,15 @@ services:
     image: ${HSYNC_IMAGE:?Set HSYNC_IMAGE in .env}
     hostname: ${HSYNC_CERT_HOSTNAME:-127.0.0.1}
     restart: unless-stopped
+    user: "${HSYNC_UID:-1000}:${HSYNC_GID:-1000}"
     ports:
       - "${HSYNC_BIND_ADDRESS:-127.0.0.1}:${HSYNC_PUBLIC_PORT:-9753}:9753"
     env_file:
       - .env
     volumes:
-      - hsync-buckets:/project/buckets
-      - hsync-state:/project/state
-      - hsync-certs:/project/certs
+      - ${HSYNC_DATA_DIR:-./hsync-data}/buckets:/project/buckets
+      - ${HSYNC_DATA_DIR:-./hsync-data}/state:/project/state
+      - ${HSYNC_DATA_DIR:-./hsync-data}/certs:/project/certs
     healthcheck:
       test:
         - CMD
@@ -156,14 +157,6 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
-
-volumes:
-  hsync-buckets:
-    name: hsync-server-buckets
-  hsync-state:
-    name: hsync-server-state
-  hsync-certs:
-    name: hsync-server-certs
 EOF
 }
 
@@ -180,6 +173,13 @@ HSYNC_PUBLIC_PORT=${PUBLIC_PORT}
 HSYNC_ADMIN_KEY=${api_key}
 HSYNC_SSL_ENABLED=true
 HSYNC_SSL_KEYFILE_PASSWORD=${keyfile_password}
+# Host directory holding buckets/, state/ and certs/ (bind-mounted into the
+# container). Back up this whole directory; restoring it migrates the server.
+HSYNC_DATA_DIR=${INSTALL_DIR}/hsync-data
+# Container runs under these host ids so the bind-mounted data directories
+# stay writable (they were created by this installer as the same user).
+HSYNC_UID=$(id -u)
+HSYNC_GID=$(id -g)
 HSYNC_BUCKETS=/project/buckets
 HSYNC_STATE_DIR=/project/state
 HSYNC_SSL_CERT_DIR=/project/certs
@@ -233,11 +233,14 @@ install_files() {
         if [[ "${PUBLIC_PORT_SET}" == true ]]; then
             update_env_value HSYNC_PUBLIC_PORT "${PUBLIC_PORT}"
         fi
-        printf 'Reusing existing secrets and volumes in %s\n' "${INSTALL_DIR}"
+        printf 'Reusing existing secrets and data in %s\n' "${INSTALL_DIR}"
         return
     fi
 
     mkdir -p "${INSTALL_DIR}"
+    mkdir -p "${INSTALL_DIR}/hsync-data/buckets" \
+        "${INSTALL_DIR}/hsync-data/state" \
+        "${INSTALL_DIR}/hsync-data/certs"
     write_compose_file
     write_env_file "$(openssl rand -hex 32)" "$(openssl rand -hex 32)"
     chmod 600 "${compose_file}"

@@ -2,8 +2,8 @@
 
 This path installs a released multi-architecture container with Docker
 Compose, generates the required secrets, persists bucket data and certificates
-in Docker volumes, and verifies that the server becomes healthy. Every command
-below is Docker-specific; on a native install follow
+in a plain host data directory, and verifies that the server becomes healthy.
+Every command below is Docker-specific; on a native install follow
 [Path B](getting-started-native.md) instead.
 
 > This profile uses a persistent self-signed certificate. It is suitable for a
@@ -53,7 +53,8 @@ The default installation:
 - runs the latest stable `ghcr.io/albertobasso/hsync-server:vX.Y.Z` image;
 - listens on port `9753` on localhost only;
 - enables built-in HTTPS with a persistent self-signed certificate;
-- stores files and certificates in Docker named volumes;
+- stores files, causal state and certificates in the plain host directory
+  `<install-dir>/hsync-data` (back it up; restore it to migrate);
 - generates the bootstrap admin secret and private-key password locally without
   printing them.
 
@@ -173,14 +174,15 @@ docker compose down
 docker compose up -d --wait
 ```
 
-`docker compose down` does not delete the named data volumes. Do not add `-v`
-unless you intentionally want to delete all files and persisted certificates.
+`docker compose down` does not delete the data directory. Remove
+`<install-dir>/hsync-data` only if you intentionally want to delete all files
+and persisted certificates.
 
 ## Update
 
 Download the installer from the target release, verify it, and run it again
 with the same installation directory. It updates the pinned image version
-while preserving secrets and volumes:
+while preserving secrets and data:
 
 ```bash
 ./install.sh

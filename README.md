@@ -152,8 +152,8 @@ Key variables:
 | `HSYNC_API_KEY` | API key for authentication (required, min 16 chars) | — |
 | `HSYNC_PORT` | Server port | `9753` |
 | `HSYNC_LOG_LEVEL` | Log level | `info` |
-| `HSYNC_BUCKETS` | Directory for bucket data storage | `./buckets` |
-| `HSYNC_STATE_DIR` | Directory for `syncstate.db` (causal versions and tombstones) | `./state` |
+| `HSYNC_BUCKETS` | Directory for bucket data storage | `<app>/buckets` (absolute, resolved at startup) |
+| `HSYNC_STATE_DIR` | Directory for `syncstate.db` (causal versions and tombstones) | `<app>/state` (absolute, resolved at startup) |
 | `HSYNC_WORKERS` | Number of uvicorn worker processes | `1` |
 | `HSYNC_MAX_UPLOAD_SIZE` | Maximum upload size in bytes | `10737418240` (10 GiB) |
 

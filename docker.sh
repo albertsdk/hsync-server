@@ -19,18 +19,23 @@ readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly IMAGE_NAME="hsync"
 readonly IMAGE_TAG="${HSYNC_VERSION:-1.0.0}"
 readonly CONTAINER_NAME="hsync-server"
-# Named volume for SSL material: persisting the auto-generated self-signed
-# certificate across container recreation keeps the server identity (and the
-# client's TOFU fingerprint pin) stable. A named volume inherits the image's
-# hsync:hsync ownership, so the unprivileged user can write the encrypted key.
-readonly CERTS_VOLUME="${CONTAINER_NAME}-certs"
-# Named volumes for user data: unlike the previous host bind-mounts, a fresh
-# named volume inherits the image's hsync:hsync ownership, so the unprivileged
-# user can always write syncstate.db — no manual chown, no first-boot crash.
-# Both volumes survive container/image recreation (persistent data ACROSS
-# restarts). `./docker.sh clean` keeps them; `clean --all` drops them too.
-readonly STATE_VOLUME="${CONTAINER_NAME}-state"
-readonly BUCKETS_VOLUME="${CONTAINER_NAME}-buckets"
+# Single host data directory for everything that must survive the container:
+# user buckets, the causal-state database and the TLS identity all live under
+# this one directory as plain files, so backup, inspection and host-to-host
+# migration are ordinary file operations. The container sees them at the
+# canonical /project/{buckets,state,certs} mount points. Docker requires
+# absolute bind-mount sources, so a relative HSYNC_DATA_DIR is resolved
+# against the script directory (it may not exist yet at parse time).
+_DATA_DIR_RAW="${HSYNC_DATA_DIR:-${SCRIPT_DIR}/hsync-data}"
+if [[ "${_DATA_DIR_RAW}" = /* ]]; then
+    readonly DATA_DIR="${_DATA_DIR_RAW%/}"
+else
+    readonly DATA_DIR="${SCRIPT_DIR}/${_DATA_DIR_RAW%/}"
+fi
+unset _DATA_DIR_RAW
+readonly BUCKETS_HOST_DIR="${DATA_DIR}/buckets"
+readonly STATE_HOST_DIR="${DATA_DIR}/state"
+readonly CERTS_HOST_DIR="${DATA_DIR}/certs"
 # Remembers the env-file used by the last successful `start`, so `restart` can
 # transparently reuse it without re-specifying --env-file. Local state only.
 readonly ENV_STATE_FILE="${SCRIPT_DIR}/.hsync-last-env-file"
@@ -124,7 +129,7 @@ ${BOLD}Commands:${RESET}
     status      Show container status
     logs        Show container logs (use -f to follow)
     shell       Open a shell in the running container
-    clean       Remove container and image (add --all to also drop state/buckets/certs)
+    clean       Remove container and image (add --all to also drop buckets/state)
 
 ${BOLD}Options:${RESET}
     -e, --env-file  Environment file to pass to Docker (e.g., dev.env, prod.env)
@@ -135,9 +140,10 @@ ${BOLD}Environment Variables:${RESET}
     HSYNC_PORT        Server port (default: 9753)
     HSYNC_LOG_LEVEL   Log level: debug, info, warning, error (default: info)
     HSYNC_WORKERS     Number of workers (default: 1)
-    HSYNC_ADMIN_KEY     API key for authentication (required)
+    HSYNC_ADMIN_KEY   Bootstrap admin secret (64 lowercase hex characters)
     HSYNC_TZ          Timezone in IANA format (default: UTC)
     HSYNC_VERSION     Image tag version (default: 1.0.0)
+    HSYNC_DATA_DIR    Host data directory (default: ./hsync-data)
 
     SSL/TLS (forwarded by name from the current environment):
     HSYNC_SSL_ENABLED           Enable HTTPS/WSS (true/false)
@@ -159,54 +165,25 @@ when HSYNC_SSL_ENABLED=true in the env-file (the default in dev.env and
 prod.env) with a self-signed certificate: use curl -k or accept the browser
 warning on first visit.
 
-State and buckets live in the named volumes "${CONTAINER_NAME}-state" and
-"${CONTAINER_NAME}-buckets" and survive restarts (clean keeps them).
+All persistent data lives on the host under ${DATA_DIR}:
+    buckets/   user files (one subdirectory per bucket)
+    state/     the causal-state database (syncstate.db)
+    certs/     the self-signed TLS certificate and key
+Back up the whole directory; restore it to move the server to another host.
 EOF
 }
 
 # -----------------------------------------------------------------------------
-# Named-volume migration (one-shot: copies any pre-existing host data into the
-# new named volumes the first time this script version starts) and helpers.
+# Data directory helpers
 # -----------------------------------------------------------------------------
-volume_empty() {
-    local vol="$1"
-    [[ -z "$(docker volume ls -q -f "name=^${vol}$")" ]] && return 0
-    local count
-    count="$(docker run --rm --user root -v "${vol}:/mnt" "${IMAGE_NAME}:${IMAGE_TAG}" \
-        sh -c 'ls -A /mnt | wc -l' 2>/dev/null || echo 0)"
-    [[ "${count:-0}" == "0" ]]
-}
-
-migrate_host_dir_to_volume() {
-    local host_dir="$1" vol="$2" label="$3"
-    [[ -d "${host_dir}" ]] || return 0
-    if [[ -z "$(ls -A "${host_dir}" 2>/dev/null)" ]]; then
-        log_info "${label}: host directory empty, using a fresh volume"
-        return 0
-    fi
-    if ! volume_empty "${vol}"; then
-        log_info "${label}: volume ${vol} already has data, leaving ${host_dir} untouched"
-        return 0
-    fi
-    log_step "Migrating existing ${label} data into the named volume ${vol}..."
-    if ! docker run --rm --user root \
-        -v "${host_dir}:/src:ro" \
-        -v "${vol}:/dst" \
-        "${IMAGE_NAME}:${IMAGE_TAG}" \
-        sh -c 'cp -a /src/. /dst/ && chown -R hsync:hsync /dst'; then
-        log_error "Migration of ${label} failed; aborting to avoid data loss"
-        exit 1
-    fi
-    local src_count dst_count
-    src_count="$(find "${host_dir}" -mindepth 1 | wc -l)"
-    dst_count="$(docker run --rm --user root -v "${vol}:/mnt" "${IMAGE_NAME}:${IMAGE_TAG}" \
-        sh -c 'find /mnt -mindepth 1 | wc -l')"
-    if [[ "${src_count}" != "${dst_count}" ]]; then
-        log_error "Migration verification failed (${label}: host ${src_count} entries vs volume ${dst_count}); keeping host copy untouched"
-        exit 1
-    fi
-    mv "${host_dir}" "${host_dir}.migrated-$(date +%Y%m%d%H%M%S)"
-    log_ok "${label} migrated to ${vol}; old copy preserved as ${host_dir}.migrated-*"
+ensure_data_dirs() {
+    local dir
+    for dir in "${BUCKETS_HOST_DIR}" "${STATE_HOST_DIR}" "${CERTS_HOST_DIR}"; do
+        if [[ ! -d "${dir}" ]]; then
+            mkdir -p "${dir}"
+            log_info "Created data directory: ${dir}"
+        fi
+    done
 }
 
 ssl_enabled() {
@@ -285,10 +262,7 @@ cmd_start() {
 
     log_step "Starting container ${CONTAINER_NAME}..."
 
-    # One-shot migration of any legacy host bind-mount data into the named
-    # volumes (only when the volume is still empty). Safe no-ops afterwards.
-    migrate_host_dir_to_volume "${SCRIPT_DIR}/state" "${STATE_VOLUME}" "state database"
-    migrate_host_dir_to_volume "${SCRIPT_DIR}/buckets" "${BUCKETS_VOLUME}" "buckets"
+    ensure_data_dirs
 
     # Build docker run command with env file support
     local docker_args=(
@@ -296,9 +270,12 @@ cmd_start() {
         --name "${CONTAINER_NAME}"
         --restart unless-stopped
         -p "${HSYNC_PORT}:${HSYNC_PORT}"
-        -v "${BUCKETS_VOLUME}:/project/buckets"
-        -v "${STATE_VOLUME}:/project/state"
-        -v "${CERTS_VOLUME}:/project/certs"
+        # Run under the invoking user's ids so the bind-mounted data
+        # directories stay writable (created above as the same user).
+        --user "${HSYNC_UID:-$(id -u)}:${HSYNC_GID:-$(id -g)}"
+        -v "${BUCKETS_HOST_DIR}:/project/buckets"
+        -v "${STATE_HOST_DIR}:/project/state"
+        -v "${CERTS_HOST_DIR}:/project/certs"
     )
 
     if [[ -n "${ENV_FILE}" ]]; then
@@ -343,6 +320,7 @@ cmd_start() {
     scheme="$(health_scheme)"
 
     log_info "Port: ${HSYNC_PORT}, Workers: ${HSYNC_WORKERS}, Log Level: ${HSYNC_LOG_LEVEL}, TZ: ${HSYNC_TZ}"
+    log_info "Data: ${DATA_DIR}"
 
     if [[ "${STARTUP_HEALTH_TIMEOUT}" =~ ^[0-9]+$ ]] && (( STARTUP_HEALTH_TIMEOUT > 0 )); then
         log_step "Waiting for the server to answer /health (up to ${STARTUP_HEALTH_TIMEOUT}s)..."
@@ -415,15 +393,14 @@ cmd_clean() {
     docker stop "${CONTAINER_NAME}" 2>/dev/null || true
     docker rm "${CONTAINER_NAME}" 2>/dev/null || true
     docker rmi "${IMAGE_NAME}:${IMAGE_TAG}" 2>/dev/null || true
-    # Drop the persisted SSL material too: a fresh image deserves a fresh
+    # Drop the persisted TLS material: a fresh image deserves a fresh
     # self-signed identity. Connecting clients will re-pin on next handshake.
-    docker volume rm "${CERTS_VOLUME}" 2>/dev/null || true
+    rm -rf "${CERTS_HOST_DIR}"
     if (( clean_all )); then
-        log_warn "Removing data volumes ${STATE_VOLUME} and ${BUCKETS_VOLUME} (ALL user data will be lost)"
-        docker volume rm "${STATE_VOLUME}" 2>/dev/null || true
-        docker volume rm "${BUCKETS_VOLUME}" 2>/dev/null || true
+        log_warn "Removing ${DATA_DIR} (ALL user data will be lost)"
+        rm -rf "${DATA_DIR}"
     else
-        log_info "Keeping data volumes ${STATE_VOLUME} and ${BUCKETS_VOLUME} (use 'clean --all' to drop them)"
+        log_info "Keeping ${BUCKETS_HOST_DIR} and ${STATE_HOST_DIR} (use 'clean --all' to drop them)"
     fi
     # Forget the remembered env-file: a clean slate should not auto-reuse it.
     rm -f "${ENV_STATE_FILE}"

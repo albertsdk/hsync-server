@@ -130,8 +130,9 @@ The server-side defences are:
 
 - **API-key hygiene** — the key grants full read/write authority over every
   bucket; treat it accordingly and rotate it if it may have leaked.
-- **Periodic volume backups / snapshots** — the last line of defence
-  against a propagated mass deletion, letting you roll the bucket back to a
+- **Periodic backups / filesystem snapshots of the data directory** — the last
+  line of defence against a propagated mass deletion, letting you roll the
+  bucket back to a
   known-good state. See
   [Operations → Backup and Restore](operations.md#backup-and-restore).
 
@@ -195,8 +196,9 @@ Common causes:
   (generate with `openssl rand -hex 32`). If unset, the server generates and
   prints a one-time admin token instead.
 - `HSYNC_SSL_KEYFILE_PASSWORD` missing when `HSYNC_SSL_ENABLED=true`.
-- Volume permissions — the container user (UID 1000) must be able to write to
-  the buckets and certs directories.
+- Data directory permissions — the container runs as the configured user
+  (`HSYNC_UID`/`HSYNC_GID`, defaulting to the invoking user) and must be able
+  to write to the bind-mounted data directory.
 
 **"HSYNC_SSL_KEYFILE_PASSWORD is required when SSL is enabled":**
 Set the `HSYNC_SSL_KEYFILE_PASSWORD` environment variable. This is mandatory

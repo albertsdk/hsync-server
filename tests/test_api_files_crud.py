@@ -169,6 +169,47 @@ class TestFileList:
         assert len(data) == 3
 
     @pytest.mark.asyncio
+    async def test_list_files_relative_buckets_config_yields_relpaths(
+        self,
+        client: AsyncClient,
+        temp_buckets_dir: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """A relative HSYNC_BUCKETS config must never leak absolute paths on the wire.
+
+        Regression: ``get_files`` compared the (resolved, absolute) walk paths
+        against a raw relative ``bucket_root``. ``File.from_dict``'s
+        ``relative_to`` then failed and fell back to the verbatim ABSOLUTE
+        path, which peers reject as an unsafe remote listing entry.
+
+        Only the two modules consulted by ``get_files`` path math are switched
+        to a relative config string (resolving to the very same buckets dir),
+        exactly what the shipped ``./buckets`` default does inside the
+        container.
+        """
+        from hsync_server.api import utils as utils_module
+        from hsync_server.api.files import list as list_module
+
+        bucket_path = os.path.join(temp_buckets_dir, "rellistbucket")
+        os.makedirs(bucket_path)
+        with open(os.path.join(bucket_path, "file0.txt"), "w") as f:
+            f.write("content")
+
+        # Relative spelling of the same absolute buckets dir.
+        rel_config = os.path.relpath(temp_buckets_dir, os.getcwd())
+        monkeypatch.setattr(utils_module, "get_buckets_path", lambda: rel_config)
+        monkeypatch.setattr(list_module, "get_buckets_path", lambda: rel_config)
+
+        response = await client.get("/api/v1/buckets/rellistbucket/files")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        filepath = data[0]["filepath"]
+        assert filepath == "file0.txt"
+        assert not filepath.startswith("/")
+
+    @pytest.mark.asyncio
     async def test_list_files_empty_bucket(self, client: AsyncClient, temp_buckets_dir: str):
         """List files in empty bucket returns empty list."""
         bucket_path = os.path.join(temp_buckets_dir, "emptybucket")

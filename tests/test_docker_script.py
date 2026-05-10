@@ -3,38 +3,11 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
-from collections.abc import Generator
 from pathlib import Path
-
-import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOCKER_SCRIPT = PROJECT_ROOT / "docker.sh"
-
-
-@pytest.fixture(autouse=True)
-def _isolate_host_dirs(tmp_path: Path) -> Generator[None]:
-    """Hide leftover host ``state/``/``buckets/`` dirs during each test.
-
-    ``docker.sh`` migrates ``state/`` and ``buckets/`` into named volumes and
-    verifies the copy by counting entries; a leftover dev directory would make
-    that verification fail against the fake docker (which records args without
-    copying). Move any existing dirs aside and restore them afterwards.
-    """
-    moved: list[tuple[Path, Path]] = []
-    for name in ("state", "buckets"):
-        src = PROJECT_ROOT / name
-        if src.exists():
-            dst = tmp_path / f"{name}.hidden"
-            shutil.move(str(src), str(dst))  # cross-device safe (tmp_path is on /tmp)
-            moved.append((src, dst))
-    try:
-        yield
-    finally:
-        for src, dst in moved:
-            shutil.move(str(dst), str(src))
 
 
 def _base_env(tmp_path: Path, args_file: Path) -> dict[str, str]:
@@ -47,10 +20,16 @@ def _base_env(tmp_path: Path, args_file: Path) -> dict[str, str]:
         "HSYNC_WORKERS",
         "HSYNC_TZ",
         "HSYNC_STARTUP_HEALTH_TIMEOUT",
+        "HSYNC_UID",
+        "HSYNC_GID",
+        "HSYNC_DATA_DIR",
     ):
         env.pop(key, None)
     env["PATH"] = f"{tmp_path}{os.pathsep}{env['PATH']}"
     env["HSYNC_FAKE_DOCKER_ARGS"] = str(args_file)
+    # Isolate the host data directory from the repository: `start` creates
+    # and bind-mounts it, so it must live under the test's tmp dir.
+    env["HSYNC_DATA_DIR"] = str(tmp_path / "data")
     # Unit tests use a fake docker (no real server): skip the post-start
     # /health poll so `start` returns immediately with the printed URLs.
     env["HSYNC_STARTUP_HEALTH_TIMEOUT"] = "0"
@@ -125,8 +104,10 @@ def test_start_uses_env_file_without_leaking_api_key_value(tmp_path: Path):
     assert "--env-file" in recorded
     assert str(env_file) in recorded
     assert "9999:9999" in recorded
-    assert "hsync-server-state:/project/state" in recorded
-    assert "hsync-server-buckets:/project/buckets" in recorded
+    # Bind mounts from the host data directory to the canonical paths.
+    assert f"{tmp_path}/data/state:/project/state" in recorded
+    assert f"{tmp_path}/data/buckets:/project/buckets" in recorded
+    assert f"{tmp_path}/data/certs:/project/certs" in recorded
     assert not any(arg.startswith("HSYNC_ADMIN_KEY=") for arg in recorded)
 
 
@@ -141,8 +122,35 @@ def test_start_passes_parent_api_key_by_name_only(tmp_path: Path):
     assert "-e" in recorded
     assert "HSYNC_ADMIN_KEY" in recorded
     assert "http://localhost:9753" in result.stdout
-    assert "hsync-server-state:/project/state" in recorded
+    assert f"{tmp_path}/data/state:/project/state" in recorded
     assert not any(arg.startswith("HSYNC_ADMIN_KEY=") for arg in recorded)
+
+
+def test_start_creates_data_directory_tree(tmp_path: Path):
+    result, _recorded = _run_script(
+        tmp_path,
+        "start",
+        env_overrides={"HSYNC_ADMIN_KEY": "test-placeholder-api-key-000000"},
+    )
+
+    assert result.returncode == 0
+    for name in ("buckets", "state", "certs"):
+        assert (tmp_path / "data" / name).is_dir()
+
+
+def test_clean_all_removes_data_directory(tmp_path: Path):
+    result, _recorded = _run_script(
+        tmp_path,
+        "start",
+        env_overrides={"HSYNC_ADMIN_KEY": "test-placeholder-api-key-000000"},
+    )
+    assert result.returncode == 0
+    assert (tmp_path / "data").is_dir()
+
+    result, _recorded = _run_script(tmp_path, "clean", "--all")
+
+    assert result.returncode == 0
+    assert not (tmp_path / "data").exists()
 
 
 def test_build_uses_repository_root_as_context(tmp_path: Path):

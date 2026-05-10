@@ -80,11 +80,12 @@ services:
       - "9753"
     env_file:
       - ./prod.env
+    user: "1000:1000"
     volumes:
-      - hsync-buckets:/project/buckets
-      - hsync-state:/project/state
-      - hsync-certs:/project/certs
-      - hsync-logs:/project/logs
+      - ./hsync-data/buckets:/project/buckets
+      - ./hsync-data/state:/project/state
+      - ./hsync-data/certs:/project/certs
+      - ./hsync-data/logs:/project/logs
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.hsync.rule=Host(`your-domain.com`)"
@@ -95,10 +96,6 @@ services:
       - hsync-net
 
 volumes:
-  hsync-buckets:
-  hsync-state:
-  hsync-certs:
-  hsync-logs:
   traefik-le:
 
 networks:

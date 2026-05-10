@@ -15,6 +15,7 @@ contract across repository boundaries.
 Requires HSYNC_BB_SERVER=1 and the optional blackbox group installed.
 """
 
+import datetime
 import os
 import shutil
 import socket
@@ -22,8 +23,14 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 
+import httpx
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 
 _BB_SERVER_ENABLED = os.environ.get("HSYNC_BB_SERVER") == "1"
 _BB_SERVER_REASON = "Black-box server-mode tests require HSYNC_BB_SERVER=1"
@@ -46,6 +53,124 @@ pytestmark = [
         reason="hsync-client not installed (poetry install --with blackbox)",
     ),
 ]
+
+
+def _raw_client_env() -> dict[str, str]:
+    """Process environment scrubbed of every ``HSYNC_*`` variable."""
+    return {k: v for k, v in os.environ.items() if not k.startswith("HSYNC_")}
+
+
+class _TLSContext:
+    """Context manager bundling a live TLS server with tenant config."""
+
+    def __init__(self, tmp_path_factory, bucket: str):
+        self.tmp_path_factory = tmp_path_factory
+        self.bucket = bucket
+        self.proc: subprocess.Popen | None = None
+        self.buckets_dir: str | None = None
+
+    def __enter__(self) -> tuple[str, str, str]:
+        from tests.conftest import BB_ADMIN_SECRET, BB_API_KEY
+
+        self.buckets_dir = tempfile.mkdtemp(prefix="hsync_bb_interop_")
+        cert_dir = self.tmp_path_factory.mktemp("bbssl")
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "127.0.0.1")])
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(name)
+            .issuer_name(name)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(datetime.datetime.now(datetime.UTC))
+            .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1))
+            .sign(key, hashes.SHA256())
+        )
+        cert_path = cert_dir / "cert.pem"
+        key_path = cert_dir / "key.pem"
+        cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+        key_path.write_bytes(
+            key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.TraditionalOpenSSL,
+                serialization.BestAvailableEncryption(b"test-bb-interop-ssl-password"),
+            )
+        )
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+
+        env = _raw_client_env()
+        env.update(
+            {
+                "HSYNC_ADMIN_KEY": BB_ADMIN_SECRET,
+                "HSYNC_SCRYPT_N": "16",
+                "HSYNC_SCRYPT_MAXMEM": "33554432",
+                "HSYNC_BUCKETS": self.buckets_dir,
+                "HSYNC_STATE_DIR": self.buckets_dir + "_state",
+                "HSYNC_RATE_LIMIT_DEFAULT": "1000000/minute",
+                "HSYNC_RATE_LIMIT_UPLOAD": "1000000/minute",
+                "HSYNC_MIN_FREE_DISK_SPACE": "0",
+                "HSYNC_SSL_KEYFILE_PASSWORD": "test-bb-interop-ssl-password",
+            }
+        )
+        self.proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "hsync_server",
+                "--port",
+                str(port),
+                "--ssl",
+                "--ssl-cert",
+                str(cert_path),
+                "--ssl-key",
+                str(key_path),
+                "--log-level",
+                "warning",
+            ],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        base_url = f"https://127.0.0.1:{port}"
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            if self.proc.poll() is not None:
+                raise RuntimeError(f"server exited early ({self.proc.returncode})")
+            try:
+                r = httpx.get(f"{base_url}/health", verify=False, timeout=1.0)
+                if r.status_code == 200:
+                    break
+            except Exception:
+                pass
+            time.sleep(0.15)
+        else:
+            raise RuntimeError("server did not become healthy")
+
+        r = httpx.post(
+            f"{base_url}/api/v1/buckets",
+            params={"bucket": self.bucket},
+            headers={"Authorization": f"Bearer {BB_API_KEY}"},
+            verify=False,
+            timeout=15.0,
+        )
+        assert r.status_code == 201, r.text
+        return base_url, BB_API_KEY, self.bucket
+
+    def __exit__(self, *exc_info) -> None:
+        assert self.proc is not None
+        self.proc.terminate()
+        try:
+            self.proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self.proc.wait(timeout=5)
+        if self.buckets_dir is not None:
+            shutil.rmtree(self.buckets_dir, ignore_errors=True)
 
 
 class TestClientCliCapabilities:
@@ -82,121 +207,8 @@ class TestClientUploadArbitrationE2E:
     # Fixture-local TLS server.
     @pytest.fixture
     def tls_server(self, tmp_path_factory):
-        from tests.conftest import BB_ADMIN_SECRET, BB_API_KEY
-
-        buckets_dir = tempfile.mkdtemp(prefix="hsync_bb_interop_")
-        cert_dir = tmp_path_factory.mktemp("bbssl")
-
-        import datetime
-
-        from cryptography import x509
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import rsa
-        from cryptography.x509.oid import NameOID
-
-        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "127.0.0.1")])
-        cert = (
-            x509.CertificateBuilder()
-            .subject_name(name)
-            .issuer_name(name)
-            .public_key(key.public_key())
-            .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.datetime.now(datetime.UTC))
-            .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1))
-            .sign(key, hashes.SHA256())
-        )
-        cert_path = cert_dir / "cert.pem"
-        key_path = cert_dir / "key.pem"
-        cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
-        key_path.write_bytes(
-            key.private_bytes(
-                serialization.Encoding.PEM,
-                serialization.PrivateFormat.TraditionalOpenSSL,
-                serialization.BestAvailableEncryption(b"test-bb-interop-ssl-password"),
-            )
-        )
-
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-        sock.close()
-
-        env = {k: v for k, v in os.environ.items() if not k.startswith("HSYNC_")}
-        env.update(
-            {
-                # The server reads the 64-hex bootstrap secret from
-                # HSYNC_ADMIN_KEY; the Bearer token (BB_API_KEY) is derived
-                # from it and is what the *client* sends.
-                "HSYNC_ADMIN_KEY": BB_ADMIN_SECRET,
-                "HSYNC_SCRYPT_N": "16",
-                "HSYNC_SCRYPT_MAXMEM": "33554432",
-                "HSYNC_BUCKETS": buckets_dir,
-                "HSYNC_STATE_DIR": buckets_dir + "_state",
-                "HSYNC_RATE_LIMIT_DEFAULT": "1000000/minute",
-                "HSYNC_RATE_LIMIT_UPLOAD": "1000000/minute",
-                "HSYNC_MIN_FREE_DISK_SPACE": "0",
-                "HSYNC_SSL_KEYFILE_PASSWORD": "test-bb-interop-ssl-password",
-            }
-        )
-        proc = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "hsync_server",
-                "--port",
-                str(port),
-                "--ssl",
-                "--ssl-cert",
-                str(cert_path),
-                "--ssl-key",
-                str(key_path),
-                "--log-level",
-                "warning",
-            ],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        # Wait for health.
-        import httpx
-
-        base_url = f"https://127.0.0.1:{port}"
-        deadline = time.time() + 30
-        while time.time() < deadline:
-            if proc.poll() is not None:
-                raise RuntimeError(f"server exited early ({proc.returncode})")
-            try:
-                r = httpx.get(f"{base_url}/health", verify=False, timeout=1.0)
-                if r.status_code == 200:
-                    break
-            except Exception:
-                pass
-            time.sleep(0.15)
-        else:
-            raise RuntimeError("server did not become healthy")
-
-        # Create a bucket via REST.
-        name = "bb-interop"
-        r = httpx.post(
-            f"{base_url}/api/v1/buckets",
-            params={"bucket": name},
-            headers={"Authorization": f"Bearer {BB_API_KEY}"},
-            verify=False,
-            timeout=15.0,
-        )
-        assert r.status_code == 201, r.text
-
-        try:
-            yield base_url, BB_API_KEY, name
-        finally:
-            proc.terminate()
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=5)
-            shutil.rmtree(buckets_dir, ignore_errors=True)
+        with _TLSContext(tmp_path_factory, "bb-interop") as ctx:
+            yield ctx
 
     def test_client_uploads_new_file_to_server(self, tls_server, tmp_path):
         """A real client one-shot sync pushes a local file to the TLS server.
@@ -208,7 +220,7 @@ class TestClientUploadArbitrationE2E:
         base_url, api_key, bucket = tls_server
         (tmp_path / "from-real-client.txt").write_bytes(b"client-authored\n")
 
-        env = {k: v for k, v in os.environ.items() if not k.startswith("HSYNC_")}
+        env = _raw_client_env()
         # Client env: hsync-client still reads HSYNC_API_KEY and sends its value
         # verbatim as the Bearer token (the full hs_HsyncAdminBootstrap01_<secret>).
         env["HSYNC_API_KEY"] = api_key
@@ -235,8 +247,6 @@ class TestClientUploadArbitrationE2E:
         )
         assert result.returncode == 0, result.stdout + result.stderr
 
-        import httpx
-
         with httpx.Client(
             base_url=base_url,
             headers={"Authorization": f"Bearer {api_key}"},
@@ -247,3 +257,105 @@ class TestClientUploadArbitrationE2E:
             assert r.status_code == 200
             names = {f["filepath"] for f in r.json()}
             assert "from-real-client.txt" in names, names
+
+
+class TestTwoClientSyncE2E:
+    """Two real client one-shot syncs converging through the same TLS server.
+
+    Each client owns a separate local directory (separate folder UUID, like
+    two real machines): the server is their only channel. The scenario walks
+    the full lifecycle — initial file + nested-directory replication, then a
+    rename and a delete propagated to the second client.
+    """
+
+    @pytest.fixture
+    def server(self, tmp_path_factory):
+        bucket = f"bb-twoclient-{uuid.uuid4().hex[:8]}"
+        with _TLSContext(tmp_path_factory, bucket) as ctx:
+            yield ctx
+
+    def _run_sync(
+        self, base_url: str, api_key: str, bucket: str, path
+    ) -> subprocess.CompletedProcess[str]:
+        """One-shot sync of *path* against the server; returns the CLI result."""
+        env = _raw_client_env()
+        env["HSYNC_API_KEY"] = api_key
+        return subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "hsync_client",
+                "-b",
+                bucket,
+                "-s",
+                base_url,
+                "-p",
+                str(path),
+                "--yes",
+                "--insecure",
+                "--min-free-disk-space",
+                "0",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+
+    def _server_files(self, base_url: str, api_key: str, bucket: str) -> set[str]:
+        with httpx.Client(
+            base_url=base_url,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=30.0,
+            verify=False,
+        ) as client:
+            r = client.get(f"/api/v1/buckets/{bucket}/files")
+            assert r.status_code == 200, r.text
+            return {f["filepath"] for f in r.json()}
+
+    def test_two_clients_sync_file_directory_rename_delete(self, server, tmp_path):
+        base_url, api_key, bucket = server
+
+        # Phase 1 — client A authors a file and a nested-directory file.
+        dir_a = tmp_path / "client-a"
+        dir_b = tmp_path / "client-b"
+        (dir_a / "sub").mkdir(parents=True)
+        (dir_a / "hello.txt").write_text("hello from client A\n", encoding="utf-8")
+        (dir_a / "sub" / "inner.txt").write_text("nested content\n", encoding="utf-8")
+
+        result = self._run_sync(base_url, api_key, bucket, dir_a)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+        server_files = self._server_files(base_url, api_key, bucket)
+        assert "hello.txt" in server_files
+        assert "sub/inner.txt" in server_files
+
+        # Phase 2 — client B, starting from an empty directory, converges via
+        # the server: the file and the nested directory structure are created.
+        dir_b.mkdir()
+        result = self._run_sync(base_url, api_key, bucket, dir_b)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert (dir_b / "hello.txt").read_text(encoding="utf-8") == "hello from client A\n"
+        assert (dir_b / "sub" / "inner.txt").read_text(encoding="utf-8") == "nested content\n"
+
+        # Phase 3 — rename on client A propagates to client B.
+        os.rename(dir_a / "hello.txt", dir_a / "renamed.txt")
+        result = self._run_sync(base_url, api_key, bucket, dir_a)
+        assert result.returncode == 0, result.stdout + result.stderr
+        result = self._run_sync(base_url, api_key, bucket, dir_b)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert not (dir_b / "hello.txt").exists()
+        assert (dir_b / "renamed.txt").read_text(encoding="utf-8") == "hello from client A\n"
+        server_files = self._server_files(base_url, api_key, bucket)
+        assert "renamed.txt" in server_files and "hello.txt" not in server_files
+
+        # Phase 4 — delete on client A propagates to client B.
+        os.remove(dir_a / "sub" / "inner.txt")
+        result = self._run_sync(base_url, api_key, bucket, dir_a)
+        assert result.returncode == 0, result.stdout + result.stderr
+        result = self._run_sync(base_url, api_key, bucket, dir_b)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert not (dir_b / "sub" / "inner.txt").exists()
+        server_files = self._server_files(base_url, api_key, bucket)
+        assert "sub/inner.txt" not in server_files
+        assert "renamed.txt" in server_files

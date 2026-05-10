@@ -135,9 +135,9 @@ async def test_upload_file(client):
 
 ## Test isolation — never touch the repository's real state
 
-The server's settings default to the repository layout (`./buckets`, `./state`
-relative to the project root, `config.py:_HSYNC_PATH`), so a test that forgets
-to isolate its state would silently pollute the developer's real
+The server's settings default to the repository layout (absolute, resolved
+`<repo>/buckets` and `<repo>/state`, `config.py:_HSYNC_PATH`), so a test that
+forgets to isolate its state would silently pollute the developer's real
 `syncstate.db` and `buckets/` with test rows and directories (the historical
 cause of "ghost" test buckets such as `bb-*` shown by `admin bucket list`).
 The suite enforces isolation at **three independent levels**:

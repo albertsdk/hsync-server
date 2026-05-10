@@ -142,14 +142,14 @@ add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; prelo
 
 ## Filesystem Permissions
 
-### Docker volumes
+### Docker data directory
 
-The container runs as UID 1000. Ensure the host directories used for bind mounts
-are owned by the same UID:
-
-```bash
-sudo chown -R 1000:1000 ./buckets ./certs ./logs
-```
+`./docker.sh` and the Compose template run the container under the invoking
+user's UID/GID (`HSYNC_UID`/`HSYNC_GID`) and keep all persistent state in one
+host data directory (`hsync-data/{buckets,state,certs}` by default). Because
+the container runs as that same user, the bind-mounted directories are writable
+without any manual `chown`. If you point a custom bind mount at directories
+owned differently, make them writable by the configured user yourself.
 
 ### Restrict access to environment files
 
@@ -162,7 +162,7 @@ server should be able to read them.
 
 ### Isolate bucket storage
 
-Place bucket data on a dedicated volume or partition. This prevents the server
+Place the data directory on a dedicated partition. This prevents the server
 from filling up the root filesystem and causing system-wide issues:
 
 ```bash
@@ -257,8 +257,8 @@ pattern.
 - [ ] Reverse proxy terminates TLS with a valid Let's Encrypt certificate
 - [ ] HTTP → HTTPS redirect is configured
 - [ ] Firewall only allows ports 22, 80, 443
-- [ ] Bucket volumes are on a dedicated partition
-- [ ] File permissions: `prod.env` is 600, buckets are owned by UID 1000
+- [ ] The host data directory is on a dedicated partition
+- [ ] File permissions: `prod.env` is 600, the data directory is owned by the configured user
 - [ ] Rate limits are configured (not set to 0)
 - [ ] WebSocket connection limits are set
 - [ ] Structured JSON logging is enabled for production

@@ -49,8 +49,8 @@ with automatic TLS, reverse proxy configuration, and running as a systemd servic
 ## Build from Source with `docker.sh`
 
 The project includes a [`docker.sh`](../docker.sh) script for contributors and
-source deployments. It handles image building, container lifecycle, volume
-management, and SSL configuration. It is not the release quick start; use
+source deployments. It handles image building, container lifecycle, data
+directory management, and SSL configuration. It is not the release quick start; use
 [Path A — Docker](getting-started-docker.md) unless you need a local build.
 
 ### Available commands
@@ -63,18 +63,19 @@ management, and SSL configuration. It is not the release quick start; use
 ./docker.sh status      # Show container status
 ./docker.sh logs        # Show container logs (use -f to follow)
 ./docker.sh shell       # Open a shell in the running container
-./docker.sh clean       # Remove container, image, and SSL-cert volume (keeps data volumes)
-./docker.sh clean --all # Also drop the state and buckets volumes (ALL user data lost)
+./docker.sh clean       # Remove container, image, and the TLS key material (keeps data)
+./docker.sh clean --all # Also drop the host data directory (ALL user data lost)
 ```
 
-> **Data lives in named volumes.** The script persists everything in the
-> `hsync-server-state` (causal database) and `hsync-server-buckets` (bucket
-> files) volumes, so `build`, `stop`/`restart`, and OS reboots never lose data.
-> The first `start` after upgrading from an older script version copies any
-> pre-existing host `./state` / `./buckets` folders into the new volumes
-> automatically and preserves the originals as `*.migrated-*` (never
-> deleted). New volumes inherit the image's `hsync:hsync` ownership, so no
-> `chown` is ever needed — including on a fresh machine.
+> **Data lives on the host in a single data directory.** By default
+> `./docker.sh` keeps everything under `hsync-data/` next to the script
+> (override with `HSYNC_DATA_DIR`): `buckets/` for your files, `state/` for
+> the causal database and `certs/` for the TLS identity, bind-mounted at the
+> canonical `/project/{buckets,state,certs}` paths inside the container.
+> Backup is a plain copy of that directory, and migration to another host is
+> a restore of the same directory. The container runs as the invoking user's
+> UID/GID, so the bind-mounted directories are always writable without any
+> manual `chown`.
 
 ### Build and start from source
 
@@ -175,10 +176,10 @@ you don't need to specify it again:
 ```
 
 This stops and removes the container, deletes the Docker image, and removes the
-SSL certificate volume (forcing a fresh self-signed certificate on the next
-start). The `hsync-server-state` and `hsync-server-buckets` data volumes are
-**kept**; pass `--all` (`./docker.sh clean --all`) to delete them together with
-all user data.
+`certs/` subdirectory of the data directory (forcing a fresh self-signed
+certificate on the next start). `buckets/` and `state/` are **kept**; pass
+`--all` (`./docker.sh clean --all`) to delete the whole data directory together
+with all user data.
 
 ---
 
@@ -198,11 +199,12 @@ services:
       - "9753"
     env_file:
       - ./prod.env
+    user: "1000:1000"
     volumes:
-      - hsync-buckets:/project/buckets
-      - hsync-state:/project/state
-      - hsync-certs:/project/certs
-      - hsync-logs:/project/logs
+      - ./hsync-data/buckets:/project/buckets
+      - ./hsync-data/state:/project/state
+      - ./hsync-data/certs:/project/certs
+      - ./hsync-data/logs:/project/logs
     healthcheck:
       test:
         - CMD
@@ -233,10 +235,6 @@ services:
       - hsync-server
 
 volumes:
-  hsync-buckets:
-  hsync-state:
-  hsync-certs:
-  hsync-logs:
   caddy-data:
   caddy-config:
 
@@ -417,9 +415,10 @@ Common causes:
   secret itself and prints the admin token once; it does not require the
   variable to start.
 - `HSYNC_SSL_KEYFILE_PASSWORD` missing when `HSYNC_SSL_ENABLED=true`.
-- Volume permissions — with `docker.sh` the named volumes are created with the
-  correct ownership automatically; if you use plain `docker run` bind-mounts,
-  the host directories must be writable by the container user (UID 100).
+- Volume permissions — `./docker.sh` and the Compose template run the
+  container as the invoking user's UID/GID (`HSYNC_UID`/`HSYNC_GID`), so the
+  bind-mounted `hsync-data/` directories stay writable. If you mount custom
+  host directories manually, make sure they are writable by that user.
 
 **SSL keyfile password missing:**
 ```

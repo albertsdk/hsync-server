@@ -10,7 +10,7 @@ upgrade procedures, monitoring, and performance guidelines.
 
 ## Table of Contents
 
-- [Persistent Volumes](#persistent-volumes)
+- [Persistent Data](#persistent-data)
 - [Backup and Restore](#backup-and-restore)
 - [Upgrade Guide](#upgrade-guide)
 - [Monitoring](#monitoring)
@@ -18,32 +18,28 @@ upgrade procedures, monitoring, and performance guidelines.
 
 ---
 
-## Persistent Volumes
+## Persistent Data
 
-When running under Docker, the following data must be preserved across container
-recreations and upgrades:
+Everything that must survive container recreations and upgrades lives on the
+host in **one data directory** with plain subdirectories:
 
-| Volume | Container path | Contents |
-|--------|---------------|----------|
-| `hsync-buckets` | `/project/buckets` | All uploaded files, one sub-directory per bucket |
-| `hsync-state` | `/project/state` | `syncstate.db` (causal versions and tombstones) |
-| `hsync-certs` | `/project/certs` | Auto-generated SSL certificates (if using built-in SSL) |
-| `hsync-logs` | `/project/logs` | Log files (if `HSYNC_LOG_FILE` is set) |
+| Host directory | Container path | Contents |
+|----------------|----------------|----------|
+| `<data>/buckets` | `/project/buckets` | All uploaded files, one sub-directory per bucket |
+| `<data>/state` | `/project/state` | `syncstate.db` (causal versions and tombstones) |
+| `<data>/certs` | `/project/certs` | Auto-generated SSL certificates (if using built-in SSL) |
+| `<data>/logs` | `/project/logs` | Log files (if `HSYNC_LOG_FILE` is set) |
+
+`./docker.sh` uses `<data> = hsync-data/` next to the script (override with
+`HSYNC_DATA_DIR`); the Compose installer generates `<data> =
+<install-dir>/hsync-data` and exports it as `HSYNC_DATA_DIR` in its `.env`.
+The directories are bind-mounted into the container, which runs as the
+invoking host user (`HSYNC_UID`/`HSYNC_GID`), so the files are always owned
+by that user and never need `chown`.
 
 > **Note**: Causal versions and tombstones live in `HSYNC_STATE_DIR`
-> (`/project/state/syncstate.db`), not inside the buckets volume. Back up
-> both volumes.
-
-With `docker.sh`, these volumes are managed automatically:
-- `hsync-server-certs` — named volume for SSL certificates (persists across
-  restarts; removed by `./docker.sh clean`)
-- `buckets/` — bind-mounted from the project directory
-
-The recommended Compose installer uses stable named volumes:
-
-- `hsync-server-buckets` — user files
-- `hsync-server-state` — `syncstate.db` (versions and tombstones)
-- `hsync-server-certs` — the persistent self-signed certificate and key
+> (`/project/state/syncstate.db`), not inside the buckets directory. Back up
+> the whole data directory.
 
 ---
 
@@ -51,43 +47,38 @@ The recommended Compose installer uses stable named volumes:
 
 ### What to back up
 
-The **buckets directory** contains all uploaded files and tombstones. A complete
+Back up the **whole data directory**: it contains the uploaded files, the
+causal state (versions and tombstones) and the TLS identity. A complete
 recovery of the recommended installer deployment must also preserve:
 
-- `hsync-server-certs`, containing the certificate and matching encrypted key;
 - the private `.env`, containing the API key and private-key password.
 
-Losing either the certificate volume or its password changes the server TLS
+Losing either the `certs/` directory or its password changes the server TLS
 identity and requires every client to establish trust again.
 
 > **Why back up periodically, not only before upgrades**: the server applies
 > every deletion requested by an authenticated client — the mass-deletion
 > guard is a client-side feature. A misconfigured client (for example one
 > started with `--no-mass-delete-guard`) or a leaked API key can therefore
-> empty a bucket, and a recent volume backup is the only server-side way to
+> empty a bucket, and a recent backup is the only server-side way to
 > roll back. Because the backup also includes the tombstones, a restore does
 > not resurrect files that were legitimately deleted.
 
 ### Compose installer backup
 
-Stop the canonical Compose deployment and archive both named volumes plus its
+Stop the canonical Compose deployment and archive its data directory plus its
 private configuration:
 
 ```bash
 INSTALL_DIR="$HOME/.local/share/hsync-server"
+DATA_DIR=$(grep '^HSYNC_DATA_DIR=' "$INSTALL_DIR/.env" | cut -d= -f2-)
 BACKUP_DIR="$HOME/hsync-backups"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
 docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR" stop
 install -m 600 "$INSTALL_DIR/.env" "$BACKUP_DIR/hsync-config-$TIMESTAMP.env"
-docker run --rm \
-  -v hsync-server-buckets:/snapshot/buckets:ro \
-  -v hsync-server-state:/snapshot/state:ro \
-  -v hsync-server-certs:/snapshot/certs:ro \
-  -v "$BACKUP_DIR:/backup" \
-  alpine:3.22 tar -czf "/backup/hsync-volumes-$TIMESTAMP.tar.gz" \
-    -C /snapshot buckets state certs
+tar -czf "$BACKUP_DIR/hsync-data-$TIMESTAMP.tar.gz" -C "$DATA_DIR" buckets state certs
 docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR" start
 ```
 
@@ -96,38 +87,24 @@ appropriate for secrets.
 
 ### Compose installer restore
 
-Restore only into a stopped server, and keep the current volume as a safety copy
-until the restored data has been verified:
+Restore only into a stopped server, and keep the current data directory as a
+safety copy until the restored data has been verified:
 
 ```bash
 INSTALL_DIR="$HOME/.local/share/hsync-server"
-ARCHIVE="$HOME/hsync-backups/hsync-volumes-20260101-120000.tar.gz"
+DATA_DIR=$(grep '^HSYNC_DATA_DIR=' "$INSTALL_DIR/.env" | cut -d= -f2-)
+ARCHIVE="$HOME/hsync-backups/hsync-data-20260101-120000.tar.gz"
 CONFIG_BACKUP="$HOME/hsync-backups/hsync-config-20260101-120000.env"
 
 docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR" stop
-for volume in hsync-server-buckets-restored hsync-server-state-restored hsync-server-certs-restored; do
-  if docker volume inspect "$volume" >/dev/null 2>&1; then
-    echo "Refusing to overlay existing restore volume: $volume" >&2
-    exit 1
-  fi
-done
-docker volume create hsync-server-buckets-restored
-docker volume create hsync-server-state-restored
-docker volume create hsync-server-certs-restored
-docker run --rm \
-  -v hsync-server-buckets-restored:/restore/buckets \
-  -v hsync-server-state-restored:/restore/state \
-  -v hsync-server-certs-restored:/restore/certs \
-  -v "$(dirname "$ARCHIVE"):/backup:ro" \
-  alpine:3.22 tar -xzf "/backup/$(basename "$ARCHIVE")" -C /restore
+mv "$DATA_DIR" "$DATA_DIR.bak.$(date +%Y%m%d)"
+mkdir -p "$DATA_DIR"
+tar -xzf "$ARCHIVE" -C "$DATA_DIR"
 install -m 600 "$CONFIG_BACKUP" "$INSTALL_DIR/.env"
 ```
 
-After inspecting the restored volumes, change the volume `name` values in
-`compose.yaml` to `hsync-server-buckets-restored`,
-`hsync-server-state-restored` and `hsync-server-certs-restored`, start the
-server, and run the verification below.
-Keep the original volumes until the restore is confirmed.
+After inspecting the restored directory, start the server and run the
+verification below. Keep the safety copy until the restore is confirmed.
 
 ### Backup strategies
 
@@ -144,12 +121,11 @@ RETENTION_DAYS=30
 mkdir -p "$BACKUP_DIR"
 
 ./docker.sh stop
-tar -czf "$BACKUP_DIR/hsync-buckets-$TIMESTAMP.tar.gz" -C buckets .
-tar -czf "$BACKUP_DIR/hsync-state-$TIMESTAMP.tar.gz" -C state .
+tar -czf "$BACKUP_DIR/hsync-data-$TIMESTAMP.tar.gz" -C hsync-data buckets state certs
 ./docker.sh start --env-file prod.env
 
 # Rotate old backups
-find "$BACKUP_DIR" -name "hsync-buckets-*.tar.gz" -mtime +$RETENTION_DAYS -delete
+find "$BACKUP_DIR" -name "hsync-data-*.tar.gz" -mtime +$RETENTION_DAYS -delete
 ```
 
 **Method 2: Zero-downtime via filesystem snapshots (LVM/ZFS/btrfs)**
@@ -187,12 +163,12 @@ rm -rf /tmp/hsync-buckets-backup
 # 1. Stop the server
 ./docker.sh stop
 
-# 2. (Optional) Rename current buckets for safety
-mv buckets buckets.bak.$(date +%Y%m%d)
+# 2. (Optional) Rename the current data directory for safety
+mv hsync-data hsync-data.bak.$(date +%Y%m%d)
 
 # 3. Restore from backup
-mkdir -p buckets
-tar -xzf "$BACKUP_DIR/hsync-buckets-20250101-120000.tar.gz" -C buckets
+mkdir -p hsync-data
+tar -xzf "$BACKUP_DIR/hsync-data-20250101-120000.tar.gz" -C hsync-data
 
 # 4. Start the server
 ./docker.sh start --env-file prod.env
@@ -225,7 +201,7 @@ If you lose the entire server (hardware failure, VM destroyed):
 1. Provision a new server with Docker and Docker Compose v2 installed.
 2. Download and verify the same or target release installer.
 3. Run it with `--no-start` and the original bind address.
-4. Restore the `.env`, bucket volume, and certificate volume as described above.
+4. Restore the `.env` and the data directory archive as described above.
 5. Start the Compose deployment and verify the certificate fingerprint and files.
 6. Update DNS or the client server address if the host address changed. A changed
    address requires a certificate rotation and renewed client trust.
@@ -258,8 +234,8 @@ export HSYNC_VERSION=v1.0.0
 ### Recommended Compose installer
 
 Download and verify the installer for the target release, then run it with the
-same installation directory. It preserves secrets and volumes, updates the
-pinned image, and waits for the upgraded service to become healthy:
+same installation directory. It preserves secrets and the data directory,
+updates the pinned image, and waits for the upgraded service to become healthy:
 
 ```bash
 ./install.sh --install-dir "$HOME/.local/share/hsync-server"
