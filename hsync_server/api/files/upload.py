@@ -35,7 +35,7 @@ from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import invalidate_sha256_cache, is_hidden_file, is_partial_file
 from hsync_common.path_validation import is_internal_name, is_valid_filename, sanitize_filename
-from hsync_common.permissions import is_valid_octal_permissions
+from hsync_common.permissions import is_valid_octal_permissions, sanitize_remote_permissions
 from hsync_common.time_utils import conflict_timestamp
 from loguru import logger as log
 
@@ -45,6 +45,7 @@ from hsync_server.api.file_utils import (
     update_file_timestamp,
 )
 from hsync_server.api.utils import (
+    get_permissions,
     is_valid_bucket,
     resolve_within_bucket,
     set_permissions,
@@ -250,7 +251,11 @@ async def upload_file(
         file_location = f"{file_directory}/{file.filename}"
         partial_file_path = f"{file_location}{PARTIAL_DOWNLOAD_SUFFIX}"
 
-        # Skip upload if identical file already exists (same SHA-256)
+        # Skip upload if identical file already exists (same SHA-256). A
+        # permission-only change (chmod) reuses this branch: the content is
+        # already on disk, so instead of rejecting the upload we apply the
+        # new permissions and notify the other connected clients — the
+        # permission change is a normal causal `modified` event.
         if (
             sha256sum
             and Path(file_location).exists()
@@ -267,8 +272,38 @@ async def upload_file(
             # Clean up partial file if exists
             if Path(partial_file_path).exists():
                 remove(partial_file_path)
+            permissions_only = False
+            if permissions and is_valid_octal_permissions(permissions):
+                current_permissions = await get_permissions(file_location)
+                if current_permissions != sanitize_remote_permissions(permissions):
+                    await set_permissions(file_location, permissions)
+                    permissions_only = True
+            # A permission-only change must reach the other connected clients:
+            # re-emit the (unchanged) file as a `modified` event so they apply
+            # just the permissions (their content dedup sees the same hash).
+            if permissions_only:
+                src = None if is_hidden_file(file_location) else LocalFile.get(file_location)
+                if src is not None:
+                    src.version = server_version_info(
+                        bucket, f"{buckets_path}/{bucket}", file_location
+                    )
+                if src:
+                    manager = bucket_manager.get_manager(bucket)
+                    await manager.send_message(
+                        Event(cid, f"{buckets_path}/{bucket}", bucket, EventName.modified, src)
+                    )
             # Never leak absolute filesystem paths on the wire — the
             # client already knows the bucket-relative path it uploaded.
+            if permissions_only:
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "info": "Permissions updated",
+                        "file": f"{bucket}/{path}/{file.filename}"
+                        if path
+                        else f"{bucket}/{file.filename}",
+                    },
+                )
             return JSONResponse(
                 status_code=409,
                 content={

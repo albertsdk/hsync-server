@@ -89,6 +89,27 @@ class TestUploadHappy:
         assert dl.status_code == 200
         assert dl.content == content
 
+    def test_permission_only_upload_updates_permissions(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        # Given an uploaded file
+        content = b"same bytes"
+        r1 = bb_upload(bb_http, bb_bucket, "perm.bin", content, permissions="644")
+        assert r1.status_code == 201
+
+        # When uploading the identical content with different permissions
+        r2 = bb_upload(bb_http, bb_bucket, "perm.bin", content, permissions="600")
+
+        # Then the server applies the new permissions (200, no byte rewrite)
+        assert r2.status_code == 200
+        assert r2.json()["info"] == "Permissions updated"
+
+        # And the listing reflects the new permissions
+        listed = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json()
+        match = [e for e in listed if e["name"] == "perm.bin"]
+        assert len(match) == 1
+        assert match[0]["permissions"] == "600"
+
     def test_duplicate_identical_upload_returns_conflict(
         self, bb_upload, bb_http: httpx.Client, bb_bucket: str
     ):

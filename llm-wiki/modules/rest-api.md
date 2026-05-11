@@ -91,6 +91,13 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
 - On success cache updated `set_sha256_hash` (`hashes.py:28`) and any tombstone
   cleared `clear_deletion` (`tombstones.py:66`).
 - Size guard `get_max_upload_size()` (`config.py:397`) → `FileTooLargeError`.
+- **Same-SHA permission-only branch** (`upload.py`): when the uploaded content
+  hash equals the on-disk hash, the server does NOT reject the upload — it
+  compares the incoming permissions against the stored file and, on a
+  divergence, applies the new mode (`set_permissions`, sanitized) and
+  re-broadcasts a `modified` event to the other connected clients, responding
+  `200 {"info": "Permissions updated"}` (no byte rewrite, no version bump).
+  Identical content+p perms keep the legacy `409 File already present`.
 - Permissions applied via `set_permissions` (`api/utils.py:82`) — special bits
   (setuid/setgid/sticky) stripped (`sanitize_remote_permissions`).
 - Wire-supplied mtimes clamped to `now + 300 s` (`api/file_utils.py:24`).
