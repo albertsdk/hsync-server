@@ -12,6 +12,7 @@ client uses) — no server internals are imported or mocked.
 """
 
 import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -26,7 +27,7 @@ pytestmark = [
     pytest.mark.usefixtures("bb_http"),
 ]
 import zstandard as zstd
-from hsync_common.delta import apply_delta, compute_signatures, optimal_block_size
+from hsync_common.delta import apply_delta, compute_signatures, find_matches, optimal_block_size
 from hsync_common.models.delta import DeltaOp
 
 
@@ -121,3 +122,77 @@ class TestDeltaNegative:
                 # detail (not a missing-file 404)
                 assert r.status_code == 404
                 assert r.json().get("detail") == "delta_disabled"
+
+
+class TestDeltaApplyHappy:
+    """POST /api/v1/buckets/{bucket}/files/delta/apply — upload-side delta."""
+
+    def test_delta_apply_reconstructs_file_from_base(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str, bb_sample, tmp_path: Path
+    ):
+        # Given a base file (v1) already on the server, and a newer version (v2)
+        # that differs by one block
+        s = bb_sample(suffix=".bin", prefix="apply", size=0)
+        filename = s.name
+        v1 = b"".join(bytes([i]) * 4096 for i in range(5))
+        v2 = v1[:4096] + bytes([255]) * 4096 + v1[8192:]
+        bb_upload(bb_http, bb_bucket, filename, v1, sha256sum=_sha(v1))
+        base_path = tmp_path / "base.bin"
+        base_path.write_bytes(v1)
+
+        # When computing the upload delta (ops + literals) from v1 → v2
+        block_size = optimal_block_size(len(v1))
+        sigs = compute_signatures(str(base_path), block_size)
+        ops, literals = find_matches(v2, sigs, block_size)
+        metadata = {
+            "cid": "bbclient0001bbcltBB10",
+            "base_sha256": _sha(v1),
+            "new_sha256": _sha(v2),
+            "new_size": len(v2),
+            "block_size": block_size,
+            "compressed": False,
+            "ops": [op.to_dict() for op in ops],
+        }
+        r = bb_http.post(
+            f"/api/v1/buckets/{bb_bucket}/files/delta/apply",
+            data={"path": filename, "metadata": json.dumps(metadata)},
+            files={"file": ("literal", literals, "application/octet-stream")},
+        )
+
+        # Then the server reconstructs v2 and reports success
+        assert r.status_code == 200, f"{r.status_code} {r.text}. {s.ctx}"
+        body = r.json()
+        assert body["status"] == "ok"
+        assert body["sha256"] == _sha(v2)
+        assert body["size"] == len(v2)
+
+        # And downloading the file returns the reconstructed v2 content
+        dl = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download",
+            params={"filename": filename, "cid": "bbclient0001bbcltBB10"},
+        )
+        assert dl.status_code == 200, f"download failed: {dl.status_code}. {s.ctx}"
+        assert dl.content == v2, f"reconstructed file mismatch. {s.ctx}"
+
+
+class TestDeltaApplyNegative:
+    def test_delta_apply_on_missing_base_returns_404(self, bb_http: httpx.Client, bb_bucket: str):
+        # Given a file that does not exist on the server
+        # When applying a delta to it
+        metadata = {
+            "cid": "bbclient0001bbcltBB10",
+            "base_sha256": _sha(b""),
+            "new_sha256": _sha(b"x"),
+            "new_size": 1,
+            "block_size": 4096,
+            "compressed": False,
+            "ops": [{"type": "data", "offset": 0, "length": 1, "data_offset": 0}],
+        }
+        r = bb_http.post(
+            f"/api/v1/buckets/{bb_bucket}/files/delta/apply",
+            data={"path": "no_such_base.bin", "metadata": json.dumps(metadata)},
+            files={"file": ("literal", b"x", "application/octet-stream")},
+        )
+
+        # Then the server reports the base file as not found
+        assert r.status_code == 404

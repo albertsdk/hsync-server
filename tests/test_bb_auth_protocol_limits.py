@@ -150,3 +150,44 @@ class TestRateLimits:
                 assert 1 <= accepted <= 3
                 assert 429 in codes
                 assert retry_after_seen, "429 responses must carry Retry-After"
+
+
+class TestAuthNegativesProtectedRoute:
+    """Auth failures on a protected route (file listing), not just public endpoints."""
+
+    def test_missing_authorization_returns_401(self, bb_http: httpx.Client, bb_bucket: str):
+        # Given a bucket that exists
+        # When listing files without any Authorization header
+        r = httpx.get(
+            f"{bb_http.base_url}/api/v1/buckets/{bb_bucket}/files",
+            timeout=15.0,
+        )
+
+        # Then the server rejects the request as an authentication failure
+        assert r.status_code == 401
+
+    def test_empty_bearer_returns_401(self, bb_http: httpx.Client, bb_bucket: str):
+        # Given a bucket that exists
+        # When listing files with a Bearer scheme and no token
+        # ("Bearer " with a trailing space is an illegal HTTP header value
+        # and is rejected by httpx before the request is sent)
+        r = httpx.get(
+            f"{bb_http.base_url}/api/v1/buckets/{bb_bucket}/files",
+            headers={"Authorization": "Bearer"},
+            timeout=15.0,
+        )
+
+        # Then the server rejects the request as an authentication failure
+        assert r.status_code == 401
+
+    def test_wrong_key_returns_401(self, bb_http: httpx.Client, bb_bucket: str):
+        # Given a bucket that exists
+        # When listing files with a wrong API key
+        r = httpx.get(
+            f"{bb_http.base_url}/api/v1/buckets/{bb_bucket}/files",
+            headers={"Authorization": "Bearer hs_wrong_key_0123456789abcdef"},
+            timeout=15.0,
+        )
+
+        # Then the server rejects the request as an authentication failure
+        assert r.status_code == 401

@@ -12,6 +12,8 @@ deletion-marker and resume-status endpoints without touching internals.
 
 import hashlib
 import os
+import time
+import uuid
 
 import httpx
 import pytest
@@ -67,6 +69,92 @@ class TestTombstones:
         assert isinstance(entry["ts"], int)
         expected_sha = hashlib.sha256(content).hexdigest()
         assert entry["sha256"] == expected_sha
+
+
+class TestTombstoneMerge:
+    """POST /api/v1/buckets/{bucket}/tombstones — causal merge endpoint."""
+
+    def test_valid_merge_returns_merged_count(
+        self, bb_http: httpx.Client, bb_bucket: str, bb_sample
+    ):
+        # Given a tombstone entry for a file that was deleted on a peer
+        s = bb_sample(prefix="tmb", size=0)
+        content = b"deleted elsewhere"
+        key = hashlib.sha256(s.name.encode()).hexdigest()
+        entry = {
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "version_id": "v1-delete",
+            "origin_cid": _CID,
+            "ts": int(time.time()),
+            "vclock": {_CID: 1},
+        }
+
+        # When posting the merge payload
+        r = bb_http.post(
+            f"/api/v1/buckets/{bb_bucket}/tombstones",
+            json={key: entry},
+        )
+
+        # Then the server accepts it and reports the merge count
+        assert r.status_code == 200, f"{r.status_code} {r.text}. {s.ctx}"
+        assert r.json()["merged"] >= 1
+
+        # And the tombstone is now visible in the listing
+        listing = bb_http.get(f"/api/v1/buckets/{bb_bucket}/tombstones").json()
+        assert key in listing, f"merged tombstone not listed. {s.ctx}"
+
+    def test_invalid_json_body_returns_400(self, bb_http: httpx.Client, bb_bucket: str):
+        # Given a non-JSON body
+        # When posting it
+        r = bb_http.post(
+            f"/api/v1/buckets/{bb_bucket}/tombstones",
+            content=b"not json",
+            headers={"content-type": "application/json"},
+        )
+
+        # Then the server rejects it
+        assert r.status_code == 400
+
+    def test_non_object_body_returns_400(self, bb_http: httpx.Client, bb_bucket: str):
+        # Given a JSON array (not an object)
+        # When posting it
+        r = bb_http.post(
+            f"/api/v1/buckets/{bb_bucket}/tombstones",
+            json=[1, 2, 3],
+        )
+
+        # Then the server rejects it
+        assert r.status_code == 400
+
+    def test_tombstones_isolated_across_buckets(self, bb_http: httpx.Client, bb_bucket: str):
+        # Given two distinct buckets
+        other = f"bb-iso-{uuid.uuid4().hex[:8]}"
+        r = bb_http.post("/api/v1/buckets", params={"bucket": other})
+        assert r.status_code == 201, r.text
+        try:
+            # And a tombstone merged into bucket A only
+            content = b"iso-delete"
+            key = hashlib.sha256(b"iso-key").hexdigest()
+            entry = {
+                "sha256": hashlib.sha256(content).hexdigest(),
+                "version_id": "v-iso",
+                "origin_cid": _CID,
+                "ts": int(time.time()),
+                "vclock": {_CID: 1},
+            }
+            r = bb_http.post(
+                f"/api/v1/buckets/{bb_bucket}/tombstones",
+                json={key: entry},
+            )
+            assert r.status_code == 200
+
+            # When listing tombstones in bucket B
+            other_listing = bb_http.get(f"/api/v1/buckets/{other}/tombstones").json()
+
+            # Then bucket B has no tombstones from bucket A
+            assert key not in other_listing, "tombstone leaked across buckets"
+        finally:
+            bb_http.delete(f"/api/v1/buckets/{other}")
 
 
 class TestUploadStatus:

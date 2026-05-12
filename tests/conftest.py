@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 from collections.abc import AsyncGenerator, Generator
+from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
@@ -399,6 +400,79 @@ BB_CLIENT_CID = "TestClientX1234567890"  # exactly 21 alphanumeric chars per CID
 BB_CLIENT_CID_B = "TestClientY1234567890"
 
 
+# ---------------------------------------------------------------------------
+# Black-box test-data helpers
+#
+# ``bb_sample`` builds reproducible random artefacts (file name + payload +
+# seed). Every generated sample is recorded on the test node so that, on
+# failure, its name and seed are appended to the report for reproducibility.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BBSample:
+    """A reproducible random test artefact."""
+
+    name: str
+    payload: bytes
+    seed: int
+
+    @property
+    def ctx(self) -> str:
+        """Context string for reproducibility logs."""
+        return f"[bb-sample] name={self.name} seed={self.seed}"
+
+
+@pytest.fixture
+def bb_sample(request: pytest.FixtureRequest):
+    """Return a factory that builds reproducible random test data.
+
+    Usage::
+
+        s = bb_sample(size=1024)
+        r = bb_upload(client, bucket, s.name, s.payload)
+        ... assert ..., s.ctx
+    """
+    import random
+    import uuid
+
+    recorded: list[BBSample] = []
+    request.node._bb_samples = recorded  # type: ignore[attr-defined]
+
+    def _make(suffix: str = ".txt", size: int = 0, prefix: str = "bb") -> BBSample:
+        name = f"{prefix}-{uuid.uuid4().hex[:8]}{suffix}"
+        seed = random.randrange(2**32)
+        payload = random.Random(seed).randbytes(size) if size else b""
+        sample = BBSample(name=name, payload=payload, seed=seed)
+        recorded.append(sample)
+        return sample
+
+    return _make
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
+    """On failure, append recorded black-box sample seeds to the report.
+
+    Uses ``hookwrapper=True`` so the default ``TestReport`` is still created
+    by pytest's built-in implementation — a plain ``firstresult`` override
+    would shadow it and break report-dependent fixture teardown.
+    """
+    outcome = yield
+    if call.when == "call":
+        report = outcome.get_result()
+        if report.failed:
+            samples = getattr(item, "_bb_samples", None)
+            if samples:
+                report.sections.append(
+                    (
+                        "bb-samples",
+                        "Black-box samples (name + seed for reproducibility):\n"
+                        + "\n".join(s.ctx for s in samples),
+                    )
+                )
+
+
 def _free_port() -> int:
     """Reserve and release an ephemeral loopback port for the server to bind."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -431,18 +505,19 @@ def _discard_file(path: str) -> None:
 
 def _wait_for_server_ready(
     proc: subprocess.Popen,
-    port: int,
+    base_url: str,
     log_path: str,
     timeout: float = 30.0,
+    verify: bool = True,
 ) -> None:
     """Poll the server's ``/health`` endpoint until it responds 200.
 
     Raises ``RuntimeError`` if the server exits prematurely or does not
-    become healthy within *timeout* seconds.
+    become healthy within *timeout* seconds.  When *verify* is ``False``
+    the probe skips TLS certificate verification (self-signed certs).
     """
     import httpx
 
-    base_url = f"http://127.0.0.1:{port}"
     deadline = time.time() + timeout
     last_exc: Exception | None = None
     while time.time() < deadline:
@@ -450,7 +525,7 @@ def _wait_for_server_ready(
             tail = _log_tail(log_path)
             raise RuntimeError(f"hsync-server exited early (code {proc.returncode}):\n{tail}")
         try:
-            r = httpx.get(f"{base_url}/health", timeout=1.0)
+            r = httpx.get(f"{base_url}/health", timeout=1.0, verify=verify)
             if r.status_code == 200:
                 return
         except Exception as exc:  # noqa: BLE001 - startup not ready yet
@@ -458,18 +533,22 @@ def _wait_for_server_ready(
         time.sleep(0.15)
     tail = _log_tail(log_path)
     raise RuntimeError(
-        f"hsync-server did not become healthy on port {port}: {last_exc}\nserver log tail:\n{tail}"
+        f"hsync-server did not become healthy at {base_url}: {last_exc}\nserver log tail:\n{tail}"
     )
 
 
 def _start_live_server(
     env_overrides: dict[str, str] | None = None,
-) -> tuple[subprocess.Popen, int, str, str]:
+) -> tuple[subprocess.Popen, str, str, str]:
     """Start the real hsync-server on an ephemeral loopback port.
 
-    Returns ``(process, port, buckets_dir, log_path)``. The caller owns
+    Returns ``(process, base_url, buckets_dir, log_path)``. The caller owns
     termination and cleanup (of both the buckets dir and the log file).
     Raises ``RuntimeError`` if the server does not become healthy.
+
+    When *env_overrides* contains ``HSYNC_SSL_ENABLED=True`` the server is
+    started with TLS and the readiness probe uses ``https://`` with
+    ``verify=False`` (self-signed cert).
 
     The server log goes to a temp file, never a pipe: a ``PIPE`` that nobody
     drains after startup would fill its ~64 KB kernel buffer over a session
@@ -507,6 +586,12 @@ def _start_live_server(
     if env_overrides:
         env.update(env_overrides)
 
+    use_ssl = bool(
+        env_overrides and env_overrides.get("HSYNC_SSL_ENABLED", "").lower() in ("true", "1", "yes")
+    )
+    scheme = "https" if use_ssl else "http"
+    base_url = f"{scheme}://127.0.0.1:{port}"
+
     log_fd, log_path = tempfile.mkstemp(prefix="hsync_bb_server_", suffix=".log")
     log_file = os.fdopen(log_fd, "wb")
     try:
@@ -522,15 +607,16 @@ def _start_live_server(
         log_file.close()
 
     try:
-        _wait_for_server_ready(proc, port, log_path)
+        _wait_for_server_ready(proc, base_url, log_path, verify=not use_ssl)
     except RuntimeError:
         # Clean up resources on failure — the caller won't see them.
         _stop_proc(proc)
         shutil.rmtree(buckets_dir, ignore_errors=True)
+        shutil.rmtree(buckets_dir + "_state", ignore_errors=True)
         _discard_file(log_path)
         raise
 
-    return proc, port, buckets_dir, log_path
+    return proc, base_url, buckets_dir, log_path
 
 
 def _stop_proc(proc: subprocess.Popen) -> None:
@@ -546,12 +632,13 @@ def _stop_proc(proc: subprocess.Popen) -> None:
 @pytest.fixture(scope="module")
 def live_server() -> Generator[tuple[str, str]]:
     """Module-scoped real loopback server: yields (base_url, api_key)."""
-    proc, port, buckets_dir, log_path = _start_live_server()
+    proc, base_url, buckets_dir, log_path = _start_live_server()
     try:
-        yield f"http://127.0.0.1:{port}", BB_API_KEY
+        yield base_url, BB_API_KEY
     finally:
         _stop_proc(proc)
         shutil.rmtree(buckets_dir, ignore_errors=True)
+        shutil.rmtree(buckets_dir + "_state", ignore_errors=True)
         _discard_file(log_path)
 
 
@@ -567,12 +654,13 @@ def start_live_server():
 
     @contextlib.contextmanager
     def _start(env_overrides: dict[str, str] | None = None):
-        proc, port, buckets_dir, log_path = _start_live_server(env_overrides)
+        proc, base_url, buckets_dir, log_path = _start_live_server(env_overrides)
         try:
-            yield f"http://127.0.0.1:{port}", BB_API_KEY
+            yield base_url, BB_API_KEY
         finally:
             _stop_proc(proc)
             shutil.rmtree(buckets_dir, ignore_errors=True)
+            shutil.rmtree(buckets_dir + "_state", ignore_errors=True)
             _discard_file(log_path)
 
     return _start

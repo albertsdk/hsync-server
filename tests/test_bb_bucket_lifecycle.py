@@ -14,6 +14,7 @@ Requires HSYNC_BB_SERVER=1 to run.
 """
 
 import os
+import uuid
 
 import httpx
 import pytest
@@ -45,13 +46,14 @@ class TestBucketLifecycle:
     def test_create_reports_success_payload(self, bb_http: httpx.Client):
         # Given no pre-existing bucket
         # When creating it
-        r = bb_http.post("/api/v1/buckets", params={"bucket": "bb-create-payload"})
-
-        # Then the response confirms creation with the expected shape
-        assert r.status_code == 201
-        assert r.json()["info"] == "Bucket created successfully"
-        # Cleanup
-        bb_http.delete("/api/v1/buckets/bb-create-payload")
+        name = "bb-create-payload"
+        r = bb_http.post("/api/v1/buckets", params={"bucket": name})
+        try:
+            # Then the response confirms creation with the expected shape
+            assert r.status_code == 201
+            assert r.json()["info"] == "Bucket created successfully"
+        finally:
+            bb_http.delete(f"/api/v1/buckets/{name}")
 
     def test_name_with_hyphens_and_underscores_accepted(self, bb_http: httpx.Client):
         # Given a valid name containing hyphens and underscores
@@ -59,10 +61,11 @@ class TestBucketLifecycle:
 
         # When creating the bucket
         r = bb_http.post("/api/v1/buckets", params={"bucket": name})
-
-        # Then it is accepted
-        assert r.status_code == 201
-        bb_http.delete(f"/api/v1/buckets/{name}")
+        try:
+            # Then it is accepted
+            assert r.status_code == 201
+        finally:
+            bb_http.delete(f"/api/v1/buckets/{name}")
 
     def test_get_missing_bucket_returns_404(self, bb_http: httpx.Client):
         # Given a bucket that does not exist
@@ -97,10 +100,12 @@ class TestBucketLifecycle:
         """A 63-character bucket name is accepted (the maximum allowed)."""
         max_name = "a" * 63
         r = bb_http.post("/api/v1/buckets", params={"bucket": max_name})
-        assert r.status_code == 201, (
-            f"expected 201 for {len(max_name)}-char name, got {r.status_code}"
-        )
-        bb_http.delete(f"/api/v1/buckets/{max_name}")
+        try:
+            assert r.status_code == 201, (
+                f"expected 201 for {len(max_name)}-char name, got {r.status_code}"
+            )
+        finally:
+            bb_http.delete(f"/api/v1/buckets/{max_name}")
 
     def test_leading_hyphen_name_rejected(self, bb_http: httpx.Client):
         # Given a name starting with a hyphen (forbidden by the contract)
@@ -166,3 +171,55 @@ class TestBucketAuth:
             assert r.status_code in (401, 403)
         finally:
             wrong.close()
+
+
+class TestBucketIsolation:
+    """Files and tombstones in one bucket never surface in another."""
+
+    def test_files_isolated_across_buckets(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str, bb_sample
+    ):
+        # Given two distinct buckets, each with a file the other does not have
+        other = f"bb-iso-{uuid.uuid4().hex[:8]}"
+        assert bb_http.post("/api/v1/buckets", params={"bucket": other}).status_code == 201
+        try:
+            s_a = bb_sample(prefix="fileA", size=0)
+            s_b = bb_sample(prefix="fileB", size=0)
+            bb_upload(bb_http, bb_bucket, s_a.name, b"in-A")
+            bb_upload(bb_http, other, s_b.name, b"in-B")
+
+            # When listing files in each bucket
+            files_a = {
+                f["filepath"] for f in bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json()
+            }
+            files_b = {f["filepath"] for f in bb_http.get(f"/api/v1/buckets/{other}/files").json()}
+
+            # Then each bucket only sees its own files
+            assert s_a.name in files_a and s_b.name not in files_a, f"leak A. {s_a.ctx} {s_b.ctx}"
+            assert s_b.name in files_b and s_a.name not in files_b, f"leak B. {s_a.ctx} {s_b.ctx}"
+        finally:
+            bb_http.delete(f"/api/v1/buckets/{other}")
+
+
+class TestPresence:
+    """GET /api/v1/buckets/{bucket}/presence — connected-client count."""
+
+    def test_fresh_bucket_reports_zero_connected(self, bb_http: httpx.Client, bb_bucket: str):
+        # Given a freshly created bucket with no WebSocket clients
+        # When querying presence
+        r = bb_http.get(f"/api/v1/buckets/{bb_bucket}/presence")
+
+        # Then the response reports zero connected WS clients and zero
+        # non-admin members (the admin caller is excluded from both counters)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["connected"] == 0
+        assert body["total"] == 0, "fresh admin-created bucket has no non-admin members"
+
+    def test_presence_on_missing_bucket_returns_404(self, bb_http: httpx.Client):
+        # Given a bucket that does not exist
+        # When querying presence
+        r = bb_http.get("/api/v1/buckets/bb-no-such-presence/presence")
+
+        # Then the server reports it as not found
+        assert r.status_code == 404

@@ -15,14 +15,12 @@ contract across repository boundaries.
 Requires HSYNC_BB_SERVER=1 and the optional blackbox group installed.
 """
 
+import contextlib
 import datetime
 import os
 import shutil
-import socket
 import subprocess
 import sys
-import tempfile
-import time
 import uuid
 
 import httpx
@@ -60,117 +58,72 @@ def _raw_client_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if not k.startswith("HSYNC_")}
 
 
-class _TLSContext:
-    """Context manager bundling a live TLS server with tenant config."""
+@contextlib.contextmanager
+def _tls_server(tmp_path_factory, bucket: str):
+    """Start a TLS live server with a self-signed cert and create a bucket.
 
-    def __init__(self, tmp_path_factory, bucket: str):
-        self.tmp_path_factory = tmp_path_factory
-        self.bucket = bucket
-        self.proc: subprocess.Popen | None = None
-        self.buckets_dir: str | None = None
+    Uses the shared ``_start_live_server`` harness (scrubbed env, log to
+    file, ``/health`` readiness) with SSL enabled via env overrides — never
+    a hand-rolled ``subprocess.Popen`` with an unscrubbed environment.
+    Yields ``(base_url, api_key, bucket)``.
+    """
+    from tests.conftest import (
+        BB_API_KEY,
+        _discard_file,
+        _start_live_server,
+        _stop_proc,
+    )
 
-    def __enter__(self) -> tuple[str, str, str]:
-        from tests.conftest import BB_ADMIN_SECRET, BB_API_KEY
-
-        self.buckets_dir = tempfile.mkdtemp(prefix="hsync_bb_interop_")
-        cert_dir = self.tmp_path_factory.mktemp("bbssl")
-
-        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "127.0.0.1")])
-        cert = (
-            x509.CertificateBuilder()
-            .subject_name(name)
-            .issuer_name(name)
-            .public_key(key.public_key())
-            .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.datetime.now(datetime.UTC))
-            .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1))
-            .sign(key, hashes.SHA256())
+    # Given a self-signed TLS certificate
+    cert_dir = tmp_path_factory.mktemp("bbssl")
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "127.0.0.1")])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.now(datetime.UTC))
+        .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1))
+        .sign(key, hashes.SHA256())
+    )
+    cert_path = cert_dir / "cert.pem"
+    key_path = cert_dir / "key.pem"
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.BestAvailableEncryption(b"test-bb-interop-ssl-password"),
         )
-        cert_path = cert_dir / "cert.pem"
-        key_path = cert_dir / "key.pem"
-        cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
-        key_path.write_bytes(
-            key.private_bytes(
-                serialization.Encoding.PEM,
-                serialization.PrivateFormat.TraditionalOpenSSL,
-                serialization.BestAvailableEncryption(b"test-bb-interop-ssl-password"),
-            )
-        )
+    )
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-        sock.close()
-
-        env = _raw_client_env()
-        env.update(
-            {
-                "HSYNC_ADMIN_KEY": BB_ADMIN_SECRET,
-                "HSYNC_SCRYPT_N": "16",
-                "HSYNC_SCRYPT_MAXMEM": "33554432",
-                "HSYNC_BUCKETS": self.buckets_dir,
-                "HSYNC_STATE_DIR": self.buckets_dir + "_state",
-                "HSYNC_RATE_LIMIT_DEFAULT": "1000000/minute",
-                "HSYNC_RATE_LIMIT_UPLOAD": "1000000/minute",
-                "HSYNC_MIN_FREE_DISK_SPACE": "0",
-                "HSYNC_SSL_KEYFILE_PASSWORD": "test-bb-interop-ssl-password",
-            }
-        )
-        self.proc = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "hsync_server",
-                "--port",
-                str(port),
-                "--ssl",
-                "--ssl-cert",
-                str(cert_path),
-                "--ssl-key",
-                str(key_path),
-                "--log-level",
-                "warning",
-            ],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        base_url = f"https://127.0.0.1:{port}"
-        deadline = time.time() + 30
-        while time.time() < deadline:
-            if self.proc.poll() is not None:
-                raise RuntimeError(f"server exited early ({self.proc.returncode})")
-            try:
-                r = httpx.get(f"{base_url}/health", verify=False, timeout=1.0)
-                if r.status_code == 200:
-                    break
-            except Exception:
-                pass
-            time.sleep(0.15)
-        else:
-            raise RuntimeError("server did not become healthy")
-
+    # When the server is started with SSL via the shared harness
+    proc, base_url, buckets_dir, log_path = _start_live_server(
+        env_overrides={
+            "HSYNC_SSL_ENABLED": "True",
+            "HSYNC_SSL_CERTFILE": str(cert_path),
+            "HSYNC_SSL_KEYFILE": str(key_path),
+            "HSYNC_SSL_KEYFILE_PASSWORD": "test-bb-interop-ssl-password",
+        }
+    )
+    try:
+        # Then the bucket can be created on the live TLS server
         r = httpx.post(
             f"{base_url}/api/v1/buckets",
-            params={"bucket": self.bucket},
+            params={"bucket": bucket},
             headers={"Authorization": f"Bearer {BB_API_KEY}"},
             verify=False,
             timeout=15.0,
         )
         assert r.status_code == 201, r.text
-        return base_url, BB_API_KEY, self.bucket
-
-    def __exit__(self, *exc_info) -> None:
-        assert self.proc is not None
-        self.proc.terminate()
-        try:
-            self.proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
-            self.proc.wait(timeout=5)
-        if self.buckets_dir is not None:
-            shutil.rmtree(self.buckets_dir, ignore_errors=True)
+        yield base_url, BB_API_KEY, bucket
+    finally:
+        _stop_proc(proc)
+        shutil.rmtree(buckets_dir, ignore_errors=True)
+        shutil.rmtree(buckets_dir + "_state", ignore_errors=True)
+        _discard_file(log_path)
 
 
 class TestClientCliCapabilities:
@@ -204,10 +157,9 @@ class TestClientUploadArbitrationE2E:
     started with a self-signed cert and the client is driven with
     ``--insecure``)."""
 
-    # Fixture-local TLS server.
     @pytest.fixture
     def tls_server(self, tmp_path_factory):
-        with _TLSContext(tmp_path_factory, "bb-interop") as ctx:
+        with _tls_server(tmp_path_factory, "bb-interop") as ctx:
             yield ctx
 
     def test_client_uploads_new_file_to_server(self, tls_server, tmp_path):
@@ -271,7 +223,7 @@ class TestTwoClientSyncE2E:
     @pytest.fixture
     def server(self, tmp_path_factory):
         bucket = f"bb-twoclient-{uuid.uuid4().hex[:8]}"
-        with _TLSContext(tmp_path_factory, bucket) as ctx:
+        with _tls_server(tmp_path_factory, bucket) as ctx:
             yield ctx
 
     def _run_sync(

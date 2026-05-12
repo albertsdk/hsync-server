@@ -60,11 +60,12 @@ tests/
 ├── test_api_integration.py             # End-to-end integration tests
 ├── test_api_utils.py                   # API utility helpers
 ├── test_bb_auth_protocol_limits.py     # Black-box: auth, protocol version and rate-limit use cases
-├── test_bb_bucket_lifecycle.py         # Black-box: bucket create/read/list/delete lifecycle
+├── test_bb_bucket_lifecycle.py         # Black-box: bucket create/read/list/delete lifecycle, isolation, presence
+├── test_bb_client_interop.py           # Black-box: real hsync-client CLI driven from the server repo (TLS interop)
 ├── test_bb_delta_transfer.py           # Black-box: delta transfer use case (signatures, tokens, apply)
 ├── test_bb_file_download_delete.py     # Black-box: file download and delete use cases
 ├── test_bb_file_upload.py              # Black-box: file upload use case (resume, compression, overwrite)
-├── test_bb_tombstones_status.py        # Black-box: tombstone listing and resumable upload-status
+├── test_bb_tombstones_status.py        # Black-box: tombstone listing, merge, and resumable upload-status
 ├── test_bb_websocket_relay.py          # Black-box: WebSocket event-relay (handshake, fan-out, echo suppression)
 ├── test_compression.py                 # Zstandard compression unit tests
 ├── test_config.py                      # Configuration loading and validation
@@ -248,12 +249,13 @@ than unit tests.
 
 | File | What it covers |
 |------|---------------|
-| `test_bb_auth_protocol_limits.py` | Authentication, protocol‑version mismatch, rate‑limit enforcement. |
-| `test_bb_bucket_lifecycle.py` | Bucket create / read / list / delete lifecycle. |
-| `test_bb_delta_transfer.py` | Delta transfer use case (signatures, tokens, apply). |
+| `test_bb_auth_protocol_limits.py` | Authentication, protocol‑version mismatch, rate‑limit enforcement, auth negatives on protected routes. |
+| `test_bb_bucket_lifecycle.py` | Bucket create / read / list / delete lifecycle, cross‑bucket isolation, presence. |
+| `test_bb_client_interop.py` | Real hsync‑client CLI driven from the server repo over TLS (capabilities, upload, two‑client convergence). |
+| `test_bb_delta_transfer.py` | Delta transfer use case (signatures, tokens, apply, negatives). |
 | `test_bb_file_download_delete.py` | File download and delete use cases. |
 | `test_bb_file_upload.py` | File upload use case (resume, compression, overwrite, validation). |
-| `test_bb_tombstones_status.py` | Tombstone listing and resumable upload‑status. |
+| `test_bb_tombstones_status.py` | Tombstone listing, causal merge, and resumable upload‑status. |
 | `test_bb_websocket_relay.py` | WebSocket event‑relay (handshake, fan‑out, echo suppression, rejection). |
 
 To opt in:
