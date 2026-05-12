@@ -110,6 +110,57 @@ class TestUploadHappy:
         assert len(match) == 1
         assert match[0]["permissions"] == "600"
 
+    def test_patch_permissions_endpoint_updates_file_without_payload(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        """The public metadata-only PATCH endpoint updates permissions without
+        an upload payload, and the change is visible in the listing."""
+        # Given an uploaded file
+        content = b"patch me"
+        r1 = bb_upload(bb_http, bb_bucket, "patch.bin", content, permissions="644")
+        assert r1.status_code == 201
+
+        # When the permissions are patched through the dedicated endpoint
+        r2 = bb_http.patch(
+            f"/api/v1/buckets/{bb_bucket}/files/permissions",
+            params={"filename": "patch.bin", "permissions": "600"},
+        )
+
+        # Then the server applies the new mode (200, no file payload sent)
+        assert r2.status_code == 200
+        assert r2.json()["info"] == "Permissions updated"
+
+        # And the listing reflects the new permissions
+        listed = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json()
+        match = [e for e in listed if e["name"] == "patch.bin"]
+        assert len(match) == 1
+        assert match[0]["permissions"] == "600"
+
+        # And the content is untouched
+        dl = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download", params={"filename": "patch.bin"}
+        )
+        assert dl.status_code == 200
+        assert dl.content == content
+
+    def test_list_dirs_endpoint_returns_directory_permissions(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        """The public /dirs endpoint lists directory permissions for the
+        download-only directory-permission converge."""
+        # Given a file in a nested path (the upload creates the directories)
+        r1 = bb_upload(bb_http, bb_bucket, "nested.bin", b"x", path="sub/deep", permissions="644")
+        assert r1.status_code == 201
+
+        # When the directory metadata is listed
+        listed = bb_http.get(f"/api/v1/buckets/{bb_bucket}/dirs").json()
+
+        # Then every directory under the bucket is reported with its mode
+        paths = {e["path"]: e["permissions"] for e in listed}
+        assert "sub" in paths
+        assert "sub/deep" in paths
+        assert isinstance(paths["sub/deep"], str)
+
     def test_duplicate_identical_upload_returns_conflict(
         self, bb_upload, bb_http: httpx.Client, bb_bucket: str
     ):

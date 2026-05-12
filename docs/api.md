@@ -101,6 +101,8 @@ lifecycle.
 | `POST` | `/api/v1/buckets/{bucket}/files` | Upload a file (resumable) | 200/min |
 | `GET` | `/api/v1/buckets/{bucket}/files/download?filename={path}` | Download a file | 1000/min |
 | `GET` | `/api/v1/buckets/{bucket}/files/upload-status?filename={path}` | Check resumable-upload status (offset) | 500/min |
+| `PATCH` | `/api/v1/buckets/{bucket}/files/permissions?filename={path}&permissions={octal}` | Update a file's permissions only (no content upload) | 500/min |
+| `GET` | `/api/v1/buckets/{bucket}/dirs` | List directory permissions in the bucket | 500/min |
 | `DELETE` | `/api/v1/buckets/{bucket}/files` | Delete a file | 500/min |
 
 ### Presence

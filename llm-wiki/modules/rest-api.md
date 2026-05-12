@@ -98,6 +98,23 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   re-broadcasts a `modified` event to the other connected clients, responding
   `200 {"info": "Permissions updated"}` (no byte rewrite, no version bump).
   Identical content+p perms keep the legacy `409 File already present`.
+  The permission apply + `modified` re-broadcast is the shared
+  `apply_permissions_to_existing_file` helper (`api/files/permissions.py`),
+  also used by the dedicated `PATCH` endpoint below.
+- **`PATCH …/files/permissions`** (`api/files/permissions.py`,
+  `patch_file_permissions`): metadata-only chmod. Query params
+  `filename` (bucket-relative), `permissions` (octal, sanitized), optional
+  `cid`. Applies the mode WITHOUT any file payload and re-broadcasts a causal
+  `modified` event; `200 {"info": "Permissions updated"}` on change (or
+  `"info": "Permissions already current"` when identical), `404` when the
+  file does not exist, `400` on invalid permissions/path/name. Used by the
+  client as the first-choice path for `permissions_only` uploads so a chmod
+  on a large file never re-sends its bytes.
+- **`GET …/dirs`** (`api/files/list.py`, `get_dirs`): directory metadata
+  listing `[{"path": <bucket-relative>, "permissions": <octal>}, …]`, sorted
+  by path; skips hidden dirs and dir-symlinks. Directories carry no content
+  hash and never appear in `/files`, so this listing feeds the clients'
+  download-only directory-permission converge.
 - Permissions applied via `set_permissions` (`api/utils.py:82`) — special bits
   (setuid/setgid/sticky) stripped (`sanitize_remote_permissions`).
 - Wire-supplied mtimes clamped to `now + 300 s` (`api/file_utils.py:24`).

@@ -22,7 +22,7 @@ from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
 from hsync_common.hashing import is_sha256_hex
-from hsync_common.models.dir import is_hidden_dir
+from hsync_common.models.dir import Dir, is_hidden_dir
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
 from hsync_common.models.symlink import Symlink
@@ -155,6 +155,64 @@ def _emit_symlink(file_path: str, bucket_root: str) -> dict | None:
     entry = link.to_dict()
     entry["filepath"] = rel
     return entry
+
+
+@auth_router.get("/api/v1/buckets/{bucket}/dirs")
+@limiter.limit(RATE_LIMIT_DEFAULT)
+async def get_dirs(
+    request: Request,  # Required by rate limiter
+    bucket: str,
+    ctx: Annotated[AuthContext, Depends(verify_api_key)],
+) -> JSONResponse:
+    """
+    List directory metadata (path + permissions) in a bucket.
+
+    Directories carry no content hash and never appear in the ``/files``
+    listing, so this dedicated endpoint exposes their permissions for the
+    download-only permission converge ("remote wins"): a peer applies a
+    divergent directory mode locally without any per-file event having
+    arrived.
+
+    Args:
+        bucket: Name of the bucket to list.
+
+    Returns:
+        JSON response with a list of ``{"path": <bucket-relative>,
+        "permissions": <octal>}`` entries, sorted by path for determinism.
+
+    Raises:
+        InvalidBucketNameError: If bucket name is invalid.
+        BucketNotFoundError: If bucket does not exist.
+    """
+    check_bucket_access(bucket, ctx)
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
+
+    buckets_path = get_buckets_path()
+    bucket_root = str(Path(f"{buckets_path}/{bucket}").resolve())
+    if not Path(bucket_root).exists():
+        raise BucketNotFoundError(details={"bucket": bucket, "path": ""})
+
+    entries: list[dict] = []
+    for root, dirs, _files in walk(bucket_root):
+        # Skip hidden directories and never descend into dir-symlinks
+        # (followlinks=False keeps them out of the walk already; they are
+        # symlink entries, not directories, for sync purposes).
+        dirs[:] = [d for d in dirs if not is_hidden_dir(f"{root}/{d}")]
+        for name in dirs:
+            full = f"{root}/{name}"
+            if Path(full).is_symlink():
+                continue
+            dir_obj = Dir.get(full)
+            if dir_obj is None or dir_obj.permissions is None:
+                continue
+            rel = os.path.relpath(full, bucket_root)
+            if rel == ".":
+                continue
+            entries.append({"path": rel, "permissions": dir_obj.permissions})
+
+    entries.sort(key=lambda x: x.get("path", ""))
+    return JSONResponse(status_code=200, content=entries)
 
 
 @auth_router.get("/api/v1/buckets/{bucket}/files")

@@ -21,13 +21,15 @@ from hsync_common.path_validation import (
     resolve_within,
     validate_remote_relpath,
 )
+from hsync_common.permissions import (
+    OWNER_DIRECTORY_ACCESS,
+    octal_to_mode,
+    sanitize_remote_permissions,
+)
 from hsync_common.permissions import get_permissions as _read_permissions
-from hsync_common.permissions import octal_to_mode, sanitize_remote_permissions
 from loguru import logger as log
 
 from hsync_server.config import get_buckets_path
-
-OWNER_DIRECTORY_ACCESS = 0o700
 
 
 def is_valid_bucket(value: str) -> bool:

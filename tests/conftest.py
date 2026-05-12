@@ -180,6 +180,7 @@ def fast_scrypt(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
         ("hsync_server.api.members", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.files.upload", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.files.list", "get_buckets_path", lambda: buckets),
+        ("hsync_server.api.files.permissions", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.files.delete", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.files.download", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.files.delta.apply", "get_buckets_path", lambda: buckets),
@@ -286,9 +287,11 @@ def test_app() -> Generator[FastAPI]:
         download_file,
         get_delta_data,
         get_delta_signatures,
+        get_dirs,
         get_files,
         get_tombstones,
         get_upload_status,
+        patch_file_permissions,
         post_delta_signatures,
         upload_file,
     )
@@ -309,6 +312,10 @@ def test_app() -> Generator[FastAPI]:
     test_auth_router.add_api_route("/api/v1/buckets/{bucket}/files", get_files, methods=["GET"])
     test_auth_router.add_api_route(
         "/api/v1/buckets/{bucket}/files/upload-status", get_upload_status, methods=["GET"]
+    )
+    test_auth_router.add_api_route("/api/v1/buckets/{bucket}/dirs", get_dirs, methods=["GET"])
+    test_auth_router.add_api_route(
+        "/api/v1/buckets/{bucket}/files/permissions", patch_file_permissions, methods=["PATCH"]
     )
     test_auth_router.add_api_route(
         "/api/v1/buckets/{bucket}/files", delete_file, methods=["DELETE"]
