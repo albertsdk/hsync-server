@@ -15,8 +15,14 @@ throughout the application, making them easy to find and modify.
 # Application Info
 # =============================================================================
 
-# Application version (should match hsync-client version for compatibility)
-HSYNC_VERSION = "1.0.0"
+# Re-export shared constants from hsync-common
+from hsync_common.constants import (  # noqa: E402, F401
+    HSYNCKEEP_FILENAME,
+    VERSION,
+)
+
+# Application version (re-exported from hsync-common)
+HSYNC_VERSION = VERSION
 
 
 # =============================================================================
@@ -46,15 +52,7 @@ DEFAULT_FILE_PERMISSIONS = "-rw-rw-r--"
 DEFAULT_DIR_PERMISSIONS = "drwxrwxr-x"
 
 
-# =============================================================================
-# Sentinel File for Empty Directories
-# =============================================================================
-
-# Sentinel filename placed in empty directories to force sync of the
-# directory structure.  Similar to Git's .gitkeep convention.
-# This file is treated as *not* hidden by is_hidden_file() so it passes
-# through the sync engine, but it is filtered from the desktop UI.
-HSYNCKEEP_FILENAME = ".hsynckeep"
+# HSYNCKEEP_FILENAME is re-exported from hsync_common.constants above
 
 
 # =============================================================================

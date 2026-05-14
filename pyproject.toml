@@ -12,6 +12,7 @@ hsync-server = "hsync_server.__main__:main"
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.14"
+hsync-common = {path = "../hsync-common", develop = true}
 fastapi = "^0.128.0"
 uvicorn = "^0.40.0"
 prometheus-fastapi-instrumentator = "^7.0.2"
