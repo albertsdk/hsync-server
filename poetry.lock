@@ -1837,21 +1837,6 @@ typing-extensions = {version = ">=4.10.0", markers = "python_version < \"3.13\""
 full = ["httpx (>=0.27.0,<0.29.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.18)", "pyyaml"]
 
 [[package]]
-name = "tenacity"
-version = "9.1.4"
-description = "Retry code until it succeeds"
-optional = false
-python-versions = ">=3.10"
-files = [
-    {file = "tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55"},
-    {file = "tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a"},
-]
-
-[package.extras]
-doc = ["reno", "sphinx"]
-test = ["pytest", "tornado (>=4.5)", "typeguard"]
-
-[[package]]
 name = "typer"
 version = "0.21.2"
 description = "Typer, build great CLIs. Easy to code. Based on Python type hints."
@@ -2395,4 +2380,4 @@ cffi = ["cffi (>=1.17,<2.0)", "cffi (>=2.0.0b)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.12,<3.14"
-content-hash = "2685b580dc72aa3c140851bdacaba10da65d4820f551ec2646cb3adc3dc7e455"
+content-hash = "84412bb8529791a97b8ec373a9be237989d0fc3fe62fe2be1f07cf553608f02e"
