@@ -29,16 +29,18 @@ from pathlib import Path
 from typing import Any
 
 from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
+from hsync_common.ssl_utils import (
+    DEFAULT_KEY_SIZE,
+    build_self_signed_certificate,
+    generate_rsa_private_key,
+    serialize_cert_pem,
+    serialize_key_pem,
+)
 from loguru import logger as log
 
 # Default certificate validity period (365 days)
 DEFAULT_CERT_VALIDITY_DAYS = 365
-
-# Default RSA key size (2048 bits for good security/performance balance)
-DEFAULT_KEY_SIZE = 2048
 
 
 def generate_self_signed_cert(
@@ -69,28 +71,16 @@ def generate_self_signed_cert(
 
     log.info(f"Generating self-signed certificate for hostname: {hostname}")
 
-    # Generate RSA private key
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=key_size,
-    )
+    private_key = generate_rsa_private_key(key_size)
 
-    # Build certificate subject and issuer (same for self-signed)
-    subject = issuer = x509.Name(
-        [
-            x509.NameAttribute(NameOID.COUNTRY_NAME, "IT"),
-            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Italy"),
-            x509.NameAttribute(NameOID.LOCALITY_NAME, "Local"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "HSYNC"),
-            x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "Self-Signed"),
-            x509.NameAttribute(NameOID.COMMON_NAME, hostname),
-        ]
-    )
-
-    # Calculate validity period
-    now = datetime.now(UTC)
-    not_valid_before = now
-    not_valid_after = now + timedelta(days=validity_days)
+    subject_attrs = [
+        x509.NameAttribute(NameOID.COUNTRY_NAME, "IT"),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Italy"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, "Local"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "HSYNC"),
+        x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "Self-Signed"),
+        x509.NameAttribute(NameOID.COMMON_NAME, hostname),
+    ]
 
     # Build certificate with Subject Alternative Names (SAN)
     # Include both hostname and localhost for local development
@@ -108,24 +98,15 @@ def generate_self_signed_cert(
     except (socket.gaierror, ValueError):
         pass  # Hostname doesn't resolve, skip
 
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(subject)
-        .issuer_name(issuer)
-        .public_key(private_key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(not_valid_before)
-        .not_valid_after(not_valid_after)
-        .add_extension(
-            x509.SubjectAlternativeName(san_list),
-            critical=False,
-        )
-        .add_extension(
-            x509.BasicConstraints(ca=True, path_length=0),
-            critical=True,
-        )
-        .sign(private_key, hashes.SHA256())
+    cert = build_self_signed_certificate(
+        private_key,
+        subject_attrs=subject_attrs,
+        san_list=san_list,
+        validity_days=validity_days,
+        basic_constraints_ca=True,
     )
+
+    not_valid_after = datetime.now(UTC) + timedelta(days=validity_days)
 
     # Ensure parent directories exist
     Path(cert_path).parent.mkdir(parents=True, exist_ok=True)
@@ -133,18 +114,12 @@ def generate_self_signed_cert(
 
     # Write private key (with restrictive permissions)
     with open(key_path, "wb") as f:
-        f.write(
-            private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.TraditionalOpenSSL,
-                encryption_algorithm=serialization.NoEncryption(),
-            )
-        )
+        f.write(serialize_key_pem(private_key))
     os.chmod(key_path, 0o600)  # Read/write only for owner
 
     # Write certificate
     with open(cert_path, "wb") as f:
-        f.write(cert.public_bytes(serialization.Encoding.PEM))
+        f.write(serialize_cert_pem(cert))
     os.chmod(cert_path, 0o644)  # Readable by all
 
     log.info(f"Certificate generated: {cert_path}")
