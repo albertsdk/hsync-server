@@ -21,6 +21,59 @@ from re import match
 from typing import Optional, TypedDict
 
 # =============================================================================
+# MD5 Cache (mirrors hsync-client implementation)
+# =============================================================================
+
+# In-memory cache for MD5 checksums to avoid redundant computation
+# during a single sync operation. Key: filepath, Value: tuple[md5sum, mtime]
+_md5_cache: dict[str, tuple[str, int]] = {}
+
+# Chunk sizes based on file size for optimal transfer
+_CHUNK_SIZE_SMALL = 8 * 1024  # 8KB for files < 1MB
+_CHUNK_SIZE_MEDIUM = 64 * 1024  # 64KB for files < 100MB
+_CHUNK_SIZE_LARGE = 256 * 1024  # 256KB for files >= 100MB
+_FILE_SIZE_SMALL = 1_000_000  # 1MB
+_FILE_SIZE_MEDIUM = 100_000_000  # 100MB
+
+
+def clear_md5_cache() -> None:
+    """Clear the entire MD5 cache.
+
+    Should be called at the start of each sync cycle to ensure
+    fresh checksums are computed for all files.
+    """
+    _md5_cache.clear()
+
+
+def invalidate_md5_cache(file_path: str) -> None:
+    """Remove a single entry from the MD5 cache.
+
+    Should be called when a file is known to have been modified
+    (e.g. after an upload) so that the next ``File.get()``
+    recomputes the checksum.
+
+    Args:
+        file_path: Path of the file to invalidate.
+    """
+    _md5_cache.pop(file_path, None)
+
+
+def _get_cached_md5(file_path: str, current_mtime: int) -> str | None:
+    """Get cached MD5 if file hasn't been modified."""
+    if file_path in _md5_cache:
+        cached_md5, cached_mtime = _md5_cache[file_path]
+        if cached_mtime == current_mtime:
+            return cached_md5
+        del _md5_cache[file_path]
+    return None
+
+
+def _set_cached_md5(file_path: str, md5sum: str, mtime: int) -> None:
+    """Store MD5 in cache with its mtime for invalidation."""
+    _md5_cache[file_path] = (md5sum, mtime)
+
+
+# =============================================================================
 # TypedDicts for type-safe serialization
 # =============================================================================
 
@@ -152,18 +205,38 @@ class File:
         return None
 
     @staticmethod
-    def _compute_md5(filepath: str) -> str:
+    def _compute_md5(filepath: str, file_size: int | None = None) -> str:
         """
         Compute the MD5 checksum of a file.
 
+        Reads the file in chunks to avoid loading large files entirely
+        into memory. Uses adaptive chunk size based on file size for
+        optimal performance.
+
         Args:
             filepath: Path to the file.
+            file_size: Size of the file in bytes. If not provided, will
+                be determined from filesystem.
 
         Returns:
             Hexadecimal MD5 digest string.
         """
+        # Determine optimal chunk size based on file size
+        if file_size is not None:
+            if file_size >= _FILE_SIZE_MEDIUM:
+                chunk_size = _CHUNK_SIZE_LARGE
+            elif file_size >= _FILE_SIZE_SMALL:
+                chunk_size = _CHUNK_SIZE_MEDIUM
+            else:
+                chunk_size = _CHUNK_SIZE_SMALL
+        else:
+            chunk_size = _CHUNK_SIZE_SMALL
+
+        hash_md5 = md5()
         with open(filepath, "rb") as f:
-            return md5(f.read()).hexdigest()
+            for chunk in iter(lambda: f.read(chunk_size), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
 
     @staticmethod
     def _get_permissions(obj_path: str) -> str:
@@ -214,12 +287,21 @@ class File:
         """
         file_path = join(buckets_dir, file_path.lstrip("/")) if buckets_dir else file_path
         if exists(file_path):
+            file_size = getsize(file_path)
+            file_mtime = int(getmtime(file_path))
+
+            # Try to get cached MD5 (with mtime validation)
+            md5sum = _get_cached_md5(file_path, file_mtime)
+            if md5sum is None:
+                md5sum = cls._compute_md5(file_path, file_size)
+                _set_cached_md5(file_path, md5sum, file_mtime)
+
             return cls(
                 filepath=file_path,
                 ctime=int(getctime(file_path)),
-                mtime=int(getmtime(file_path)),
-                size=getsize(file_path),
-                md5sum=cls._compute_md5(file_path),
+                mtime=file_mtime,
+                size=file_size,
+                md5sum=md5sum,
                 permissions=cls._get_permissions(file_path),
             )
         else:
