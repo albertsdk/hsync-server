@@ -14,7 +14,7 @@ to prevent path traversal and symlink attacks.
 from pathlib import Path
 
 
-def is_path_within_bucket(path: str, bucket_dir: str) -> bool:
+def is_path_within_bucket(path: str, bucket_dir: str, allow_root: bool = True) -> bool:
     """
     Validate that a path is within the bucket directory.
 
@@ -24,6 +24,10 @@ def is_path_within_bucket(path: str, bucket_dir: str) -> bool:
     Args:
         path: Full path to validate.
         bucket_dir: The bucket directory that should contain all files.
+        allow_root: When False, the bucket directory itself is rejected.
+            Use this for destructive operations (e.g. rmtree on a directory
+            delete event) to ensure a client cannot wipe the entire bucket
+            by issuing a delete on the root path.
 
     Returns:
         True if the path is within the bucket, False otherwise.
@@ -34,9 +38,11 @@ def is_path_within_bucket(path: str, bucket_dir: str) -> bool:
     target_path = Path(path).resolve()
     try:
         target_path.relative_to(bucket_path)
-        return True
     except ValueError:
         return False
+    if not allow_root and target_path == bucket_path:
+        return False
+    return True
 
 
 def is_safe_symlink_target(symlink_path: str, target: str, bucket_dir: str) -> bool:

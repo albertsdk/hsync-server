@@ -157,8 +157,12 @@ async def handle_deleted_event(
     # Handle directory deletion
     if "path" in src:
         dir_obj = Dir().from_dict(src, bucket_dir)
-        # Validate path to prevent traversal attacks
-        if dir_obj.path is None or not is_path_within_bucket(dir_obj.path, bucket_dir):
+        # Validate path to prevent traversal attacks. allow_root=False
+        # also rejects an attempt to rmtree the bucket directory itself
+        # (a malicious or buggy client could issue a delete on the root).
+        if dir_obj.path is None or not is_path_within_bucket(
+            dir_obj.path, bucket_dir, allow_root=False
+        ):
             log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dir_obj.path}"')
             return None
         if dir_obj.path:
@@ -184,8 +188,9 @@ async def handle_deleted_event(
                 remove(file_obj.filepath)
                 parent = dirname(file_obj.filepath)
                 if is_sentinel_file(file_obj.filepath):
-                    # Sentinel removed — clean up the now-empty directory
-                    cleanup_empty_dir(parent)
+                    # Sentinel removed — clean up the now-empty directory.
+                    # Never remove the bucket root itself.
+                    cleanup_empty_dir(parent, bucket_root=bucket_dir)
                 else:
                     # Regular file removed — preserve directory with sentinel
                     ensure_sentinel_in_dir(parent)

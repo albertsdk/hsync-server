@@ -109,6 +109,38 @@ class TestCleanupEmptyDir:
         # Should not raise
         file_utils.cleanup_empty_dir(str(file_path))
 
+    def test_does_not_remove_bucket_root(self, tmp_path):
+        """Bucket root is preserved even when empty.
+
+        Regression test: a malicious or legacy client could delete the
+        ``.hsynckeep`` sentinel at the bucket root and trigger cleanup
+        of the parent directory, which is the bucket itself. The guard
+        must prevent that from wiping the whole bucket.
+        """
+        bucket = tmp_path / "bucket"
+        bucket.mkdir()
+
+        file_utils.cleanup_empty_dir(str(bucket), bucket_root=str(bucket))
+        assert bucket.exists(), "Bucket root must not be removed"
+
+    def test_does_not_remove_bucket_root_with_trailing_slash(self, tmp_path):
+        """Trailing slashes and symlink-resolved paths still match the root guard."""
+        bucket = tmp_path / "bucket"
+        bucket.mkdir()
+
+        file_utils.cleanup_empty_dir(str(bucket) + "/", bucket_root=str(bucket))
+        assert bucket.exists()
+
+    def test_still_removes_empty_subdir_with_bucket_root_arg(self, tmp_path):
+        """Sub-directories within the bucket are still cleaned up."""
+        bucket = tmp_path / "bucket"
+        sub = bucket / "sub"
+        sub.mkdir(parents=True)
+
+        file_utils.cleanup_empty_dir(str(sub), bucket_root=str(bucket))
+        assert not sub.exists()
+        assert bucket.exists()
+
 
 class TestIsValidPermissionFormat:
     """Tests for is_valid_permission_format function."""
