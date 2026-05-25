@@ -32,12 +32,16 @@ all over standard HTTP/HTTPS.
 
 ## Why HSYNC Server?
 
-HSYNC is designed to synchronize files using **only the HTTP/HTTPS protocol**.
+HSYNC is designed to synchronize files **in real-time** using **only the HTTP/HTTPS protocol**.
 This makes it the ideal choice in environments where HTTP is the only protocol
 allowed through firewalls, proxies, or network policies — a common constraint in
-corporate networks, cloud environments, and restricted infrastructures.
+corporate networks, cloud environments, and restricted infrastructures.<br><br>
+The table below compares HSYNC with common alternatives on five dimensions.<br>
+**Files As-Is** means the tool stores your files in their original format,
+directly browsable on disk — no proprietary containers, block stores, or
+opaque internal formats.
 
-| Tool | Protocol | HTTP | Real-Time | Original Files | Architecture |
+| Tool | Protocol | HTTP | Real-Time | Files As-Is | Architecture |
 |------|----------|:---:|:---:|:---:|------|
 | **HSYNC Server** | HTTP / HTTPS | ✅ | ✅ | ✅ | Client-Server + P2P |
 | rsync | SSH or rsync daemon | ❌ | ❌ | ✅ | Client-Server |
