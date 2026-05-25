@@ -142,4 +142,4 @@ app.add_middleware(VersionMiddleware)
 # Excludes documentation and monitoring endpoints from metrics collection
 Instrumentator(
     excluded_handlers=["/docs", "/metrics", "/health"],
-).instrument(app).expose(app, tags=["Public Router"], endpoint="/metrics")
+).instrument(app).expose(app, tags=["Public"], endpoint="/metrics")

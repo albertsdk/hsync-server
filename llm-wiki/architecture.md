@@ -30,9 +30,9 @@ Prometheus metrics exposed at `/metrics` via `Instrumentator` (`main.py:125`).
 
 | Router | Auth | Location |
 | ------ | ---- | -------- |
-| `auth_router` | account token via `Depends(verify_api_key)` | `routers.py:75` |
-| `admin_router` | account token + `admin` role | `api/admin.py:40` |
-| `public_router` | none (health, metrics, time, WS) | `routers.py:83` |
+| `auth_router` | account token via `Depends(verify_api_key)` | `routers.py:21` |
+| `admin_router` | account token + `admin` role | `api/admin.py:37` |
+| `public_router` | none (health, metrics, time, WS) | `routers.py:27` |
 
 `verify_api_key` (`auth.py`) extracts the Bearer token and verifies it against
 the account store (`auth_store.py`): scrypt hash check with a KDF cache, then a

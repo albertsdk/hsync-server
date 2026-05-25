@@ -19,9 +19,9 @@ from .auth import verify_api_key
 
 # Authenticated router — all endpoints require a valid account token.
 auth_router = APIRouter(
-    tags=["Authenticated Router"],
+    tags=["Authenticated"],
     dependencies=[Depends(verify_api_key)],
 )
 
 # Public router — no authentication required.
-public_router = APIRouter(tags=["Public Router"])
+public_router = APIRouter(tags=["Public"])
