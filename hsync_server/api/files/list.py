@@ -33,7 +33,7 @@ from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
-from hsync_server.constants import ActionLabel
+from hsync_server.constants import BACKUP_SUFFIX, ActionLabel
 from hsync_server.exceptions import (
     BucketNotFoundError,
     InvalidBucketNameError,
@@ -276,7 +276,7 @@ async def get_files(
             if is_hidden_file(file_path):
                 continue
             # Skip backup files (used during upload to maintain read access)
-            if file.endswith(".backup"):
+            if file.endswith(BACKUP_SUFFIX):
                 continue
 
             # Symlinks are emitted as symlink entries (never dereferenced).

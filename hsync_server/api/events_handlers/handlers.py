@@ -237,18 +237,19 @@ async def handle_deleted_event(
         if not _validate_path(file_obj.filepath, bucket_dir):
             return None
         if file_obj.filepath:
+            is_sentinel = is_sentinel_file(file_obj.filepath)
             if not Path(file_obj.filepath).exists():
                 log.warning(f'{ActionLabel.DELETE} File: "{file_obj.filepath}" not found.')
             else:
                 log.info(f'{ActionLabel.DELETE} Deleted file "{file_obj.filepath}" (CID: {cid})')
                 remove(file_obj.filepath)
                 parent = str(Path(file_obj.filepath).parent)
-                if is_sentinel_file(file_obj.filepath):
+                if is_sentinel:
                     cleanup_empty_dir(parent, bucket_root=bucket_dir)
                 else:
                     ensure_sentinel_in_dir(parent)
             del_sha256_hash(file_obj.filepath)
-            if not is_sentinel_file(file_obj.filepath):
+            if not is_sentinel:
                 # Causal tombstone (ADR-0003): inherit the stored version clock
                 # for the path and tick it by the deleting peer, so
                 # delete-vs-recreate and delete-vs-delete resolve causally.
@@ -350,7 +351,7 @@ async def handle_symlink_event(
     if not src:
         return None
 
-    if "type" in src and src.get("type") == "symlink":
+    if src.get("type") == "symlink":
         link = Symlink.from_dict(src, strip_dir_prefix=False)
         link.filepath = f"{bucket_dir}/{link.filepath.lstrip('/')}"
         target = link.target

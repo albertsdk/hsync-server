@@ -14,6 +14,7 @@ Consumers: ``hsync_server.main`` (router inclusion).
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
@@ -21,6 +22,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger as log
 from pydantic import BaseModel, Field
 
+from hsync_server.api.utils import is_valid_bucket
 from hsync_server.auth import AuthContext, require_admin
 from hsync_server.auth_store import (
     ConflictError,
@@ -29,7 +31,8 @@ from hsync_server.auth_store import (
     parse_expiry,
     validate_name,
 )
-from hsync_server.exceptions import ValidationError
+from hsync_server.config import get_buckets_path
+from hsync_server.exceptions import InvalidBucketNameError, ValidationError
 from hsync_server.rate_limiter import RATE_LIMIT_ADMIN, limiter
 
 # Sub-router under /api/v1/admin — all endpoints inherit auth_router's
@@ -187,7 +190,7 @@ async def set_expiry(request: Request, client_id: str, req: SetExpiryRequest) ->
         expires_at = None
     else:
         expires_at = _parse_expiry(req.expires_at, req.valid_days)
-        if expires_at is None and not req.none:
+        if expires_at is None:
             raise ValidationError("Provide 'expires_at', 'valid_days', or 'none'.")
 
     store = get_auth_store()
@@ -310,14 +313,7 @@ async def list_all_buckets(request: Request) -> JSONResponse:
 @limiter.limit(RATE_LIMIT_ADMIN)
 async def create_bucket_on_behalf(request: Request, req: CreateBucketRequest) -> JSONResponse:
     """Create a bucket on behalf of a specified owner (admin only)."""
-    from pathlib import Path
-
-    from hsync_server.api.utils import is_valid_bucket
-    from hsync_server.config import get_buckets_path
-
     if not is_valid_bucket(req.bucket):
-        from hsync_server.exceptions import InvalidBucketNameError
-
         raise InvalidBucketNameError(details={"bucket": req.bucket})
 
     store = get_auth_store()

@@ -75,11 +75,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     sha256_files = set_sha256_hashes(buckets_path)
     log.info(f"{sha256_files} files stored.")
 
-    # Log available logging levels for debugging configuration.
-    log.debug("Available logging: DEBUG")
-    log.info("Available logging: INFO")
-    log.warning("Available logging: WARNING")
-
     # Log total startup time.
     tot_time = round(time.time() - start, 3)
     log.info(f"HSYNC Server started in: {tot_time} sec.")

@@ -19,6 +19,7 @@ Consumers: ``hsync_server.auth`` (verify + AuthContext), ``hsync_server.api``
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import os
@@ -34,6 +35,7 @@ from hsync_common.models.sqlstore import get_state_db, reset_state_db_cache
 from loguru import logger as log
 
 from hsync_server.config import get_state_db_path
+from hsync_server.constants import ACCOUNT_ID_ALPHABET, ACCOUNT_ID_LEN, mint_alnum_id
 from hsync_server.exceptions import ConflictError, ForbiddenError, ResourceNotFoundError
 
 __all__ = [
@@ -65,8 +67,6 @@ __all__ = [
 # =============================================================================
 
 TOKEN_PREFIX = "hs_"
-ACCOUNT_ID_LEN = 21
-ACCOUNT_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 SECRET_HEX_LEN = 64  # secrets.token_hex(32)
 KEY_PREFIX_LEN = 8  # first 8 hex chars of the active secret
 
@@ -178,10 +178,7 @@ def mint_account_id() -> str:
     The reserved bootstrap id ``BOOTSTRAP_ADMIN_ID`` is never minted here.
     """
     while True:
-        cid = "".join(
-            ACCOUNT_ID_ALPHABET[b // 4 % len(ACCOUNT_ID_ALPHABET)]
-            for b in secrets.token_bytes(ACCOUNT_ID_LEN)
-        )
+        cid = mint_alnum_id()
         if cid != BOOTSTRAP_ADMIN_ID:
             return cid
 
@@ -233,8 +230,6 @@ def _hash_secret(secret: str, salt: bytes | None = None) -> str:
         dklen=SCRYPT_DKLEN,
         maxmem=SCRYPT_MAXMEM,
     )
-    import base64
-
     return (
         f"$scrypt$ln={SCRYPT_N.bit_length() - 1},r={SCRYPT_R},p={SCRYPT_P}"
         f"${base64.b64encode(salt).decode()}"
@@ -244,8 +239,6 @@ def _hash_secret(secret: str, salt: bytes | None = None) -> str:
 
 def _verify_secret(secret: str, phc_hash: str) -> bool:
     """Verify *secret* against a PHC-style scrypt hash (constant-time)."""
-    import base64
-
     try:
         parts = phc_hash.split("$")
         if len(parts) != 5 or parts[1] != "scrypt":
@@ -361,6 +354,15 @@ def reset_auth_cache() -> None:
         for s in _store_cache.values():
             s.close()
         _store_cache.clear()
+
+
+def _iter_bucket_dirs(buckets_root: Path):
+    """Yield bucket directory entries, skipping hidden names and non-directories."""
+    for entry in buckets_root.iterdir():
+        if entry.name.startswith("."):
+            continue
+        if entry.is_dir():
+            yield entry
 
 
 class AuthStore:
@@ -511,11 +513,7 @@ class AuthStore:
         buckets_root = Path(get_buckets_path())
         if not buckets_root.exists():
             return
-        for entry in buckets_root.iterdir():
-            if entry.name.startswith("."):
-                continue
-            if not entry.is_dir():
-                continue
+        for entry in _iter_bucket_dirs(buckets_root):
             existing = self.conn.execute(
                 "SELECT 1 FROM bucket_members WHERE bucket = ?", (entry.name,)
             ).fetchone()
@@ -684,6 +682,18 @@ class AuthStore:
         """Set status=active (idempotent)."""
         self._set_status(account_id, "active")
 
+    def _assert_not_last_active_admin(self, action: str) -> None:
+        """Raise ConflictError if *action* would leave zero active admins.
+
+        Must run inside an open ``BEGIN IMMEDIATE`` (race-safe re-check).
+        """
+        active_admins = self.conn.execute(
+            "SELECT COUNT(*) FROM clients WHERE role = 'admin' AND status = 'active'"
+        ).fetchone()[0]
+        if active_admins <= 1:
+            self._rollback()
+            raise ConflictError(f"Cannot {action} the last active admin account.")
+
     def _set_status(self, account_id: str, status: str, *, force: bool = False) -> None:
         with self._lock:
             row = self.conn.execute(
@@ -698,13 +708,7 @@ class AuthStore:
 
             if status == "disabled" and row["role"] == "admin" and not force:
                 self._begin()
-                # Re-check inside transaction (race-safe).
-                active_admins = self.conn.execute(
-                    "SELECT COUNT(*) FROM clients WHERE role = 'admin' AND status = 'active'"
-                ).fetchone()[0]
-                if active_admins <= 1:
-                    self._rollback()
-                    raise ConflictError("Cannot disable the last active admin account.")
+                self._assert_not_last_active_admin("disable")
                 self.conn.execute(
                     "UPDATE clients SET status = 'disabled' WHERE id = ?",
                     (account_id,),
@@ -747,12 +751,7 @@ class AuthStore:
             self._begin()
             # Re-check last-admin inside the transaction (race-safe).
             if row["role"] == "admin" and row["status"] == "active" and not force:
-                active_admins = self.conn.execute(
-                    "SELECT COUNT(*) FROM clients WHERE role = 'admin' AND status = 'active'"
-                ).fetchone()[0]
-                if active_admins <= 1:
-                    self._rollback()
-                    raise ConflictError("Cannot delete the last active admin account.")
+                self._assert_not_last_active_admin("delete")
 
             if cascade:
                 for r in owned:
@@ -868,6 +867,32 @@ class AuthStore:
                 (bucket, account_id),
             )
 
+    def _require_owner_or_admin(
+        self, bucket: str, caller_id: str, caller_is_admin: bool, action: str
+    ) -> None:
+        """Raise ForbiddenError unless *caller_id* is admin or owner of *bucket*."""
+        if not caller_is_admin:
+            role = self.get_member_role(bucket, caller_id)
+            if role != "owner":
+                raise ForbiddenError(f"Only the owner or admin can {action}.")
+
+    def _assert_target_grantable(self, target: AccountRow, caller_id: str, action: str) -> None:
+        """Raise ConflictError if *target* is disabled or is the caller itself."""
+        if target.status != "active":
+            raise ConflictError("Target account is disabled.")
+        if target.id == caller_id:
+            raise ConflictError(f"Cannot {action} to self.")
+
+    def _upsert_owner(self, bucket: str, account_id: str) -> None:
+        """Insert/update the owner row for *bucket* (inside an open transaction)."""
+        self.conn.execute(
+            """
+            INSERT INTO bucket_members (bucket, client_id, role) VALUES (?, ?, 'owner')
+            ON CONFLICT(bucket, client_id) DO UPDATE SET role = 'owner'
+            """,
+            (bucket, account_id),
+        )
+
     def grant_member(
         self, bucket: str, target: AccountRow, caller_id: str, caller_is_admin: bool
     ) -> None:
@@ -875,17 +900,10 @@ class AuthStore:
 
         Caller must be admin or owner of *bucket*.
         """
-        if target.status != "active":
-            raise ConflictError("Target account is disabled.")
-        if target.id == caller_id:
-            raise ConflictError("Cannot grant membership to self.")
+        self._assert_target_grantable(target, caller_id, "grant membership")
 
         with self._lock:
-            # Check caller is owner or admin.
-            if not caller_is_admin:
-                role = self.get_member_role(bucket, caller_id)
-                if role != "owner":
-                    raise ForbiddenError("Only the owner or admin can grant membership.")
+            self._require_owner_or_admin(bucket, caller_id, caller_is_admin, "grant membership")
 
             # Check target is not already owner.
             target_role = self.get_member_role(bucket, target.id)
@@ -914,10 +932,7 @@ class AuthStore:
         Caller must be admin or owner of *bucket*.
         """
         with self._lock:
-            if not caller_is_admin:
-                role = self.get_member_role(bucket, caller_id)
-                if role != "owner":
-                    raise ForbiddenError("Only the owner or admin can revoke membership.")
+            self._require_owner_or_admin(bucket, caller_id, caller_is_admin, "revoke membership")
 
             target_role = self.get_member_role(bucket, target_id)
             if target_role is None:
@@ -943,19 +958,14 @@ class AuthStore:
         not already the owner.  Ex-owner is demoted to ``member``.  All
         authorization checks run inside ``BEGIN IMMEDIATE`` (race-safe).
         """
-        if target.status != "active":
-            raise ConflictError("Target account is disabled.")
-        if target.id == caller_id:
-            raise ConflictError("Cannot transfer ownership to self.")
+        self._assert_target_grantable(target, caller_id, "transfer ownership")
 
         with self._lock:
             try:
                 self._begin()
-                # Re-check caller authorization inside the transaction.
-                if not caller_is_admin:
-                    role = self.get_member_role(bucket, caller_id)
-                    if role != "owner":
-                        raise ForbiddenError("Only the owner or admin can transfer ownership.")
+                self._require_owner_or_admin(
+                    bucket, caller_id, caller_is_admin, "transfer ownership"
+                )
 
                 current_owner = self.get_owner(bucket)
                 if current_owner is not None and current_owner.id == target.id:
@@ -966,13 +976,7 @@ class AuthStore:
                         "UPDATE bucket_members SET role = 'member' WHERE bucket = ? AND client_id = ?",
                         (bucket, current_owner.id),
                     )
-                self.conn.execute(
-                    """
-                    INSERT INTO bucket_members (bucket, client_id, role) VALUES (?, ?, 'owner')
-                    ON CONFLICT(bucket, client_id) DO UPDATE SET role = 'owner'
-                    """,
-                    (bucket, target.id),
-                )
+                self._upsert_owner(bucket, target.id)
                 self._commit()
             except (sqlite3.IntegrityError, ForbiddenError, ConflictError):
                 self._rollback()
@@ -998,13 +1002,7 @@ class AuthStore:
 
             try:
                 self._begin()
-                self.conn.execute(
-                    """
-                    INSERT INTO bucket_members (bucket, client_id, role) VALUES (?, ?, 'owner')
-                    ON CONFLICT(bucket, client_id) DO UPDATE SET role = 'owner'
-                    """,
-                    (bucket, target.id),
-                )
+                self._upsert_owner(bucket, target.id)
                 self._commit()
             except sqlite3.IntegrityError:
                 self._rollback()
@@ -1025,11 +1023,8 @@ class AuthStore:
         buckets_root = Path(get_buckets_path())
         fs_dirs: set[str] = set()
         if buckets_root.exists():
-            for entry in buckets_root.iterdir():
-                if entry.name.startswith("."):
-                    continue
-                if entry.is_dir():
-                    fs_dirs.add(entry.name)
+            for entry in _iter_bucket_dirs(buckets_root):
+                fs_dirs.add(entry.name)
 
         with self._lock:
             member_rows = self.conn.execute(

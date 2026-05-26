@@ -11,10 +11,11 @@ This module contains all magic numbers and constant values used
 throughout the application, making them easy to find and modify.
 """
 
+import secrets
+
 # =============================================================================
 # Application Info
 # =============================================================================
-
 # Re-export shared constants from hsync-common
 from hsync_common.constants import (  # noqa: E402, F401
     CONTENT_TYPE_OCTET_STREAM,
@@ -38,6 +39,28 @@ from hsync_common.protocol.handshake import (  # noqa: E402, F401
 
 # Default file permissions for uploaded files (octal)
 DEFAULT_FILE_PERMISSIONS = "664"
+
+# Transient backup-file suffix: an in-place upload first copies the existing
+# file to ``<name>.backup`` so readers keep seeing the complete original.
+BACKUP_SUFFIX = ".backup"
+
+
+# =============================================================================
+# Alphanumeric IDs
+# =============================================================================
+
+# Canonical alphanumeric id alphabet — same shape as the wire CID ([A-Za-z0-9]).
+ACCOUNT_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+ACCOUNT_ID_LEN = 21
+
+
+def mint_alnum_id(length: int = ACCOUNT_ID_LEN, alphabet: str = ACCOUNT_ID_ALPHABET) -> str:
+    """Mint a cryptographically random alphanumeric id of *length* characters.
+
+    Uses ``secrets.choice`` (unbiased) — the previous ``b // 4 % len(alphabet)``
+    byte-mapping introduced a modulo bias because 64 does not divide 62.
+    """
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 # =============================================================================

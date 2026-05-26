@@ -15,16 +15,15 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `CLAUDE.m
   `get_compression_enabled` (`:437`), SSL getters (`:412`–`:432`),
   WS getters (`:442`–`:462`), rate-limit getters (`:367`–`:392`),
   `get_tombstone_ttl_days` (`:527`), delta getters (`get_delta_enabled`,
-  `get_delta_token_ttl` only — **no** `get_delta_min_file_size` /
-  `get_delta_max_change_ratio`; those Settings fields are unused).
+  `get_delta_token_ttl` only — worthwhileness is client-side
+  (`hsync_common` constants), so the server has no min-file-size / change-ratio
+  knobs).
 - Validation sets: `VALID_LOG_LEVELS` (`:34`), `VALID_LOG_FORMATS` (`:43`).
 - Admin-key validity (64 lowercase hex) enforced by a field_validator at load
   time; the `lifespan` bootstraps the admin account (`main.py:51`). A leftover
   `HSYNC_API_KEY` in the environment fails startup with a migration message.
 - Delta transfer config that **takes effect**: `delta_enabled` (default
   `true`), `delta_token_ttl` (300s), `rate_limit_delta` ("100/minute").
-  `delta_min_file_size` / `delta_max_change_ratio` exist on `Settings` but
-  are never read; worthwhileness is client-side (`hsync_common` constants).
 
 ## Authentication (`auth.py` + `auth_store.py`)
 
@@ -172,7 +171,9 @@ uploads for the same file are ordered (ADR-0022).
   `record_version`/`clear_version`/`move_version` maintain the store;
   `server_version_info` produces the wire `VersionInfo` for listings.
   `get_server_cid` mints and persists a reserved 21-char server node id next
-  to the DB for out-of-band edits (ADR-0022 §3.4.7).
+  to the DB for out-of-band edits (ADR-0022 §3.4.7); minting is shared with
+  `auth_store.mint_account_id` via `constants.mint_alnum_id` (unbiased
+  `secrets.choice`, validated on read with `is_valid_cid`).
 - `arbitration.py` exposes `arbitrate_upload` — the shared causal arbitration
   used by both the REST upload and the delta apply endpoint (DRY). Returns an
   `ArbitrationResult` (outcome + record clock + record corrected mtime + loser

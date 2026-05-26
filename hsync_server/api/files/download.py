@@ -27,7 +27,7 @@ from hsync_common.hashing import compute_sha256_async
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
-from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
+from hsync_server.api.utils import resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import (
     CONTENT_ENCODING_ZSTD,
@@ -35,12 +35,9 @@ from hsync_server.compression import (
     should_compress,
 )
 from hsync_server.config import get_compression_enabled
-from hsync_server.constants import CONTENT_TYPE_OCTET_STREAM, ActionLabel
+from hsync_server.constants import BACKUP_SUFFIX, CONTENT_TYPE_OCTET_STREAM, ActionLabel
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
-from hsync_server.exceptions import (
-    InvalidBucketNameError,
-    InvalidPathError,
-)
+from hsync_server.exceptions import InvalidPathError
 from hsync_server.hashes import get_sha256_hash
 from hsync_server.rate_limiter import RATE_LIMIT_DOWNLOAD, limiter
 from hsync_server.routers import auth_router
@@ -77,8 +74,6 @@ async def download_file(
     """
     check_bucket_access(bucket, ctx)
     t0 = monotonic()
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
     # Confine to *this* bucket: the filename is untrusted input and must
     # never escape into a sibling bucket or outside the storage root. The
     # full resolve is intentional here: a symlink whose target stays inside
@@ -91,7 +86,7 @@ async def download_file(
     if file is None:
         raise InvalidPathError(details={"path": filename})
 
-    backup_file = f"{file}.backup"
+    backup_file = f"{file}{BACKUP_SUFFIX}"
 
     # If a backup file exists (due to ongoing upload), serve that instead
     # This ensures clients always download a complete, valid file

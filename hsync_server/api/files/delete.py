@@ -33,7 +33,7 @@ from hsync_server.api.file_utils import (
 from hsync_server.api.utils import resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
-from hsync_server.constants import ActionLabel
+from hsync_server.constants import BACKUP_SUFFIX, ActionLabel
 from hsync_server.exceptions import (
     DeleteError,
     InvalidPathError,
@@ -134,7 +134,7 @@ async def delete_file(
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.deleted, src))
 
         # Also remove any backup file associated with this file
-        backup_file = f"{file}.backup"
+        backup_file = f"{file}{BACKUP_SUFFIX}"
         if Path(backup_file).exists():
             remove(backup_file)
             log.info(f'{ActionLabel.DELETE} Backup file: "{backup_file}" deleted successfully')

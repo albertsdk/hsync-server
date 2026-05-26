@@ -190,7 +190,24 @@ class InsufficientStorageError(FileOperationError):
     default_message = "Insufficient storage space"
 
 
-class SupersededError(FileOperationError):
+class _TokenResolutionMixin(HSyncError):
+    """Mixin injecting the causal contract ``resolution`` token into ``to_dict``.
+
+    Shared by the upload-outcome exceptions that carry an explicit machine-
+    readable token (ADR-0022 §4.6). Inherits :class:`HSyncError` so
+    ``super().to_dict()`` resolves statically for the type checker.
+    """
+
+    token: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize with the explicit contract token (ADR-0022 §4.6)."""
+        payload = super().to_dict()
+        payload["resolution"] = self.token
+        return payload
+
+
+class SupersededError(_TokenResolutionMixin, FileOperationError):
     """Upload is causally dominated by the stored version (stale/ancestor).
 
     No conflicted copy is created: the incoming content is fully contained in
@@ -205,14 +222,8 @@ class SupersededError(FileOperationError):
     # on the outcome regardless of the transport.
     token = "superseded"
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize with the explicit contract token (ADR-0022 §4.6)."""
-        payload = super().to_dict()
-        payload["resolution"] = self.token
-        return payload
 
-
-class ConflictLostError(FileOperationError):
+class ConflictLostError(_TokenResolutionMixin, FileOperationError):
     """Upload lost a causal tie-break (true divergence).
 
     The incoming bytes are preserved on the receiver as a conflicted copy; the
@@ -223,9 +234,3 @@ class ConflictLostError(FileOperationError):
     default_message = "Upload lost a conflict tie-break; content preserved as conflicted copy"
     # Machine-readable outcome token (ADR-0022 §4.6), matching the LAN master.
     token = "conflict_lost"
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize with the explicit contract token (ADR-0022 §4.6)."""
-        payload = super().to_dict()
-        payload["resolution"] = self.token
-        return payload

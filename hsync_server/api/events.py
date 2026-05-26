@@ -225,11 +225,7 @@ def _register_client(
             )
         except Exception:
             pass
-        if (
-            manager.active_connections.get(cid) is not None
-            and manager.active_connections[cid].websocket is stale.websocket
-        ):
-            manager.active_connections.pop(cid, None)
+        manager._drop_if_current(cid, stale.websocket)
     manager.active_connections[cid] = ConnectionEntry(
         websocket=websocket,
         account_id=ctx.id,

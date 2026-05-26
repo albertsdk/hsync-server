@@ -68,6 +68,19 @@ class ConnectionManager:
         if websocket is None or entry.websocket is websocket:
             self.active_connections.pop(client_id, None)
 
+    def _drop_if_current(self, cid: str, websocket: WebSocket) -> None:
+        """Drop the registration for *cid* only if it still belongs to *websocket*.
+
+        Guards the await points in :meth:`_send_to_all`: a reconnecting cid may
+        have replaced the entry while we were awaiting, so the stale socket must
+        never evict the newer one.
+        """
+        if (
+            self.active_connections.get(cid) is not None
+            and self.active_connections[cid].websocket is websocket
+        ):
+            self.active_connections.pop(cid, None)
+
     async def _send_to_all(self, payload: dict[str, Any], skip_cid: str | None = None) -> None:
         """Send *payload* to every connected client, re-checking authz per recipient.
 
@@ -83,30 +96,18 @@ class ConnectionManager:
             # Re-check recipient access before delivering.
             account = store.get_account(entry.account_id)
             if account is None or account.status != "active":
-                if (
-                    self.active_connections.get(cid) is not None
-                    and self.active_connections[cid].websocket is entry.websocket
-                ):
-                    self.active_connections.pop(cid, None)
+                self._drop_if_current(cid, entry.websocket)
                 continue
             if not store.has_access(
                 entry.account_id, entry.bucket, is_admin=(account.role == "admin")
             ):
-                if (
-                    self.active_connections.get(cid) is not None
-                    and self.active_connections[cid].websocket is entry.websocket
-                ):
-                    self.active_connections.pop(cid, None)
+                self._drop_if_current(cid, entry.websocket)
                 continue
             try:
                 await entry.websocket.send_json(payload)
             except Exception as e:
                 log.warning(f"{ActionLabel.WS} Dropping dead connection for {cid}: {e}")
-                if (
-                    self.active_connections.get(cid) is not None
-                    and self.active_connections[cid].websocket is entry.websocket
-                ):
-                    self.active_connections.pop(cid, None)
+                self._drop_if_current(cid, entry.websocket)
 
     async def send_message(self, event: Event) -> None:
         """Broadcast an event to all connected clients except the sender.
@@ -192,34 +193,16 @@ class BucketConnectionManager:
         for b in empty:
             self.buckets.pop(b, None)
 
-    # ------------------------------------------------------------------
-    # Account-level close (rotate-key immediate / disable / delete)
-    # ------------------------------------------------------------------
-
-    def close_by_account(
-        self, account_id: str, *, code: int = 4003, reason: str = "Authentication revoked"
+    def _close_account_in_bucket(
+        self,
+        account_id: str,
+        bucket: str,
+        manager: ConnectionManager,
+        *,
+        code: int,
+        reason: str,
     ) -> None:
-        """Close all connections for *account_id* across all buckets (local worker)."""
-        for bucket, manager in list(self.buckets.items()):
-            for cid, entry in list(manager.active_connections.items()):
-                if entry.account_id == account_id:
-                    try:
-                        asyncio.ensure_future(entry.websocket.close(code=code, reason=reason))
-                    except Exception:
-                        pass
-                    manager.active_connections.pop(cid, None)
-                    log.info(
-                        f"{ActionLabel.WS} Closed connection {cid} (account {account_id}, bucket {bucket})"
-                    )
-        self._prune_empty_managers()
-
-    def close_by_account_bucket(
-        self, account_id: str, bucket: str, *, code: int = 4009, reason: str = "Bucket not found"
-    ) -> None:
-        """Close connections for *account_id* on a specific *bucket* only."""
-        manager = self.buckets.get(bucket)
-        if manager is None:
-            return
+        """Close every connection for *account_id* inside one bucket's manager."""
         for cid, entry in list(manager.active_connections.items()):
             if entry.account_id == account_id:
                 try:
@@ -230,6 +213,27 @@ class BucketConnectionManager:
                 log.info(
                     f"{ActionLabel.WS} Closed connection {cid} (account {account_id}, bucket {bucket})"
                 )
+
+    # ------------------------------------------------------------------
+    # Account-level close (rotate-key immediate / disable / delete)
+    # ------------------------------------------------------------------
+
+    def close_by_account(
+        self, account_id: str, *, code: int = 4003, reason: str = "Authentication revoked"
+    ) -> None:
+        """Close all connections for *account_id* across all buckets (local worker)."""
+        for bucket, manager in list(self.buckets.items()):
+            self._close_account_in_bucket(account_id, bucket, manager, code=code, reason=reason)
+        self._prune_empty_managers()
+
+    def close_by_account_bucket(
+        self, account_id: str, bucket: str, *, code: int = 4009, reason: str = "Bucket not found"
+    ) -> None:
+        """Close connections for *account_id* on a specific *bucket* only."""
+        manager = self.buckets.get(bucket)
+        if manager is None:
+            return
+        self._close_account_in_bucket(account_id, bucket, manager, code=code, reason=reason)
         self._prune_empty_managers()
 
 

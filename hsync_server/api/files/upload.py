@@ -17,12 +17,14 @@ This module provides the REST API endpoint for file upload with:
 
 import asyncio
 import hmac
+import json
 from os import fsync, remove, replace
 from pathlib import Path
 from shutil import copy2
 from time import monotonic
 from typing import Annotated
 
+import aiofiles
 import zstandard as zstd
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import Depends, File, Form, Request, UploadFile
@@ -34,6 +36,7 @@ from hsync_common.hashing import compute_sha256_async, is_sha256_hex
 from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import invalidate_sha256_cache, is_hidden_file, is_partial_file
+from hsync_common.models.version import relpath_in_bucket
 from hsync_common.path_validation import is_internal_name, is_valid_filename, sanitize_filename
 from hsync_common.permissions import is_valid_octal_permissions
 from hsync_common.time_utils import conflict_timestamp
@@ -57,7 +60,7 @@ from hsync_server.arbitration import (
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import decompress_file_to_file
 from hsync_server.config import get_buckets_path, get_max_upload_size, get_settings
-from hsync_server.constants import DEFAULT_FILE_PERMISSIONS, ActionLabel
+from hsync_server.constants import BACKUP_SUFFIX, DEFAULT_FILE_PERMISSIONS, ActionLabel
 from hsync_server.exceptions import (
     ChecksumMismatchError,
     ConflictLostError,
@@ -310,7 +313,7 @@ async def upload_file(
         # Create backup of existing file before overwriting
         # This ensures readers can still access the complete original file
         # while the new version is being uploaded
-        backup_path = f"{file_location}.backup"
+        backup_path = f"{file_location}{BACKUP_SUFFIX}"
         if Path(file_location).exists():
             copy2(file_location, backup_path)
 
@@ -333,8 +336,6 @@ async def upload_file(
 
             # Append to partial file
             total_bytes = offset
-            import aiofiles
-
             async with aiofiles.open(partial_file_path, "ab") as f:
                 while chunk := await file.read(8192):
                     total_bytes += len(chunk)
@@ -475,10 +476,8 @@ async def upload_file(
 
         # Parse the incoming causal vector clock (JSON form field; malformed ⇒
         # empty clock, handled natively by the arbitration matrix).
-        import json as _json
-
         try:
-            incoming_vclock_raw = _json.loads(vclock) if vclock else None
+            incoming_vclock_raw = json.loads(vclock) if vclock else None
         except (ValueError, TypeError):
             incoming_vclock_raw = None
 
@@ -489,8 +488,6 @@ async def upload_file(
         # registered (ADR-0022 §3.4.6).
         lock_manager = get_file_lock_manager()
         async with lock_manager.acquire(file_location):
-            from hsync_common.models.version import relpath_in_bucket
-
             relpath = relpath_in_bucket(file_location, local_bucket) or ""
             disk_hash = get_sha256_hash(file_location) if Path(file_location).exists() else None
 

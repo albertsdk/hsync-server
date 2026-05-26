@@ -25,6 +25,7 @@ from pathlib import Path
 from loguru import logger as log
 
 from hsync_server.config import get_buckets_path, get_delta_token_ttl
+from hsync_server.metrics import update_active_tokens, update_temp_storage
 
 # Hard cap on concurrently live tokens (DoS guard).
 DELTA_MAX_ACTIVE_TOKENS = 1_000
@@ -117,8 +118,6 @@ class DeltaTokenStore:
         self._storage_size = total_storage + len(payload)
 
         # Update metrics
-        from hsync_server.metrics import update_active_tokens, update_temp_storage
-
         update_active_tokens(len(self._tokens))
         update_temp_storage(total_storage + len(payload))
 

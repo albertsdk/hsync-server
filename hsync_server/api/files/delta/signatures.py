@@ -43,7 +43,6 @@ from hsync_common.delta import (
     is_delta_worthwhile,
     optimal_block_size,
 )
-from hsync_common.hashing import compute_sha256_async
 from hsync_common.models.delta import (
     BlockSignature,
     BlockSignatureDict,
@@ -67,7 +66,7 @@ from hsync_server.exceptions import (
     InvalidPathError,
     ValidationError,
 )
-from hsync_server.hashes import get_sha256_hash
+from hsync_server.hashes import get_or_compute_sha256
 from hsync_server.metrics import (
     record_bytes_saved,
     record_change_ratio,
@@ -153,7 +152,7 @@ async def get_delta_signatures(
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": path})
 
     file_size = Path(file).stat().st_size
-    sha256sum = get_sha256_hash(file) or await compute_sha256_async(file)
+    sha256sum = await get_or_compute_sha256(file)
 
     sig_start = time.time()
     block_size, sigs = await asyncio.to_thread(_cached_signatures, file, sha256sum, file_size)
@@ -225,19 +224,10 @@ async def post_delta_signatures(
     if clean_sigs is None:
         raise ValidationError(message="Invalid delta signatures payload")
 
-    sigs = [
-        BlockSignature(
-            index=s["index"],
-            offset=s["offset"],
-            length=s["length"],
-            weak=s["weak"],
-            strong=s["strong"],
-        )
-        for s in clean_sigs
-    ]
+    sigs = [BlockSignature(**s) for s in clean_sigs]
 
     new_size = Path(file).stat().st_size
-    new_sha256 = get_sha256_hash(file) or await compute_sha256_async(file)
+    new_sha256 = await get_or_compute_sha256(file)
 
     match_start = time.time()
 

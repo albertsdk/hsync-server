@@ -60,6 +60,12 @@ def _validate_log_level(value: str | None) -> str | None:
     return value
 
 
+def _exit_account_not_found() -> None:
+    """Emit the canonical "account not found" CLI error and exit with code 1."""
+    typer.echo("Error: account not found", err=True)
+    raise typer.Exit(1) from None
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
@@ -315,8 +321,7 @@ def _resolve_account_id(name: str | None, account_id: str | None) -> str:
     try:
         target = store.resolve_target(account_id, name)
     except TargetNotFoundError:
-        typer.echo("Error: account not found", err=True)
-        raise typer.Exit(1) from None
+        _exit_account_not_found()
     return target.id
 
 
@@ -332,8 +337,7 @@ def _resolve_client_target(client: str):
     try:
         return store.resolve_target(client if is_id else None, None if is_id else client)
     except TargetNotFoundError:
-        typer.echo("Error: account not found", err=True)
-        raise typer.Exit(1) from None
+        _exit_account_not_found()
 
 
 @client_app.command("add")
@@ -403,8 +407,7 @@ def client_rotate_key(
     try:
         token = store.rotate_key(aid, grace_seconds=grace, expires_at=expiry)
     except TargetNotFoundError:
-        typer.echo("Error: account not found", err=True)
-        raise typer.Exit(1) from None
+        _exit_account_not_found()
     typer.echo(f"Token (save now, not recoverable): {token}")
 
 
@@ -431,8 +434,7 @@ def client_set_expiry(
     try:
         store.set_expiry(aid, expiry)
     except TargetNotFoundError:
-        typer.echo("Error: account not found", err=True)
-        raise typer.Exit(1) from None
+        _exit_account_not_found()
     typer.echo(f"Expiry set: {expiry or 'none'}")
 
 
@@ -450,8 +452,7 @@ def client_disable(
     try:
         store.disable(aid, force=force)
     except TargetNotFoundError:
-        typer.echo("Error: account not found", err=True)
-        raise typer.Exit(1) from None
+        _exit_account_not_found()
     except ConflictError as e:
         typer.echo(f"Error: {e} (use --force to override)", err=True)
         raise typer.Exit(1) from None
@@ -471,8 +472,7 @@ def client_enable(
     try:
         store.enable(aid)
     except TargetNotFoundError:
-        typer.echo("Error: account not found", err=True)
-        raise typer.Exit(1) from None
+        _exit_account_not_found()
     typer.echo(f"Enabled: {aid}")
 
 
@@ -491,8 +491,7 @@ def client_remove(
     try:
         store.delete_account(aid, cascade=cascade, force=force)
     except TargetNotFoundError:
-        typer.echo("Error: account not found", err=True)
-        raise typer.Exit(1) from None
+        _exit_account_not_found()
     except ConflictError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1) from None

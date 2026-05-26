@@ -27,13 +27,14 @@ cid** — a stable 21-char id minted once and persisted next to the DB.
 
 from __future__ import annotations
 
-import secrets
 from pathlib import Path
 
+from hsync_common.models.event import is_valid_cid
 from hsync_common.models.sqlstore import get_state_db
 from hsync_common.models.version import SyncStateStore, relpath_in_bucket
 
 from hsync_server.config import get_state_db_path, get_state_dir
+from hsync_server.constants import mint_alnum_id
 from hsync_server.store_registry import PerBucketStores
 
 __all__ = [
@@ -171,10 +172,9 @@ def get_server_cid() -> str:
     cid_path = Path(get_state_dir()) / _SERVER_CID_FILENAME
     if cid_path.exists():
         cid = cid_path.read_text(encoding="utf-8").strip()
-        if len(cid) == 21 and cid.isalnum():
+        if is_valid_cid(cid):
             return cid
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    cid = "".join(alphabet[b // 4 % len(alphabet)] for b in secrets.token_bytes(21))
+    cid = mint_alnum_id()
     cid_path.parent.mkdir(parents=True, exist_ok=True)
     cid_path.write_text(cid, encoding="utf-8")
     return cid

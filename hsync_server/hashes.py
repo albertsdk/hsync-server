@@ -17,7 +17,7 @@ from os import stat as os_stat
 from os import walk
 from pathlib import Path
 
-from hsync_common.hashing import compute_sha256
+from hsync_common.hashing import compute_sha256, compute_sha256_async
 from hsync_common.models.dir import is_hidden_dir
 from hsync_common.models.file import is_hidden_file
 
@@ -97,6 +97,17 @@ def del_sha256_hash(filepath: str) -> bool:
     return False
 
 
+async def get_or_compute_sha256(filepath: str) -> str:
+    """Return the fresh cached SHA-256 for *filepath*, recomputing it otherwise.
+
+    Serves a cache entry only while it is still fresh; on a miss (or stale
+    entry) the digest is recomputed asynchronously. Shared by the delta
+    endpoints (signatures, apply) so the cache-or-recompute fallback lives in
+    one place.
+    """
+    return get_sha256_hash(filepath) or await compute_sha256_async(filepath)
+
+
 def set_sha256_hashes(directory: str) -> int:
     """
     Compute and store SHA-256 hashes for all files in a directory.
@@ -114,13 +125,11 @@ def set_sha256_hashes(directory: str) -> int:
     Raises:
         ValueError: If the directory path is invalid.
     """
-    global FILE_HASHES
-
     if not Path(directory).is_dir():
         raise ValueError(f"Invalid directory path: {directory}")
 
     # Reset the hash storage
-    FILE_HASHES = {}
+    FILE_HASHES.clear()
     file_count = 0
 
     # Walk directory tree, skipping hidden directories

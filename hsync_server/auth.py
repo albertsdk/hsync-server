@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
@@ -30,8 +31,10 @@ from loguru import logger as log
 
 from hsync_server.api.utils import is_valid_bucket
 from hsync_server.auth_store import (
+    _DUMMY_PHC,
     AccountRow,
     AuthStore,
+    _verify_secret,
     get_auth_store,
     parse_token,
 )
@@ -46,7 +49,6 @@ from hsync_server.exceptions import (
 
 __all__ = [
     "AuthContext",
-    "get_auth_context",
     "require_admin",
     "require_bucket_access",
     "verify_api_key",
@@ -167,8 +169,6 @@ def _check_account(account: AccountRow, gen_at_verify: int, key_kind: str) -> Au
 
     Returns ``AuthContext`` on success, ``None`` on failure.
     """
-    import time
-
     now = int(time.time())
 
     # For prior-key verifies, check the grace window.
@@ -202,8 +202,6 @@ def _dummy_verify() -> None:
     Uses the precomputed dummy PHC hash from auth_store for a single
     scrypt verify — exactly the same cost as a real verify.
     """
-    from hsync_server.auth_store import _DUMMY_PHC, _verify_secret
-
     _verify_secret("hsync-dummy", _DUMMY_PHC)
 
 
@@ -243,14 +241,6 @@ def verify_api_key(
     # Throttled last_used_at update.
     store.touch_last_used(ctx.id)
 
-    return ctx
-
-
-def get_auth_context(request: Request) -> AuthContext:
-    """Retrieve the ``AuthContext`` from ``request.state`` (set by ``verify_api_key``)."""
-    ctx: AuthContext | None = getattr(request.state, "auth", None)
-    if ctx is None:
-        raise MissingApiKeyError()
     return ctx
 
 

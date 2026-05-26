@@ -30,6 +30,7 @@ from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import CONTENT_ENCODING_ZSTD
 from hsync_server.config import get_delta_enabled
 from hsync_server.constants import CONTENT_TYPE_OCTET_STREAM
+from hsync_server.metrics import record_delta_transfer, record_transfer_duration
 from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
 from hsync_server.routers import auth_router
 
@@ -75,8 +76,6 @@ async def get_delta_data(
         headers["Content-Encoding"] = CONTENT_ENCODING_ZSTD
 
     # Record metrics for successful data download
-    from hsync_server.metrics import record_delta_transfer, record_transfer_duration
-
     record_delta_transfer("download", "success")
     record_transfer_duration("download", "data", time.time() - start_time)
 

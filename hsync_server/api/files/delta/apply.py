@@ -24,8 +24,9 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from os import replace
+from os import remove, replace
 from pathlib import Path
+from shutil import copy2
 from typing import Annotated, Any, Literal, cast
 
 import zstandard as zstd
@@ -47,6 +48,7 @@ from hsync_common.models.delta import (
 from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import invalidate_sha256_cache, is_hidden_file
+from hsync_common.models.version import relpath_in_bucket
 from hsync_common.permissions import is_valid_octal_permissions
 from hsync_common.time_utils import conflict_timestamp
 from loguru import logger as log
@@ -77,7 +79,7 @@ from hsync_server.exceptions import (
     FileNotFoundError as HSyncFileNotFoundError,
 )
 from hsync_server.file_lock_manager import get_file_lock_manager
-from hsync_server.hashes import get_sha256_hash, set_sha256_hash
+from hsync_server.hashes import get_or_compute_sha256, get_sha256_hash, set_sha256_hash
 from hsync_server.metrics import (
     record_bytes_saved,
     record_delta_transfer,
@@ -216,9 +218,7 @@ async def delta_apply(
         async with lock_manager.acquire(file_location):
             # 1. Race check: the base file must still be what the client saw.
             # This check MUST be inside the lock to prevent TOCTOU races.
-            current_base = get_sha256_hash(file_location) or await compute_sha256_async(
-                file_location
-            )
+            current_base = await get_or_compute_sha256(file_location)
             if current_base != base_sha256:
                 log.info(f"Delta apply rejected (base changed): {file_location}")
 
@@ -298,8 +298,6 @@ async def delta_apply(
             # stored one (same contract as full upload, ADR-0022).
             buckets_path = get_buckets_path()
             local_bucket = f"{buckets_path}/{bucket}"
-            from hsync_common.models.version import relpath_in_bucket
-
             delta_relpath = relpath_in_bucket(file_location, local_bucket) or ""
             delta_disk_hash = get_sha256_hash(file_location)
             raw_corrected = meta.get("corrected_mtime")
@@ -323,8 +321,6 @@ async def delta_apply(
             )
 
             if delta_result.outcome is ArbitrationOutcome.superseded:
-                from os import remove
-
                 if part_path and Path(part_path).exists():
                     remove(part_path)
                 raise SupersededError(
@@ -358,8 +354,6 @@ async def delta_apply(
                 ts = conflict_timestamp()
                 conflicted = conflicted_copy_name(file_location, delta_result.loser_cid, ts)
                 # Preserve the previous (losing) content before overwriting.
-                from shutil import copy2
-
                 copy2(file_location, conflicted)
                 log.warning(
                     f"Delta conflict on {path}: previous version preserved as "

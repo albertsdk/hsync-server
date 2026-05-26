@@ -22,10 +22,10 @@ from hsync_common.path_validation import is_safe_symlink_target
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
-from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
+from hsync_server.api.utils import resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.constants import ActionLabel
-from hsync_server.exceptions import InvalidBucketNameError, InvalidPathError
+from hsync_server.exceptions import InvalidPathError
 from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
 
@@ -63,9 +63,6 @@ async def create_symlink(
     """
     check_bucket_access(bucket, ctx)
     cid_suffix = f" (CID: {cid})" if cid else ""
-
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
 
     if not path:
         raise InvalidPathError(details={"path": path})

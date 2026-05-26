@@ -33,7 +33,11 @@ from hsync_server.auth_store import (
     get_auth_store,
 )
 from hsync_server.config import get_buckets_path
-from hsync_server.exceptions import BucketNotFoundError, InvalidBucketNameError
+from hsync_server.exceptions import (
+    BucketNotFoundError,
+    InvalidBucketNameError,
+    ValidationError,
+)
 from hsync_server.routers import auth_router
 
 
@@ -101,8 +105,6 @@ async def grant_member(
     _check_owner_or_admin(bucket, ctx)
 
     if (req.client_id is None) == (req.name is None):
-        from hsync_server.exceptions import ValidationError
-
         raise ValidationError("Provide exactly one of 'client_id' or 'name'.")
 
     store = get_auth_store()
@@ -114,8 +116,6 @@ async def grant_member(
             content={"error": "HSYNC-2000", "message": "Account not found."},
         )
     except ValueError as e:
-        from hsync_server.exceptions import ValidationError
-
         raise ValidationError(str(e)) from None
 
     try:
@@ -189,8 +189,6 @@ async def transfer_or_reclaim_owner(
     _check_owner_or_admin(bucket, ctx)
 
     if (req.client_id is None) == (req.name is None):
-        from hsync_server.exceptions import ValidationError
-
         raise ValidationError("Provide exactly one of 'client_id' or 'name'.")
 
     store = get_auth_store()
@@ -202,8 +200,6 @@ async def transfer_or_reclaim_owner(
             content={"error": "HSYNC-2000", "message": "Account not found."},
         )
     except ValueError as e:
-        from hsync_server.exceptions import ValidationError
-
         raise ValidationError(str(e)) from None
 
     current_owner = store.get_owner(bucket)
