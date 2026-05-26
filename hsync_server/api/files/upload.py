@@ -112,6 +112,7 @@ async def upload_file(
     file_location = None
     is_resumable = offset > 0
     is_compressed = compressed.lower() == "true"
+    upload_successful = False
     try:
         # Early validation: Check size BEFORE accepting any data
         # This prevents DoS attacks with huge files
@@ -181,6 +182,7 @@ async def upload_file(
             # Clean up partial file if exists
             if exists(partial_file_path):
                 remove(partial_file_path)
+            upload_successful = True
             return JSONResponse(
                 status_code=409,
                 content={
@@ -234,6 +236,7 @@ async def upload_file(
             # Check if upload is complete
             if size > 0 and total_bytes < size:
                 # Partial upload - more chunks expected
+                upload_successful = True
                 return JSONResponse(
                     status_code=202,
                     content={
@@ -285,6 +288,7 @@ async def upload_file(
                 # Move temp file to partial file location
                 move(file_location_tmp, partial_file_path)
                 file_location_tmp = None
+                upload_successful = True
                 return JSONResponse(
                     status_code=202,
                     content={
@@ -330,6 +334,7 @@ async def upload_file(
             manager = bucket_manager.get_manager(bucket)
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))
 
+        upload_successful = True
         return JSONResponse(
             status_code=201,
             content={
@@ -357,10 +362,20 @@ async def upload_file(
             details={"filename": file.filename, "error": str(e)},
         )
     finally:
-        # Clean up temporary file if it exists (but not partial files)
-        if (
-            file_location_tmp
-            and exists(file_location_tmp)
-            and not file_location_tmp.endswith(".part")
-        ):
-            remove(file_location_tmp)
+        if upload_successful:
+            # Success: clean up temp file, but preserve partial files
+            # for potential resumable upload continuation
+            if (
+                file_location_tmp
+                and exists(file_location_tmp)
+                and not file_location_tmp.endswith(".part")
+            ):
+                remove(file_location_tmp)
+        else:
+            # Failure: clean up ALL leftover temp files, including .part files,
+            # to prevent accumulation of stale partial uploads on disk
+            for f in (file_location_tmp, partial_file_path, backup_path):
+                if f and exists(f):
+                    remove(f)
+                    if f.endswith(".part"):
+                        log.debug(f"Cleaned up stale partial file: {f}")
