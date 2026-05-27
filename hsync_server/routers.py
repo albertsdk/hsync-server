@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger as log
 
-from .config import HSYNC_API_KEY
+from .config import get_api_key
 from .exceptions import InvalidApiKeyError, MissingApiKeyError
 
 
@@ -66,7 +66,7 @@ def verify_api_key(
         raise MissingApiKeyError()
 
     # Use constant-time comparison to prevent timing attacks
-    if not hmac.compare_digest(api_key, HSYNC_API_KEY):
+    if not hmac.compare_digest(api_key, get_api_key()):
         log.warning(f"Authentication attempt with invalid API key: {mask_api_key(api_key)}")
         raise InvalidApiKeyError(details={"provided_key": mask_api_key(api_key)})
 

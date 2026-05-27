@@ -20,7 +20,7 @@ from os import stat as os_stat
 import aiofiles
 from loguru import logger as log
 
-from hsync_server.config import HSYNC_BUCKETS
+from hsync_server.config import get_buckets_path
 from hsync_server.models.dir import Dir
 from hsync_server.path_validation import is_valid_path as validate_path_traversal
 
@@ -48,7 +48,7 @@ def is_valid_dir(target_path: str) -> bool:
     Validate a directory path to prevent path traversal attacks.
 
     Ensures the target path resolves to a location within the
-    HSYNC_BUCKETS directory, preventing access to files outside
+    buckets directory, preventing access to files outside
     the allowed storage area.
 
     Args:
@@ -58,7 +58,7 @@ def is_valid_dir(target_path: str) -> bool:
         True if the path is safe, False if it escapes the bucket root.
     """
     # Use the new robust is_valid_path function
-    return validate_path_traversal(target_path, HSYNC_BUCKETS)
+    return validate_path_traversal(target_path, get_buckets_path())
 
 
 async def compute_sha256(filepath: str, chunk_size: int = 8192) -> str:

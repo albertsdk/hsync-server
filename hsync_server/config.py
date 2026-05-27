@@ -173,35 +173,12 @@ def get_settings() -> Settings:
 
 
 # =============================================================================
-# Module-level exports for backward compatibility
+# Module-level constants
 # =============================================================================
 
-# These are evaluated at import time. For late binding after env file loading,
-# use get_settings() or the getter functions below.
-
-
-def _get_settings() -> Settings:
-    """Get current settings (uncached, for backward compatibility)."""
-    return Settings()
-
-
-# Backward compatible module-level constants
-# Note: These are evaluated at import time
+# Application root path - resolved at import time because it is derived from
+# the module location, not from environment variables.
 HSYNC_PATH: str = _HSYNC_PATH
-HSYNC_PORT: int = _get_settings().port
-HSYNC_WORKERS: int = _get_settings().workers
-HSYNC_TZ: str = _get_settings().tz
-HSYNC_API_KEY: str = _get_settings().api_key.get_secret_value()
-HSYNC_BUCKETS: str = _get_settings().buckets_path
-HSYNC_MAX_UPLOAD_SIZE: int = _get_settings().max_upload_size
-HSYNC_CORS_ENABLED: bool = _get_settings().cors_enabled
-HSYNC_CORS_ORIGINS: list[str] = _get_settings().cors_origins_list
-HSYNC_SSL_ENABLED: bool = _get_settings().ssl_enabled
-HSYNC_SSL_CERTFILE: str = _get_settings().ssl_certfile
-HSYNC_SSL_KEYFILE: str = _get_settings().ssl_keyfile
-HSYNC_SSL_CERT_DIR: str = _get_settings().ssl_cert_dir
-HSYNC_LOG_LEVEL: str = _get_settings().log_level
-HSYNC_COMPRESSION_ENABLED: bool = _get_settings().compression_enabled
 
 
 # =============================================================================
@@ -209,14 +186,54 @@ HSYNC_COMPRESSION_ENABLED: bool = _get_settings().compression_enabled
 # =============================================================================
 
 
+def get_path() -> str:
+    """Get application root path (late binding)."""
+    return get_settings().path
+
+
 def get_port() -> int:
     """Get server port from environment (late binding)."""
     return get_settings().port
 
 
+def get_workers() -> int:
+    """Get number of uvicorn workers from environment (late binding)."""
+    return get_settings().workers
+
+
+def get_tz() -> str:
+    """Get timezone from environment (late binding)."""
+    return get_settings().tz
+
+
 def get_log_level() -> str:
     """Get log level from environment (late binding)."""
     return get_settings().log_level
+
+
+def get_api_key() -> str:
+    """Get API key from environment (late binding)."""
+    return get_settings().api_key.get_secret_value()
+
+
+def get_buckets_path() -> str:
+    """Get buckets storage path from environment (late binding)."""
+    return get_settings().buckets_path
+
+
+def get_max_upload_size() -> int:
+    """Get maximum upload size in bytes from environment (late binding)."""
+    return get_settings().max_upload_size
+
+
+def get_cors_enabled() -> bool:
+    """Get CORS enabled flag from environment (late binding)."""
+    return get_settings().cors_enabled
+
+
+def get_cors_origins() -> list[str]:
+    """Get parsed CORS origins list from environment (late binding)."""
+    return get_settings().cors_origins_list
 
 
 def get_ssl_enabled() -> bool:

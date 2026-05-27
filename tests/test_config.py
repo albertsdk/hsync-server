@@ -213,14 +213,24 @@ class TestModuleLevelConstants:
         """Test that HSYNC_PATH is an absolute path."""
         assert Path(config.HSYNC_PATH).is_absolute()
 
-    def test_hsync_constants_are_defined(self):
-        """Test that all backward compatibility constants are defined."""
-        assert hasattr(config, "HSYNC_PORT")
-        assert hasattr(config, "HSYNC_WORKERS")
-        assert hasattr(config, "HSYNC_TZ")
-        assert hasattr(config, "HSYNC_API_KEY")
-        assert hasattr(config, "HSYNC_BUCKETS")
-        assert hasattr(config, "HSYNC_MAX_UPLOAD_SIZE")
-        assert hasattr(config, "HSYNC_CORS_ENABLED")
-        assert hasattr(config, "HSYNC_LOG_LEVEL")
-        assert hasattr(config, "HSYNC_COMPRESSION_ENABLED")
+    def test_runtime_getters_are_defined(self):
+        """Test that all late-binding getters are exposed by the module."""
+        for name in (
+            "get_path",
+            "get_port",
+            "get_workers",
+            "get_tz",
+            "get_api_key",
+            "get_buckets_path",
+            "get_max_upload_size",
+            "get_cors_enabled",
+            "get_cors_origins",
+            "get_log_level",
+            "get_compression_enabled",
+            "get_ssl_enabled",
+            "get_ssl_certfile",
+            "get_ssl_keyfile",
+            "get_ssl_keyfile_password",
+            "get_ssl_cert_dir",
+        ):
+            assert callable(getattr(config, name, None)), f"missing getter: {name}"
