@@ -124,6 +124,12 @@ class Settings(BaseSettings):
         description="WebSocket heartbeat timeout in seconds",
     )
 
+    # Development
+    reload: bool = Field(
+        default=False,
+        description="Enable uvicorn auto-reload (development only)",
+    )
+
     @field_validator("log_level", mode="before")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
@@ -239,3 +245,8 @@ def get_ws_heartbeat_interval() -> int:
 def get_ws_heartbeat_timeout() -> int:
     """Get WebSocket heartbeat timeout in seconds (late binding)."""
     return get_settings().ws_heartbeat_timeout
+
+
+def get_reload() -> bool:
+    """Get uvicorn auto-reload flag (late binding)."""
+    return get_settings().reload
