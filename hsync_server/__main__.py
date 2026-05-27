@@ -21,6 +21,7 @@ from hsync_server.config import (
     get_ssl_certfile,
     get_ssl_enabled,
     get_ssl_keyfile,
+    get_ssl_keyfile_password,
     load_env_file,
 )
 from hsync_server.constants import HSYNC_VERSION
@@ -207,6 +208,7 @@ def main(
     effective_ssl_certfile = ssl_certfile if ssl_certfile else get_ssl_certfile()
     effective_ssl_keyfile = ssl_keyfile if ssl_keyfile else get_ssl_keyfile()
     effective_ssl_cert_dir = ssl_cert_dir if ssl_cert_dir else get_ssl_cert_dir()
+    effective_ssl_keyfile_password = get_ssl_keyfile_password()
 
     # Configure logging before starting the server
     log = setup_logging(level=effective_log_level, no_color=no_color)
@@ -220,6 +222,7 @@ def main(
         ssl_certfile=effective_ssl_certfile or None,
         ssl_keyfile=effective_ssl_keyfile or None,
         ssl_cert_dir=effective_ssl_cert_dir,
+        ssl_keyfile_password=effective_ssl_keyfile_password or None,
     )
 
     # Log server startup mode
