@@ -15,12 +15,15 @@ Default limits (configurable via environment variables):
 - HSYNC_RATE_LIMIT_UPLOAD: 200/minute per IP (file uploads)
 - HSYNC_RATE_LIMIT_DOWNLOAD: 1000/minute per IP (file downloads)
 - HSYNC_RATE_LIMIT_WEBSOCKET: 50/minute per IP (WebSocket connections)
+- HSYNC_RATE_LIMIT_WS_MESSAGES: 10/second per connection (WebSocket events)
 
 Format: "<number>/<period>" where period is: second, minute, hour, day
 Examples: "100/minute", "1000/hour", "10/second"
 """
 
 import os
+import re
+import time
 
 from fastapi import Request
 from loguru import logger as log
@@ -117,3 +120,96 @@ log.info(
     f"upload={RATE_LIMIT_UPLOAD}, download={RATE_LIMIT_DOWNLOAD}, "
     f"websocket={RATE_LIMIT_WEBSOCKET}"
 )
+
+
+# -----------------------------------------------------------------------------
+# WebSocket Message Rate Limiting (Token Bucket)
+# -----------------------------------------------------------------------------
+
+# Rate limit for WebSocket event messages per connection
+# Format: "<number>/<period>" (second, minute, hour, day)
+WS_MESSAGES_DEFAULT: str = os.environ.get("HSYNC_RATE_LIMIT_WS_MESSAGES", "10/second")
+
+_WS_RATE_PATTERN = re.compile(r"^(\d+)/(second|minute|hour|day)$")
+
+
+def _parse_ws_rate(rate_str: str) -> tuple[float, int]:
+    """
+    Parse a rate string like "10/second" into (tokens_per_second, burst).
+
+    Burst is set to 2x the rate per second to allow short spikes.
+
+    Args:
+        rate_str: Rate string in format "<number>/<period>".
+
+    Returns:
+        Tuple of (tokens_per_second, burst_capacity).
+    """
+    match = _WS_RATE_PATTERN.match(rate_str)
+    if not match:
+        log.warning(f"Invalid WS rate limit format: {rate_str}, using default")
+        return 10.0, 20
+
+    amount = float(match.group(1))
+    period = match.group(2)
+
+    multipliers = {"second": 1.0, "minute": 1.0 / 60, "hour": 1.0 / 3600, "day": 1.0 / 86400}
+    rate = amount * multipliers[period]
+    burst = max(int(amount * 2 * multipliers[period]), 2)  # at least 2 for heartbeat safety
+    if burst < 2:
+        burst = 2
+    return rate, burst
+
+
+class TokenBucket:
+    """
+    Token bucket rate limiter for WebSocket messages.
+
+    Tokens refill continuously at the configured rate. Each message event
+    consumes one token. When the bucket is empty, messages are dropped.
+
+    Uses time.monotonic() which is immune to system clock changes.
+    """
+
+    def __init__(self, rate: float, burst: int):
+        """
+        Initialize token bucket.
+
+        Args:
+            rate: Token refill rate in tokens per second.
+            burst: Maximum token capacity (allows short bursts).
+        """
+        self.rate = rate
+        self.burst = burst
+        self.tokens = float(burst)
+        self.last_refill = time.monotonic()
+        self.total_dropped = 0
+
+    def acquire(self) -> bool:
+        """
+        Try to consume one token.
+
+        Returns:
+            True if token was consumed, False if rate limited.
+        """
+        now = time.monotonic()
+        elapsed = now - self.last_refill
+        self.tokens = min(float(self.burst), self.tokens + elapsed * self.rate)
+        self.last_refill = now
+
+        if self.tokens >= 1.0:
+            self.tokens -= 1.0
+            return True
+
+        self.total_dropped += 1
+        return False
+
+
+def create_ws_message_bucket() -> TokenBucket:
+    """Create a TokenBucket for WebSocket message rate limiting."""
+    rate, burst = _parse_ws_rate(WS_MESSAGES_DEFAULT)
+    log.debug(f"WS message rate: {rate:.2f}/s (burst: {burst})")
+    return TokenBucket(rate=rate, burst=burst)
+
+
+log.info(f"WS message rate limit configured: {WS_MESSAGES_DEFAULT}")

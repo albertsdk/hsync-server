@@ -44,6 +44,7 @@ from hsync_server.config import (
 from hsync_server.constants import HSYNC_VERSION
 from hsync_server.middleware import check_version_compatibility
 from hsync_server.models.event import EventName
+from hsync_server.rate_limiter import create_ws_message_bucket
 from hsync_server.routers import public_router
 
 
@@ -145,6 +146,9 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         manager.active_connections[cid] = websocket
         log.info(f"[WEBSOCKET ] Client connected: {cid} (bucket: {bucket})")
 
+        # Create per-connection rate limiter for event messages
+        ws_bucket = create_ws_message_bucket()
+
         # Get heartbeat configuration
         heartbeat_interval = get_ws_heartbeat_interval()
         heartbeat_timeout = get_ws_heartbeat_timeout()
@@ -188,6 +192,11 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                     if msg_type == "pong":
                         # Client responded to ping, connection is alive
                         log.debug(f"[WEBSOCKET ] Received pong from {cid}")
+                        continue
+
+                    # Rate limit event messages (pong excluded to avoid heartbeat deadlock)
+                    if not ws_bucket.acquire():
+                        log.warning(f"[WEBSOCKET ] Rate limit exceeded for {cid}, dropping event")
                         continue
 
                     # Validate event type
