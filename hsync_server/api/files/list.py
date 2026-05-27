@@ -25,7 +25,7 @@ from hsync_server.exceptions import (
     InvalidBucketNameError,
     InvalidPathError,
 )
-from hsync_server.hashes import get_md5_hash
+from hsync_server.hashes import get_sha256_hash
 from hsync_server.models.dir import is_hidden_dir
 from hsync_server.models.file import File as LocalFile
 from hsync_server.models.file import is_hidden_file
@@ -39,7 +39,7 @@ async def get_upload_status(
     request: Request,  # Required by rate limiter
     bucket: str,
     filename: str,
-    md5sum: str = "",
+    sha256sum: str = "",
     size: int = 0,
 ) -> JSONResponse:
     """
@@ -52,7 +52,7 @@ async def get_upload_status(
         request: The incoming FastAPI request.
         bucket: Target bucket name.
         filename: Path to the file within the bucket.
-        md5sum: Expected MD5 checksum of the complete file.
+        sha256sum: Expected SHA-256 checksum of the complete file.
         size: Expected size of the complete file.
 
     Returns:
@@ -72,8 +72,8 @@ async def get_upload_status(
     file_path = f"{HSYNC_BUCKETS}/{bucket}/{filename}"
     partial_path = f"{file_path}.part"
 
-    # Check if complete file already exists with same MD5
-    if md5sum and exists(file_path) and md5sum == get_md5_hash(file_path):
+    # Check if complete file already exists with same SHA-256
+    if sha256sum and exists(file_path) and sha256sum == get_sha256_hash(file_path):
         return JSONResponse(
             status_code=200,
             content={

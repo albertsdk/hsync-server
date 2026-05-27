@@ -8,12 +8,12 @@
 API utility functions for HSYNC Server.
 
 This module provides common utility functions used across API endpoints,
-including path validation, MD5 computation, and file permission handling.
+including path validation, SHA-256 computation, and file permission handling.
 """
 
 import stat
 from asyncio import to_thread
-from hashlib import md5
+from hashlib import sha256
 from os import chmod
 from os import stat as os_stat
 
@@ -61,9 +61,9 @@ def is_valid_dir(target_path: str) -> bool:
     return validate_path_traversal(target_path, HSYNC_BUCKETS)
 
 
-async def compute_md5(filepath: str, chunk_size: int = 8192) -> str:
+async def compute_sha256(filepath: str, chunk_size: int = 8192) -> str:
     """
-    Asynchronously compute the MD5 checksum of a file.
+    Asynchronously compute the SHA-256 checksum of a file.
 
     Reads the file in chunks to handle large files efficiently
     without loading the entire file into memory.
@@ -73,13 +73,13 @@ async def compute_md5(filepath: str, chunk_size: int = 8192) -> str:
         chunk_size: Size of chunks to read (default 8KB).
 
     Returns:
-        Hexadecimal MD5 digest string.
+        Hexadecimal SHA-256 digest string.
     """
-    hash_md5 = md5()
+    hash_sha256 = sha256()
     async with aiofiles.open(filepath, "rb") as f:
         while chunk := await f.read(chunk_size):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
+            hash_sha256.update(chunk)
+    return hash_sha256.hexdigest()
 
 
 async def get_permissions(obj_path: str) -> str:

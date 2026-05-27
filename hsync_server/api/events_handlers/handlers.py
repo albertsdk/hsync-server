@@ -33,7 +33,7 @@ from hsync_server.api.file_utils import (
     is_sentinel_file,
 )
 from hsync_server.api.utils import set_permissions
-from hsync_server.hashes import del_md5_hash
+from hsync_server.hashes import del_sha256_hash
 from hsync_server.models.dir import Dir
 from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File
@@ -195,7 +195,7 @@ async def handle_deleted_event(
                     # Regular file removed — preserve directory with sentinel
                     ensure_sentinel_in_dir(parent)
             # Remove from hash cache
-            del_md5_hash(file_obj.filepath)
+            del_sha256_hash(file_obj.filepath)
             return Event(cid, bucket_dir, bucket, EventName.deleted, file_obj)
 
     return None

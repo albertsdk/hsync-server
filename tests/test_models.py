@@ -42,19 +42,23 @@ class TestFileModel:
 
     def test_init_basic(self):
         """Initialize File with basic parameters."""
-        f = File(filepath="/bucket/test.txt", size=100, md5sum="abc123", permissions="-rw-r--r--")
+        f = File(
+            filepath="/bucket/test.txt", size=100, sha256sum="abc123", permissions="-rw-r--r--"
+        )
         assert f.filepath == "/bucket/test.txt"
         assert f.size == 100
-        assert f.md5sum == "abc123"
+        assert f.sha256sum == "abc123"
         assert f.permissions == "-rw-r--r--"
 
     def test_to_dict(self):
         """Convert File to dictionary."""
-        f = File(filepath="/bucket/test.txt", size=100, md5sum="abc123", permissions="-rw-r--r--")
+        f = File(
+            filepath="/bucket/test.txt", size=100, sha256sum="abc123", permissions="-rw-r--r--"
+        )
         d = f.to_dict()
         assert d["filepath"] == "/bucket/test.txt"
         assert d["size"] == 100
-        assert d["md5sum"] == "abc123"
+        assert d["sha256sum"] == "abc123"
 
     def test_get_existing_file(self):
         """Get File from existing file path."""
@@ -139,7 +143,7 @@ class TestEventModel:
     def test_init_with_file(self):
         """Initialize Event with File source."""
         f = File(
-            filepath="/buckets/test/test.txt", size=100, md5sum="abc", permissions="-rw-r--r--"
+            filepath="/buckets/test/test.txt", size=100, sha256sum="abc", permissions="-rw-r--r--"
         )
         e = Event(
             cid="client1", localpath="/buckets/test", bucket="test", name=EventName.added, src=f
@@ -150,7 +154,7 @@ class TestEventModel:
     def test_to_dict(self):
         """Convert Event to dictionary."""
         f = File(
-            filepath="/buckets/test/test.txt", size=100, md5sum="abc", permissions="-rw-r--r--"
+            filepath="/buckets/test/test.txt", size=100, sha256sum="abc", permissions="-rw-r--r--"
         )
         e = Event(
             cid="client1", localpath="/buckets/test", bucket="test", name=EventName.modified, src=f

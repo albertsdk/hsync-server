@@ -9,7 +9,7 @@ HSYNC Server - Main Application Entry Point.
 
 This module initializes the FastAPI application, configures routers,
 middleware, rate limiting, and Prometheus metrics instrumentation.
-It also preloads MD5 hashes for all existing files in the buckets
+It also preloads SHA-256 hashes for all existing files in the buckets
 directory on startup.
 """
 
@@ -28,7 +28,7 @@ from .api import buckets, events, files, health  # noqa: F401
 from .config import HSYNC_API_KEY, HSYNC_BUCKETS, HSYNC_CORS_ENABLED, HSYNC_CORS_ORIGINS
 from .constants import HSYNC_VERSION
 from .error_handlers import register_exception_handlers
-from .hashes import set_md5_hashes
+from .hashes import set_sha256_hashes
 from .middleware import RequestIdMiddleware, VersionMiddleware
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .routers import auth_router, public_router
@@ -98,11 +98,11 @@ app.add_middleware(RequestIdMiddleware)
 # This adds X-Server-Version header to all responses and rejects incompatible clients
 app.add_middleware(VersionMiddleware)
 
-# Preload MD5 checksums for all existing files in buckets
+# Preload SHA-256 checksums for all existing files in buckets
 # This enables fast duplicate detection without recalculating hashes
-log.info(f"Loading MD5 file hashes from: {HSYNC_BUCKETS}")
-md5_files = set_md5_hashes(HSYNC_BUCKETS)
-log.info(f"{md5_files} files stored.")
+log.info(f"Loading SHA-256 file hashes from: {HSYNC_BUCKETS}")
+sha256_files = set_sha256_hashes(HSYNC_BUCKETS)
+log.info(f"{sha256_files} files stored.")
 
 # Configure Prometheus metrics instrumentation
 # Excludes documentation and monitoring endpoints from metrics collection

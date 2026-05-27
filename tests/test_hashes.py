@@ -10,26 +10,26 @@ import pytest
 from hsync_server import hashes
 
 
-class TestMD5HashManagement:
-    """Tests for MD5 hash storage and retrieval."""
+class TestSHA256HashManagement:
+    """Tests for SHA-256 hash storage and retrieval."""
 
     def setup_method(self):
         """Reset hash storage before each test."""
         hashes.FILE_HASHES = {}
 
-    def test_set_and_get_md5_hash(self):
-        """Test storing and retrieving MD5 hash."""
+    def test_set_and_get_sha256_hash(self):
+        """Test storing and retrieving SHA-256 hash."""
         filepath = "/path/to/file.txt"
-        md5sum = "abc123def456"
+        sha256sum = "abc123def456"
 
-        hashes.set_md5_hash(filepath, md5sum)
-        result = hashes.get_md5_hash(filepath)
+        hashes.set_sha256_hash(filepath, sha256sum)
+        result = hashes.get_sha256_hash(filepath)
 
-        assert result == md5sum
+        assert result == sha256sum
 
     def test_get_nonexistent_hash(self):
         """Test retrieving non-existent hash returns None."""
-        result = hashes.get_md5_hash("/nonexistent/file.txt")
+        result = hashes.get_sha256_hash("/nonexistent/file.txt")
         assert result is None
 
     def test_multiple_hashes(self):
@@ -40,35 +40,35 @@ class TestMD5HashManagement:
             ("/path/file3.txt", "hash3"),
         ]
 
-        for filepath, md5sum in files:
-            hashes.set_md5_hash(filepath, md5sum)
+        for filepath, sha256sum in files:
+            hashes.set_sha256_hash(filepath, sha256sum)
 
-        for filepath, md5sum in files:
-            assert hashes.get_md5_hash(filepath) == md5sum
+        for filepath, sha256sum in files:
+            assert hashes.get_sha256_hash(filepath) == sha256sum
 
-    def test_del_md5_hash(self):
-        """Test deleting MD5 hash."""
+    def test_del_sha256_hash(self):
+        """Test deleting SHA-256 hash."""
         filepath = "/path/to/file.txt"
-        md5sum = "abc123def456"
+        sha256sum = "abc123def456"
 
-        hashes.set_md5_hash(filepath, md5sum)
-        assert hashes.get_md5_hash(filepath) == md5sum
+        hashes.set_sha256_hash(filepath, sha256sum)
+        assert hashes.get_sha256_hash(filepath) == sha256sum
 
-        result = hashes.del_md5_hash(filepath)
+        result = hashes.del_sha256_hash(filepath)
         assert result is True
-        assert hashes.get_md5_hash(filepath) is None
+        assert hashes.get_sha256_hash(filepath) is None
 
     def test_del_nonexistent_hash(self):
         """Test deleting non-existent hash returns False."""
-        result = hashes.del_md5_hash("/nonexistent/file.txt")
+        result = hashes.del_sha256_hash("/nonexistent/file.txt")
         assert result is False
 
     def test_filepath_hashed_with_sha256(self):
         """Test that filepath is hashed (not stored plaintext)."""
         filepath = "/sensitive/path/file.txt"
-        md5sum = "abc123"
+        sha256sum = "abc123"
 
-        hashes.set_md5_hash(filepath, md5sum)
+        hashes.set_sha256_hash(filepath, sha256sum)
 
         # The filepath should not appear as a key in storage
         for key in hashes.FILE_HASHES.keys():
@@ -77,14 +77,14 @@ class TestMD5HashManagement:
             assert len(key) == 64
 
 
-class TestSetMD5Hashes:
-    """Tests for set_md5_hashes function."""
+class TestSetSHA256Hashes:
+    """Tests for set_sha256_hashes function."""
 
     def setup_method(self):
         """Reset hash storage before each test."""
         hashes.FILE_HASHES = {}
 
-    def test_set_md5_hashes_directory(self):
+    def test_set_sha256_hashes_directory(self):
         """Test computing hashes for directory contents."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create some test files
@@ -93,12 +93,12 @@ class TestSetMD5Hashes:
                 with open(filepath, "w") as f:
                     f.write(f"content {i}")
 
-            count = hashes.set_md5_hashes(temp_dir)
+            count = hashes.set_sha256_hashes(temp_dir)
 
             assert count == 3
             assert len(hashes.FILE_HASHES) == 3
 
-    def test_set_md5_hashes_skips_hidden(self):
+    def test_set_sha256_hashes_skips_hidden(self):
         """Test that hidden files are skipped."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create regular file
@@ -111,11 +111,11 @@ class TestSetMD5Hashes:
             with open(hidden_file, "w") as f:
                 f.write("hidden content")
 
-            count = hashes.set_md5_hashes(temp_dir)
+            count = hashes.set_sha256_hashes(temp_dir)
 
             assert count == 1  # Only regular file
 
-    def test_set_md5_hashes_skips_hidden_dirs(self):
+    def test_set_sha256_hashes_skips_hidden_dirs(self):
         """Test that hidden directories are skipped."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create regular file in root
@@ -130,11 +130,11 @@ class TestSetMD5Hashes:
             with open(hidden_file, "w") as f:
                 f.write("hidden content")
 
-            count = hashes.set_md5_hashes(temp_dir)
+            count = hashes.set_sha256_hashes(temp_dir)
 
             assert count == 1  # Only regular file in root
 
-    def test_set_md5_hashes_recursive(self):
+    def test_set_sha256_hashes_recursive(self):
         """Test recursive directory traversal."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create nested structure
@@ -146,19 +146,19 @@ class TestSetMD5Hashes:
             with open(os.path.join(subdir, "nested.txt"), "w") as f:
                 f.write("nested")
 
-            count = hashes.set_md5_hashes(temp_dir)
+            count = hashes.set_sha256_hashes(temp_dir)
 
             assert count == 2
 
-    def test_set_md5_hashes_invalid_directory(self):
+    def test_set_sha256_hashes_invalid_directory(self):
         """Test error on invalid directory."""
         with pytest.raises(ValueError, match="Invalid directory path"):
-            hashes.set_md5_hashes("/nonexistent/directory")
+            hashes.set_sha256_hashes("/nonexistent/directory")
 
-    def test_set_md5_hashes_resets_storage(self):
-        """Test that set_md5_hashes resets previous storage."""
+    def test_set_sha256_hashes_resets_storage(self):
+        """Test that set_sha256_hashes resets previous storage."""
         # Add some initial hashes
-        hashes.set_md5_hash("/old/file.txt", "oldhash")
+        hashes.set_sha256_hash("/old/file.txt", "oldhash")
         assert len(hashes.FILE_HASHES) == 1
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -166,9 +166,9 @@ class TestSetMD5Hashes:
             with open(filepath, "w") as f:
                 f.write("new content")
 
-            hashes.set_md5_hashes(temp_dir)
+            hashes.set_sha256_hashes(temp_dir)
 
             # Old hash should be gone
-            assert hashes.get_md5_hash("/old/file.txt") is None
+            assert hashes.get_sha256_hash("/old/file.txt") is None
             # Only new file should be present
             assert len(hashes.FILE_HASHES) == 1

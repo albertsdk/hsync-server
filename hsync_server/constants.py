@@ -60,7 +60,7 @@ DEFAULT_DIR_PERMISSIONS = "drwxrwxr-x"
 # =============================================================================
 
 # Custom headers used in responses
-HEADER_MD5 = "X-MD5"
+HEADER_SHA256 = "X-SHA256"
 HEADER_PERMISSIONS = "X-Permissions"
 HEADER_CLIENT_NAME = "X-Client-Name"
 HEADER_CLIENT_VERSION = "X-Client-Version"

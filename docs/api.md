@@ -80,7 +80,7 @@ file=@document.pdf
 path=documents/
 ctime=2024-01-15T10:30:00Z
 mtime=2024-01-15T10:30:00Z
-md5sum=d41d8cd98f00b204e9800998ecf8427e
+sha256sum=bb25b1c2b2a7427401c823a90904a759e2bd7425205b0702bca5e27e937e7cff
 permissions=-rw-rw-r--
 ```
 
@@ -108,7 +108,7 @@ Authorization: Bearer your-api-key
     "size": 1024,
     "mtime": "2024-01-15T10:30:00Z",
     "ctime": "2024-01-15T10:00:00Z",
-    "md5sum": "d41d8cd98f00b204e9800998ecf8427e",
+    "sha256sum": "bb25b1c2b2a7427401c823a90904a759e2bd7425205b0702bca5e27e937e7cff",
     "permissions": "-rw-rw-r--"
   }
 ]
@@ -165,7 +165,7 @@ sequenceDiagram
     "name": "file.txt",
     "size": 1024,
     "mtime": "2024-01-15T10:30:00Z",
-    "md5sum": "d41d8cd98f00b204e9800998ecf8427e"
+    "sha256sum": "bb25b1c2b2a7427401c823a90904a759e2bd7425205b0702bca5e27e937e7cff"
   }
 }
 ```
@@ -218,7 +218,7 @@ Errors are categorized by prefix:
 | `HSYNC-1001` | InvalidBucketNameError | Bucket name contains invalid characters |
 | `HSYNC-1002` | InvalidPathError | Path is invalid or contains traversal |
 | `HSYNC-1003` | InvalidPermissionFormatError | Permission format is invalid |
-| `HSYNC-1005` | ChecksumMismatchError | MD5 checksum verification failed |
+| `HSYNC-1005` | ChecksumMismatchError | SHA-256 checksum verification failed |
 | `HSYNC-1006` | FileTooLargeError | File exceeds maximum allowed size |
 | `HSYNC-1007` | InvalidFilenameError | Filename is invalid or reserved |
 

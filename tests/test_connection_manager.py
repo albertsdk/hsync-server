@@ -78,7 +78,7 @@ class TestConnectionManager:
 
         # Create an event from client1
         file = File(
-            filepath="/buckets/test/test.txt", size=100, md5sum="abc", permissions="-rw-r--r--"
+            filepath="/buckets/test/test.txt", size=100, sha256sum="abc", permissions="-rw-r--r--"
         )
         event = Event(
             cid="client1", localpath="/buckets/test", bucket="test", name=EventName.added, src=file

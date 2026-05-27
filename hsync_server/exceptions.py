@@ -76,7 +76,7 @@ class InvalidSyncOrderError(ValidationError):
 
 
 class ChecksumMismatchError(ValidationError):
-    """MD5 checksum verification failed."""
+    """SHA-256 checksum verification failed."""
 
     error_code = "HSYNC-1005"
     default_message = "Checksum mismatch"
