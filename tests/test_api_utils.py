@@ -484,10 +484,11 @@ class TestSanitizeFilename:
         assert sanitize_filename("file.txt.") == "file.txt"
 
     def test_empty_becomes_unnamed(self):
-        """Empty strings become 'unnamed', reserved names keep original."""
+        """Empty strings and reserved names become 'unnamed'."""
         assert sanitize_filename("") == "unnamed"
-        # Reserved names are handled by is_valid_filename, not sanitize
-        assert sanitize_filename("NUL") == "NUL"
+        # Reserved names are also sanitized to 'unnamed'
+        assert sanitize_filename("NUL") == "unnamed"
+        assert sanitize_filename("CON") == "unnamed"
         assert sanitize_filename("   ") == "unnamed"
 
     def test_long_filename_truncated(self):
