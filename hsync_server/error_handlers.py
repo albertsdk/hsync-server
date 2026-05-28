@@ -13,12 +13,12 @@ This module provides:
 - Mapping from custom exceptions to HTTP status codes
 """
 
-from json import dumps as json_dumps
 from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from hsync_common.text import safe_json_for_log
 from loguru import logger as log
 from pydantic import BaseModel
 
@@ -32,11 +32,6 @@ from .exceptions import (
     ResourceNotFoundError,
     ValidationError,
 )
-
-
-def _safe_json(obj: object) -> str:
-    """Serialize object to JSON and escape braces for loguru."""
-    return json_dumps(obj).replace("{", "{{").replace("}", "}}")
 
 
 class ErrorResponse(BaseModel):
@@ -130,7 +125,7 @@ async def validation_exception_handler(
         JSONResponse with validation error details.
     """
     errors = exc.errors()
-    log.warning(f"Validation error: {_safe_json(errors)}")
+    log.warning(f"Validation error: {safe_json_for_log(errors)}")
 
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
