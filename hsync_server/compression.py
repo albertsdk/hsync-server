@@ -10,8 +10,6 @@ Compression utilities for HSYNC Server.
 Extends hsync_common.compression with server-specific async helpers.
 """
 
-from os.path import splitext
-
 import zstandard as zstd
 
 # Re-export core compression from hsync-common
@@ -24,33 +22,9 @@ from hsync_common.compression import (  # noqa: F401
     compress_data,
     compress_file,
     decompress_data,
+    should_compress,
 )
 from loguru import logger as log
-
-
-def should_compress(filepath: str, size: int) -> bool:
-    """
-    Determine if a file should be compressed before transfer.
-
-    Server-side version: uses download threshold only.
-
-    Args:
-        filepath: Path to the file.
-        size: Size of the file in bytes.
-
-    Returns:
-        True if file should be compressed, False otherwise.
-    """
-    if size < MIN_SIZE_FOR_COMPRESSION:
-        log.debug(f"Skip compression: {filepath} too small ({size} bytes)")
-        return False
-
-    ext = splitext(filepath.lower())[1]
-    if ext in PRECOMPRESSED_EXTENSIONS:
-        log.debug(f"Skip compression: {filepath} already compressed ({ext})")
-        return False
-
-    return True
 
 
 async def async_compress_file(filepath: str, chunk_size: int = 64 * 1024) -> bytes:
