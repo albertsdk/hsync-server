@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Final, Literal
 
 from hsync_common.env import load_env_file as _load_env_file
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # =============================================================================
@@ -78,7 +78,10 @@ class Settings(BaseSettings):
     )
 
     # Authentication
-    api_key: SecretStr = Field(default=SecretStr(""), description="API key for authentication")
+    api_key: SecretStr = Field(
+        default=SecretStr(""),
+        description="API key for authentication (required, min 16 chars)",
+    )
 
     # Upload Limits
     max_upload_size: int = Field(
@@ -144,6 +147,33 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.lower()
         return v
+
+    @field_validator("api_key", mode="after")
+    @classmethod
+    def validate_api_key(cls, v: SecretStr) -> SecretStr:
+        """Reject empty or too-short API keys at config load time."""
+        raw = v.get_secret_value()
+        if not raw:
+            raise ValueError(
+                "HSYNC_API_KEY must be set to a secure random string. "
+                "Generate one at: https://it-tools.tech/token-generator"
+            )
+        if len(raw) < 16:
+            raise ValueError(
+                f"HSYNC_API_KEY must be at least 16 characters (got {len(raw)}). "
+                "Use 32+ characters for better security."
+            )
+        return v
+
+    @model_validator(mode="after")
+    def validate_ssl_password_when_enabled(self) -> "Settings":
+        """When SSL is enabled, the keyfile password must be configured."""
+        if self.ssl_enabled and not self.ssl_keyfile_password.get_secret_value():
+            raise ValueError(
+                "HSYNC_SSL_KEYFILE_PASSWORD is required when HSYNC_SSL_ENABLED=True. "
+                "SSL private keys must never be stored in clear text."
+            )
+        return self
 
     @property
     def cors_origins_list(self) -> list[str]:

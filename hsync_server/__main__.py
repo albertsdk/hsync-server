@@ -12,6 +12,7 @@ from typing import Annotated
 
 import typer
 import uvicorn
+from pydantic import ValidationError
 
 from hsync_server.config import (
     get_log_level,
@@ -201,14 +202,21 @@ def main(
             print(f"Error: {e}", file=sys.stderr)
             raise typer.Exit(1)
 
-    # Get configuration values (CLI args take precedence over env vars)
-    effective_log_level = log_level if log_level else get_log_level()
-    effective_port = port if port else get_port()
-    effective_ssl_enabled = ssl_enabled or get_ssl_enabled()
-    effective_ssl_certfile = ssl_certfile if ssl_certfile else get_ssl_certfile()
-    effective_ssl_keyfile = ssl_keyfile if ssl_keyfile else get_ssl_keyfile()
-    effective_ssl_cert_dir = ssl_cert_dir if ssl_cert_dir else get_ssl_cert_dir()
-    effective_ssl_keyfile_password = get_ssl_keyfile_password()
+    # Get configuration values (CLI args take precedence over env vars).
+    # Settings validation runs lazily here; translate any ValidationError into
+    # a user-friendly message before the logger is even configured.
+    try:
+        effective_log_level = log_level if log_level else get_log_level()
+        effective_port = port if port else get_port()
+        effective_ssl_enabled = ssl_enabled or get_ssl_enabled()
+        effective_ssl_certfile = ssl_certfile if ssl_certfile else get_ssl_certfile()
+        effective_ssl_keyfile = ssl_keyfile if ssl_keyfile else get_ssl_keyfile()
+        effective_ssl_cert_dir = ssl_cert_dir if ssl_cert_dir else get_ssl_cert_dir()
+        effective_ssl_keyfile_password = get_ssl_keyfile_password()
+    except ValidationError as exc:
+        for err in exc.errors():
+            print(f"Configuration error: {err['msg']}", file=sys.stderr)
+        raise typer.Exit(1) from None
 
     # Configure logging before starting the server
     log = setup_logging(level=effective_log_level, no_color=no_color)
