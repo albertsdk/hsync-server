@@ -17,7 +17,7 @@ This module provides handler functions for different event types:
 
 from os import makedirs, remove, rename, unlink
 from os import symlink as os_symlink
-from os.path import dirname, exists, islink
+from pathlib import Path
 from shutil import rmtree
 from typing import Any
 
@@ -166,7 +166,7 @@ async def handle_deleted_event(
             log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dir_obj.path}"')
             return None
         if dir_obj.path:
-            if not exists(dir_obj.path):
+            if not Path(dir_obj.path).exists():
                 log.warning(f'[WEBSOCKET ] Dir: "{dir_obj.path}" not found.')
             else:
                 log.info(f'[WEBSOCKET ] Deleted dir "{dir_obj.path}"')
@@ -181,12 +181,12 @@ async def handle_deleted_event(
             log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
             return None
         if file_obj.filepath:
-            if not exists(file_obj.filepath):
+            if not Path(file_obj.filepath).exists():
                 log.warning(f'[WEBSOCKET ] File: "{file_obj.filepath}" not found.')
             else:
                 log.info(f'[WEBSOCKET ] Deleted file "{file_obj.filepath}"')
                 remove(file_obj.filepath)
-                parent = dirname(file_obj.filepath)
+                parent = str(Path(file_obj.filepath).parent)
                 if is_sentinel_file(file_obj.filepath):
                     # Sentinel removed — clean up the now-empty directory.
                     # Never remove the bucket root itself.
@@ -302,12 +302,12 @@ async def handle_symlink_event(
 
             log.info(f'[WEBSOCKET ] Symlink "{link.filepath}" -> "{target}"')
             # Ensure parent directory exists
-            parent_dir = dirname(link.filepath)
-            if not exists(parent_dir):
+            parent_dir = str(Path(link.filepath).parent)
+            if not Path(parent_dir).exists():
                 makedirs(parent_dir, exist_ok=True)
 
             # Remove existing symlink or file if present
-            if islink(link.filepath) or exists(link.filepath):
+            if Path(link.filepath).is_symlink() or Path(link.filepath).exists():
                 unlink(link.filepath)
 
             # Create the symlink

@@ -16,7 +16,7 @@ This module provides the REST API endpoint for file upload with:
 """
 
 from os import makedirs, remove
-from os.path import exists, getsize
+from pathlib import Path
 from shutil import copy2, move
 
 from aiofiles.tempfile import NamedTemporaryFile
@@ -178,12 +178,16 @@ async def upload_file(
         partial_file_path = f"{file_location}.part"
 
         # Skip upload if identical file already exists (same SHA-256)
-        if sha256sum and exists(file_location) and sha256sum == get_sha256_hash(file_location):
+        if (
+            sha256sum
+            and Path(file_location).exists()
+            and sha256sum == get_sha256_hash(file_location)
+        ):
             log.warning(f"File already present: {file_location}")
             # Update timestamps even if skipping upload
             update_file_timestamp(file_location, ctime, mtime)
             # Clean up partial file if exists
-            if exists(partial_file_path):
+            if Path(partial_file_path).exists():
                 remove(partial_file_path)
             upload_successful = True
             return JSONResponse(
@@ -201,18 +205,18 @@ async def upload_file(
         # This ensures readers can still access the complete original file
         # while the new version is being uploaded
         backup_path = f"{file_location}.backup"
-        if exists(file_location):
+        if Path(file_location).exists():
             copy2(file_location, backup_path)
 
         # Handle resumable upload
         if is_resumable:
             # Validate partial file exists and has expected size
-            if not exists(partial_file_path):
+            if not Path(partial_file_path).exists():
                 raise UploadError(
                     message="Cannot resume: partial file not found",
                     details={"offset": offset, "partial_file": partial_file_path},
                 )
-            current_size = getsize(partial_file_path)
+            current_size = Path(partial_file_path).stat().st_size
             if current_size != offset:
                 raise UploadError(
                     message=f"Offset mismatch: expected {current_size}, got {offset}",
@@ -256,7 +260,7 @@ async def upload_file(
             total_bytes = 0
 
             # If size > 0, this might be first chunk of a multi-chunk upload
-            if size > 0 and exists(partial_file_path):
+            if size > 0 and Path(partial_file_path).exists():
                 # Remove stale partial file
                 remove(partial_file_path)
 
@@ -327,7 +331,7 @@ async def upload_file(
         invalidate_sha256_cache(file_location)
 
         # Clean up backup file after successful upload
-        if backup_path and exists(backup_path):
+        if backup_path and Path(backup_path).exists():
             remove(backup_path)
 
         # Broadcast "added" event to other connected clients
@@ -357,7 +361,7 @@ async def upload_file(
     except Exception as e:
         log.error(f"Upload failed for file {file.filename}: {e}", exc_info=True)
         # Restore from backup if it exists
-        if backup_path and exists(backup_path) and file_location:
+        if backup_path and Path(backup_path).exists() and file_location:
             move(backup_path, file_location)
             log.info(f"Restored backup for file: {file_location}")
         raise UploadError(
@@ -370,7 +374,7 @@ async def upload_file(
             # for potential resumable upload continuation
             if (
                 file_location_tmp
-                and exists(file_location_tmp)
+                and Path(file_location_tmp).exists()
                 and not file_location_tmp.endswith(".part")
             ):
                 remove(file_location_tmp)
@@ -378,7 +382,7 @@ async def upload_file(
             # Failure: clean up ALL leftover temp files, including .part files,
             # to prevent accumulation of stale partial uploads on disk
             for f in (file_location_tmp, partial_file_path, backup_path):
-                if f and exists(f):
+                if f and Path(f).exists():
                     remove(f)
                     if f.endswith(".part"):
                         log.debug(f"Cleaned up stale partial file: {f}")

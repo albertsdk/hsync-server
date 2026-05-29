@@ -42,11 +42,11 @@ async def async_compress_file(filepath: str, chunk_size: int = 64 * 1024) -> byt
         Compressed file content as a single zstd frame.
     """
     import io
-    from os.path import getsize
+    from pathlib import Path
 
     import aiofiles
 
-    file_size = getsize(filepath)
+    file_size = Path(filepath).stat().st_size
     output = io.BytesIO()
     compressor = zstd.ZstdCompressor(level=COMPRESSION_LEVEL)
     with compressor.stream_writer(output, size=file_size, closefd=False) as writer:

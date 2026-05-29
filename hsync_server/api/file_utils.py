@@ -15,9 +15,7 @@ This module provides utility functions for file operations:
 
 from datetime import UTC, datetime
 from os import listdir, rmdir, utime
-from os.path import basename, isdir
-from os.path import exists as path_exists
-from os.path import join as path_join
+from pathlib import Path
 from re import match
 
 from loguru import logger as log
@@ -27,7 +25,7 @@ def is_sentinel_file(filepath: str) -> bool:
     """Return True if *filepath* is a .hsynckeep sentinel file."""
     from hsync_server.constants import HSYNCKEEP_FILENAME
 
-    return basename(filepath) == HSYNCKEEP_FILENAME
+    return Path(filepath).name == HSYNCKEEP_FILENAME
 
 
 def ensure_sentinel_in_dir(dir_path: str) -> None:
@@ -46,7 +44,7 @@ def ensure_sentinel_in_dir(dir_path: str) -> None:
     from hsync_server.constants import HSYNCKEEP_FILENAME
     from hsync_server.models.file import is_hidden_file
 
-    if not path_exists(dir_path) or not isdir(dir_path):
+    if not Path(dir_path).exists() or not Path(dir_path).is_dir():
         return
 
     try:
@@ -58,8 +56,8 @@ def ensure_sentinel_in_dir(dir_path: str) -> None:
     if has_syncable:
         return
 
-    sentinel = path_join(dir_path, HSYNCKEEP_FILENAME)
-    if not path_exists(sentinel):
+    sentinel = str(Path(dir_path) / HSYNCKEEP_FILENAME)
+    if not Path(sentinel).exists():
         try:
             open(sentinel, "w").close()  # noqa: SIM115
             log.debug(f'Created sentinel "{sentinel}"')
@@ -84,12 +82,10 @@ def cleanup_empty_dir(dir_path: str, bucket_root: str | None = None) -> None:
             removed. When omitted no root guard is applied (legacy
             behaviour, used by tests that operate outside of a bucket).
     """
-    from os.path import realpath
-
-    if not path_exists(dir_path) or not isdir(dir_path):
+    if not Path(dir_path).exists() or not Path(dir_path).is_dir():
         return
 
-    if bucket_root and realpath(dir_path) == realpath(bucket_root):
+    if bucket_root and Path(dir_path).resolve() == Path(bucket_root).resolve():
         return
 
     try:

@@ -12,7 +12,7 @@ This module provides the REST API endpoint for file deletion with:
 - Sentinel file management
 """
 
-from os.path import dirname, exists
+from pathlib import Path
 
 from fastapi import Form
 from fastapi.responses import JSONResponse
@@ -71,7 +71,7 @@ async def delete_file(
         raise InvalidBucketNameError(details={"bucket": bucket})
 
     bucket_dir = f"{get_buckets_path()}/{bucket}"
-    if not exists(bucket_dir):
+    if not Path(bucket_dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket})
 
     # Validate path to prevent traversal attacks
@@ -80,7 +80,7 @@ async def delete_file(
 
     file = f"{bucket_dir}/{filename}"
 
-    if not exists(file):
+    if not Path(file).exists():
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
 
     try:
@@ -100,11 +100,11 @@ async def delete_file(
 
         # Also remove any backup file associated with this file
         backup_file = f"{file}.backup"
-        if exists(backup_file):
+        if Path(backup_file).exists():
             remove(backup_file)
             log.info(f'Backup file: "{backup_file}" deleted successfully')
 
-        parent = dirname(file)
+        parent = str(Path(file).parent)
         if is_sentinel_file(file):
             # Sentinel removed — clean up the now-empty directory.
             # bucket_root must never be removed: a sentinel deletion at the

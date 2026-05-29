@@ -14,7 +14,7 @@ corresponding SHA-256 checksums are stored for quick duplicate detection.
 
 import hashlib
 from os import walk
-from os.path import isdir, join
+from pathlib import Path
 
 from hsync_server.models.dir import is_hidden_dir
 from hsync_server.models.file import is_hidden_file
@@ -105,7 +105,7 @@ def set_sha256_hashes(directory: str) -> int:
                 hasher.update(chunk)
         return hasher.hexdigest()
 
-    if not isdir(directory):
+    if not Path(directory).is_dir():
         raise ValueError(f"Invalid directory path: {directory}")
 
     # Reset the hash storage
@@ -118,7 +118,7 @@ def set_sha256_hashes(directory: str) -> int:
         dirs[:] = [d for d in dirs if not is_hidden_dir(f"{root}/{d}")]
 
         for file in files:
-            file_path = join(root, file)
+            file_path = str(Path(root) / file)
             # Skip hidden files using is_hidden_file
             if not is_hidden_file(file_path):
                 sha256 = _compute_sha256(file_path)

@@ -157,10 +157,10 @@ def ensure_certificates(
     Returns:
         Tuple of (cert_path, key_path).
     """
-    cert_path = os.path.join(cert_dir, cert_filename)
-    key_path = os.path.join(cert_dir, key_filename)
+    cert_path = str(Path(cert_dir) / cert_filename)
+    key_path = str(Path(cert_dir) / key_filename)
 
-    if os.path.exists(cert_path) and os.path.exists(key_path):
+    if Path(cert_path).exists() and Path(key_path).exists():
         log.info(f"Using existing certificates from: {cert_dir}")
         return cert_path, key_path
 
@@ -205,9 +205,9 @@ def get_ssl_config(
 
     # If explicit paths provided, use them
     if ssl_certfile and ssl_keyfile:
-        if not os.path.exists(ssl_certfile):
+        if not Path(ssl_certfile).exists():
             raise FileNotFoundError(f"SSL certificate not found: {ssl_certfile}")
-        if not os.path.exists(ssl_keyfile):
+        if not Path(ssl_keyfile).exists():
             raise FileNotFoundError(f"SSL private key not found: {ssl_keyfile}")
         return {
             "ssl_certfile": ssl_certfile,

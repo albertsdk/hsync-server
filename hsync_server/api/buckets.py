@@ -17,7 +17,7 @@ All endpoints require API key authentication via Bearer token.
 
 from datetime import UTC, datetime
 from os import makedirs
-from os.path import exists, getatime, getctime, getmtime
+from pathlib import Path
 from shutil import rmtree
 
 from fastapi import status
@@ -62,14 +62,15 @@ async def get_bucket(bucket: str) -> JSONResponse:
 
     bucket_dir = f"{get_buckets_path()}/{bucket}"
 
-    if not exists(bucket_dir):
+    if not Path(bucket_dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket})
 
     # Fetch and format access, creation and modification times
+    bucket_stat = Path(bucket_dir).stat()
     times = {
-        "adate": getatime(bucket_dir),
-        "cdate": getctime(bucket_dir),
-        "mdate": getmtime(bucket_dir),
+        "adate": bucket_stat.st_atime,
+        "cdate": bucket_stat.st_ctime,
+        "mdate": bucket_stat.st_mtime,
     }
     formatted_times = {
         key: datetime.fromtimestamp(value, tz=UTC).isoformat() for key, value in times.items()
@@ -102,7 +103,7 @@ async def create_bucket(bucket: str) -> JSONResponse:
     bucket_directory = f"{get_buckets_path()}/{bucket}"
 
     # Check if bucket already exists
-    if exists(bucket_directory):
+    if Path(bucket_directory).exists():
         log.warning(f"Bucket already exists: {bucket_directory}")
         return JSONResponse(
             status_code=409,
@@ -148,7 +149,7 @@ async def delete_bucket(bucket: str) -> JSONResponse:
 
     bucket_dir = f"{get_buckets_path()}/{bucket}"
 
-    if not exists(bucket_dir):
+    if not Path(bucket_dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket})
 
     try:

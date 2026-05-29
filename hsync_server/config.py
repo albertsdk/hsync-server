@@ -79,7 +79,7 @@ class Settings(BaseSettings):
 
     # Authentication
     api_key: SecretStr = Field(
-        default=SecretStr(""),
+        ...,
         description="API key for authentication (required, min 16 chars)",
     )
 
@@ -199,7 +199,10 @@ def get_settings() -> Settings:
     Uses LRU cache for performance. Call load_env_file() to reload
     settings after loading a new environment file.
     """
-    return Settings()
+    # api_key (and other required fields) are sourced from environment
+    # variables by pydantic-settings; the static checker cannot see this,
+    # hence the explicit ignore for the "missing argument" false positive.
+    return Settings()  # type: ignore[call-arg]
 
 
 # =============================================================================
