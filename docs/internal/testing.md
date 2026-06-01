@@ -103,6 +103,7 @@ tests/
 | `no_tests_touch_real_repo_state` (autouse) | function | Fails any test that mutates the repository's real `state/syncstate.db` or creates/removes dirs under the real `buckets/` |
 | `deterministic_cli_output` (autouse) | function | Forced plain, uncolored CLI output (CI-safe assertions) |
 | `_prevent_os_environ_leakage` (autouse) | function | Removes env vars added by a test on teardown |
+| `_scrub_hsync_env` (autouse) | function | Removes every `HSYNC_*` inherited from the developer's shell (except `HSYNC_ADMIN_KEY`) so `Settings()` defaults are hermetic |
 | `client` / `client_no_auth` | function | Async HTTPX clients against a fresh FastAPI test app, with/without admin auth |
 | `test_app` | function | Assembled router/handler stack on isolated state (no uvicorn) |
 | `live_server` / `start_live_server` / `bb_http` / `bb_bucket` | module/function | Black-box harness: real server subprocess on an ephemeral port with scrubbed `HSYNC_*` env and temp dirs |
@@ -159,6 +160,15 @@ The suite enforces isolation at **three independent levels**:
    directory set. Any difference fails the **offending test** with an
    explanatory message — leftovers become a red test instead of silent
    pollution.
+
+Configuration is isolated separately by **`_scrub_hsync_env` (autouse)**: every
+in-process test runs with the developer's `HSYNC_*` variables removed (only
+`HSYNC_ADMIN_KEY` survives — the conftest sets it at import time for the
+bootstrap admin), so `Settings()` default-value assertions are hermetic and
+independent of the execution environment; `monkeypatch.delenv` restores them on
+teardown. This mirrors the same fixture in `hsync-client`'s conftest. Note it
+covers per-test reads only: the rate limiter captures `HSYNC_RATE_LIMIT_*` at
+module import time (`rate_limiter.py:55`), which a per-test scrub cannot undo.
 
 > If a run ever leaves test rows behind anyway (for example from an older run),
 > clean them up with

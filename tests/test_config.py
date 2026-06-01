@@ -48,14 +48,10 @@ class TestLoadEnvFile:
 class TestSettings:
     """Tests for Settings class."""
 
-    def test_default_values(self, monkeypatch):
+    def test_default_values(self):
         """Test that default values are applied."""
         # Clear cache to ensure fresh settings
         config.get_settings.cache_clear()
-
-        # Clear environment variables that might override defaults (monkeypatch garantisce il cleanup)
-        monkeypatch.delenv("HSYNC_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("HSYNC_PORT", raising=False)
 
         settings = config.Settings()
 

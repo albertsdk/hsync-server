@@ -46,6 +46,25 @@ def _prevent_os_environ_leakage(monkeypatch: pytest.MonkeyPatch) -> Generator[No
         monkeypatch.delenv(key, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _scrub_hsync_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Scrub every ``HSYNC_*`` inherited from the developer's environment.
+
+    ``Settings`` (pydantic-settings) reads the server's configuration from
+    ``HSYNC_*`` env vars, so a shell-exported ``HSYNC_MAX_UPLOAD_SIZE`` /
+    ``HSYNC_RATE_LIMIT_*`` / … would otherwise leak into default-value
+    assertions (``test_default_values``) and make them depend on the execution
+    environment. ``monkeypatch.delenv`` restores the original values on
+    teardown; tests that set their own ``HSYNC_*`` (via ``monkeypatch.setenv``
+    or directly) still work because they run after this scrub.
+
+    ``HSYNC_ADMIN_KEY`` is excluded: the conftest sets it at import time for
+    the bootstrap admin account, so it must survive the scrub.
+    """
+    for key in [k for k in os.environ if k.startswith("HSYNC_") and k != "HSYNC_ADMIN_KEY"]:
+        monkeypatch.delenv(key)
+
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _REAL_STATE_DIR = _REPO_ROOT / "state"
 _REAL_BUCKETS_DIR = _REPO_ROOT / "buckets"
