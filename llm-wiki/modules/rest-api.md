@@ -20,9 +20,14 @@ contract is the generated OpenAPI snapshot in `hsync-common` (`protocol/rest/ope
 | `DELETE /files` | `files/delete.delete_file` (`delete.py:44`) | key | default |
 | `POST /buckets/{bucket}/tombstones` | tombstone record (`list.py`) | key | default |
 | `GET /buckets/{bucket}/presence` | `presence.get_presence` (`presence.py:29`) | key | default |
-| `GET /health` | `health.root` (`health.py:28`) | none | — |
-| `GET /api/v1/time` | `health.get_time` (`health.py:45`) | none | — |
+| `GET /health` | `health.root` (`health.py:32`) | none | — |
+| `GET /api/v1/time` | `health.get_time` (`health.py:57`) | none | — |
 | `GET /metrics` | Prometheus (`main.py:127`) | none | — |
+
+`GET /health` accepts an optional `size` query param (bounded to
+`HEALTH_MAX_PROBE_BYTES`, `health.py:24`): it returns that many NUL bytes so
+the client's autotune can measure throughput (`measure_bandwidth_active`).
+Default (no `size`) is the empty 200 readiness probe.
 
 Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–`60`).
 

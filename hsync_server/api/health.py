@@ -19,22 +19,34 @@ from loguru import logger as log
 
 from hsync_server.routers import public_router
 
+# Hard cap on the /health probe payload: bounds the amplification surface of
+# an unauthenticated endpoint that can return an arbitrary number of bytes.
+HEALTH_MAX_PROBE_BYTES = 1024 * 1024  # 1 MB
+
 
 @public_router.get(
     "/health",
     name="Monitoring - Health check endpoint",
     response_class=PlainTextResponse,
 )
-async def root() -> str:
+async def root(size: int = 0) -> str:
     """
     Health check endpoint.
 
     Returns an empty response with 200 OK status to indicate
     the server is healthy and accepting requests.
 
+    When ``size`` is supplied, returns that many bytes (bounded to
+    ``HEALTH_MAX_PROBE_BYTES``) so a client can measure throughput for
+    auto-tuning. The payload is a deterministic NUL-byte string — never
+    reflected request input.
+
     Returns:
-        Empty string (200 OK response).
+        Empty string (200 OK response), or ``size`` NUL bytes.
     """
+    if size:
+        size = max(0, min(size, HEALTH_MAX_PROBE_BYTES))
+        return "\0" * size
     return ""
 
 

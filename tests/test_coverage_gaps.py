@@ -582,6 +582,15 @@ class TestHealthCoverageGaps:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
+    async def test_health_size_probe_returns_bounded_payload(self):
+        """``/health?size=N`` returns exactly N bytes, capped at the probe max."""
+        from hsync_server.api.health import HEALTH_MAX_PROBE_BYTES, root
+
+        assert len(await root(size=4096)) == 4096
+        assert len(await root(size=HEALTH_MAX_PROBE_BYTES * 100)) == HEALTH_MAX_PROBE_BYTES
+        assert await root() == ""
+
+    @pytest.mark.asyncio
     async def test_time_endpoint_unit(self):
         """The /api/v1/time endpoint returns a timestamp."""
         from hsync_server.api.health import get_time
