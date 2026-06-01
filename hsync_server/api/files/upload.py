@@ -264,7 +264,10 @@ async def upload_file(
                 # Remove stale partial file
                 remove(partial_file_path)
 
-            async with NamedTemporaryFile(delete=False) as temp_file:
+            # Create the temp file in the destination directory so the final
+            # move() below resolves to an atomic same-filesystem rename instead
+            # of a non-atomic copy+remove (which could leave a torn file).
+            async with NamedTemporaryFile(delete=False, dir=file_directory) as temp_file:
                 file_location_tmp = str(temp_file.name)
                 while chunk := await file.read(8192):
                     total_bytes += len(chunk)
