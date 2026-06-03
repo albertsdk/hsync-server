@@ -15,7 +15,7 @@ This module provides the REST API endpoint for file upload with:
 - Compression support
 """
 
-from os import makedirs, remove
+from os import remove
 from pathlib import Path
 from shutil import copy2, move
 
@@ -199,7 +199,7 @@ async def upload_file(
             )
 
         # Ensure directory exists
-        makedirs(file_directory, exist_ok=True)
+        Path(file_directory).mkdir(parents=True, exist_ok=True)
 
         # Create backup of existing file before overwriting
         # This ensures readers can still access the complete original file

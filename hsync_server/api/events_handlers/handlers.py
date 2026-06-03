@@ -15,7 +15,7 @@ This module provides handler functions for different event types:
 - handle_symlink_event: Create or update symbolic links
 """
 
-from os import makedirs, remove, rename, unlink
+from os import remove, rename, unlink
 from os import symlink as os_symlink
 from pathlib import Path
 from shutil import rmtree
@@ -70,7 +70,7 @@ async def handle_added_event(
             return None
         if dir_obj.path and dir_obj.permissions:
             log.info(f'[WEBSOCKET ] Added dir "{dir_obj.path}"')
-            makedirs(dir_obj.path, exist_ok=True)
+            Path(dir_obj.path).mkdir(parents=True, exist_ok=True)
             await set_permissions(dir_obj.path, dir_obj.permissions)
             return Event(cid, bucket_dir, bucket, EventName.added, dir_obj)
 
@@ -304,7 +304,7 @@ async def handle_symlink_event(
             # Ensure parent directory exists
             parent_dir = str(Path(link.filepath).parent)
             if not Path(parent_dir).exists():
-                makedirs(parent_dir, exist_ok=True)
+                Path(parent_dir).mkdir(parents=True, exist_ok=True)
 
             # Remove existing symlink or file if present
             if Path(link.filepath).is_symlink() or Path(link.filepath).exists():
