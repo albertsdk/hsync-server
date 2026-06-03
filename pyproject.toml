@@ -77,6 +77,10 @@ filterwarnings = [
     "ignore::urllib3.exceptions.InsecureRequestWarning",
     "ignore::DeprecationWarning:pathspec.*",
     "ignore::DeprecationWarning:watchdog.*",
+    # slowapi 0.1.10 (latest) still calls asyncio.iscoroutinefunction, which is
+    # deprecated in Python 3.16. Suppress until slowapi releases a fix; the
+    # hsync_server/tests DeprecationWarning->error filters above stay intact.
+    "ignore::DeprecationWarning:slowapi.*",
     # Starlette 1.6+ emits a transitional warning on the TestClient import,
     # inviting to migrate to the httpx2 fork. httpx (0.28) still works fully;
     # suppress only this single message so the output stays clean without
