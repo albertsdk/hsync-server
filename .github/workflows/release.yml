@@ -49,6 +49,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Determine image tags
+        id: tags
+        run: |
+          if [[ "${{ github.ref_name }}" == *-* ]]; then
+            echo "tags=ghcr.io/albertobasso/hsync-server:${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=ghcr.io/albertobasso/hsync-server:${{ github.ref_name }},ghcr.io/albertobasso/hsync-server:latest" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
@@ -56,9 +64,7 @@ jobs:
           file: hsync-server/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ghcr.io/albertobasso/hsync-server:${{ github.ref_name }}
-            ghcr.io/albertobasso/hsync-server:latest
+          tags: ${{ steps.tags.outputs.tags }}
   assets:
     needs: image
     runs-on: ubuntu-latest
@@ -78,8 +84,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          PRERELEASE_FLAG=""
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
           # Create the release if it doesn't exist; ignore error if it does.
-          gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag || true
+          gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag ${PRERELEASE_FLAG} || true
           # Upload assets, overwriting any existing ones with the same name.
           gh release upload "${GITHUB_REF_NAME}" --clobber \
             install.sh compose.yaml SHA256SUMS
