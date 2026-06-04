@@ -142,6 +142,12 @@ class Settings(BaseSettings):
         description="Days to retain deletion markers before garbage collection (0 = forever)",
     )
 
+    # API Documentation
+    enable_docs: bool = Field(
+        default=False,
+        description="Expose /docs (Swagger UI) and /redoc endpoints",
+    )
+
     # Development
     reload: bool = Field(
         default=False,
