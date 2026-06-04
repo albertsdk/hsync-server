@@ -475,3 +475,90 @@ class TestFileDeleteValidation:
 
         assert response.status_code == 500
         assert "HSYNC-4003" in response.text
+
+
+class TestTombstones:
+    """Tests for the deletion-marker (tombstone) endpoint and lifecycle."""
+
+    @pytest.mark.asyncio
+    async def test_delete_records_tombstone(self, client: AsyncClient, temp_buckets_dir: str):
+        """Deleting a file records a tombstone keyed by the hashed relative path."""
+        import hashlib
+
+        from hsync_common.models.tombstone import tombstone_key
+
+        bucket_path = os.path.join(temp_buckets_dir, "tombbucket")
+        os.makedirs(bucket_path)
+        content = b"to be deleted"
+        with open(os.path.join(bucket_path, "gone.txt"), "wb") as f:
+            f.write(content)
+
+        response = await client.request(
+            "DELETE",
+            "/api/v1/buckets/tombbucket/files",
+            data={"cid": "test-client-1", "filename": "gone.txt"},
+        )
+        assert response.status_code == 200
+
+        response = await client.get("/api/v1/buckets/tombbucket/tombstones")
+        assert response.status_code == 200
+        payload = response.json()
+
+        key = tombstone_key("gone.txt")
+        assert key in payload
+        assert payload[key]["sha256"] == hashlib.sha256(content).hexdigest()
+        assert payload[key]["ts"] > 0
+
+    @pytest.mark.asyncio
+    async def test_upload_clears_tombstone(self, client: AsyncClient, temp_buckets_dir: str):
+        """Re-uploading a previously deleted path clears its tombstone."""
+        from hsync_common.models.tombstone import tombstone_key
+
+        bucket_path = os.path.join(temp_buckets_dir, "reusebucket")
+        os.makedirs(bucket_path)
+        with open(os.path.join(bucket_path, "reuse.txt"), "wb") as f:
+            f.write(b"original")
+
+        await client.request(
+            "DELETE",
+            "/api/v1/buckets/reusebucket/files",
+            data={"cid": "test-client-1", "filename": "reuse.txt"},
+        )
+
+        # Tombstone present after deletion
+        payload = (await client.get("/api/v1/buckets/reusebucket/tombstones")).json()
+        assert tombstone_key("reuse.txt") in payload
+
+        # Re-create the same path via upload
+        response = await client.post(
+            "/api/v1/buckets/reusebucket/files",
+            files={"file": ("reuse.txt", io.BytesIO(b"new content"), "text/plain")},
+            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
+        )
+        assert response.status_code == 201
+
+        # Tombstone cleared
+        payload = (await client.get("/api/v1/buckets/reusebucket/tombstones")).json()
+        assert tombstone_key("reuse.txt") not in payload
+
+    @pytest.mark.asyncio
+    async def test_tombstones_empty_bucket(self, client: AsyncClient, temp_buckets_dir: str):
+        """A bucket with no deletions returns an empty tombstone payload."""
+        os.makedirs(os.path.join(temp_buckets_dir, "freshbucket"))
+        response = await client.get("/api/v1/buckets/freshbucket/tombstones")
+        assert response.status_code == 200
+        assert response.json() == {}
+
+    @pytest.mark.asyncio
+    async def test_tombstones_invalid_bucket_name(self, client: AsyncClient):
+        """Invalid bucket name returns 400."""
+        response = await client.get("/api/v1/buckets/invalid..bucket/tombstones")
+        assert response.status_code == 400
+        assert "HSYNC-1001" in response.text
+
+    @pytest.mark.asyncio
+    async def test_tombstones_bucket_not_found(self, client: AsyncClient):
+        """Non-existent bucket returns 404."""
+        response = await client.get("/api/v1/buckets/nosuchbucket/tombstones")
+        assert response.status_code == 404
+        assert "HSYNC-2001" in response.text

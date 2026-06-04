@@ -37,6 +37,7 @@ from hsync_server.models.event import Event, EventName
 from hsync_server.models.file import File as LocalFile
 from hsync_server.models.file import invalidate_sha256_cache
 from hsync_server.routers import auth_router
+from hsync_server.tombstones import record_deletion
 
 
 @auth_router.delete("/api/v1/buckets/{bucket}/files")
@@ -97,6 +98,17 @@ async def delete_file(
         remove(file)
         invalidate_sha256_cache(file)
         log.info(f'File: "{file}" deleted successfully')
+
+        # Record a tombstone so peers offline at deletion time do not
+        # resurrect the file on their next full sync. Sentinel files are
+        # per-peer and never exchanged, so they need no marker.
+        if not is_sentinel_file(file):
+            record_deletion(
+                bucket,
+                local_bucket,
+                file,
+                sha256sum=src.sha256sum if src else None,
+            )
 
         # Also remove any backup file associated with this file
         backup_file = f"{file}.backup"

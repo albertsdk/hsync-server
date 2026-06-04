@@ -31,6 +31,7 @@ from hsync_server.models.file import File as LocalFile
 from hsync_server.models.file import is_hidden_file
 from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
+from hsync_server.tombstones import get_tombstone_store
 
 
 @auth_router.get("/api/v1/buckets/{bucket}/files/upload-status")
@@ -184,4 +185,45 @@ async def get_files(
     return JSONResponse(
         status_code=200,
         content=file_list,
+    )
+
+
+@auth_router.get("/api/v1/buckets/{bucket}/tombstones")
+@limiter.limit(RATE_LIMIT_DEFAULT)
+async def get_tombstones(
+    request: Request,  # Required by rate limiter
+    bucket: str,
+) -> JSONResponse:
+    """
+    List deletion markers (tombstones) for a bucket.
+
+    Returns a mapping of hashed bucket-relative path to the deletion
+    timestamp and the content hash of the removed file. Clients use these
+    markers to avoid resurrecting files that were deleted while they were
+    offline.
+
+    Args:
+        request: The incoming FastAPI request.
+        bucket: Name of the bucket to list tombstones from.
+
+    Returns:
+        JSON response with the tombstone payload.
+
+    Raises:
+        InvalidBucketNameError: If bucket name is invalid.
+        BucketNotFoundError: If bucket does not exist.
+    """
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
+
+    bucket_dir = f"{get_buckets_path()}/{bucket}"
+    if not Path(bucket_dir).exists():
+        raise BucketNotFoundError(details={"bucket": bucket})
+
+    store = get_tombstone_store(bucket)
+    store.prune()
+
+    return JSONResponse(
+        status_code=200,
+        content=store.to_payload(),
     )
