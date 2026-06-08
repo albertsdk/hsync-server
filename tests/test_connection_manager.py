@@ -2,7 +2,7 @@
 Tests for ConnectionManager and BucketConnectionManager.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -144,3 +144,69 @@ class TestBucketConnectionManager:
         m2.active_connections = {"c3": MagicMock()}
 
         assert bucket_manager.get_connection_count() == 3
+
+
+class TestConnectionSlots:
+    """Tests for the DoS-protection connection slot accounting (2.10)."""
+
+    @pytest.fixture
+    def bucket_manager(self):
+        """Create a fresh BucketConnectionManager instance."""
+        return BucketConnectionManager()
+
+    def test_acquire_and_release_balance(self, bucket_manager):
+        """Acquiring then releasing a slot returns counters to zero."""
+        assert bucket_manager.try_acquire_slot("1.2.3.4") is True
+        assert bucket_manager._total_slots == 1
+        assert bucket_manager._slots_per_ip["1.2.3.4"] == 1
+
+        bucket_manager.release_slot("1.2.3.4")
+        assert bucket_manager._total_slots == 0
+        assert "1.2.3.4" not in bucket_manager._slots_per_ip
+
+    def test_per_ip_limit_enforced(self, bucket_manager):
+        """A single IP cannot exceed the per-IP cap."""
+        with patch(
+            "hsync_server.api.connection_manager.get_ws_max_connections_per_ip",
+            return_value=2,
+        ):
+            assert bucket_manager.try_acquire_slot("1.2.3.4") is True
+            assert bucket_manager.try_acquire_slot("1.2.3.4") is True
+            # Third attempt from the same IP is rejected.
+            assert bucket_manager.try_acquire_slot("1.2.3.4") is False
+            # A different IP is still allowed.
+            assert bucket_manager.try_acquire_slot("5.6.7.8") is True
+
+    def test_global_limit_enforced(self, bucket_manager):
+        """The global cap is enforced across distinct IPs."""
+        with (
+            patch(
+                "hsync_server.api.connection_manager.get_ws_max_connections",
+                return_value=2,
+            ),
+            patch(
+                "hsync_server.api.connection_manager.get_ws_max_connections_per_ip",
+                return_value=100,
+            ),
+        ):
+            assert bucket_manager.try_acquire_slot("1.1.1.1") is True
+            assert bucket_manager.try_acquire_slot("2.2.2.2") is True
+            # Global cap reached even though per-IP cap is high.
+            assert bucket_manager.try_acquire_slot("3.3.3.3") is False
+
+    def test_release_unknown_ip_is_safe(self, bucket_manager):
+        """Releasing an IP that was never acquired does not go negative."""
+        bucket_manager.release_slot("9.9.9.9")
+        assert bucket_manager._total_slots == 0
+        assert "9.9.9.9" not in bucket_manager._slots_per_ip
+
+    def test_slot_freed_allows_reacquire(self, bucket_manager):
+        """Releasing a slot frees capacity for a new connection."""
+        with patch(
+            "hsync_server.api.connection_manager.get_ws_max_connections_per_ip",
+            return_value=1,
+        ):
+            assert bucket_manager.try_acquire_slot("1.2.3.4") is True
+            assert bucket_manager.try_acquire_slot("1.2.3.4") is False
+            bucket_manager.release_slot("1.2.3.4")
+            assert bucket_manager.try_acquire_slot("1.2.3.4") is True

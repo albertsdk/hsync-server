@@ -39,6 +39,7 @@ from hsync_server.config import (
     get_api_key,
     get_buckets_path,
     get_compression_enabled,
+    get_ws_auth_timeout,
     get_ws_heartbeat_interval,
     get_ws_heartbeat_timeout,
 )
@@ -73,13 +74,27 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
     Raises:
         ValueError: If the API key is invalid.
     """
+    slot_acquired = False
+    client_ip = "unknown"
     try:
         # Accept the connection first (required before receiving messages)
         await websocket.accept()
 
-        # Wait for authentication message
+        # Enforce connection caps right after accept, before any auth work, so
+        # unauthenticated floods cannot exhaust file descriptors / memory.
+        client_ip = websocket.client.host if websocket.client else "unknown"
+        if not bucket_manager.try_acquire_slot(client_ip):
+            log.warning(f"[WEBSOCKET ] Connection limit reached, rejecting {cid} from {client_ip}")
+            await websocket.close(code=1013, reason="Connection limit reached")
+            return
+        slot_acquired = True
+
+        # Wait for authentication message, bounded by a timeout so a client that
+        # never sends the auth frame cannot hold the connection open indefinitely.
         try:
-            auth_data = await websocket.receive_text()
+            auth_data = await asyncio.wait_for(
+                websocket.receive_text(), timeout=get_ws_auth_timeout()
+            )
             auth_message = loads(auth_data)
 
             if auth_message.get("type") != "auth":
@@ -132,6 +147,10 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                 }
             )
 
+        except TimeoutError:
+            log.warning(f"[WEBSOCKET ] Auth timeout for {cid} from {client_ip}")
+            await websocket.close(code=4008, reason="Authentication timeout")
+            return
         except Exception as e:
             log.warning(f"[WEBSOCKET ] Auth failed for {cid}: {e}")
             await websocket.close(code=4003, reason="Authentication failed")
@@ -257,6 +276,10 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         # Handle any outer exception (e.g., auth failure)
         log.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")
         await websocket.close()
+    finally:
+        # Always release the connection slot reserved right after accept().
+        if slot_acquired:
+            bucket_manager.release_slot(client_ip)
 
 
 log.info(f"Module {__name__} loaded")

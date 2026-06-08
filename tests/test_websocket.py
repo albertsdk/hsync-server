@@ -60,6 +60,37 @@ class TestWebSocketAuthentication:
         mock_websocket.close.assert_called_with(code=4003, reason="Invalid API key")
 
     @pytest.mark.asyncio
+    async def test_auth_timeout_closes_connection(self, mock_websocket):
+        """A client that never sends auth is dropped after the auth timeout (2.10)."""
+        import asyncio
+
+        async def _never_returns(*args, **kwargs):
+            await asyncio.sleep(1)
+            return '{"type": "auth", "token": "x"}'
+
+        mock_websocket.receive_text.side_effect = _never_returns
+
+        with patch("hsync_server.api.events.get_ws_auth_timeout", return_value=0.01):
+            await ws_events(mock_websocket, "testbucket", "client1")
+
+        mock_websocket.accept.assert_called_once()
+        mock_websocket.close.assert_called_with(code=4008, reason="Authentication timeout")
+
+    @pytest.mark.asyncio
+    async def test_connection_limit_rejected(self, mock_websocket):
+        """When the connection cap is reached the socket is closed with 1013 (2.10)."""
+        with patch(
+            "hsync_server.api.events.bucket_manager.try_acquire_slot",
+            return_value=False,
+        ):
+            await ws_events(mock_websocket, "testbucket", "client1")
+
+        mock_websocket.accept.assert_called_once()
+        mock_websocket.close.assert_called_with(code=1013, reason="Connection limit reached")
+        # No auth attempt should have been made once the slot was refused.
+        mock_websocket.receive_text.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_auth_invalid_message_type(self, mock_websocket):
         """Invalid auth message type closes connection with 4001."""
         mock_websocket.receive_text.return_value = '{"type": "not-auth", "token": "key"}'
