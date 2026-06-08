@@ -103,6 +103,49 @@ class TestCompression:
         decompressed = compression.decompress_data(compressed)
         assert decompressed == test_content
 
+    def test_async_compress_stream_yields_decompressible_frame(self, tmp_path):
+        """Streaming compression yields a single one-shot-decompressible frame."""
+        import asyncio
+
+        test_file = tmp_path / "stream.txt"
+        # Larger than chunk_size to force multiple yielded chunks.
+        test_content = b"Streaming compress payload " * 8000  # ~216KB
+        test_file.write_bytes(test_content)
+
+        async def run_test():
+            return [
+                chunk
+                async for chunk in compression.async_compress_stream(
+                    str(test_file), chunk_size=16 * 1024
+                )
+            ]
+
+        chunks = asyncio.run(run_test())
+        # Memory stays bounded: the output is produced incrementally.
+        assert len(chunks) > 1
+        compressed = b"".join(chunks)
+        assert len(compressed) < len(test_content)
+        # One-shot decompression must work (size embedded in the frame header).
+        assert compression.decompress_data(compressed) == test_content
+
+    def test_async_compress_stream_matches_whole_file(self, tmp_path):
+        """Streaming and whole-file compression produce identical bytes."""
+        import asyncio
+
+        test_file = tmp_path / "match_stream.txt"
+        test_content = b"Identical frame data " * 9000  # ~189KB
+        test_file.write_bytes(test_content)
+
+        async def run_test():
+            whole = await compression.async_compress_file(str(test_file))
+            streamed = b"".join(
+                [chunk async for chunk in compression.async_compress_stream(str(test_file))]
+            )
+            return whole, streamed
+
+        whole, streamed = asyncio.run(run_test())
+        assert whole == streamed
+
 
 class TestShouldCompress:
     """Tests for should_compress function."""
