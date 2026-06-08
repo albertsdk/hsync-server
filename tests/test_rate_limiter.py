@@ -18,9 +18,16 @@ from hsync_server.rate_limiter import (
     rate_limit_exceeded_handler,
 )
 
+TRUSTED_PROXIES_ATTR = "hsync_server.rate_limiter.TRUSTED_PROXIES"
+
 
 class TestGetClientIp:
-    """Tests for get_client_ip function."""
+    """Tests for get_client_ip function.
+
+    X-Forwarded-For is only honoured when the direct peer is a configured
+    trusted reverse proxy (HSYNC_TRUSTED_PROXIES); otherwise it is ignored to
+    prevent IP spoofing / rate-limit bypass.
+    """
 
     def test_direct_client_ip(self):
         """Get IP from direct client connection."""
@@ -32,8 +39,20 @@ class TestGetClientIp:
         ip = get_client_ip(request)
         assert ip == "192.168.1.100"
 
-    def test_forwarded_for_single_ip(self):
-        """Get IP from X-Forwarded-For header with single IP."""
+    def test_forwarded_for_ignored_from_untrusted_peer(self, monkeypatch):
+        """X-Forwarded-For is ignored when the peer is not a trusted proxy."""
+        monkeypatch.setattr(TRUSTED_PROXIES_ATTR, frozenset())
+        request = MagicMock(spec=Request)
+        request.headers = {"X-Forwarded-For": "10.0.0.1"}
+        request.client = MagicMock()
+        request.client.host = "192.168.1.1"
+
+        ip = get_client_ip(request)
+        assert ip == "192.168.1.1"
+
+    def test_forwarded_for_honored_from_trusted_proxy(self, monkeypatch):
+        """X-Forwarded-For is honoured when the peer is a trusted proxy."""
+        monkeypatch.setattr(TRUSTED_PROXIES_ATTR, frozenset({"192.168.1.1"}))
         request = MagicMock(spec=Request)
         request.headers = {"X-Forwarded-For": "10.0.0.1"}
         request.client = MagicMock()
@@ -42,8 +61,9 @@ class TestGetClientIp:
         ip = get_client_ip(request)
         assert ip == "10.0.0.1"
 
-    def test_forwarded_for_multiple_ips(self):
-        """Get first IP from X-Forwarded-For header with multiple IPs."""
+    def test_forwarded_for_multiple_ips_from_trusted_proxy(self, monkeypatch):
+        """First IP in the chain is returned for a trusted proxy."""
+        monkeypatch.setattr(TRUSTED_PROXIES_ATTR, frozenset({"192.168.1.1"}))
         request = MagicMock(spec=Request)
         request.headers = {"X-Forwarded-For": "10.0.0.1, 10.0.0.2, 10.0.0.3"}
         request.client = MagicMock()
@@ -52,8 +72,9 @@ class TestGetClientIp:
         ip = get_client_ip(request)
         assert ip == "10.0.0.1"
 
-    def test_forwarded_for_with_spaces(self):
-        """Handle X-Forwarded-For with extra spaces."""
+    def test_forwarded_for_with_spaces_from_trusted_proxy(self, monkeypatch):
+        """Extra spaces in X-Forwarded-For are stripped for a trusted proxy."""
+        monkeypatch.setattr(TRUSTED_PROXIES_ATTR, frozenset({"192.168.1.1"}))
         request = MagicMock(spec=Request)
         request.headers = {"X-Forwarded-For": "  10.0.0.1  ,  10.0.0.2  "}
         request.client = MagicMock()
@@ -61,6 +82,16 @@ class TestGetClientIp:
 
         ip = get_client_ip(request)
         assert ip == "10.0.0.1"
+
+    def test_forwarded_for_ignored_when_no_client(self, monkeypatch):
+        """When request.client is None the header is ignored (safe fallback)."""
+        monkeypatch.setattr(TRUSTED_PROXIES_ATTR, frozenset({"192.168.1.1"}))
+        request = MagicMock(spec=Request)
+        request.headers = {"X-Forwarded-For": "10.0.0.1"}
+        request.client = None
+
+        ip = get_client_ip(request)
+        assert ip == "127.0.0.1"
 
 
 class TestRateLimitExceededHandler:

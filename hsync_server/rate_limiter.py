@@ -17,6 +17,12 @@ Default limits (configurable via environment variables):
 - HSYNC_RATE_LIMIT_WEBSOCKET: 50/minute per IP (WebSocket connections)
 - HSYNC_RATE_LIMIT_WS_MESSAGES: 10/second per connection (WebSocket events)
 
+Reverse-proxy handling:
+- HSYNC_TRUSTED_PROXIES: comma-separated list of trusted reverse-proxy IPs.
+  X-Forwarded-For is only honoured when the direct peer is one of these IPs;
+  otherwise the header is ignored to prevent IP spoofing / rate-limit bypass.
+  Empty (default) = no proxy trusted, always use the direct peer address.
+
 Format: "<number>/<period>" where period is: second, minute, hour, day
 Examples: "100/minute", "1000/hour", "10/second"
 """
@@ -48,13 +54,21 @@ RATE_LIMIT_DOWNLOAD: str = os.environ.get("HSYNC_RATE_LIMIT_DOWNLOAD", "1000/min
 # Rate limit for WebSocket connections
 RATE_LIMIT_WEBSOCKET: str = os.environ.get("HSYNC_RATE_LIMIT_WEBSOCKET", "50/minute")
 
+# Trusted reverse-proxy IPs allowed to set X-Forwarded-For. Empty by default so
+# the header is ignored unless the deployment explicitly opts in.
+TRUSTED_PROXIES: frozenset[str] = frozenset(
+    ip.strip() for ip in os.environ.get("HSYNC_TRUSTED_PROXIES", "").split(",") if ip.strip()
+)
+
 
 def get_client_ip(request: Request) -> str:
     """
     Extract client IP address from request.
 
-    Checks X-Forwarded-For header first (for proxied requests),
-    then falls back to the direct client address.
+    X-Forwarded-For is only honoured when the request arrives directly from a
+    trusted reverse proxy (HSYNC_TRUSTED_PROXIES); otherwise an attacker could
+    spoof the header to bypass rate limiting. Falls back to the direct peer
+    address in all other cases.
 
     Args:
         request: The incoming FastAPI request.
@@ -62,11 +76,13 @@ def get_client_ip(request: Request) -> str:
     Returns:
         Client IP address as string.
     """
-    # Check for X-Forwarded-For header (common in proxy setups)
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # Take the first IP in the chain (original client)
-        return forwarded_for.split(",")[0].strip()
+    # Only trust X-Forwarded-For when the direct peer is a configured proxy
+    client_host = request.client.host if request.client else None
+    if client_host and client_host in TRUSTED_PROXIES:
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            # Take the first IP in the chain (original client)
+            return forwarded_for.split(",")[0].strip()
 
     # Fall back to direct client address
     return get_remote_address(request)
