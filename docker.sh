@@ -14,6 +14,8 @@ set -euo pipefail
 # Configuration
 # -----------------------------------------------------------------------------
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Repository root: build context must include the sibling ../hsync-common package
+readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly IMAGE_NAME="hsync"
 readonly IMAGE_TAG="${HSYNC_VERSION:-1.0.0}"
 readonly CONTAINER_NAME="hsync-server"
@@ -100,7 +102,7 @@ EOF
 
 cmd_build() {
     log_step "Building Docker image ${IMAGE_NAME}:${IMAGE_TAG}..."
-    docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" "${SCRIPT_DIR}"
+    docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" -f "${SCRIPT_DIR}/Dockerfile" "${REPO_ROOT}"
     log_ok "Image built: ${IMAGE_NAME}:${IMAGE_TAG}"
 }
 
