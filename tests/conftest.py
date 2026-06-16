@@ -16,14 +16,14 @@ os.environ["HSYNC_API_KEY"] = "test-api-key-12345"
 
 
 @pytest.fixture
-def temp_buckets_dir() -> Generator[str, None, None]:
+def temp_buckets_dir() -> Generator[str]:
     """Create a temporary directory for test buckets."""
     with tempfile.TemporaryDirectory() as temp_dir:
         yield temp_dir
 
 
 @pytest.fixture
-def test_app(temp_buckets_dir: str) -> Generator[FastAPI, None, None]:
+def test_app(temp_buckets_dir: str) -> Generator[FastAPI]:
     """Create a test FastAPI application with temp buckets directory."""
     # Redirect get_buckets_path() to the temp directory in all modules that import it
     with (
@@ -101,7 +101,7 @@ def test_app(temp_buckets_dir: str) -> Generator[FastAPI, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def reset_tombstone_cache() -> Generator[None, None, None]:
+def reset_tombstone_cache() -> Generator[None]:
     """Clear the per-bucket tombstone store cache so tests stay isolated."""
     from hsync_server.tombstones import reset_cache
 
@@ -111,7 +111,7 @@ def reset_tombstone_cache() -> Generator[None, None, None]:
 
 
 @pytest.fixture
-async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[AsyncClient, None]:
+async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[AsyncClient]:
     """Create an async test client."""
     with (
         patch("hsync_server.api.files.upload.get_buckets_path", return_value=temp_buckets_dir),
@@ -131,9 +131,7 @@ async def client(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[Asy
 
 
 @pytest.fixture
-async def client_no_auth(
-    test_app: FastAPI, temp_buckets_dir: str
-) -> AsyncGenerator[AsyncClient, None]:
+async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGenerator[AsyncClient]:
     """Create an async test client without authentication."""
     with (
         patch("hsync_server.api.files.upload.get_buckets_path", return_value=temp_buckets_dir),
