@@ -37,7 +37,7 @@ import logging
 import os
 import sys
 from contextvars import ContextVar
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from hsync_common.logger import (
     DEFAULT_LOG_COMPRESSION,
@@ -48,6 +48,9 @@ from hsync_common.logger import (
     get_rotation_config,
 )
 from loguru import logger
+
+if TYPE_CHECKING:
+    from loguru import Logger
 
 # Context variable for request ID - thread-safe storage for per-request data
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
@@ -144,7 +147,7 @@ def setup_logging(
     log_format: str | None = None,
     no_color: bool = False,
     logfile: str | None = None,
-) -> "logger":  # type: ignore[valid-type]
+) -> "Logger":
     """
     Configure and return the HSYNC server logger.
 

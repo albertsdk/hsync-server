@@ -75,7 +75,7 @@ async def async_compress_stream(filepath: str, chunk_size: int = 64 * 1024) -> A
     file_size = Path(filepath).stat().st_size
     sink = _StreamSink()
     compressor = zstd.ZstdCompressor(level=COMPRESSION_LEVEL)
-    with compressor.stream_writer(sink, size=file_size, closefd=False) as writer:
+    with compressor.stream_writer(sink, size=file_size, closefd=False) as writer:  # type: ignore[arg-type]
         async with aiofiles.open(filepath, "rb") as f:
             while True:
                 chunk = await f.read(chunk_size)
