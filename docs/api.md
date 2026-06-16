@@ -2,8 +2,6 @@
 
 This document provides a complete reference for the HSYNC Server REST and WebSocket APIs.
 
-> **Note**: Diagrams are written in Mermaid. If they don't render, run `./generate-diagrams.sh` to generate PNG images in the `images/` directory.
-
 ## API Overview
 
 ```mermaid
@@ -29,8 +27,6 @@ graph LR
         end
     end
 ```
-
-![API Overview](images/api-1.png)
 
 ## Authentication
 
@@ -139,8 +135,6 @@ sequenceDiagram
         S->>C: ⑤ Close (4003: Invalid API key)
     end
 ```
-
-![Authentication Flow](images/api-2.png)
 
 ### Event Types
 
