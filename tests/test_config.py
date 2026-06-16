@@ -113,6 +113,11 @@ class TestSettings:
 
         assert settings.cors_origins_list == []
 
+    def test_tz_validation_rejects_invalid_name(self):
+        """An invalid IANA timezone name is rejected at config load time."""
+        with pytest.raises(ValidationError):
+            config.Settings(tz="Not/AZone")
+
     def test_path_property(self):
         """Test that path property returns absolute path."""
         settings = config.Settings()
@@ -259,6 +264,24 @@ class TestGetterFunctions:
     def test_get_compression_enabled(self):
         """Test get_compression_enabled returns boolean."""
         assert isinstance(config.get_compression_enabled(), bool)
+
+    def test_get_tz_default_utc(self, monkeypatch):
+        """Test get_tz returns UTC by default."""
+        monkeypatch.delenv("HSYNC_TZ", raising=False)
+        config.get_settings.cache_clear()
+        try:
+            assert config.get_tz() == "UTC"
+        finally:
+            config.get_settings.cache_clear()
+
+    def test_get_tz_from_env(self, monkeypatch):
+        """Test get_tz honours HSYNC_TZ."""
+        monkeypatch.setenv("HSYNC_TZ", "Europe/Rome")
+        config.get_settings.cache_clear()
+        try:
+            assert config.get_tz() == "Europe/Rome"
+        finally:
+            config.get_settings.cache_clear()
 
 
 class TestModuleLevelConstants:

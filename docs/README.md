@@ -106,7 +106,7 @@ all defaults.
 | `HSYNC_PORT` | `9753` | Server listen port |
 | `HSYNC_WORKERS` | `1` | Number of worker processes (must be `1` — WebSocket state is not shared) |
 | `HSYNC_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error` |
-| `HSYNC_TZ` | `UTC` | Timezone (IANA format, e.g. `Europe/Rome`) |
+| `HSYNC_TZ` | `UTC` | Timezone (IANA format, e.g. `Europe/Rome`) used to render log timestamps |
 | `HSYNC_BUCKETS` | `<app>/buckets` (absolute) | Directory for bucket data storage (relative values are resolved against the process CWD) |
 | `HSYNC_STATE_DIR` | `<app>/state` (absolute) | Directory for `syncstate.db` (causal versions and tombstones) |
 | `HSYNC_ADMIN_KEY` | *(optional)* | Bootstrap admin secret (64 hex). If unset, the server generates and prints a one-time admin token. |

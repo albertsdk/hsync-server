@@ -62,6 +62,31 @@ class TestInterceptHandler:
         assert isinstance(handler, logging.Handler)
 
 
+class TestTimestampFormatter:
+    """Tests for the timezone-aware timestamp formatter."""
+
+    def _record(self):
+        from datetime import UTC, datetime
+
+        return {"time": datetime(2024, 1, 15, 10, 30, 45, 123000, tzinfo=UTC)}
+
+    def test_utc_suffix(self):
+        from zoneinfo import ZoneInfo
+
+        from hsync_server.logger import _make_timestamp_formatter
+
+        fmt = _make_timestamp_formatter(ZoneInfo("UTC"))
+        assert fmt(self._record()) == "2024-01-15T10:30:45.123Z"
+
+    def test_local_offset(self):
+        from zoneinfo import ZoneInfo
+
+        from hsync_server.logger import _make_timestamp_formatter
+
+        fmt = _make_timestamp_formatter(ZoneInfo("Europe/Rome"))
+        assert fmt(self._record()) == "2024-01-15T11:30:45.123+01:00"
+
+
 class TestGetLogFormat:
     """Tests for get_log_format function."""
 

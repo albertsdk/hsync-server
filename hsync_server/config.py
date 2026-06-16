@@ -258,6 +258,18 @@ class Settings(BaseSettings):
             return lowered if lowered in VALID_LOG_FORMATS else "text"
         return v
 
+    @field_validator("tz", mode="after")
+    @classmethod
+    def validate_tz(cls, v: str) -> str:
+        """Validate the IANA timezone name, failing fast on typos."""
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(v)
+        except ZoneInfoNotFoundError as e:
+            raise ValueError(f"HSYNC_TZ '{v}' is not a valid IANA timezone name") from e
+        return v
+
     @field_validator("buckets_path", "state_dir", mode="after")
     @classmethod
     def resolve_storage_paths(cls, v: str) -> str:
@@ -366,6 +378,11 @@ def get_log_level() -> str:
 def get_log_format() -> str:
     """Get log output format from environment (late binding)."""
     return get_settings().log_format
+
+
+def get_tz() -> str:
+    """Get the configured IANA timezone (late binding)."""
+    return get_settings().tz
 
 
 def get_log_file() -> str:

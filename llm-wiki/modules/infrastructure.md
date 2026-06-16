@@ -123,6 +123,10 @@ neither the payload nor the event loop is blocked) plus the
 `InterceptHandler` (`logger.py:73`) extends the common `BaseInterceptHandler` to
 route stdlib logging into loguru. `setup_logging` (`:103`) honors
 `get_log_level`/`get_log_format`/`get_log_file`/rotation (`config.py:332`–`347`).
+Timestamps are rendered in the configured IANA timezone (`get_tz`,
+`config.py:372`; `HSYNC_TZ`, default `UTC` — validated by a `field_validator`
+on `Settings.tz`) via the tz-aware `timestamp_formatter` passed to
+`hsync_common.logger.build_record_formatter` (`logger.py:_build_formatters`).
 Console colors are gated by `hsync_common.runtime.color_output_enabled`
 (`--no-color` flag, `NO_COLOR` env, stdout TTY). At startup the entry point logs
 `hsync_common.runtime.runtime_summary()` (`__main__.py:233`) with the detected

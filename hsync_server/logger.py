@@ -33,8 +33,10 @@ Log formats:
 - JSON: {"timestamp": "...", "level": "INFO", "pid": 12345, "request_id": "...", ...}
 """
 
+from collections.abc import Mapping
 from contextvars import ContextVar
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from hsync_common.labels import colorize_labels
 from hsync_common.logger import (
@@ -48,6 +50,7 @@ from loguru import logger
 from hsync_server.config import (
     VALID_LOG_LEVELS,
     get_log_file,
+    get_tz,
 )
 from hsync_server.config import (
     get_log_format as get_config_log_format,
@@ -105,13 +108,38 @@ def _transform_plain(record, message: str) -> str:
 
 
 # Format functions sharing the common factory; the server adds the per-request
-# correlation id as an extra field.
-_format_record_colored = build_record_formatter(
-    colored=True, extra_fields=("request_id",), message_transform=_transform_colored
-)
-_format_record_plain = build_record_formatter(
-    colored=False, extra_fields=("request_id",), message_transform=_transform_plain
-)
+# correlation id as an extra field and renders timestamps in the configured
+# timezone (HSYNC_TZ, default UTC).
+def _make_timestamp_formatter(tz: ZoneInfo):
+    """Return a timestamp formatter rendering in the configured timezone."""
+
+    def _format(record: Mapping[str, Any]) -> str:
+        local = record["time"].astimezone(tz)
+        return local.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+    return _format
+
+
+def _build_formatters():
+    """Build the colored/plain format functions for the configured timezone.
+
+    Built at ``setup_logging`` time (not import time) so a late
+    ``load_env_file`` that changes ``HSYNC_TZ`` is honoured.
+    """
+    timestamp_formatter = _make_timestamp_formatter(ZoneInfo(get_tz()))
+    colored = build_record_formatter(
+        colored=True,
+        extra_fields=("request_id",),
+        message_transform=_transform_colored,
+        timestamp_formatter=timestamp_formatter,
+    )
+    plain = build_record_formatter(
+        colored=False,
+        extra_fields=("request_id",),
+        message_transform=_transform_plain,
+        timestamp_formatter=timestamp_formatter,
+    )
+    return colored, plain
 
 
 def setup_logging(
@@ -163,7 +191,8 @@ def setup_logging(
     # Colors are enabled only when --no-color is not set, the NO_COLOR env is
     # unset, and stdout is a TTY.
     use_colors = not is_json and color_output_enabled(no_color=no_color)
-    console_format = _format_record_colored if use_colors else _format_record_plain
+    format_colored, format_plain = _build_formatters()
+    console_format = format_colored if use_colors else format_plain
 
     configure_handlers(
         level=level.upper(),
@@ -171,7 +200,7 @@ def setup_logging(
         colorize=use_colors,
         serialize_console=is_json,
         logfile=log_file,
-        file_format=_format_record_plain,
+        file_format=format_plain,
         intercept_factory=InterceptHandler,
         intercept_logger_names=(
             "uvicorn",
