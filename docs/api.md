@@ -9,6 +9,7 @@ graph LR
     subgraph Public["① Public Endpoints"]
         H["GET /health"]
         M["GET /metrics"]
+        T["GET /api/v1/time"]
         WS["WS .../buckets/:bucket/events/:cid"]
     end
 
@@ -24,6 +25,12 @@ graph LR
             UF["POST .../buckets/:bucket/files"]
             DF["GET .../files/download"]
             RF["DELETE .../files"]
+            US["GET .../files/upload-status"]
+        end
+
+        subgraph Tombstones["⑤ Tombstones"]
+            GT["GET .../buckets/:bucket/tombstones"]
+            PT["POST .../buckets/:bucket/tombstones"]
         end
     end
 ```
@@ -38,29 +45,44 @@ Authorization: Bearer {HSYNC_API_KEY}
 
 ## REST API Endpoints
 
+> Rate limits are per-IP defaults and configurable via environment variables
+> (see [README → Rate Limiting](../README.md#rate-limiting)).
+
 ### Buckets
 
 | Method | Endpoint | Description | Rate Limit |
 |--------|----------|-------------|------------|
-| `GET` | `/api/v1/buckets/{bucket}` | Get bucket information | 100/min |
-| `POST` | `/api/v1/buckets?bucket={name}` | Create a new bucket | 100/min |
-| `DELETE` | `/api/v1/buckets/{bucket}` | Delete a bucket | 100/min |
+| `GET` | `/api/v1/buckets/{bucket}` | Get bucket information | 500/min |
+| `POST` | `/api/v1/buckets?bucket={name}` | Create a new bucket | 500/min |
+| `DELETE` | `/api/v1/buckets/{bucket}` | Delete a bucket | 500/min |
 
 ### Files
 
 | Method | Endpoint | Description | Rate Limit |
 |--------|----------|-------------|------------|
-| `GET` | `/api/v1/buckets/{bucket}/files` | List files in bucket | 100/min |
-| `POST` | `/api/v1/buckets/{bucket}/files` | Upload a file | 50/min |
-| `GET` | `/api/v1/buckets/{bucket}/files/download?filename={path}` | Download a file | 200/min |
-| `DELETE` | `/api/v1/buckets/{bucket}/files` | Delete a file | 100/min |
+| `GET` | `/api/v1/buckets/{bucket}/files` | List files in bucket | 500/min |
+| `POST` | `/api/v1/buckets/{bucket}/files` | Upload a file (resumable) | 200/min |
+| `GET` | `/api/v1/buckets/{bucket}/files/download?filename={path}` | Download a file | 1000/min |
+| `GET` | `/api/v1/buckets/{bucket}/files/upload-status?filename={path}` | Check resumable-upload status (offset) | 500/min |
+| `DELETE` | `/api/v1/buckets/{bucket}/files` | Delete a file | 500/min |
 
-### Monitoring
+### Tombstones
+
+Deletion markers let peers that were offline at deletion time avoid resurrecting
+files during a full reconciliation.
+
+| Method | Endpoint | Description | Rate Limit |
+|--------|----------|-------------|------------|
+| `GET` | `/api/v1/buckets/{bucket}/tombstones` | List deletion markers for a bucket | 500/min |
+| `POST` | `/api/v1/buckets/{bucket}/tombstones` | Merge deletion markers pushed by a peer (LWW) | 500/min |
+
+### Monitoring & Sync
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/health` | Health check | No |
+| `GET` | `/health` | Health check (empty `200 OK`) | No |
 | `GET` | `/metrics` | Prometheus metrics | No |
+| `GET` | `/api/v1/time` | Server timestamp for client clock sync | No |
 
 ## Request/Response Examples
 
@@ -110,6 +132,64 @@ Authorization: Bearer your-api-key
 ]
 ```
 
+> **Note**: when an identical file already exists (same SHA-256), the upload
+> endpoint responds `409 Conflict` with `{"info": "File already present", ...}`
+> instead of re-uploading the content.
+
+### Upload Status (resumable uploads)
+
+```http
+GET /api/v1/buckets/mybucket/files/upload-status?filename=documents/big.iso&sha256sum=...&size=1048576 HTTP/1.1
+Authorization: Bearer your-api-key
+```
+
+**Response (200 OK):**
+```json
+{
+  "status": "resumable",
+  "offset": 524288,
+  "message": "Can resume from byte 524288"
+}
+```
+
+`status` is one of `new`, `resumable`, or `complete`. The client resumes the
+upload from `offset` bytes.
+
+### Tombstones
+
+```http
+GET /api/v1/buckets/mybucket/tombstones HTTP/1.1
+Authorization: Bearer your-api-key
+```
+
+**Response (200 OK):** mapping of hashed bucket-relative path → deletion marker.
+```json
+{
+  "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08": {
+    "ts": 1737000000,
+    "sha256": "bb25b1c2b2a7427401c823a90904a759e2bd7425205b0702bca5e27e937e7cff"
+  }
+}
+```
+
+`POST` to the same endpoint with a payload of identical shape to merge markers
+pushed by a peer (last-writer-wins on `ts`).
+
+### Server Time
+
+```http
+GET /api/v1/time HTTP/1.1
+```
+
+**Response (200 OK):**
+```json
+{
+  "timestamp": 1737000000.123
+}
+```
+
+Unix epoch seconds. Clients use this for NTP-like clock-offset estimation.
+
 ## WebSocket API
 
 ### Endpoint
@@ -127,14 +207,27 @@ sequenceDiagram
 
     C->>S: ① WebSocket Connect
     S->>C: ② Connection Accepted
-    C->>S: ③ {"type": "auth", "token": "api-key"}
+    C->>S: ③ {"type": "auth", "token": "api-key", "version": "1.0.0"}
     alt ④a Valid token
-        S->>C: ⑤ {"type": "auth", "status": "ok"}
+        S->>C: ⑤ {"type": "auth", "status": "ok", "version": ..., "compression_enabled": ...}
         Note over C,S: ⑥ Client is now authenticated
     else ④b Invalid token
         S->>C: ⑤ Close (4003: Invalid API key)
     end
 ```
+
+The first frame must be `{"type": "auth", "token": "<api_key>"}`; an optional
+`version` field enables compatibility checks. On success the server replies with
+its `version` and `compression_enabled` capability.
+
+**WebSocket close codes:**
+
+| Code | Meaning |
+|------|---------|
+| `4001` | Invalid auth message (first frame was not a valid `auth` message) |
+| `4002` | Version incompatible (client/server protocol mismatch) |
+| `4003` | Invalid API key / authentication failed |
+| `4008` | Authentication timeout (no auth frame within the timeout window) |
 
 ### Event Types
 
