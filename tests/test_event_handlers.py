@@ -140,6 +140,20 @@ class TestHandleAddedEvent:
         result = await handle_added_event(src, bucket_dir, "bucket", "cid")
         assert result is not None
         assert os.path.exists(f"{bucket_dir}/newdir")
+        assert os.stat(f"{bucket_dir}/newdir").st_mode & 0o777 == 0o755
+
+    @pytest.mark.asyncio
+    async def test_add_directory_never_removes_owner_access(self, tmp_path):
+        """Restrictive client directory perms must not break server storage access."""
+        bucket_dir = str(tmp_path / "bucket")
+        os.makedirs(bucket_dir)
+        src = {"path": "restricted", "permissions": "d---------"}
+
+        result = await handle_added_event(src, bucket_dir, "bucket", "cid")
+
+        assert result is not None
+        mode = os.stat(f"{bucket_dir}/restricted").st_mode & 0o777
+        assert mode & 0o700 == 0o700
 
     @pytest.mark.asyncio
     async def test_add_directory_path_traversal_rejected(self, tmp_path):
@@ -217,6 +231,7 @@ class TestHandleModifiedEvent:
         src = {"path": "existingdir", "permissions": "700"}
         result = await handle_modified_event(src, bucket_dir, "bucket", "cid")
         assert result is not None
+        assert os.stat(target_dir).st_mode & 0o777 == 0o700
 
     @pytest.mark.asyncio
     async def test_modify_directory_path_traversal_rejected(self, tmp_path):

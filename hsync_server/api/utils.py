@@ -16,6 +16,7 @@ from asyncio import to_thread
 from hashlib import sha256
 from os import chmod
 from os import stat as os_stat
+from re import fullmatch
 
 import aiofiles
 from loguru import logger as log
@@ -23,6 +24,8 @@ from loguru import logger as log
 from hsync_server.config import get_buckets_path
 from hsync_server.models.dir import Dir
 from hsync_server.path_validation import is_valid_path as validate_path_traversal
+
+OWNER_DIRECTORY_ACCESS = 0o700
 
 
 def is_valid_bucket(value: str) -> bool:
@@ -110,6 +113,28 @@ async def set_permissions(file_path: str, permissions: str) -> None:
     """
     log.debug(f'Set permissions: "{file_path}" ({permissions})')
 
+    mode = permissions_to_mode(permissions)
+    await to_thread(chmod, file_path, mode)
+
+
+async def set_directory_permissions(dir_path: str, permissions: str) -> None:
+    """Set directory permissions without making bucket storage inaccessible.
+
+    Directory permissions come from clients and may be very restrictive or, for
+    legacy callers, numeric (for example ``755``).  The server must always keep
+    owner rwx access on bucket directories so that it can traverse, update and
+    back up its own storage tree.
+    """
+    mode = permissions_to_mode(permissions) | OWNER_DIRECTORY_ACCESS
+    log.debug(f'Set directory permissions: "{dir_path}" ({permissions} -> {mode:o})')
+    await to_thread(chmod, dir_path, mode)
+
+
+def permissions_to_mode(permissions: str) -> int:
+    """Convert symbolic or octal permissions to a numeric mode."""
+    if fullmatch(r"0?[0-7]{3}", permissions):
+        return int(permissions, 8)
+
     # Convert symbolic permissions to numeric mode
     mode = 0
     permission_types = {"r": 4, "w": 2, "x": 1}
@@ -120,7 +145,7 @@ async def set_permissions(file_path: str, permissions: str) -> None:
             if char in permission_types:
                 mode |= permission_types[char] << (6 - (i * 3))
 
-    await to_thread(chmod, file_path, mode)
+    return mode
 
 
 async def get_dir_info(path: str) -> Dir:
