@@ -40,9 +40,6 @@ RUN poetry env use python3.13 \
 ### Run Image
 FROM python:3.13.11-alpine3.22
 
-# Install runtime packages
-RUN apk add --no-cache su-exec
-
 WORKDIR /project/
 
 # Copy the virtual environment from the builder stage
@@ -56,8 +53,11 @@ COPY hsync-common /hsync-common
 COPY hsync-server/hsync_server /project/hsync_server
 
 # Setup directories and permissions in single layer
-RUN mkdir -p buckets tmp \
-    && ln -s /venv /project/.venv
+RUN addgroup -S hsync \
+    && adduser -S -G hsync -h /project hsync \
+    && mkdir -p buckets tmp certs \
+    && ln -s /venv /project/.venv \
+    && chown -R hsync:hsync buckets tmp certs
 
 # Set environment variables with defaults
 # These can be overridden via --env-file or -e flags
@@ -66,13 +66,15 @@ ENV PATH="/project/.venv/bin:$PATH" \
     HSYNC_LOG_LEVEL=info \
     HSYNC_PORT=8765 \
     HSYNC_WORKERS=1 \
-    HSYNC_TZ=UTC
+    HSYNC_TZ=UTC \
+    HSYNC_BUCKETS=/project/buckets \
+    HSYNC_SSL_CERT_DIR=/project/certs
 
 # Expose default port (can be changed via HSYNC_PORT)
 EXPOSE 8765
 
-# Run as nobody user for security
-USER nobody
+# Run as an unprivileged application user for security
+USER hsync
 
 # Start uvicorn server with configurable parameters
 CMD ["sh", "-c", "uvicorn hsync_server.main:app --host 0.0.0.0 --port ${HSYNC_PORT} --log-level ${HSYNC_LOG_LEVEL} --workers ${HSYNC_WORKERS}"]

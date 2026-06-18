@@ -30,6 +30,34 @@ export HSYNC_TZ="${HSYNC_TZ:-UTC}"
 # Environment file (can be set via --env-file option)
 ENV_FILE=""
 
+get_env_file_value() {
+    local key="$1"
+    [[ -n "${ENV_FILE}" && -f "${ENV_FILE}" ]] || return 1
+    awk -F= -v key="${key}" '
+        /^[[:space:]]*(#|$)/ { next }
+        {
+            name=$1
+            sub(/^[[:space:]]*export[[:space:]]+/, "", name)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+            if (name == key) {
+                value=$0
+                sub(/^[^=]*=/, "", value)
+                sub(/[[:space:]]+#.*$/, "", value)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                gsub(/^"|"$/, "", value)
+                gsub(/^'\''|'\''$/, "", value)
+                print value
+            }
+        }
+    ' "${ENV_FILE}" | tail -n 1
+}
+
+env_file_has_nonempty_key() {
+    local key="$1"
+    [[ -n "${ENV_FILE}" && -f "${ENV_FILE}" ]] || return 1
+    grep -Eq "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=[[:space:]]*[^[:space:]#]+" "${ENV_FILE}"
+}
+
 # -----------------------------------------------------------------------------
 # Colors (disabled if not a terminal)
 # -----------------------------------------------------------------------------
@@ -79,7 +107,7 @@ ${BOLD}Commands:${RESET}
     clean       Remove container and image
 
 ${BOLD}Options:${RESET}
-    -e, --env-file  Environment file to load (e.g., dev.env, prod.env)
+    -e, --env-file  Environment file to pass to Docker (e.g., dev.env, prod.env)
     -f, --follow    Follow log output (for logs command)
     -h, --help      Show this help message
 
@@ -107,21 +135,26 @@ cmd_build() {
 }
 
 cmd_start() {
-    # Load environment file if specified
+    # Validate and use environment file if specified. Do not source it: env files
+    # may contain secrets and shell code; Docker can consume them directly.
     if [[ -n "${ENV_FILE}" ]]; then
         if [[ -f "${ENV_FILE}" ]]; then
-            log_info "Loading environment from ${ENV_FILE}"
-            # shellcheck disable=SC1090
-            set -a
-            source "${ENV_FILE}"
-            set +a
+            log_info "Using environment file ${ENV_FILE}"
+            env_port="$(get_env_file_value HSYNC_PORT || true)"
+            env_log_level="$(get_env_file_value HSYNC_LOG_LEVEL || true)"
+            env_workers="$(get_env_file_value HSYNC_WORKERS || true)"
+            env_tz="$(get_env_file_value HSYNC_TZ || true)"
+            [[ -n "${env_port}" ]] && HSYNC_PORT="${env_port}"
+            [[ -n "${env_log_level}" ]] && HSYNC_LOG_LEVEL="${env_log_level}"
+            [[ -n "${env_workers}" ]] && HSYNC_WORKERS="${env_workers}"
+            [[ -n "${env_tz}" ]] && HSYNC_TZ="${env_tz}"
         else
             log_error "Environment file not found: ${ENV_FILE}"
             exit 1
         fi
     fi
 
-    if [[ -z "${HSYNC_API_KEY}" ]]; then
+    if [[ -z "${HSYNC_API_KEY}" ]] && ! env_file_has_nonempty_key HSYNC_API_KEY; then
         log_error "HSYNC_API_KEY is required"
         log_info "Set it via environment variable or use --env-file option"
         exit 1
@@ -140,13 +173,25 @@ cmd_start() {
         --name "${CONTAINER_NAME}"
         --restart unless-stopped
         -p "${HSYNC_PORT}:${HSYNC_PORT}"
-        -e "HSYNC_PORT=${HSYNC_PORT}"
-        -e "HSYNC_API_KEY=${HSYNC_API_KEY}"
-        -e "HSYNC_LOG_LEVEL=${HSYNC_LOG_LEVEL}"
-        -e "HSYNC_WORKERS=${HSYNC_WORKERS}"
-        -e "HSYNC_TZ=${HSYNC_TZ}"
         -v "${SCRIPT_DIR}/buckets:/project/buckets"
     )
+
+    if [[ -n "${ENV_FILE}" ]]; then
+        docker_args+=(--env-file "${ENV_FILE}")
+    else
+        docker_args+=(
+            -e "HSYNC_PORT=${HSYNC_PORT}"
+            -e "HSYNC_LOG_LEVEL=${HSYNC_LOG_LEVEL}"
+            -e "HSYNC_WORKERS=${HSYNC_WORKERS}"
+            -e "HSYNC_TZ=${HSYNC_TZ}"
+        )
+    fi
+
+    # Pass the API key by name only when it comes from the parent environment,
+    # avoiding exposure as a command-line argument.
+    if [[ -n "${HSYNC_API_KEY}" ]]; then
+        docker_args+=(-e HSYNC_API_KEY)
+    fi
 
     docker "${docker_args[@]}" "${IMAGE_NAME}:${IMAGE_TAG}"
     log_ok "Container started: ${CONTAINER_NAME}"

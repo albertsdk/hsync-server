@@ -27,7 +27,6 @@ Format: "<number>/<period>" where period is: second, minute, hour, day
 Examples: "100/minute", "1000/hour", "10/second"
 """
 
-import os
 import re
 import time
 
@@ -38,27 +37,34 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.responses import JSONResponse
 
+from hsync_server.config import (
+    get_rate_limit_default,
+    get_rate_limit_download,
+    get_rate_limit_upload,
+    get_rate_limit_websocket,
+    get_rate_limit_ws_messages,
+    get_trusted_proxies,
+)
+
 # -----------------------------------------------------------------------------
-# Rate Limit Configuration (from environment variables)
+# Rate Limit Configuration (from Settings / environment variables)
 # -----------------------------------------------------------------------------
 
 # Standard rate limit for general endpoints (list, delete, bucket operations)
-RATE_LIMIT_DEFAULT: str = os.environ.get("HSYNC_RATE_LIMIT_DEFAULT", "500/minute")
+RATE_LIMIT_DEFAULT: str = get_rate_limit_default()
 
 # Rate limit for upload endpoints (more restrictive due to resource usage)
-RATE_LIMIT_UPLOAD: str = os.environ.get("HSYNC_RATE_LIMIT_UPLOAD", "200/minute")
+RATE_LIMIT_UPLOAD: str = get_rate_limit_upload()
 
 # Rate limit for download endpoints (more permissive for high-traffic systems)
-RATE_LIMIT_DOWNLOAD: str = os.environ.get("HSYNC_RATE_LIMIT_DOWNLOAD", "1000/minute")
+RATE_LIMIT_DOWNLOAD: str = get_rate_limit_download()
 
 # Rate limit for WebSocket connections
-RATE_LIMIT_WEBSOCKET: str = os.environ.get("HSYNC_RATE_LIMIT_WEBSOCKET", "50/minute")
+RATE_LIMIT_WEBSOCKET: str = get_rate_limit_websocket()
 
 # Trusted reverse-proxy IPs allowed to set X-Forwarded-For. Empty by default so
 # the header is ignored unless the deployment explicitly opts in.
-TRUSTED_PROXIES: frozenset[str] = frozenset(
-    ip.strip() for ip in os.environ.get("HSYNC_TRUSTED_PROXIES", "").split(",") if ip.strip()
-)
+TRUSTED_PROXIES: frozenset[str] = get_trusted_proxies()
 
 
 def get_client_ip(request: Request) -> str:
@@ -144,7 +150,7 @@ log.info(
 
 # Rate limit for WebSocket event messages per connection
 # Format: "<number>/<period>" (second, minute, hour, day)
-WS_MESSAGES_DEFAULT: str = os.environ.get("HSYNC_RATE_LIMIT_WS_MESSAGES", "10/second")
+WS_MESSAGES_DEFAULT: str = get_rate_limit_ws_messages()
 
 _WS_RATE_PATTERN = re.compile(r"^(\d+)/(second|minute|hour|day)$")
 

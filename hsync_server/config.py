@@ -17,8 +17,13 @@ from pathlib import Path
 from typing import Final, Literal
 
 from hsync_common.env import load_env_file as _load_env_file
+from hsync_common.logger import (
+    DEFAULT_LOG_COMPRESSION,
+    DEFAULT_LOG_RETENTION,
+    DEFAULT_LOG_ROTATION,
+)
 from hsync_common.models.tombstone import TOMBSTONE_TTL_DAYS_DEFAULT
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # =============================================================================
@@ -33,6 +38,9 @@ VALID_LOG_LEVELS: Final[tuple[str, ...]] = (
     "error",
     "critical",
 )
+
+# Valid log output formats
+VALID_LOG_FORMATS: Final[tuple[str, ...]] = ("text", "json")
 
 # Application root path - resolved absolute path to the project directory
 _HSYNC_PATH: str = str(Path(__file__).parent.parent.resolve())
@@ -68,6 +76,7 @@ class Settings(BaseSettings):
         env_prefix="HSYNC_",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     # Server Configuration
@@ -76,6 +85,16 @@ class Settings(BaseSettings):
     tz: str = Field(default="UTC", description="Timezone in IANA format")
     log_level: Literal["debug", "info", "warning", "error", "critical"] = Field(
         default="info", description="Log level"
+    )
+    log_format: Literal["text", "json"] = Field(default="text", description="Log output format")
+    log_file: str = Field(default="", description="Optional log file path")
+    log_rotation: str = Field(default=DEFAULT_LOG_ROTATION, description="Log file rotation policy")
+    log_retention: str = Field(
+        default=DEFAULT_LOG_RETENTION, description="Log file retention policy"
+    )
+    log_compression: str = Field(
+        default=DEFAULT_LOG_COMPRESSION,
+        description="Compression format for rotated log files",
     )
 
     # Authentication
@@ -89,6 +108,13 @@ class Settings(BaseSettings):
         default=10 * 1024 * 1024 * 1024,  # 10GB
         ge=0,
         description="Maximum file upload size in bytes",
+    )
+
+    # Storage Configuration
+    buckets_path: str = Field(
+        default=f"{_HSYNC_PATH}/buckets",
+        validation_alias=AliasChoices("HSYNC_BUCKETS", "HSYNC_BUCKETS_PATH"),
+        description="Path to buckets storage directory",
     )
 
     # CORS Configuration
@@ -121,6 +147,32 @@ class Settings(BaseSettings):
         default=500 * 1024 * 1024,  # 500 MB
         ge=0,
         description="Minimum free disk space in bytes before accepting uploads (0 = disabled)",
+    )
+
+    # Rate Limiting Configuration
+    rate_limit_default: str = Field(
+        default="500/minute",
+        description="Default API rate limit for general endpoints",
+    )
+    rate_limit_upload: str = Field(
+        default="200/minute",
+        description="Rate limit for upload endpoints",
+    )
+    rate_limit_download: str = Field(
+        default="1000/minute",
+        description="Rate limit for download endpoints",
+    )
+    rate_limit_websocket: str = Field(
+        default="50/minute",
+        description="Rate limit for WebSocket connections",
+    )
+    rate_limit_ws_messages: str = Field(
+        default="10/second",
+        description="Rate limit for WebSocket event messages per connection",
+    )
+    trusted_proxies: str = Field(
+        default="",
+        description="Comma-separated trusted reverse-proxy IPs for X-Forwarded-For",
     )
 
     # WebSocket Configuration
@@ -177,6 +229,15 @@ class Settings(BaseSettings):
             return v.lower()
         return v
 
+    @field_validator("log_format", mode="before")
+    @classmethod
+    def validate_log_format(cls, v: str) -> str:
+        """Normalize log format, falling back to text for unknown values."""
+        if isinstance(v, str):
+            lowered = v.lower()
+            return lowered if lowered in VALID_LOG_FORMATS else "text"
+        return v
+
     @field_validator("api_key", mode="after")
     @classmethod
     def validate_api_key(cls, v: SecretStr) -> SecretStr:
@@ -215,9 +276,9 @@ class Settings(BaseSettings):
         return _HSYNC_PATH
 
     @property
-    def buckets_path(self) -> str:
-        """Path to buckets storage directory."""
-        return f"{_HSYNC_PATH}/buckets"
+    def trusted_proxies_set(self) -> frozenset[str]:
+        """Parse comma-separated trusted reverse-proxy IPs into a set."""
+        return frozenset(ip.strip() for ip in self.trusted_proxies.split(",") if ip.strip())
 
 
 @lru_cache
@@ -273,6 +334,26 @@ def get_log_level() -> str:
     return get_settings().log_level
 
 
+def get_log_format() -> str:
+    """Get log output format from environment (late binding)."""
+    return get_settings().log_format
+
+
+def get_log_file() -> str:
+    """Get optional log file path from environment (late binding)."""
+    return get_settings().log_file
+
+
+def get_log_rotation_config() -> dict[str, str | None]:
+    """Get log rotation settings from environment (late binding)."""
+    settings = get_settings()
+    return {
+        "rotation": settings.log_rotation,
+        "retention": settings.log_retention,
+        "compression": settings.log_compression,
+    }
+
+
 def get_api_key() -> str:
     """Get API key from environment (late binding)."""
     return get_settings().api_key.get_secret_value()
@@ -281,6 +362,36 @@ def get_api_key() -> str:
 def get_buckets_path() -> str:
     """Get buckets storage path from environment (late binding)."""
     return get_settings().buckets_path
+
+
+def get_rate_limit_default() -> str:
+    """Get default API rate limit from environment (late binding)."""
+    return get_settings().rate_limit_default
+
+
+def get_rate_limit_upload() -> str:
+    """Get upload endpoint rate limit from environment (late binding)."""
+    return get_settings().rate_limit_upload
+
+
+def get_rate_limit_download() -> str:
+    """Get download endpoint rate limit from environment (late binding)."""
+    return get_settings().rate_limit_download
+
+
+def get_rate_limit_websocket() -> str:
+    """Get WebSocket connection rate limit from environment (late binding)."""
+    return get_settings().rate_limit_websocket
+
+
+def get_rate_limit_ws_messages() -> str:
+    """Get WebSocket message rate limit from environment (late binding)."""
+    return get_settings().rate_limit_ws_messages
+
+
+def get_trusted_proxies() -> frozenset[str]:
+    """Get trusted reverse-proxy IPs from environment (late binding)."""
+    return get_settings().trusted_proxies_set
 
 
 def get_max_upload_size() -> int:

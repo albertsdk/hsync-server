@@ -69,10 +69,20 @@ class TestSettings:
             assert settings.workers == 1
             assert settings.tz == "UTC"
             assert settings.log_level == "info"
+            assert settings.log_format == "text"
+            assert settings.log_file == ""
             assert settings.cors_enabled is False
             assert settings.ssl_enabled is False
             assert settings.compression_enabled is True
             assert settings.max_upload_size == 10 * 1024 * 1024 * 1024  # 10GB
+            assert settings.buckets_path.endswith("/buckets")
+            assert settings.min_free_disk_space == 500 * 1024 * 1024
+            assert settings.rate_limit_default == "500/minute"
+            assert settings.rate_limit_upload == "200/minute"
+            assert settings.rate_limit_download == "1000/minute"
+            assert settings.rate_limit_websocket == "50/minute"
+            assert settings.rate_limit_ws_messages == "10/second"
+            assert settings.trusted_proxies_set == frozenset()
         finally:
             # Restore environment variable
             if env_backup:
@@ -87,6 +97,8 @@ class TestSettings:
             log_level="debug",
             cors_enabled=True,
             cors_origins="http://localhost,http://example.com",
+            buckets_path="/tmp/hsync-buckets",
+            trusted_proxies="127.0.0.1, 10.0.0.1 ",
         )
 
         assert settings.port == 8080
@@ -94,6 +106,8 @@ class TestSettings:
         assert settings.tz == "Europe/Rome"
         assert settings.log_level == "debug"
         assert settings.cors_enabled is True
+        assert settings.buckets_path == "/tmp/hsync-buckets"
+        assert settings.trusted_proxies_set == frozenset({"127.0.0.1", "10.0.0.1"})
 
     def test_cors_origins_list_property(self):
         """Test that cors_origins_list parses comma-separated origins."""
@@ -121,11 +135,19 @@ class TestSettings:
         assert settings.path is not None
         assert Path(settings.path).is_absolute()
 
-    def test_buckets_path_property(self):
-        """Test that buckets_path returns path in app directory."""
+    def test_buckets_path_default(self):
+        """Test that buckets_path defaults to the app directory."""
         settings = config.Settings()
 
         assert settings.buckets_path.endswith("/buckets")
+
+    def test_hsync_buckets_env_alias(self, monkeypatch, tmp_path):
+        """HSYNC_BUCKETS is the documented env var for buckets_path."""
+        monkeypatch.setenv("HSYNC_BUCKETS", str(tmp_path))
+
+        settings = config.Settings()
+
+        assert settings.buckets_path == str(tmp_path)
 
     def test_validate_log_level_normalizes_case(self):
         """Test that log level is normalized to lowercase."""
@@ -263,10 +285,19 @@ class TestModuleLevelConstants:
             "get_tz",
             "get_api_key",
             "get_buckets_path",
+            "get_rate_limit_default",
+            "get_rate_limit_upload",
+            "get_rate_limit_download",
+            "get_rate_limit_websocket",
+            "get_rate_limit_ws_messages",
+            "get_trusted_proxies",
             "get_max_upload_size",
             "get_cors_enabled",
             "get_cors_origins",
             "get_log_level",
+            "get_log_format",
+            "get_log_file",
+            "get_log_rotation_config",
             "get_compression_enabled",
             "get_ssl_enabled",
             "get_ssl_certfile",

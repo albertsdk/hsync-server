@@ -146,11 +146,17 @@ class TestCreateWsMessageBucket:
             from importlib import reload
 
             import hsync_server.rate_limiter
+            from hsync_server import config
 
-            reload(hsync_server.rate_limiter)
-            bucket = hsync_server.rate_limiter.create_ws_message_bucket()
-            assert bucket.rate == 5.0
-            assert bucket.burst == 10
+            try:
+                config.get_settings.cache_clear()
+                reload(hsync_server.rate_limiter)
+                bucket = hsync_server.rate_limiter.create_ws_message_bucket()
+                assert bucket.rate == 5.0
+                assert bucket.burst == 10
+            finally:
+                config.get_settings.cache_clear()
+                reload(hsync_server.rate_limiter)
 
 
 class TestWsMessagesDefault:
