@@ -23,6 +23,7 @@ from hsync_server.config import (
     get_ssl_enabled,
     get_ssl_keyfile,
     get_ssl_keyfile_password,
+    get_workers,
     load_env_file,
 )
 from hsync_server.constants import HSYNC_VERSION
@@ -241,12 +242,19 @@ def main(
         log.info(f"Starting HSYNC server with HTTP/WS on port {effective_port}")
         log.warning("SSL is disabled. Communication is NOT encrypted!")
 
+    # Auto-reload (dev mode) and multiple workers are mutually exclusive in
+    # uvicorn: reload always runs single-process. Honor HSYNC_WORKERS only when
+    # reload is off, mirroring the Docker entrypoint's --workers behavior.
+    reload_enabled = get_reload()
+    effective_workers = None if reload_enabled else get_workers()
+
     uvicorn.run(
         "hsync_server.main:app",
         host="0.0.0.0",
         port=effective_port,
         log_level=effective_log_level,
-        reload=get_reload(),
+        reload=reload_enabled,
+        workers=effective_workers,
         **ssl_config,
     )
 
