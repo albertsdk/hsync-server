@@ -72,7 +72,7 @@ class TestVersionAndEnvFile:
         """The installed console script must invoke Typer, not the command body directly."""
         pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
         data = tomllib.loads(pyproject.read_text())
-        assert data["tool"]["poetry"]["scripts"]["hsync-server"] == "hsync_server.__main__:run"
+        assert data["project"]["scripts"]["hsync-server"] == "hsync_server.__main__:run"
 
     def test_version_flag(self):
         result = runner.invoke(cli.app, ["--version"])
