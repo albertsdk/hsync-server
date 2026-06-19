@@ -193,6 +193,10 @@ def main(
         HSYNC_RATE_LIMIT_*      Rate limit settings
         HSYNC_TRUSTED_PROXIES   Trusted reverse proxies for X-Forwarded-For
 
+    [bold]Project:[/bold]
+
+        https://github.com/albertobasso/hsync-server
+
     [bold]Authors:[/bold]
 
         Alberto Basso
