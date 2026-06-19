@@ -136,24 +136,26 @@ async def upload_file(
                 },
             )
 
-        # Check disk space before accepting upload
+        # Check disk space before accepting upload (size-aware: the filesystem
+        # must hold the configured reserve plus the incoming file)
         min_free = get_settings().min_free_disk_space
         if min_free > 0:
             from shutil import disk_usage
 
             try:
                 usage = disk_usage(buckets_path)
-                if usage.free < min_free:
+                required = min_free + size
+                if usage.free < required:
                     free_mb = usage.free / (1024 * 1024)
-                    min_free_mb = min_free / (1024 * 1024)
+                    required_mb = required / (1024 * 1024)
                     raise InsufficientStorageError(
                         message=(
                             f"Insufficient storage: {free_mb:.0f} MB available, "
-                            f"{min_free_mb:.0f} MB required"
+                            f"{required_mb:.0f} MB required"
                         ),
                         details={
                             "available_bytes": usage.free,
-                            "required_bytes": min_free,
+                            "required_bytes": required,
                         },
                     )
             except OSError:
@@ -379,6 +381,7 @@ async def upload_file(
         InvalidPermissionFormatError,
         ChecksumMismatchError,
         FileTooLargeError,
+        InsufficientStorageError,
     ):
         # Re-raise custom exceptions - they'll be handled by global handler
         raise
