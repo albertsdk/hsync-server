@@ -13,6 +13,7 @@ It also preloads SHA-256 hashes for all existing files in the buckets
 directory on startup.
 """
 
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -42,6 +43,11 @@ from .hashes import set_sha256_hashes
 from .middleware import RequestIdMiddleware, VersionMiddleware
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .routers import auth_router, public_router
+from .state_maintenance import (
+    run_periodic_incremental_vacuum,
+    vacuum_on_shutdown,
+    vacuum_on_startup,
+)
 
 
 @asynccontextmanager
@@ -75,11 +81,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     sha256_files = set_sha256_hashes(buckets_path)
     log.info(f"{sha256_files} files stored.")
 
+    # Reclaim free space left by a previous session (best-effort; runs before
+    # serving, so the synchronous VACUUM cannot race a request).
+    vacuum_on_startup()
+
+    # Start the periodic in-place compaction of the state DB; it is cancelled
+    # during shutdown below.
+    maintenance_stop = asyncio.Event()
+    maintenance_task = asyncio.create_task(run_periodic_incremental_vacuum(maintenance_stop))
+
     # Log total startup time.
     tot_time = round(time.time() - start, 3)
     log.info(f"HSYNC Server started in: {tot_time} sec.")
 
-    yield
+    try:
+        yield
+    finally:
+        maintenance_stop.set()
+        await maintenance_task
+        vacuum_on_shutdown()
 
 
 # Initialize FastAPI application with metadata

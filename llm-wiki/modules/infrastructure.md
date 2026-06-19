@@ -185,5 +185,25 @@ uploads for the same file are ordered (ADR-0022).
   `corrected_mtime` with the stored one, falling back to SHA-256 when unknown
   or tied. `conflicted_copy_name` builds the canonical `_conflicted_copy_` path.
 
+## State-DB maintenance (`state_maintenance.py`)
+
+`syncstate.db` is compacted in place so pruned version/tombstone pages never
+linger (ADR-0025, `auto_vacuum=INCREMENTAL`):
+
+- `vacuum_on_startup()` / `vacuum_on_shutdown()` (`state_maintenance.py`) run a
+  full `VACUUM` at the process boundaries via `hsync_common`
+  `vacuum_state_db` — safe because no request is in flight. Wired in the
+  `lifespan` (`main.py:86`, `main.py:102`). Two deployment guards keep them
+  cheap: the startup VACUUM is **gated on `state_db_freelist_count`**
+  (`_STARTUP_VACUUM_MIN_FREELIST_PAGES`, skipped on clean restarts), and the
+  boundary VACUUM is **single-flight across uvicorn workers** via a
+  non-blocking `flock` on a sidecar lock file (`_acquire_vacuum_lock`).
+- `run_periodic_incremental_vacuum(stop)` (`state_maintenance.py`) is an
+  asyncio task started in the lifespan (`main.py:91`) that runs
+  `incremental_vacuum_state_db` (bounded `INCREMENTAL_VACUUM_PAGES`) every
+  `INCREMENTAL_VACUUM_INTERVAL_S`, offloaded to a worker thread so the event
+  loop never blocks; cancelled on shutdown (`main.py:100`). Idempotent and
+  bounded, so one per uvicorn worker is safe.
+
 > User-facing config reference (env vars, defaults): `../docs/` (architecture +
 > deployment sections).
