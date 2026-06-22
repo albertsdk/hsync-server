@@ -452,6 +452,7 @@ curl http://localhost:8765/metrics
 ## Documentation
 
 - [Architecture](docs/architecture.md) - System architecture and component overview
+- [Architecture Decision Records](../hsync-common/docs/adr/README.md) - Why the stable, cross-project decisions were made
 - [API Reference](docs/api.md) - Complete REST and WebSocket API documentation
 - [Synchronization Flow](docs/sync-flow.md) - How file synchronization works
 - [Contributing](CONTRIBUTING.md) - Development setup and contribution guidelines
