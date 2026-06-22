@@ -24,6 +24,13 @@ import hmac
 from json import JSONDecodeError, loads
 
 from fastapi import WebSocket, WebSocketDisconnect
+from hsync_common.protocol.handshake import (
+    PROTOCOL_VERSION_WS,
+    Capability,
+    build_ws_auth_error,
+    build_ws_auth_ok,
+    decode_capabilities,
+)
 from hsync_common.text import escape_loguru_braces
 from loguru import logger as log
 
@@ -44,7 +51,6 @@ from hsync_server.config import (
     get_ws_heartbeat_timeout,
 )
 from hsync_server.constants import HSYNC_VERSION
-from hsync_server.middleware import check_version_compatibility
 from hsync_server.models.event import EventName
 from hsync_server.rate_limiter import create_ws_message_bucket
 from hsync_server.routers import public_router
@@ -62,9 +68,12 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
     - Send their own file system events to be broadcast
     - Trigger server-side file operations based on events
 
-    Authentication is done via the first message after connection:
-    Client must send: {"type": "auth", "token": "<api_key>"}
-    Server responds: {"type": "auth", "status": "ok"}
+    Authentication is done via the first message after connection. The frame
+    follows the shared handshake contract (``hsync_common.protocol.handshake``):
+    Client sends: {"type": "auth", "token", "app_version", "protocol_version",
+    "capabilities"}; the server hard-fails on a ``protocol_version`` mismatch and
+    otherwise replies with {"type": "auth", "status": "ok", "protocol_version",
+    "app_version", "capabilities"}.
 
     Args:
         websocket: The WebSocket connection object.
@@ -109,42 +118,37 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                 await websocket.close(code=4003, reason="Invalid API key")
                 return
 
-            # Check client version compatibility if provided
-            client_version = auth_message.get("version", "")
-            if client_version:
-                is_compatible, reason = check_version_compatibility(HSYNC_VERSION, client_version)
-                if not is_compatible:
-                    log.warning(
-                        f"[WEBSOCKET ] Rejecting client {cid} with incompatible "
-                        f"version {client_version} (server: {HSYNC_VERSION})"
+            # Enforce the wire-protocol version: a mismatch is a hard failure
+            # (capabilities are feature flags within a version, not a bridge to
+            # earlier protocols, which do not exist).
+            client_protocol = auth_message.get("protocol_version", "")
+            if client_protocol != PROTOCOL_VERSION_WS:
+                log.warning(
+                    f"[WEBSOCKET ] Rejecting client {cid} with incompatible "
+                    f"protocol {client_protocol or 'missing'} (server: {PROTOCOL_VERSION_WS})"
+                )
+                await websocket.send_json(
+                    build_ws_auth_error(
+                        error="protocol_incompatible",
+                        client_protocol_version=client_protocol,
                     )
-                    await websocket.send_json(
-                        {
-                            "type": "auth",
-                            "status": "error",
-                            "error": "version_incompatible",
-                            "client_version": client_version,
-                            "server_version": HSYNC_VERSION,
-                        }
-                    )
-                    await websocket.close(code=4002, reason="Version incompatible")
-                    return
+                )
+                await websocket.close(code=4002, reason="Protocol incompatible")
+                return
 
-                if reason == "minor_mismatch":
-                    log.warning(
-                        f"[WEBSOCKET ] Client {cid} version {client_version} "
-                        f"differs from server {HSYNC_VERSION}"
-                    )
+            # Client capabilities are advisory feature flags for this session.
+            client_caps = decode_capabilities(auth_message.get("capabilities"))
+            log.debug(
+                f"[WEBSOCKET ] Client {cid} authenticated "
+                f"(capabilities: {sorted(c.value for c in client_caps) or 'none'})"
+            )
 
-            log.debug(f"[WEBSOCKET ] Client {cid} authenticated")
-            # Send auth confirmation with server version and capabilities
+            # Advertise the capabilities the server supports for this session.
+            server_caps: set[Capability] = set()
+            if get_compression_enabled():
+                server_caps.add(Capability.compression)
             await websocket.send_json(
-                {
-                    "type": "auth",
-                    "status": "ok",
-                    "version": HSYNC_VERSION,
-                    "compression_enabled": get_compression_enabled(),
-                }
+                build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=server_caps)
             )
 
         except TimeoutError:

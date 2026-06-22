@@ -9,7 +9,7 @@ Middleware components for HSYNC Server.
 
 This module provides middleware for request processing, including:
 - Request ID generation and propagation for distributed tracing
-- Version compatibility checking between client and server
+- Strict wire-protocol version enforcement between client and server
 """
 
 import uuid
@@ -19,49 +19,13 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from .constants import HEADER_CLIENT_VERSION, HEADER_SERVER_VERSION, HSYNC_VERSION
+from .constants import (
+    HEADER_PROTOCOL_VERSION,
+    HEADER_SERVER_VERSION,
+    HSYNC_VERSION,
+    PROTOCOL_VERSION_REST,
+)
 from .logger import set_request_id
-
-
-def check_version_compatibility(local_version: str, remote_version: str) -> tuple[bool, str]:
-    """
-    Check if remote version is compatible with local version using Semver.
-
-    Compatibility rules:
-    - Different major version: incompatible (reject)
-    - Different minor version: warning but allowed
-    - Different patch version: compatible
-
-    Args:
-        local_version: Local (server) version string (e.g., "0.1.0").
-        remote_version: Remote (client) version string (e.g., "0.1.5").
-
-    Returns:
-        Tuple of (is_compatible, reason) where:
-        - is_compatible: True if versions are compatible
-        - reason: "compatible", "minor_mismatch", "major_mismatch", or "parse_error"
-    """
-    try:
-        local_parts = local_version.split(".")
-        remote_parts = remote_version.split(".")
-
-        # Pad with zeros if needed
-        while len(local_parts) < 3:
-            local_parts.append("0")
-        while len(remote_parts) < 3:
-            remote_parts.append("0")
-
-        # Compare major version
-        if local_parts[0] != remote_parts[0]:
-            return (False, "major_mismatch")
-
-        # Compare minor version
-        if local_parts[1] != remote_parts[1]:
-            return (True, "minor_mismatch")
-
-        return (True, "compatible")
-    except Exception:
-        return (True, "parse_error")
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -112,13 +76,17 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 class VersionMiddleware(BaseHTTPMiddleware):
     """
-    Middleware that handles version compatibility between client and server.
+    Middleware that enforces the wire-protocol version between client and server.
 
     This middleware:
-    1. Reads X-Client-Version header from incoming requests
-    2. Checks version compatibility using Semver rules
-    3. Rejects requests from clients with incompatible major version
-    4. Adds X-Server-Version header to all responses
+    1. Reads the X-Protocol-Version header from incoming requests
+    2. Hard-fails with 426 when it is present and differs from the server's
+       protocol version (there is no legacy protocol to negotiate down to)
+    3. Adds X-Server-Version and X-Protocol-Version to every response
+
+    A missing header is accepted so non-client consumers (health checks, the
+    interactive docs, browsers) keep working; only an explicit mismatch is
+    rejected.
 
     Usage:
         app.add_middleware(VersionMiddleware)
@@ -126,49 +94,43 @@ class VersionMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """
-        Process the request, checking version compatibility.
+        Process the request, enforcing the wire-protocol version.
 
         Args:
             request: The incoming HTTP request.
             call_next: The next middleware or route handler.
 
         Returns:
-            The HTTP response with X-Server-Version header.
-            Returns 426 Upgrade Required if client version is incompatible.
+            The HTTP response with X-Server-Version and X-Protocol-Version
+            headers, or 426 Upgrade Required on a protocol-version mismatch.
         """
-        # Get client version from header
-        client_version = request.headers.get(HEADER_CLIENT_VERSION, "")
+        # Get the client's protocol version from the header (if any)
+        client_protocol = request.headers.get(HEADER_PROTOCOL_VERSION, "")
 
-        # Check version compatibility if client sent version
-        if client_version:
-            is_compatible, reason = check_version_compatibility(HSYNC_VERSION, client_version)
-
-            if not is_compatible:
-                log.warning(
-                    f"Rejecting client with incompatible version {client_version} "
-                    f"(server: {HSYNC_VERSION}, reason: {reason})"
-                )
-                return JSONResponse(
-                    status_code=426,
-                    content={
-                        "error": "Client version incompatible",
-                        "client_version": client_version,
-                        "server_version": HSYNC_VERSION,
-                        "reason": reason,
-                    },
-                    headers={HEADER_SERVER_VERSION: HSYNC_VERSION},
-                )
-
-            if reason == "minor_mismatch":
-                log.warning(
-                    f"Client version {client_version} has different minor version "
-                    f"(server: {HSYNC_VERSION}). Sync may have issues."
-                )
+        # Hard-fail on an explicit mismatch; capabilities never bridge versions.
+        if client_protocol and client_protocol != PROTOCOL_VERSION_REST:
+            log.warning(
+                f"Rejecting client with incompatible protocol {client_protocol} "
+                f"(server: {PROTOCOL_VERSION_REST})"
+            )
+            return JSONResponse(
+                status_code=426,
+                content={
+                    "error": "Protocol version incompatible",
+                    "client_protocol_version": client_protocol,
+                    "server_protocol_version": PROTOCOL_VERSION_REST,
+                },
+                headers={
+                    HEADER_SERVER_VERSION: HSYNC_VERSION,
+                    HEADER_PROTOCOL_VERSION: PROTOCOL_VERSION_REST,
+                },
+            )
 
         # Process the request
         response = await call_next(request)
 
-        # Always add server version to response headers
+        # Always advertise the server's app and protocol versions.
         response.headers[HEADER_SERVER_VERSION] = HSYNC_VERSION
+        response.headers[HEADER_PROTOCOL_VERSION] = PROTOCOL_VERSION_REST
 
         return response
