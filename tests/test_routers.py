@@ -108,15 +108,10 @@ class TestVerifyApiKey:
         async def test_endpoint(api_key=Depends(verify_api_key)):
             return {"status": "ok"}
 
-        client = TestClient(app, raise_server_exceptions=False)
-
         # Create a mock credentials with empty credentials
         with patch("hsync_server.routers.get_api_key", return_value="test-key"):
             # Try to test with empty credentials - this is tricky via TestClient
             # Instead, let's directly test the behavior
-            from fastapi.security import HTTPBearer
-
-            security = HTTPBearer()
 
             # The function checks if token.credentials is falsy
             mock_credentials = MagicMock()

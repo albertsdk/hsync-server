@@ -245,7 +245,7 @@ class TestSymlinkModel:
         link = tmp_path / "broken_link"
         link.symlink_to("/nonexistent/target")
         # Should not raise an exception
-        s = Symlink.get(str(link))
+        Symlink.get(str(link))
         # Broken symlinks may return None due to stat failure
 
 
