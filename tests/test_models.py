@@ -42,19 +42,15 @@ class TestFileModel:
 
     def test_init_basic(self):
         """Initialize File with basic parameters."""
-        f = File(
-            filepath="/bucket/test.txt", size=100, sha256sum="abc123", permissions="-rw-r--r--"
-        )
+        f = File(filepath="/bucket/test.txt", size=100, sha256sum="abc123", permissions="644")
         assert f.filepath == "/bucket/test.txt"
         assert f.size == 100
         assert f.sha256sum == "abc123"
-        assert f.permissions == "-rw-r--r--"
+        assert f.permissions == "644"
 
     def test_to_dict(self):
         """Convert File to dictionary."""
-        f = File(
-            filepath="/bucket/test.txt", size=100, sha256sum="abc123", permissions="-rw-r--r--"
-        )
+        f = File(filepath="/bucket/test.txt", size=100, sha256sum="abc123", permissions="644")
         d = f.to_dict()
         assert d["filepath"] == "/bucket/test.txt"
         assert d["size"] == 100
@@ -106,16 +102,16 @@ class TestDirModel:
 
     def test_init_basic(self):
         """Initialize Dir with basic parameters."""
-        d = Dir(path="/bucket/subdir", permissions="drwxr-xr-x")
+        d = Dir(path="/bucket/subdir", permissions="755")
         assert d.path == "/bucket/subdir"
-        assert d.permissions == "drwxr-xr-x"
+        assert d.permissions == "755"
 
     def test_to_dict(self):
         """Convert Dir to dictionary."""
-        d = Dir(path="/bucket/subdir", permissions="drwxr-xr-x")
+        d = Dir(path="/bucket/subdir", permissions="755")
         result = d.to_dict()
         assert result["path"] == "/bucket/subdir"
-        assert result["permissions"] == "drwxr-xr-x"
+        assert result["permissions"] == "755"
 
     def test_get_existing_dir(self):
         """Get Dir from existing directory."""
@@ -142,9 +138,7 @@ class TestEventModel:
 
     def test_init_with_file(self):
         """Initialize Event with File source."""
-        f = File(
-            filepath="/buckets/test/test.txt", size=100, sha256sum="abc", permissions="-rw-r--r--"
-        )
+        f = File(filepath="/buckets/test/test.txt", size=100, sha256sum="abc", permissions="644")
         e = Event(
             cid="client1", localpath="/buckets/test", bucket="test", name=EventName.added, src=f
         )
@@ -153,9 +147,7 @@ class TestEventModel:
 
     def test_to_dict(self):
         """Convert Event to dictionary."""
-        f = File(
-            filepath="/buckets/test/test.txt", size=100, sha256sum="abc", permissions="-rw-r--r--"
-        )
+        f = File(filepath="/buckets/test/test.txt", size=100, sha256sum="abc", permissions="644")
         e = Event(
             cid="client1", localpath="/buckets/test", bucket="test", name=EventName.modified, src=f
         )

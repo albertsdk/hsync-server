@@ -9,14 +9,12 @@ File utility functions for HSYNC Server.
 
 This module provides utility functions for file operations:
 - Path safety validation (prevent traversal attacks)
-- Permission format validation
 - Timestamp updates
 """
 
 from datetime import UTC, datetime
 from os import listdir, rmdir, utime
 from pathlib import Path
-from re import match
 
 from loguru import logger as log
 
@@ -101,20 +99,6 @@ def cleanup_empty_dir(dir_path: str, bucket_root: str | None = None) -> None:
         log.debug(f'Removed empty directory "{dir_path}"')
     except OSError as exc:
         log.warning(f'Cannot remove directory "{dir_path}": {exc}')
-
-
-def is_valid_permission_format(permissions: str) -> bool:
-    """
-    Validate a symbolic permission string format.
-
-    Args:
-        permissions: Permission string to validate (e.g., '-rw-r--r--', 'drwxr-xr-x').
-
-    Returns:
-        True if the format is valid, False otherwise.
-    """
-    # First character: file type (d=dir, l=link, -=file, b=block, c=char, p=pipe, s=socket)
-    return bool(match(r"^[dlbcps\-][rwx-]{9}$", permissions))
 
 
 def update_file_timestamp(

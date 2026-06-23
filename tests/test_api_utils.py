@@ -7,9 +7,9 @@ import tempfile
 from datetime import datetime
 
 import pytest
+from hsync_common.permissions import is_valid_octal_permissions, octal_to_mode
 
 from hsync_server.api.file_utils import (
-    is_valid_permission_format,
     update_file_timestamp,
 )
 from hsync_server.api.utils import (
@@ -17,42 +17,41 @@ from hsync_server.api.utils import (
     get_permissions,
     is_valid_bucket,
     is_valid_dir,
-    permissions_to_mode,
     set_directory_permissions,
     set_permissions,
 )
 
 
 class TestIsValidPermissionFormat:
-    """Tests for is_valid_permission_format function."""
+    """Tests for is_valid_octal_permissions function."""
 
     def test_valid_file_permissions(self):
-        """Valid file permission formats."""
-        assert is_valid_permission_format("-rw-r--r--") is True
-        assert is_valid_permission_format("-rwxr-xr-x") is True
-        assert is_valid_permission_format("-rwxrwxrwx") is True
-        assert is_valid_permission_format("----------") is True
+        """Valid octal permission formats."""
+        assert is_valid_octal_permissions("644") is True
+        assert is_valid_octal_permissions("755") is True
+        assert is_valid_octal_permissions("777") is True
+        assert is_valid_octal_permissions("000") is True
 
-    def test_valid_directory_permissions(self):
-        """Valid directory permission formats."""
-        assert is_valid_permission_format("drwxr-xr-x") is True
-        assert is_valid_permission_format("drwxrwxrwx") is True
-        assert is_valid_permission_format("dr-xr-xr-x") is True
+    def test_valid_special_bits(self):
+        """Four-digit octal strings carry the special bits."""
+        assert is_valid_octal_permissions("4755") is True
+        assert is_valid_octal_permissions("0644") is True
+        assert is_valid_octal_permissions("1777") is True
 
     def test_invalid_too_short(self):
         """Too short strings are invalid."""
-        assert is_valid_permission_format("rw-r--r--") is False
-        assert is_valid_permission_format("-rw") is False
+        assert is_valid_octal_permissions("64") is False
+        assert is_valid_octal_permissions("") is False
 
     def test_invalid_too_long(self):
         """Too long strings are invalid."""
-        assert is_valid_permission_format("-rw-r--r--x") is False
+        assert is_valid_octal_permissions("06440") is False
 
     def test_invalid_characters(self):
         """Invalid characters are rejected."""
-        assert is_valid_permission_format("-rw-r--r-+") is False
-        assert is_valid_permission_format("arw-r--r--") is False
-        assert is_valid_permission_format("-rw-r--r-1") is False
+        assert is_valid_octal_permissions("-rw-r--r--") is False
+        assert is_valid_octal_permissions("648") is False
+        assert is_valid_octal_permissions("64x") is False
 
 
 class TestUpdateFileTimestamp:
@@ -142,7 +141,7 @@ class TestGetPermissions:
         try:
             os.chmod(temp_path, 0o644)
             permissions = await get_permissions(temp_path)
-            assert permissions == "-rw-r--r--"
+            assert permissions == "644"
         finally:
             os.unlink(temp_path)
 
@@ -154,7 +153,7 @@ class TestGetPermissions:
         os.chmod(test_dir, 0o755)
 
         permissions = await get_permissions(str(test_dir))
-        assert permissions == "drwxr-xr-x"
+        assert permissions == "755"
 
     @pytest.mark.asyncio
     async def test_get_executable_permissions(self):
@@ -166,7 +165,7 @@ class TestGetPermissions:
         try:
             os.chmod(temp_path, 0o755)
             permissions = await get_permissions(temp_path)
-            assert permissions == "-rwxr-xr-x"
+            assert permissions == "755"
         finally:
             os.unlink(temp_path)
 
@@ -174,15 +173,15 @@ class TestGetPermissions:
 class TestSetPermissions:
     """Tests for set_permissions function."""
 
-    def test_permissions_to_mode_symbolic(self):
-        """Symbolic permissions are converted to octal mode."""
-        assert permissions_to_mode("-rw-rw-r--") == 0o664
-        assert permissions_to_mode("drwxr-xr-x") == 0o755
+    def test_octal_to_mode(self):
+        """Octal permission strings are converted to numeric mode."""
+        assert octal_to_mode("664") == 0o664
+        assert octal_to_mode("755") == 0o755
 
-    def test_permissions_to_mode_octal(self):
-        """Legacy numeric permission strings are supported explicitly."""
-        assert permissions_to_mode("755") == 0o755
-        assert permissions_to_mode("0644") == 0o644
+    def test_octal_to_mode_special_bits(self):
+        """Optional leading digit and special bits are preserved."""
+        assert octal_to_mode("0644") == 0o644
+        assert octal_to_mode("4755") == 0o4755
 
     @pytest.mark.asyncio
     async def test_set_file_permissions(self):
@@ -192,7 +191,7 @@ class TestSetPermissions:
             temp_path = f.name
 
         try:
-            await set_permissions(temp_path, "-rw-rw-r--")
+            await set_permissions(temp_path, "664")
             stat = os.stat(temp_path)
             assert stat.st_mode & 0o777 == 0o664
         finally:
@@ -206,7 +205,7 @@ class TestSetPermissions:
             temp_path = f.name
 
         try:
-            await set_permissions(temp_path, "-rwxr-xr-x")
+            await set_permissions(temp_path, "755")
             stat = os.stat(temp_path)
             assert stat.st_mode & 0o777 == 0o755
         finally:
@@ -232,7 +231,7 @@ class TestSetPermissions:
         test_dir = tmp_path / "restricted"
         test_dir.mkdir()
 
-        await set_directory_permissions(str(test_dir), "d---------")
+        await set_directory_permissions(str(test_dir), "000")
 
         stat = os.stat(test_dir)
         assert stat.st_mode & 0o700 == 0o700
@@ -250,7 +249,7 @@ class TestGetDirInfo:
 
         dir_info = await get_dir_info(str(test_dir))
         assert dir_info.path == str(test_dir)
-        assert dir_info.permissions == "drwxr-xr-x"
+        assert dir_info.permissions == "755"
 
 
 class TestIsValidBucket:

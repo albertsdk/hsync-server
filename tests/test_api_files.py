@@ -24,7 +24,7 @@ class TestFileUpload:
         response = await client.post(
             "/api/v1/buckets/uploadbucket/files",
             files={"file": ("test.txt", io.BytesIO(file_content), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
+            data={"cid": "test-client-1", "path": "", "permissions": "644"},
         )
 
         assert response.status_code == 201
@@ -46,7 +46,7 @@ class TestFileUpload:
         response = await client.post(
             "/api/v1/buckets/uploadbucket2/files",
             files={"file": ("nested.txt", io.BytesIO(b"nested"), "text/plain")},
-            data={"cid": "test-client-1", "path": "subdir/deep", "permissions": "-rw-r--r--"},
+            data={"cid": "test-client-1", "path": "subdir/deep", "permissions": "644"},
         )
 
         assert response.status_code == 201
@@ -62,7 +62,7 @@ class TestFileUpload:
         response = await client.post(
             "/api/v1/buckets/newbucket/files",
             files={"file": ("test.txt", io.BytesIO(b"test"), "text/plain")},
-            data={"cid": "test-client-1", "path": "subdir", "permissions": "-rw-r--r--"},
+            data={"cid": "test-client-1", "path": "subdir", "permissions": "644"},
         )
 
         # Upload succeeds and creates the directory structure
@@ -212,7 +212,7 @@ class TestFileUploadValidation:
         response = await client.post(
             "/api/v1/buckets/invalid..bucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
+            data={"cid": "test-client-1", "path": "", "permissions": "644"},
         )
         assert response.status_code == 400
         assert "HSYNC-1001" in response.text
@@ -226,7 +226,7 @@ class TestFileUploadValidation:
         response = await client.post(
             "/api/v1/buckets/securitybucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
-            data={"cid": "test-client-1", "path": "../../../tmp", "permissions": "-rw-r--r--"},
+            data={"cid": "test-client-1", "path": "../../../tmp", "permissions": "644"},
         )
         assert response.status_code == 400
         assert "HSYNC-1002" in response.text
@@ -263,7 +263,7 @@ class TestFileUploadValidation:
             data={
                 "cid": "test-client-1",
                 "path": "",
-                "permissions": "-rw-r--r--",
+                "permissions": "644",
                 "sha256sum": sha256sum,
             },
         )
@@ -276,7 +276,7 @@ class TestFileUploadValidation:
             data={
                 "cid": "test-client-1",
                 "path": "",
-                "permissions": "-rw-r--r--",
+                "permissions": "644",
                 "sha256sum": sha256sum,
             },
         )
@@ -295,7 +295,7 @@ class TestFileUploadValidation:
             data={
                 "cid": "test-client-1",
                 "path": "",
-                "permissions": "-rw-r--r--",
+                "permissions": "644",
                 "sha256sum": "wrongchecksum",
             },
         )
@@ -321,7 +321,7 @@ class TestFileSizeLimit:
             response = await client.post(
                 "/api/v1/buckets/sizelimitbucket/files",
                 files={"file": ("large.txt", io.BytesIO(large_content), "text/plain")},
-                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
+                data={"cid": "test-client-1", "path": "", "permissions": "644"},
             )
 
         assert response.status_code == 400
@@ -341,7 +341,7 @@ class TestFileSizeLimit:
             response = await client.post(
                 "/api/v1/buckets/sizelimitbucket2/files",
                 files={"file": ("small.txt", io.BytesIO(small_content), "text/plain")},
-                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
+                data={"cid": "test-client-1", "path": "", "permissions": "644"},
             )
 
         assert response.status_code == 201
@@ -360,7 +360,7 @@ class TestFileSizeLimit:
             response = await client.post(
                 "/api/v1/buckets/nolimitbucket/files",
                 files={"file": ("file.txt", io.BytesIO(content), "text/plain")},
-                data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
+                data={"cid": "test-client-1", "path": "", "permissions": "644"},
             )
 
         assert response.status_code == 201
@@ -398,7 +398,7 @@ class TestFileDiskSpace:
                 data={
                     "cid": "test-client-1",
                     "path": "",
-                    "permissions": "-rw-r--r--",
+                    "permissions": "644",
                     "size": str(len(content)),
                 },
             )
@@ -434,7 +434,7 @@ class TestFileDiskSpace:
                 data={
                     "cid": "test-client-1",
                     "path": "",
-                    "permissions": "-rw-r--r--",
+                    "permissions": "644",
                     "size": str(len(content)),
                 },
             )
@@ -635,7 +635,7 @@ class TestTombstones:
         response = await client.post(
             "/api/v1/buckets/reusebucket/files",
             files={"file": ("reuse.txt", io.BytesIO(b"new content"), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "-rw-r--r--"},
+            data={"cid": "test-client-1", "path": "", "permissions": "644"},
         )
         assert response.status_code == 201
 
@@ -772,7 +772,7 @@ class TestResumableUpload:
         response = await client.post(
             "/api/v1/buckets/chunkbucket/files",
             files={"file": ("c.txt", io.BytesIO(b"12345"), "text/plain")},
-            data={"cid": "c1", "path": "", "permissions": "-rw-r--r--", "size": "100"},
+            data={"cid": "c1", "path": "", "permissions": "644", "size": "100"},
         )
         assert response.status_code == 202
         body = response.json()
@@ -794,7 +794,7 @@ class TestResumableUpload:
             data={
                 "cid": "c1",
                 "path": "",
-                "permissions": "-rw-r--r--",
+                "permissions": "644",
                 "offset": "5",
                 "size": "10",
             },
