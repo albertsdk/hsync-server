@@ -3,9 +3,8 @@ Tests for SyncAction model.
 """
 
 import pytest
-
-from hsync_server.models.file import File
-from hsync_server.models.sync_action import SyncAction, SyncActionName
+from hsync_common.models.file import File
+from hsync_common.models.sync_action import SyncAction, SyncActionName
 
 
 class TestSyncActionName:

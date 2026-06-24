@@ -24,6 +24,7 @@ import hmac
 from json import JSONDecodeError, loads
 
 from fastapi import WebSocket, WebSocketDisconnect
+from hsync_common.models.event import EventName
 from hsync_common.protocol.handshake import (
     PROTOCOL_VERSION_WS,
     Capability,
@@ -51,7 +52,6 @@ from hsync_server.config import (
     get_ws_heartbeat_timeout,
 )
 from hsync_server.constants import HSYNC_VERSION
-from hsync_server.models.event import EventName
 from hsync_server.rate_limiter import create_ws_message_bucket
 from hsync_server.routers import public_router
 

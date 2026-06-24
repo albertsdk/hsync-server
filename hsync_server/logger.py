@@ -36,21 +36,18 @@ Log formats:
 import logging
 import sys
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from hsync_common.logger import (
-    LEVEL_STYLES,
     BaseInterceptHandler,
+    build_record_formatter,
+    configure_handlers,
 )
 from loguru import logger
 
 from hsync_server.config import (
-    VALID_LOG_FORMATS as _VALID_LOG_FORMATS,
-)
-from hsync_server.config import (
     VALID_LOG_LEVELS,
     get_log_file,
-    get_log_rotation_config,
 )
 from hsync_server.config import (
     get_log_format as get_config_log_format,
@@ -61,10 +58,6 @@ if TYPE_CHECKING:
 
 # Context variable for request ID - thread-safe storage for per-request data
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
-
-# Valid log levels/formats are imported from config and re-exported here for
-# backward compatibility with callers/tests that imported them from logger.
-VALID_LOG_FORMATS = _VALID_LOG_FORMATS
 
 
 def get_request_id() -> str | None:
@@ -101,46 +94,10 @@ def get_log_format() -> str:
     return get_config_log_format()
 
 
-def _format_record_colored(record: Any) -> str:
-    """
-    Custom format function for loguru with colors.
-
-    Uses loguru's built-in color tags for proper terminal compatibility
-    and automatic color stripping when output is not a TTY.
-
-    Format: 2024-01-15T10:30:45.123Z - [12345] [req-abc123] INFO: message
-    """
-    request_id = record["extra"].get("request_id", "N/A")
-    timestamp = record["time"].strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-    level = record["level"].name
-    message = record["message"]
-
-    # Get level style tags
-    level_start, level_end = LEVEL_STYLES.get(level, ("", ""))
-
-    return (
-        f"<dim>{timestamp}</dim> - [{record['process'].id}] [{request_id}] "
-        f"{level_start}{level}{level_end}: {message}\n"
-    )
-
-
-def _format_record_plain(record: Any) -> str:
-    """
-    Custom format function for loguru without colors.
-
-    Format: 2024-01-15T10:30:45.123Z - [12345] [req-abc123] INFO: message
-    """
-    request_id = record["extra"].get("request_id", "N/A")
-    timestamp = record["time"].strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-    return (
-        f"{timestamp} - [{record['process'].id}] [{request_id}] "
-        f"{record['level'].name}: {record['message']}\n"
-    )
-
-
-# Backward-compatible alias for the rotation config helper.
-_get_rotation_config = get_log_rotation_config
+# Format functions sharing the common factory; the server adds the per-request
+# correlation id as an extra field.
+_format_record_colored = build_record_formatter(colored=True, extra_fields=("request_id",))
+_format_record_plain = build_record_formatter(colored=False, extra_fields=("request_id",))
 
 
 def setup_logging(
@@ -188,57 +145,26 @@ def setup_logging(
     # Get log file from parameter or environment-backed Settings
     log_file = logfile or get_log_file()
 
-    # Remove default loguru handler
-    logger.remove()
+    is_json = log_format == "json"
+    # Colors are enabled only when --no-color is not set and stdout is a TTY.
+    use_colors = not is_json and not no_color and sys.stdout.isatty()
+    console_format = _format_record_colored if use_colors else _format_record_plain
 
-    # Add console handler
-    if log_format == "json":
-        logger.add(
-            sys.stdout,
-            level=level.upper(),
-            format="{message}",
-            serialize=True,  # JSON output
-        )
-    else:
-        # Colors are enabled only when:
-        # 1. --no-color flag is not set
-        # 2. Output is a TTY (terminal)
-        use_colors = not no_color and sys.stdout.isatty()
-        format_func = _format_record_colored if use_colors else _format_record_plain
-
-        logger.add(
-            sys.stdout,
-            level=level.upper(),
-            format=format_func,  # type: ignore[arg-type]
-            colorize=use_colors,  # Enable loguru's color tag processing
-        )
-
-    # Add file handler with rotation if log file is specified
-    if log_file:
-        rotation_config = _get_rotation_config()
-        logger.add(
-            log_file,
-            level=level.upper(),
-            format=_format_record_plain,  # type: ignore[arg-type]
-            colorize=False,
-            encoding="utf-8",
-            rotation=rotation_config["rotation"],
-            retention=rotation_config["retention"],
-            compression=rotation_config["compression"],
-        )
-
-    # Intercept standard logging (for uvicorn and other libraries)
-    logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
-
-    # Configure specific loggers to use intercept handler
-    for logger_name in (
-        "uvicorn",
-        "uvicorn.error",
-        "uvicorn.access",
-        "hsync",
-        "hsync_server",
-    ):
-        logging.getLogger(logger_name).handlers = [InterceptHandler()]
-        logging.getLogger(logger_name).propagate = False
+    configure_handlers(
+        level=level.upper(),
+        console_format=console_format,
+        colorize=use_colors,
+        serialize_console=is_json,
+        logfile=log_file,
+        file_format=_format_record_plain,
+        intercept_factory=InterceptHandler,
+        intercept_logger_names=(
+            "uvicorn",
+            "uvicorn.error",
+            "uvicorn.access",
+            "hsync",
+            "hsync_server",
+        ),
+    )
 
     return logger

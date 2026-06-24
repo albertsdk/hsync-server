@@ -5,6 +5,12 @@ Tests for compression utilities.
 from hsync_server import compression
 
 
+async def _compress_whole(filepath: str, chunk_size: int = 64 * 1024) -> bytes:
+    """Join the streamed zstd frames into a single bytes object (test helper)."""
+    parts = [chunk async for chunk in compression.async_compress_stream(filepath, chunk_size)]
+    return b"".join(parts)
+
+
 class TestCompression:
     """Tests for compression module functions."""
 
@@ -57,7 +63,7 @@ class TestCompression:
         test_file.write_bytes(test_content)
 
         async def run_test():
-            return await compression.async_compress_file(str(test_file))
+            return await _compress_whole(str(test_file))
 
         compressed = asyncio.run(run_test())
         assert compressed != test_content
@@ -78,7 +84,7 @@ class TestCompression:
         sync_compressed = compression.compress_file(str(test_file))
 
         async def run_test():
-            return await compression.async_compress_file(str(test_file))
+            return await _compress_whole(str(test_file))
 
         async_compressed = asyncio.run(run_test())
 
@@ -95,7 +101,7 @@ class TestCompression:
         test_file.write_bytes(test_content)
 
         async def run_test():
-            return await compression.async_compress_file(str(test_file))
+            return await _compress_whole(str(test_file))
 
         compressed = asyncio.run(run_test())
         decompressed = compression.decompress_data(compressed)
@@ -135,7 +141,7 @@ class TestCompression:
         test_file.write_bytes(test_content)
 
         async def run_test():
-            whole = await compression.async_compress_file(str(test_file))
+            whole = await _compress_whole(str(test_file))
             streamed = b"".join(
                 [chunk async for chunk in compression.async_compress_stream(str(test_file))]
             )

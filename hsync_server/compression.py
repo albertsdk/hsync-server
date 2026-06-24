@@ -91,25 +91,6 @@ async def async_compress_stream(filepath: str, chunk_size: int = 64 * 1024) -> A
         yield out
 
 
-async def async_compress_file(filepath: str, chunk_size: int = 64 * 1024) -> bytes:
-    """
-    Read and compress a file asynchronously into a single bytes object.
-
-    Backward-compatible wrapper around :func:`async_compress_stream` for callers
-    that need the whole compressed frame at once. Prefer the streaming variant
-    for large downloads to keep memory bounded.
-
-    Args:
-        filepath: Path to file to compress.
-        chunk_size: Size of read chunks in bytes (default: 64KB).
-
-    Returns:
-        Compressed file content as a single zstd frame.
-    """
-    parts = [chunk async for chunk in async_compress_stream(filepath, chunk_size)]
-    return b"".join(parts)
-
-
 async def decompress_stream(data: bytes) -> bytes:
     """
     Decompress data asynchronously (for FastAPI handlers).

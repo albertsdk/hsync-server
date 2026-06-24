@@ -16,8 +16,9 @@ import hashlib
 from os import walk
 from pathlib import Path
 
-from hsync_server.models.dir import is_hidden_dir
-from hsync_server.models.file import is_hidden_file
+from hsync_common.hashing import compute_sha256
+from hsync_common.models.dir import is_hidden_dir
+from hsync_common.models.file import is_hidden_file
 
 # In-memory storage for file hashes
 # Maps SHA256(filepath) -> SHA256(file_content)
@@ -88,23 +89,6 @@ def set_sha256_hashes(directory: str) -> int:
     """
     global FILE_HASHES
 
-    def _compute_sha256(filepath: str, chunk_size: int = 8192) -> str:
-        """
-        Compute SHA-256 checksum of a file using chunked reading.
-
-        Args:
-            filepath: Path to the file.
-            chunk_size: Size of chunks to read (default 8KB).
-
-        Returns:
-            Hexadecimal SHA-256 digest string.
-        """
-        hasher = hashlib.sha256()
-        with open(filepath, "rb") as file:
-            for chunk in iter(lambda: file.read(chunk_size), b""):
-                hasher.update(chunk)
-        return hasher.hexdigest()
-
     if not Path(directory).is_dir():
         raise ValueError(f"Invalid directory path: {directory}")
 
@@ -121,7 +105,7 @@ def set_sha256_hashes(directory: str) -> int:
             file_path = str(Path(root) / file)
             # Skip hidden files using is_hidden_file
             if not is_hidden_file(file_path):
-                sha256 = _compute_sha256(file_path)
+                sha256 = compute_sha256(file_path)
                 set_sha256_hash(file_path, sha256)
                 file_count += 1
 

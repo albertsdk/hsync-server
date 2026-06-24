@@ -39,8 +39,9 @@ def ensure_sentinel_in_dir(dir_path: str) -> None:
     Args:
         dir_path: Absolute path to the directory to check.
     """
+    from hsync_common.models.file import is_hidden_file
+
     from hsync_server.constants import HSYNCKEEP_FILENAME
-    from hsync_server.models.file import is_hidden_file
 
     if not Path(dir_path).exists() or not Path(dir_path).is_dir():
         return

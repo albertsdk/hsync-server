@@ -13,10 +13,10 @@ This module provides classes for managing WebSocket connections:
 """
 
 from fastapi import WebSocket
+from hsync_common.models.event import Event
 from loguru import logger as log
 
 from hsync_server.config import get_ws_max_connections, get_ws_max_connections_per_ip
-from hsync_server.models.event import Event
 
 
 class ConnectionManager:

@@ -9,9 +9,8 @@ import logging
 import pytest
 
 from hsync_server import config
+from hsync_server.config import VALID_LOG_FORMATS, VALID_LOG_LEVELS
 from hsync_server.logger import (
-    VALID_LOG_FORMATS,
-    VALID_LOG_LEVELS,
     InterceptHandler,
     get_log_format,
     get_request_id,
