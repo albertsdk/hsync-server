@@ -60,3 +60,10 @@ Thumbs.db
 
 # Claude
 CLAUDE.md
+
+# Kilo
+.kilo
+
+ # Cache
+ .mypy_cache
+ .ruff_cache
