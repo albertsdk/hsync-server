@@ -15,6 +15,23 @@ from httpx import ASGITransport, AsyncClient
 os.environ["HSYNC_API_KEY"] = "test-api-key-12345"
 
 
+@pytest.fixture(autouse=True)
+def deterministic_cli_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Force plain, uncolored CLI output for every test.
+
+    CI environments (e.g. GitHub Actions) export ``FORCE_COLOR``, which makes
+    Rich emit ANSI styling. The highlighter then wraps option names like
+    ``--log-level`` in escape codes, splitting the substring and breaking
+    assertions on ``result.output``/``result.stdout``. Clearing the
+    color-forcing variables lets Rich fall back to plain output for the
+    captured (non-terminal) stream while still honouring an explicit
+    ``COLUMNS``.
+    """
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.delenv("PY_COLORS", raising=False)
+
+
 @pytest.fixture
 def temp_buckets_dir() -> Generator[str]:
     """Create a temporary directory for test buckets."""
