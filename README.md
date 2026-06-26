@@ -201,6 +201,12 @@ When SSL is enabled without explicit certificate paths, the server automatically
 - 1-year validity
 - Subject Alternative Names (SAN) for hostname, localhost, 127.0.0.1, ::1
 
+Under Docker, this directory is backed by a persistent named volume
+(`hsync-server-certs`), so the auto-generated certificate — and therefore the
+server's identity and the client's TOFU fingerprint pin — stays the same across
+`./docker.sh restart` and container recreation. `./docker.sh clean` removes the
+volume, forcing a fresh certificate on the next start.
+
 ### Using Custom Certificates
 
 For production, use certificates from a trusted CA (e.g., Let's Encrypt). The

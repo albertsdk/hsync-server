@@ -76,5 +76,10 @@ EXPOSE 8765
 # Run as an unprivileged application user for security
 USER hsync
 
-# Start uvicorn server with configurable parameters
-CMD ["sh", "-c", "uvicorn hsync_server.main:app --host 0.0.0.0 --port ${HSYNC_PORT} --log-level ${HSYNC_LOG_LEVEL} --workers ${HSYNC_WORKERS}"]
+# Launch through the application entrypoint (not uvicorn directly): it is the
+# single place that reads HSYNC_PORT / HSYNC_LOG_LEVEL / HSYNC_WORKERS and the
+# HSYNC_SSL_* settings and wires SSL into uvicorn. Invoking uvicorn directly
+# would ignore HSYNC_SSL_ENABLED and always serve plaintext HTTP. The module is
+# run with `python -m` because the image installs deps with `--no-root`, so the
+# `hsync-server` console script is intentionally not generated.
+CMD ["python", "-m", "hsync_server"]

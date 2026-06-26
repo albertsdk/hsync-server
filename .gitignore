@@ -47,6 +47,7 @@ Thumbs.db
 # Project specific
 /buckets/
 /certs/
+.hsync-last-env-file
 
 # Logs
 *.log
@@ -57,9 +58,6 @@ Thumbs.db
 
 # Python compiled
 *.spec (PyInstaller)
-
-# Claude
-CLAUDE.md
 
 # Kilo
 .kilo
