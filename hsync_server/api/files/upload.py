@@ -23,10 +23,11 @@ from shutil import copy2
 from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
+from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
 from hsync_common.hashing import compute_sha256_async
 from hsync_common.models.event import Event, EventName
 from hsync_common.models.file import File as LocalFile
-from hsync_common.models.file import invalidate_sha256_cache
+from hsync_common.models.file import invalidate_sha256_cache, is_partial_file
 from hsync_common.permissions import is_valid_octal_permissions
 from loguru import logger as log
 
@@ -185,7 +186,7 @@ async def upload_file(
         # Define file paths
         file_directory = f"{buckets_path}/{bucket}/{path}"
         file_location = f"{file_directory}/{file.filename}"
-        partial_file_path = f"{file_location}.part"
+        partial_file_path = f"{file_location}{PARTIAL_DOWNLOAD_SUFFIX}"
 
         # Skip upload if identical file already exists (same SHA-256)
         if (
@@ -402,7 +403,7 @@ async def upload_file(
             if (
                 file_location_tmp
                 and Path(file_location_tmp).exists()
-                and not file_location_tmp.endswith(".part")
+                and not is_partial_file(file_location_tmp)
             ):
                 remove(file_location_tmp)
         else:
@@ -411,5 +412,5 @@ async def upload_file(
             for f in (file_location_tmp, partial_file_path, backup_path):
                 if f and Path(f).exists():
                     remove(f)
-                    if f.endswith(".part"):
+                    if is_partial_file(f):
                         log.debug(f"Cleaned up stale partial file: {f}")
