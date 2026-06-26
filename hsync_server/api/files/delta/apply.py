@@ -310,7 +310,6 @@ async def delta_apply(
             )
             delta_result = arbitrate_upload(
                 bucket=bucket,
-                bucket_dir=local_bucket,
                 relpath=delta_relpath,
                 incoming_hash=rebuilt_sha256,
                 incoming_vclock_raw=meta.get("vclock"),

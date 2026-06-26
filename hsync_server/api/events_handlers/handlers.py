@@ -60,9 +60,6 @@ def _validate_path(path: str | None, bucket_dir: str, *, allow_root: bool = True
 # Shared create-or-modify handler (DRY: added + modified were ~90% identical)
 # ---------------------------------------------------------------------------
 
-_CREATE = "create"
-_MODIFY = "modify"
-
 
 async def _handle_create_or_modify(
     src: dict[str, Any] | None,

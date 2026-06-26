@@ -274,7 +274,6 @@ async def post_delta_signatures(
     token = await asyncio.to_thread(
         delta_token_store.issue,
         bucket=bucket,
-        path=body.path,
         payload=payload,
         compressed=compressed,
     )

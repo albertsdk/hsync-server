@@ -497,7 +497,6 @@ async def upload_file(
             incoming_corrected = int(clamp_incoming_corrected_mtime(float(corrected_mtime)))
             result = arbitrate_upload(
                 bucket=bucket,
-                bucket_dir=local_bucket,
                 relpath=relpath,
                 incoming_hash=sha256sum_tmp,
                 incoming_vclock_raw=incoming_vclock_raw,

@@ -51,7 +51,6 @@ def _arbitrate(
     ):
         return arbitrate_upload(
             bucket="b1",
-            bucket_dir="/buckets/b1",
             relpath=relpath,
             incoming_hash=incoming_hash,
             incoming_vclock_raw=incoming_vclock,

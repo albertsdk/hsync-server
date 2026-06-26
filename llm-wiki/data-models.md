@@ -9,7 +9,7 @@ process-local state and the installation SQLite store.
 | Type | Used by | Source |
 | ---- | ------- | ------ |
 | `File` / `FileDict` | list, upload, download responses | `hsync_common.models.file` |
-| `Dir` | `get_dir_info` (`api/utils.py:107`) | `hsync_common.models.dir` |
+| `Dir` | event handlers (`Dir.from_dict`), list (`Dir.get`) | `hsync_common.models.dir` |
 | `Symlink` | symlink event handler | `hsync_common.models.symlink` |
 | `Event` / `EventName` | WS broadcast + handlers | `hsync_common.models.event` |
 | `TombstoneStore` / `TombstoneEntry` | deletion tracking | `hsync_common.models.tombstone` |

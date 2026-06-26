@@ -44,7 +44,6 @@ class DeltaTokenEntry:
     """A parked literal payload awaiting download."""
 
     bucket: str
-    path: str  # bucket-relative file path the payload belongs to
     payload_file: str  # absolute temp file holding the literal bytes
     compressed: bool  # payload is a single zstd frame
     created: float  # time.time() of issuance
@@ -91,7 +90,7 @@ class DeltaTokenStore:
             self._delete_payload(entry)
         return len(expired)
 
-    def issue(self, *, bucket: str, path: str, payload: bytes, compressed: bool) -> str:
+    def issue(self, *, bucket: str, payload: bytes, compressed: bool) -> str:
         """Park *payload* on disk and return its download token (UUID v4)."""
         self.cleanup()
         if len(self._tokens) >= DELTA_MAX_ACTIVE_TOKENS:
@@ -108,7 +107,6 @@ class DeltaTokenStore:
             f.write(payload)
         self._tokens[token] = DeltaTokenEntry(
             bucket=bucket,
-            path=path,
             payload_file=payload_file,
             compressed=compressed,
             created=time.time(),

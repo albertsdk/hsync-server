@@ -225,7 +225,7 @@ includes the wall-clock duration via `format_duration(..., subsecond=True)`.
 
 - `api/utils.py`: bucket validation, `resolve_within_bucket` per-bucket
   confinement (`:46`), permission get/set (`:70`/`:83`/`:103`, wire values
-  masked of special bits), `get_dir_info` → `Dir` (`:117`).
+  masked of special bits).
 - `api/file_utils.py`: sentinel handling (`:27`/`:34`), empty-dir cleanup (`:72`),
   timestamp updates with far-future clamp (`:110`).
 

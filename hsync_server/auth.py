@@ -9,7 +9,6 @@ Provides:
 - ``AuthContext``: the identity populated on ``request.state`` after verify.
 - ``verify_token``: shared token verification (REST + WS), with a KDF cache.
 - ``verify_api_key``: FastAPI dependency (Bearer → ``AuthContext``).
-- ``require_bucket_access``: FastAPI dependency for per-bucket authz.
 - ``require_admin``: FastAPI dependency for admin-only endpoints.
 
 Consumers: ``hsync_server.routers`` (auth_router), ``hsync_server.api``
@@ -22,14 +21,12 @@ import hashlib
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger as log
 
-from hsync_server.api.utils import is_valid_bucket
 from hsync_server.auth_store import (
     _DUMMY_PHC,
     AccountRow,
@@ -38,19 +35,15 @@ from hsync_server.auth_store import (
     get_auth_store,
     parse_token,
 )
-from hsync_server.config import get_buckets_path
 from hsync_server.exceptions import (
-    BucketNotFoundError,
     ForbiddenError,
     InvalidApiKeyError,
-    InvalidBucketNameError,
     MissingApiKeyError,
 )
 
 __all__ = [
     "AuthContext",
     "require_admin",
-    "require_bucket_access",
     "verify_api_key",
     "verify_token",
 ]
@@ -251,30 +244,3 @@ def require_admin(
     if ctx.role != "admin":
         raise ForbiddenError()
     return ctx
-
-
-def require_bucket_access(bucket: str):
-    """Return a FastAPI dependency that checks data access to *bucket*.
-
-    - admin: always allowed.
-    - owner/member: allowed.
-    - others: ``BucketNotFoundError`` (404, indistinguishable from "not found").
-    - invalid bucket name: ``InvalidBucketNameError`` (400).
-    """
-
-    def _check(
-        ctx: Annotated[AuthContext, Depends(verify_api_key)],
-    ) -> AuthContext:
-        if not is_valid_bucket(bucket):
-            raise InvalidBucketNameError(details={"bucket": bucket})
-
-        bucket_dir = Path(get_buckets_path()) / bucket
-        if not bucket_dir.exists():
-            raise BucketNotFoundError(details={"bucket": bucket})
-
-        store = get_auth_store()
-        if not store.has_access(ctx.id, bucket, is_admin=(ctx.role == "admin")):
-            # 404 to avoid leaking existence.
-            raise BucketNotFoundError(details={"bucket": bucket})
-
-        return ctx

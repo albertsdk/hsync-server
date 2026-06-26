@@ -73,7 +73,6 @@ class ArbitrationResult:
 
 def arbitrate_upload(
     bucket: str,
-    bucket_dir: str,
     relpath: str,
     incoming_hash: str,
     incoming_vclock_raw: object,
@@ -86,7 +85,6 @@ def arbitrate_upload(
 
     Args:
         bucket: Bucket name (for the version store lookup).
-        bucket_dir: Absolute bucket directory (for relpath resolution).
         relpath: Bucket-relative path of the file.
         incoming_hash: SHA-256 of the incoming content.
         incoming_vclock_raw: Raw parsed ``vclock`` payload (validated here).

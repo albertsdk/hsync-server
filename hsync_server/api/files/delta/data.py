@@ -9,7 +9,7 @@ Literal-payload download endpoint for the delta transfer (download delta).
 
 After POST ``/delta/signatures`` accepts a delta, the client fetches the
 parked literal payload here. The token is single-use, short-lived and bound
-to the ``(bucket, path)`` it was issued for; authentication is the standard
+to the bucket it was issued for; authentication is the standard
 API-key dependency of ``auth_router`` (the token alone is not a credential).
 The temp file is unlinked after the response has been streamed.
 """

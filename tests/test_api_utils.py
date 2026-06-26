@@ -13,7 +13,6 @@ from hsync_server.api.file_utils import (
     update_file_timestamp,
 )
 from hsync_server.api.utils import (
-    get_dir_info,
     get_permissions,
     is_valid_bucket,
     resolve_within_bucket,
@@ -199,21 +198,6 @@ class TestSetPermissions:
 
         stat = os.stat(test_dir)
         assert stat.st_mode & 0o700 == 0o700
-
-
-class TestGetDirInfo:
-    """Tests for get_dir_info function."""
-
-    @pytest.mark.asyncio
-    async def test_get_dir_info(self, tmp_path):
-        """Get directory info returns Dir object."""
-        test_dir = tmp_path / "infodir"
-        test_dir.mkdir()
-        os.chmod(test_dir, 0o755)
-
-        dir_info = await get_dir_info(str(test_dir))
-        assert dir_info.path == str(test_dir)
-        assert dir_info.permissions == "755"
 
 
 class TestIsValidBucket:

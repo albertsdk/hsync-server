@@ -331,11 +331,6 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @property
-    def path(self) -> str:
-        """Application root path."""
-        return _HSYNC_PATH
-
-    @property
     def trusted_proxies_set(self) -> frozenset[str]:
         """Parse comma-separated trusted reverse-proxy IPs into a set."""
         return frozenset(ip.strip() for ip in self.trusted_proxies.split(",") if ip.strip())

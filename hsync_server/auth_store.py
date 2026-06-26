@@ -351,8 +351,6 @@ def get_auth_store() -> AuthStore:
 def reset_auth_cache() -> None:
     """Clear the in-memory store cache (tests)."""
     with _cache_lock:
-        for s in _store_cache.values():
-            s.close()
         _store_cache.clear()
 
 
@@ -382,10 +380,6 @@ class AuthStore:
     def conn(self) -> sqlite3.Connection:
         """Return the shared SQLite connection (cached by ``get_state_db``)."""
         return get_state_db(self._db_path).conn
-
-    def close(self) -> None:
-        """No-op: the underlying connection is managed by ``get_state_db``."""
-        pass
 
     def _ensure_schema(self) -> None:
         """Create auth tables if they don't exist (idempotent)."""

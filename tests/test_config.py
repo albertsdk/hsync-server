@@ -3,8 +3,6 @@
 #
 # Tests for config module.
 
-from pathlib import Path
-
 import pytest
 from pydantic import SecretStr, ValidationError
 
@@ -117,13 +115,6 @@ class TestSettings:
         """An invalid IANA timezone name is rejected at config load time."""
         with pytest.raises(ValidationError):
             config.Settings(tz="Not/AZone")
-
-    def test_path_property(self):
-        """Test that path property returns absolute path."""
-        settings = config.Settings()
-
-        assert settings.path is not None
-        assert Path(settings.path).is_absolute()
 
     def test_buckets_path_default(self):
         """Test that buckets_path defaults to the app directory."""

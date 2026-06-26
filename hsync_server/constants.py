@@ -28,10 +28,7 @@ from hsync_common.constants import (  # noqa: E402, F401
     is_valid_client_name,
 )
 from hsync_common.labels import ActionLabel  # noqa: E402, F401
-from hsync_common.protocol.handshake import (  # noqa: E402, F401
-    PROTOCOL_VERSION_REST,
-    PROTOCOL_VERSION_WS,
-)
+from hsync_common.protocol.handshake import PROTOCOL_VERSION_REST  # noqa: E402, F401
 
 # =============================================================================
 # File Defaults

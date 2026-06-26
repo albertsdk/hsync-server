@@ -15,7 +15,6 @@ from asyncio import to_thread
 from os import chmod
 from pathlib import Path
 
-from hsync_common.models.dir import Dir
 from hsync_common.path_validation import (
     is_valid_bucket_name,
     resolve_within,
@@ -141,20 +140,3 @@ async def set_directory_permissions(dir_path: str, permissions: str) -> None:
     mode = octal_to_mode(sanitize_remote_permissions(permissions)) | OWNER_DIRECTORY_ACCESS
     log.debug(f'Set directory permissions: "{dir_path}" ({permissions} -> {mode:o})')
     await to_thread(chmod, dir_path, mode)
-
-
-async def get_dir_info(path: str) -> Dir:
-    """
-    Get directory information including permissions.
-
-    Args:
-        path: Path to the directory.
-
-    Returns:
-        Dir object containing path and permissions.
-    """
-    permissions = await get_permissions(path)
-    return Dir(
-        path,
-        permissions,
-    )
