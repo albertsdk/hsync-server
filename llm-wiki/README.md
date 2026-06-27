@@ -5,9 +5,10 @@ bucket data, serves the REST file API, and relays real-time sync events over
 WebSocket. It depends on `hsync-common` for models, the wire protocol, and
 utilities.
 
-> End-user / human docs live in [`../docs/`](../docs/architecture.md) (`api.md`,
-> `sync-flow.md`, `architecture.md`). This wiki is the **first search surface**:
-> start here, follow the `path/to/file.py:line` references to reach code directly.
+> End-user / human docs live in [`../docs/`](../docs/architecture.md)
+> (`architecture.md`, `LAN_PROTOCOL.md`, `adr/`). This wiki is the **first search
+> surface**: start here, follow the `path/to/file.py:line` references to reach code
+> directly.
 
 ## Map
 

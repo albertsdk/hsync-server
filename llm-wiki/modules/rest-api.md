@@ -2,7 +2,8 @@
 
 All paths are prefixed `/api/v1` (`constants.py:38`). Endpoints attach to
 `auth_router` (Bearer key) unless noted; `public_router` for health/metrics/time.
-Full payload reference for humans: `../docs/api.md`.
+Human-oriented flow diagrams: `../docs/architecture.md`; the machine-readable REST
+contract is the generated OpenAPI snapshot in `hsync-common` (`protocol/rest/openapi.json`).
 
 ## Endpoint map
 

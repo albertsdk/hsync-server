@@ -68,5 +68,6 @@ event is rebroadcast.
 propagates and survives peer reconciliation; uploads of the same path later clear
 it (`clear_deletion`, `tombstones.py:66`).
 
-> Human-readable WS message shapes + sequence diagrams: `../docs/api.md`,
-> `../docs/sync-flow.md`.
+> Human-readable WS sequence diagram (WebSocket Event Flow): `../docs/architecture.md`.
+> The machine-readable WS contract is the generated schema in `hsync-common`
+> (`protocol/ws/ws-schema.json`).
