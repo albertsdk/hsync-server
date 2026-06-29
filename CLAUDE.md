@@ -24,16 +24,20 @@ The project maintains two distinct documentation environments. You must understa
 * **No Stale Docs**: Leaving either `llm-wiki/` or `docs/` out of sync with the code is **STRICTLY PROHIBITED**. If you cannot fully document a change in both places, the task is **not complete**.
 
 ### 3. Directory Structures
-* **LLM-Wiki (`llm-wiki/`) - Agent Optimized**:
+Both doc sets follow a recommended **baseline** layout; adapt the exact file set
+to the project's nature (library, service, CLI, GUI/mobile app) and keep each
+index `README.md` honest about what actually exists.
+* **LLM-Wiki (`llm-wiki/`) - Agent Optimized** (baseline):
   * `llm-wiki/README.md` — index / table of contents linking every other doc.
   * `llm-wiki/architecture.md` — high-level system overview and component interactions.
   * `llm-wiki/modules/<module>.md` — internal responsibilities, key classes/functions.
-  * `llm-wiki/data-models.md` — Pydantic/Dataclass schemas and relationships.
+  * `llm-wiki/data-models.md` — the project's core data structures/schemas and their relationships (whatever the language uses: classes, dataclasses, structs, records, DTOs, enums…).
   * `llm-wiki/decisions.md` — log of relevant architectural/design decisions.
-* **User Docs (`docs/`) - Human Optimized**:
-  * `docs/README.md` — Welcome page, installation, and quickstart for the user.
-  * `docs/usage.md` — How to use the software, CLI commands, or UI features.
-  * `docs/api.md` — Public API endpoints and payload examples.
+  * Add, rename, split or omit files as the project requires (e.g. extra `modules/*` pages); a doc is justified only when it maps to real code.
+* **User Docs (`docs/`) - Human Optimized** (only the subset that applies):
+  * `docs/README.md` — welcome page, installation, and quickstart for the user.
+  * `docs/usage.md` — how to use the software (CLI commands, UI features, or library API).
+  * Add domain-appropriate guides when relevant (e.g. `docs/api.md` for a service exposing endpoints; configuration/security/setup guides) and omit what does not apply (an internal library or an app with no public API needs no `api.md`).
 
 ### 4. Content & Style Rules
 * **For `llm-wiki/` (Concise & Factual)**: Write for an LLM consumer. Use bullet lists, tables, and clear headings. Avoid duplication. Reference the relevant source location using the `path/to/file.py:line` pattern so the doc stays anchored to the implementation. Do not duplicate large code blocks; describe intent and point to the code.
