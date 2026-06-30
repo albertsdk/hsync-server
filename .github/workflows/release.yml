@@ -1,0 +1,46 @@
+name: Release
+
+# Build and push the multi-arch server image to GHCR when a vX.Y.Z tag is
+# pushed. The Dockerfile depends on ../hsync-common at build time, so the build
+# context is the repository root and hsync-common is checked out alongside.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: { path: hsync-server }
+      - uses: actions/checkout@v5
+        with:
+          repository: albertobasso/hsync-common
+          ref: main
+          path: hsync-common
+          token: ${{ secrets.HSYNC_COMMON_PAT }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: hsync-server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/albertobasso/hsync-server:${{ github.ref_name }}
+            ghcr.io/albertobasso/hsync-server:latest

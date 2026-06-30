@@ -164,6 +164,11 @@ sequenceDiagram
 
 ### WebSocket Event Flow
 
+Once a client has completed the WebSocket handshake (frames and close codes are
+documented in [API → Authentication Flow](api.md#authentication-flow)), the
+server registers it with the bucket manager and fans out subsequent events to the
+other connected clients:
+
 ```mermaid
 sequenceDiagram
     participant C1 as Client 1
@@ -172,14 +177,11 @@ sequenceDiagram
     participant FS as File System
     participant C2 as Client 2
 
-    C1->>WS: ① Connect
-    WS->>C1: ② Accept
-    C1->>WS: ③ {"type": "auth", "token": "..."}
-    WS->>C1: ④ {"type": "auth", "status": "ok"}
-    WS->>BCM: ⑤ Register client
+    Note over C1,WS: Authenticated (see API → Authentication Flow)
+    WS->>BCM: ① Register client
 
-    C1->>WS: ⑥ {"name": "added", "src": {...}}
-    WS->>FS: ⑦ Create file/directory
-    WS->>BCM: ⑧ Get bucket manager
-    BCM-->>C2: ⑨ Broadcast event
+    C1->>WS: ② {"name": "added", "src": {...}}
+    WS->>FS: ③ Create file/directory
+    WS->>BCM: ④ Get bucket manager
+    BCM-->>C2: ⑤ Broadcast event
 ```
