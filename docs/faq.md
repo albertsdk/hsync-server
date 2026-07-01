@@ -37,8 +37,9 @@ client's serverless **LAN Mode** instead. See
 
 ### How do I configure the server?
 
-Entirely through `HSYNC_*` environment variables (host/port, API key, SSL, rate
-limits). See [README → Install & quickstart](README.md#install--quickstart).
+Entirely through `HSYNC_*` environment variables. See the
+[Environment Variables table](README.md#environment-variables) in the README
+for the complete list with defaults and descriptions.
 
 ### What port does the server use?
 
@@ -66,8 +67,13 @@ variable. See [API → Authentication](api.md#authentication-flow).
 
 ### Is communication encrypted?
 
-The server is designed to run over HTTPS/WSS — either with its own SSL settings or
-behind a TLS-terminating reverse proxy. See [Architecture](architecture.md).
+The server is designed to run behind a TLS-terminating reverse proxy (nginx,
+Caddy, Traefik) for production use. The built-in SSL support
+(`HSYNC_SSL_ENABLED`) generates self-signed certificates suitable for
+development and LAN testing only — it is not a production TLS terminator.
+
+Clients always connect with `https://` / `wss://` and refuse to send API keys
+over plain HTTP. See [Architecture](architecture.md).
 
 ### How does the server protect against abuse?
 

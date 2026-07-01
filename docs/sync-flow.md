@@ -1,173 +1,175 @@
-# HSYNC Synchronization Flow
+# Server Synchronization Flow
 
-This document describes how file synchronization works between clients through the HSYNC server.
+This document describes how the HSYNC server handles file synchronization from
+its own perspective. The server is a **passive relay**: it stores files,
+broadcasts events, and lets clients decide what to do.
+
+> For the client-side flow (initial sync, conflict resolution, event queue,
+> retry logic, connection recovery) see the
+> [client Sync Flow](../../hsync-client/docs/sync-flow.md).
 
 ## Overview
-
-HSYNC uses a combination of REST API for file transfers and WebSocket for real-time event propagation.
 
 ```mermaid
 graph TB
     subgraph "Client A"
-        FSA[File System]
-        WDA[Watchdog]
         CA[HSYNC Client]
     end
 
     subgraph "HSYNC Server"
         REST[REST API]
         WS[WebSocket Hub]
-        FSS[(Server Storage)]
+        FSS[(File Storage)]
     end
 
     subgraph "Client B"
         CB[HSYNC Client]
-        FSB[File System]
     end
 
-    FSA -->|"① File Change"| WDA
-    WDA -->|"② Event"| CA
-    CA -->|"③ Upload"| REST
-    REST -->|"④ Store"| FSS
-    CA -->|"⑤ Event"| WS
-    WS -.->|"⑥ Broadcast"| CB
-    CB -->|"⑦ Download Request"| REST
-    FSS -->|"⑧ Read"| REST
-    REST -->|"⑨ File Content"| CB
-    CB -->|"⑩ Write"| FSB
+    CA -->|"① Upload file"| REST
+    REST -->|"② Store"| FSS
+    REST -->|"③ Notify"| WS
+    WS -.->|"④ Broadcast event"| CB
+    CB -->|"⑤ Download file"| REST
+    FSS -->|"⑥ Read"| REST
+    REST -->|"⑦ File content"| CB
 ```
 
-## Initial Synchronization
+## Server responsibilities
 
-When a client starts, it performs a full sync to ensure consistency:
+The server has three core responsibilities:
+
+1. **Store files** — accept uploads, serve downloads, manage buckets
+2. **Broadcast events** — relay change notifications to connected clients
+3. **Track deletions** — maintain tombstones so offline peers don't resurrect deleted files
+
+The server does **not**:
+- Decide which files to sync (the client decides)
+- Resolve conflicts (last-writer-wins at the storage level)
+- Queue or retry events (the client retries on disconnect)
+- Watch the filesystem (the client watches its local directory)
+
+## File upload flow
 
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant S as Server
+    participant API as REST API
+    participant RL as Rate Limiter
+    participant FS as File Storage
+    participant HM as Hash Manager
+    participant WS as WebSocket
+    participant OC as Other Clients
 
-    C->>S: ① GET /api/v1/buckets/{bucket}/files
-    S-->>C: ② List of remote files
-
-    C->>C: ③ Scan local directory
-    C->>C: ④ Compare local vs remote
-
-    loop ⑤ For each difference
-        alt ⑤a Remote newer
-            C->>S: ⑥ GET /api/v1/buckets/{bucket}/files/download
-            S-->>C: ⑦ File content
-            C->>C: ⑧ Write to local disk
-        else ⑤b Local newer
-            C->>S: ⑥ POST /api/v1/buckets/{bucket}/files
-            S-->>C: ⑦ Upload confirmation
-        else ⑤c Only remote
-            C->>S: ⑥ GET /api/v1/buckets/{bucket}/files/download
-            S-->>C: ⑦ File content
-        else ⑤d Only local
-            C->>S: ⑥ POST /api/v1/buckets/{bucket}/files
-            S-->>C: ⑦ Upload confirmation
-        end
+    C->>API: ① POST /api/v1/buckets/{bucket}/files
+    API->>RL: ② Check rate limit
+    RL-->>API: ③ OK
+    API->>HM: ④ Check SHA-256 hash
+    alt ⑤a File exists with same hash
+        API-->>C: ⑥a 409 Conflict
+    else ⑤b New or modified file
+        API->>FS: ⑥b Write file atomically
+        API->>HM: ⑦ Store SHA-256 hash
+        API->>WS: ⑧ Broadcast "added" event
+        WS-->>OC: ⑨ Send event
+        API-->>C: ⑩ 201 Created
     end
-
-    C->>C: ⑨ Sync complete
 ```
 
-## Real-Time Synchronization (Watch Mode)
+## File download flow
 
-In watch mode, clients maintain a WebSocket connection for instant updates:
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant API as REST API
+    participant FS as File Storage
+
+    C->>API: ① GET /api/v1/buckets/{bucket}/files/download?filename={path}
+    API->>FS: ② Look up file
+    alt ③a File exists
+        FS-->>API: ④ File stream
+        API-->>C: ⑤ 200 OK + file content
+    else ③b File not found
+        API-->>C: ⑤ 404 Not Found
+    end
+```
+
+## WebSocket event broadcast
+
+When a client uploads, modifies, renames, or deletes a file, the server
+broadcasts the event to all **other** clients connected to the same bucket:
+
+```mermaid
+sequenceDiagram
+    participant C1 as Client 1
+    participant WS as WebSocket
+    participant BCM as Bucket Manager
+    participant C2 as Client 2
+    participant C3 as Client 3
+
+    Note over C1,WS: Client 1 is authenticated
+    WS->>BCM: ① Register client for bucket
+
+    C1->>WS: ② Upload complete (REST)
+    WS->>BCM: ③ Get bucket connections
+    BCM-->>C2: ④ Broadcast event
+    BCM-->>C3: ⑤ Broadcast event
+```
+
+The server does **not** echo the event back to the originating client (the
+originating client already knows about its own change).
+
+## Tombstone flow
+
+Deletion markers (tombstones) prevent offline clients from resurrecting files
+they missed being deleted:
 
 ```mermaid
 sequenceDiagram
     participant C1 as Client 1
     participant S as Server
-    participant C2 as Client 2
+    participant C2 as Client 2 (offline)
 
-    Note over C1,C2: ① Both clients connected via WebSocket
+    C1->>S: ① DELETE /api/v1/buckets/{bucket}/files
+    S->>S: ② Remove file, create tombstone
+    S-->>C1: ③ 200 OK
 
-    C1->>C1: ② User creates file.txt
-    C1->>S: ③ POST /api/v1/buckets/{bucket}/files
-    S->>S: ④ Store file
-    S-->>C2: ⑤ WebSocket: {"name": "added", "src": {...}}
-    C2->>S: ⑥ GET /api/v1/buckets/{bucket}/files/download
-    S-->>C2: ⑦ File content
-    C2->>C2: ⑧ Write file.txt locally
+    Note over C2: C2 goes offline, misses the event
+
+    C2->>S: ④ Later: GET /api/v1/buckets/{bucket}/files
+    S-->>C2: ⑤ File list (deleted file absent)
+    C2->>S: ⑥ GET /api/v1/buckets/{bucket}/tombstones
+    S-->>C2: ⑦ Deletion markers
+    Note over C2: C2 skips the deleted file during reconciliation
 ```
 
-## Event Types and Actions
+## Resumable upload
 
-```mermaid
-flowchart TD
-    E[① Event Received] -->|"②"| T{Event Type?}
-
-    T -->|"③a added"| A[Download file]
-    T -->|"③b modified"| M[Download file]
-    T -->|"③c renamed"| R[Rename local file]
-    T -->|"③d deleted"| D[Delete local file]
-    T -->|"③e symlink"| L[Create symlink]
-
-    A -->|"④"| V{Verify SHA-256}
-    M -->|"④"| V
-    V -->|"⑤a Match"| S[Success]
-    V -->|"⑤b Mismatch"| RE[Retry download]
-```
-
-## Conflict Resolution
-
-HSYNC uses "last write wins" based on modification time:
-
-```mermaid
-flowchart TD
-    C[① Compare Files] -->|"②"| T{mtime comparison}
-
-    T -->|"③a remote > local"| D[Download from server]
-    T -->|"③b local > remote"| U[Upload to server]
-    T -->|"③c equal"| H{④ SHA-256 match?}
-
-    H -->|"⑤a Yes"| S[Skip - files identical]
-    H -->|"⑤b No"| U2[Upload local version]
-```
-
-## Event Queue and Retry
-
-The client uses an event queue with exponential backoff for reliability:
-
-```mermaid
-stateDiagram-v2
-    [*] --> Queued: ① Add event
-    Queued --> Processing: ② Dequeue
-    Processing --> Success: ③a Event sent
-    Processing --> Retry: ③b Network error
-    Retry --> Queued: ④ Backoff wait
-    Retry --> Failed: ⑤ Max retries
-    Success --> [*]
-    Failed --> [*]
-
-    note right of Retry
-        Backoff: 1s, 2s, 4s, 8s...
-        Max: 60s
-        Max retries: 5
-    end note
-```
-
-## Connection Recovery
-
-When the WebSocket connection is lost:
+The server tracks partial uploads so clients can resume interrupted transfers:
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant S as Server
 
-    C->>S: ① WebSocket connected
-    Note over C,S: ② Connection lost
+    C->>S: ① GET .../files/upload-status?filename=big.iso
+    S-->>C: ② {"status": "resumable", "offset": 524288}
 
-    C->>C: ③ Wait reconnect_delay seconds
-    C->>S: ④ Reconnect WebSocket
-    S-->>C: ⑤ Connection accepted
-    C->>S: ⑥ Authenticate
-    S-->>C: ⑦ Auth OK
-
-    C->>S: ⑧ GET /api/v1/buckets/{bucket}/files
-    S-->>C: ⑨ Current file list
-    C->>C: ⑩ Resync to catch missed events
+    C->>S: ③ POST .../files (bytes from offset 524288)
+    S->>S: ④ Append to partial file
+    S-->>C: ⑤ 201 Created
 ```
+
+## Health and monitoring
+
+The server exposes unauthenticated endpoints for operational monitoring:
+
+- `GET /health` — returns empty `200 OK` (liveness probe)
+- `GET /metrics` — Prometheus metrics
+- `GET /api/v1/time` — server timestamp for client clock-sync
+
+## See also
+
+- [API Reference](api.md) — complete REST + WebSocket contract.
+- [Architecture](architecture.md) — server components and module structure.
+- [FAQ](faq.md) — frequently asked questions.
