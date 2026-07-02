@@ -7,13 +7,35 @@
 > The software is provided "as is", without warranty of any kind — see the full
 > [Disclaimer](#disclaimer) and [License](#license) below.
 
+
+**HSYNC Server** is the central hub that keeps your files in sync across all your
+devices. It stores shared folders, accepts file changes from any device, and
+instantly notifies all other connected devices so they can pull the updates —
+all over standard HTTP/HTTPS.
+
 ---
 
-**HSYNC Server** - HTTP-based file synchronization server.
+**Quick navigation:**
+- **New to HSync?** Start with [Why HSYNC Server?](#why-hsync-server) and [Quick Start](#quick-start)
+- **Looking for installation options?** Jump to [Install & quickstart](docs/README.md#install--quickstart)
+- **Want to contribute?** See [Contributing](CONTRIBUTING.md)
+- **Looking for detailed documentation?** Navigate to [docs/README.md](docs/README.md)
 
-Central server for HSYNC clients. Manages buckets (shared directories), handles
-file uploads/downloads via REST API, and broadcasts real-time events to connected
-clients via WebSocket.
+## Table of Contents
+
+- [Why HSYNC Server?](#why-hsync-server)
+- [Architecture Overview](#architecture-overview)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Command Line Options](#command-line-options)
+- [Configuration](#configuration)
+- [Documentation](#documentation)
+- [Project Structure](#project-structure)
+- [Version](#version)
+- [License](#license)
+- [Disclaimer](#disclaimer)
+
+---
 
 ## Why HSYNC Server?
 

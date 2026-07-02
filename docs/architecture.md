@@ -67,71 +67,9 @@ graph TB
 | **Hash Manager** | Caches SHA-256 hashes for duplicate detection |
 | **File System** | Stores bucket data in `/buckets/{bucket_name}/` |
 
-## Module Structure
 
-```mermaid
-graph LR
-    subgraph Core["① hsync_server"]
-        main[main.py]
-        config[config.py]
-        routers[routers.py]
-        hashes[hashes.py]
-        rate_limiter[rate_limiter.py]
-        middleware[middleware.py]
-        error_handlers[error_handlers.py]
-        compression[compression.py]
-        tombstones[tombstones.py]
-
-        subgraph Api["② api/"]
-            events[events.py]
-            event_handlers[event_handlers.py]
-            buckets[buckets.py]
-            health[health.py]
-            connmgr[connection_manager.py]
-            utils[utils.py]
-            file_utils[file_utils.py]
-
-            subgraph FilesPkg["③ api/files/"]
-                flist[list.py]
-                fupload[upload.py]
-                fdownload[download.py]
-                fdelete[delete.py]
-            end
-        end
-
-        subgraph Models["④ models (from hsync-common)"]
-            file[file.py]
-            dir[dir.py]
-            event[event.py]
-            symlink[symlink.py]
-            sync_action[sync_action.py]
-        end
-    end
-
-    main --> config
-    main --> routers
-    main --> rate_limiter
-    main --> middleware
-    main --> error_handlers
-    main --> events
-    main --> FilesPkg
-    main --> buckets
-    main --> health
-
-    FilesPkg --> utils
-    FilesPkg --> file_utils
-    FilesPkg --> hashes
-    FilesPkg --> compression
-    FilesPkg --> tombstones
-    FilesPkg --> connmgr
-
-    events --> event_handlers
-    events --> connmgr
-    event_handlers --> Models
-```
-
-> Tombstone REST endpoints (`GET`/`POST .../tombstones`) live in `api/files/list.py`
-> and use the shared `tombstones.py` store; `health.py` also serves `/api/v1/time`.
+> For module structure details and a component reference, see the
+> [Developer Guide](developer.md).
 
 ## Data Flow
 
