@@ -68,6 +68,9 @@ Thumbs.db
 # Kilo
 .kilo
 
- # Cache
- .mypy_cache
- .ruff_cache
+# Cache
+.mypy_cache
+.ruff_cache
+
+# HSYNC
+.hsynckeep
