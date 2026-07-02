@@ -27,6 +27,18 @@ TEST_ADMIN_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789a
 TEST_TOKEN = f"hs_HsyncAdminBootstrap01_{TEST_ADMIN_SECRET}"
 os.environ["HSYNC_ADMIN_KEY"] = TEST_ADMIN_SECRET
 
+# Scrub any HSYNC_* inherited from the developer's shell at conftest import
+# time — BEFORE the first test module is collected. Contract tests import
+# ``hsync_server.main`` at module level, and that import already builds a
+# ``Settings`` instance (rate_limiter module constants) whose legacy-key guard
+# aborts collection in a shell that still exports the removed ``HSYNC_API_KEY``
+# (dev.env), and whose values are then baked into the ``@lru_cache`` of
+# ``get_settings``. The autouse ``_scrub_hsync_env`` fixture runs only after
+# collection — too late for this. Process-local: the caller's shell env is
+# untouched.
+for _leaked in [k for k in os.environ if k.startswith("HSYNC_") and k != "HSYNC_ADMIN_KEY"]:
+    del os.environ[_leaked]
+
 
 @pytest.fixture(autouse=True)
 def _prevent_os_environ_leakage(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
