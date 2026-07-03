@@ -27,6 +27,13 @@ TEST_ADMIN_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789a
 TEST_TOKEN = f"hs_HsyncAdminBootstrap01_{TEST_ADMIN_SECRET}"
 os.environ["HSYNC_ADMIN_KEY"] = TEST_ADMIN_SECRET
 
+# ``HSYNC_*`` keys the import-time scrub must NOT delete. ``HSYNC_ADMIN_KEY``
+# is set above for the bootstrap admin account; ``HSYNC_BB_SERVER`` /
+# ``HSYNC_BB_LAN`` are test opt-in flags (read by the ``test_bb_*`` modules at
+# import time) and are not ``Settings`` fields, so a shell-exported value must
+# survive to collection or the whole black-box suite silently skips.
+_SCRUB_EXEMPT_HSYNC_KEYS = frozenset({"HSYNC_ADMIN_KEY", "HSYNC_BB_SERVER", "HSYNC_BB_LAN"})
+
 # Scrub any HSYNC_* inherited from the developer's shell at conftest import
 # time — BEFORE the first test module is collected. Contract tests import
 # ``hsync_server.main`` at module level, and that import already builds a
@@ -36,7 +43,9 @@ os.environ["HSYNC_ADMIN_KEY"] = TEST_ADMIN_SECRET
 # ``get_settings``. The autouse ``_scrub_hsync_env`` fixture runs only after
 # collection — too late for this. Process-local: the caller's shell env is
 # untouched.
-for _leaked in [k for k in os.environ if k.startswith("HSYNC_") and k != "HSYNC_ADMIN_KEY"]:
+for _leaked in [
+    k for k in os.environ if k.startswith("HSYNC_") and k not in _SCRUB_EXEMPT_HSYNC_KEYS
+]:
     del os.environ[_leaked]
 
 
