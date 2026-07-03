@@ -78,6 +78,10 @@ sequenceDiagram
     end
 ```
 
+> The SHA-256 verified in ④/⑦ is computed **while the upload body is
+> copied** to its temp file (no separate re-read of the file afterwards);
+> compressed uploads hash the finalized decompressed content instead.
+
 ## File download flow
 
 ```mermaid

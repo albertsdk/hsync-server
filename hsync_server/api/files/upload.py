@@ -16,6 +16,7 @@ This module provides the REST API endpoint for file upload with:
 """
 
 import asyncio
+import hashlib
 import hmac
 import json
 from os import fsync, remove, replace
@@ -82,6 +83,11 @@ from hsync_server.tombstones import clear_deletion
 from hsync_server.versions import record_version, server_version_info
 
 from .permissions import apply_permissions_to_existing_file
+
+# Chunk size for copying the spooled upload body to its destination file.
+# 8 KiB made the copy loop event-loop-bound on large files (one await per
+# 8 KiB); 256 KiB matches the transfer chunk tiers used across the ecosystem.
+_UPLOAD_COPY_CHUNK = 256 * 1024
 
 
 async def _flush_to_disk(handle) -> None:
@@ -317,6 +323,14 @@ async def upload_file(
         if Path(file_location).exists():
             copy2(file_location, backup_path)
 
+        # Fused checksum: updated while the body is copied so a complete
+        # upload needs no second full read of the temp file (the previous
+        # implementation re-read the whole file with compute_sha256_async
+        # after the copy). Excluded for compressed uploads — the verified
+        # hash is of the DECOMPRESSED content, which only exists after the
+        # raw copy is expanded below.
+        fused_sha = None if is_compressed else hashlib.sha256()
+
         # Handle resumable upload
         if is_resumable:
             # Validate partial file exists and has expected size
@@ -336,8 +350,15 @@ async def upload_file(
 
             # Append to partial file
             total_bytes = offset
+            # Fused checksum (resume): ingest the already-received prefix so
+            # the digest covers the complete file. Compressed uploads are
+            # never resumable (rejected above), so fused_sha is set here.
+            assert fused_sha is not None
+            async with aiofiles.open(partial_file_path, "rb") as prefix:
+                while prefix_chunk := await prefix.read(_UPLOAD_COPY_CHUNK):
+                    fused_sha.update(prefix_chunk)
             async with aiofiles.open(partial_file_path, "ab") as f:
-                while chunk := await file.read(8192):
+                while chunk := await file.read(_UPLOAD_COPY_CHUNK):
                     total_bytes += len(chunk)
                     if max_upload_size > 0 and total_bytes > max_upload_size:
                         raise FileTooLargeError(
@@ -348,6 +369,7 @@ async def upload_file(
                             },
                         )
                     await f.write(chunk)
+                    fused_sha.update(chunk)
                 # Ensure appended data reaches physical storage
                 await _flush_to_disk(f)
 
@@ -383,7 +405,7 @@ async def upload_file(
                 delete=False, dir=file_directory, prefix=".hsync-upload-"
             ) as temp_file:
                 file_location_tmp = str(temp_file.name)
-                while chunk := await file.read(8192):
+                while chunk := await file.read(_UPLOAD_COPY_CHUNK):
                     total_bytes += len(chunk)
                     if max_upload_size > 0 and total_bytes > max_upload_size:
                         raise FileTooLargeError(
@@ -394,6 +416,8 @@ async def upload_file(
                             },
                         )
                     await temp_file.write(chunk)
+                    if fused_sha is not None:
+                        fused_sha.update(chunk)
                 # Ensure written data reaches physical storage
                 await _flush_to_disk(temp_file)
 
@@ -467,7 +491,14 @@ async def upload_file(
         # declared checksum, otherwise the upload is rejected (400).  Verify
         # *before* touching any file metadata so rejected uploads are as
         # cheap as possible and never alter existing on-disk state.
-        sha256sum_tmp = await compute_sha256_async(file_location_tmp)
+        if fused_sha is not None:
+            # Uncompressed uploads: the digest was fused into the copy loop
+            # (no second full read of the temp file).
+            sha256sum_tmp = fused_sha.hexdigest()
+        else:
+            # Compressed uploads: the fused hasher would cover the raw
+            # compressed bytes — hash the finalized decompressed file.
+            sha256sum_tmp = await compute_sha256_async(file_location_tmp)
         if not hmac.compare_digest(sha256sum, sha256sum_tmp):
             raise ChecksumMismatchError(
                 message=f"Checksum mismatch: expected {sha256sum}, got {sha256sum_tmp}",
