@@ -185,5 +185,8 @@ see the [client examples](https://github.com/albertobasso/hsync-client/blob/main
 ## Related projects
 
 - [hsync-client](https://github.com/albertobasso/hsync-client/blob/main/docs/README.md) — the sync client / CLI.
-- [hsync-desktop](https://github.com/albertobasso/hsync-desktop/blob/main/docs/README.md) — desktop GUI front-end.
-- [hsync-android](https://github.com/albertobasso/hsync-android/blob/main/docs/README.md) — the Android app.
+- [hsync-desktop](https://github.com/albertobasso/hsync-desktop/blob/main/docs/README.md) — desktop GUI front-end *(in development)*.
+- [hsync-android](https://github.com/albertobasso/hsync-android/blob/main/docs/README.md) — the Android app *(in development)*.
+
+> **Note:** The desktop GUI (`hsync-desktop`) and the Android app (`hsync-android`)
+> are still under active development and are not yet ready for production use.

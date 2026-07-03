@@ -25,7 +25,8 @@ links to the relevant guide.
   resurrecting files they missed being deleted. See
   [API → Tombstones](api.md#tombstones).
 - **Open ecosystem.** It is the shared hub for the CLI, desktop, and Android
-  clients.
+  clients. The desktop GUI and Android app are still under development; the CLI
+  is the production-ready client today.
 
 ### Do I need to run a server at all?
 
