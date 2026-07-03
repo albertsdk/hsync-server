@@ -15,14 +15,15 @@ all over standard HTTP/HTTPS.
 > [HSYNC Client](https://github.com/albertobasso/hsync-client) on each device
 > to actually sync files; the server is the storage and coordination hub.
 
->  👉 **Remember:** keep verified backups of your data before trying new
-> synchronization tools. 😉
+> 👉 **Operational Advisory:** As with any automated filesystem mutation utility, administrators are strongly advised to maintain validated, independent backups prior to initial deployment in production environments.
 
 ---
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](LICENSE)
+[![CI](https://github.com/albertobasso/hsync-server/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/albertobasso/hsync-server/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/albertobasso/hsync-server)](https://github.com/albertobasso/hsync-server/releases/latest)
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
-[![Docker](https://img.shields.io/badge/Docker-🐳-2496ED.svg)](https://www.docker.com/)
+[![Docker](https://img.shields.io/badge/Docker-🐳-2496ED.svg)](https://github.com/albertobasso/hsync-server/pkgs/container/hsync-server)
 
 **Quick navigation:**
 - **New to HSYNC?** Start with [Why HSYNC Server?](#why-hsync-server) and the [Getting Started guide](docs/getting-started.md)
@@ -37,11 +38,11 @@ This makes it the ideal choice in environments where HTTP is the only protocol
 allowed through firewalls, proxies, or network policies — a common constraint in
 corporate networks, cloud environments, and restricted infrastructures.<br><br>
 The table below compares HSYNC with common alternatives on five dimensions.<br>
-**Files As-Is** means the tool stores your files in their original format,
+**Native Storage** means the tool stores your files in their original format,
 directly browsable on disk — no proprietary containers, block stores, or
 opaque internal formats.
 
-| Tool | Protocol | HTTP | Real-Time | Files As-Is | Architecture |
+| Tool | Protocol | HTTP | Real-Time | Native Storage | Architecture |
 |------|----------|:---:|:---:|:---:|------|
 | **HSYNC Server** | HTTP / HTTPS | ✅ | ✅ | ✅ | Client-Server + P2P |
 | rsync | SSH or rsync daemon | ❌ | ❌ | ✅ | Client-Server |
@@ -100,7 +101,7 @@ flowchart TB
 - 🚀 REST API server for file upload/download
 - 📁 Bucket management for file organization
 - 🔄 WebSocket for real-time synchronization
-- 🔐 API Key authentication (Bearer token for REST, first-frame for WebSocket)
+- 🔐 Account token authentication (`hs_<id>_<secret>`; Bearer token for REST, first-frame for WebSocket)
 - ✅ SHA-256-based file integrity verification
 - 📊 Integrated Prometheus metrics
 - 🐳 Docker-ready deployment
@@ -135,7 +136,7 @@ hsync-server [options]
 |--------|-------------|---------|
 | `--env-file PATH` | Load environment variables from file | - |
 | `-p, --port PORT` | Server port | `9753` |
-| `--log-level LEVEL` | Log level (debug, info, warning, error) | `info` |
+| `--log-level LEVEL` | Log level (debug, info, warning, error, critical) | `info` |
 | `--no-color` | Disable colored log output | `false` |
 | `--ssl` | Enable HTTPS/WSS (auto-generates certs if not provided) | disabled |
 | `--ssl-cert FILE` | Path to SSL certificate (PEM format) | auto-generated |
@@ -149,11 +150,15 @@ The server is configured entirely through `HSYNC_*` environment variables.
 See the [Environment Variables table](docs/README.md#environment-variables) in
 the documentation for the complete list with defaults and descriptions.
 
+Clients authenticate with per-account tokens (`hs_<id>_<secret>`); see
+[Authentication](docs/authentication.md) for the auth flow and the bootstrap
+admin account.
+
 Key variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HSYNC_API_KEY` | API key for authentication (required, min 16 chars) | — |
+| `HSYNC_ADMIN_KEY` | Bootstrap admin secret (64 hex chars). If unset, the server generates one and prints the admin account token once at startup | auto-generated |
 | `HSYNC_PORT` | Server port | `9753` |
 | `HSYNC_LOG_LEVEL` | Log level | `info` |
 | `HSYNC_BUCKETS` | Directory for bucket data storage | `<app>/buckets` (absolute, resolved at startup) |
@@ -183,7 +188,7 @@ Key variables:
 | [Contributing](CONTRIBUTING.md) | Development setup and contribution guidelines |
 | [Security Policy](SECURITY.md) | Supported versions and how to report vulnerabilities |
 
-### Related projects
+### Associated Ecosystem Components
 
 - [HSYNC Common](https://github.com/albertobasso/hsync-common/blob/main/README.md) - Shared models, constants, and utilities used by the client
 - [HSYNC Client](https://github.com/albertobasso/hsync-client/blob/main/README.md) - Sync client (Server Mode and LAN/P2P Mode)
@@ -193,7 +198,7 @@ Key variables:
 > **Note:** The desktop GUI (`HSYNC Desktop`) and the Android app (`HSYNC Android`)
 > are still under active development and are not yet ready for production use.
 
-## Security
+## Security & Vulnerability Reporting
 
 To report a vulnerability, please use GitHub's **Private Vulnerability Reporting**:
 
@@ -212,3 +217,7 @@ recommendations.
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. Although the author has implemented reasonable safety measures, IN NO EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY — including, without limitation, any direct, indirect, incidental, special, exemplary, or consequential damages, loss of data, or business interruption — WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 This disclaimer supplements, and does not replace, Sections 6 ("Disclaimer of Warranty") and 7 ("Limitation of Liability") of the [Mozilla Public License 2.0](LICENSE), which govern this software.
+
+## License
+
+Distributed under the [Mozilla Public License 2.0](LICENSE).

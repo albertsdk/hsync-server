@@ -163,7 +163,7 @@ For practical usage examples of the HSYNC client — including first-time setup,
 file exclusion, conflict resolution, restore from tombstones, and migration —
 see the [client examples](https://github.com/albertobasso/hsync-client/blob/main/docs/examples.md).
 
-## Related projects
+## Associated Ecosystem Components
 
 - [HSYNC Common](https://github.com/albertobasso/hsync-common/blob/main/README.md) - Shared models, constants, and utilities used by the client
 - [HSYNC Client](https://github.com/albertobasso/hsync-client/blob/main/README.md) - Sync client (Server Mode and LAN/P2P Mode)
