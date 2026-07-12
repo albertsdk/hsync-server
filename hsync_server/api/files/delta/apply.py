@@ -380,7 +380,12 @@ async def delta_apply(
                 corrected_mtime=delta_result.record_corrected_mtime,
             )
 
-            src = None if is_hidden_file(file_location) else LocalFile.get(file_location)
+            # File.get may recompute the SHA-256 (blocking I/O): keep it off the event loop.
+            src = (
+                None
+                if is_hidden_file(file_location)
+                else await asyncio.to_thread(LocalFile.get, file_location)
+            )
             if src is not None:
                 src.version = server_version_info(bucket, local_bucket, file_location)
             if src:

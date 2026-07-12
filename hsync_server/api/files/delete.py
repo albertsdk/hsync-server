@@ -87,7 +87,11 @@ async def delete_file(
     try:
         from os import remove
 
-        # Collect file metadata before deletion (needed for the event and tombstone)
+        # Collect file metadata before deletion (needed for the event and tombstone).
+        # Kept synchronous ON PURPOSE: moved to a worker thread it would
+        # re-enable event-loop interleaving between metadata capture, tombstone
+        # persistence and the unlink — the delete must stay one atomic step
+        # w.r.t. other coroutines.
         src = LocalFile.get(file)
         local_bucket = f"{get_buckets_path()}/{bucket}"
 

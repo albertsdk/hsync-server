@@ -80,6 +80,10 @@ async def apply_permissions_to_existing_file(
     # re-emit the (unchanged) file as a `modified` event so they apply
     # just the permissions (their content dedup sees the same hash).
     if permissions_only:
+        # Kept synchronous ON PURPOSE: offloading File.get would let a
+        # same-path upload interleave and broadcast its generation under this
+        # request's CID. The permission-only convergence path is rare, so the
+        # pre-existing loop hold is the safer trade-off.
         src = None if is_hidden_file(file_location) else LocalFile.get(file_location)
         if src is not None:
             src.version = server_version_info(bucket, _bucket_dir(bucket), file_location)

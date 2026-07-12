@@ -222,7 +222,12 @@ async def handle_deleted_event(
             else:
                 # A recursive directory event replaces the per-descendant
                 # delete stream: record the descendants' causal tombstones
-                # before the tree disappears (ADR-0003).
+                # before the tree disappears (ADR-0003). Tombstone walk and
+                # rmtree stay synchronous ON PURPOSE: offloading them would
+                # let uploads publish new descendants into the tree mid-walk
+                # that the rmtree then removes without a tombstone — a
+                # resurrection regression. Full loop-freedom requires a
+                # shared bucket/tree mutation lock (documented follow-up).
                 _record_tombstones_for_tree(dir_obj.path, bucket_dir, bucket, cid)
                 log.info(f'{ActionLabel.DELETE} Deleted dir "{dir_obj.path}" (CID: {cid})')
                 rmtree(dir_obj.path, ignore_errors=False)

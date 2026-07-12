@@ -12,6 +12,7 @@ This module provides the REST API endpoints for:
 - Getting upload status for resumable uploads
 """
 
+import asyncio
 import hmac
 import os
 from os import remove, walk
@@ -288,8 +289,11 @@ async def get_files(
                     file_list.append(entry)
                 continue
 
-            # Get file info and normalize path relative to bucket
-            file_obj = LocalFile.get(file, root)
+            # Get file info and normalize path relative to bucket. File.get
+            # recomputes the SHA-256 on a cache miss (blocking I/O + CPU), so
+            # run it on a worker thread: the event loop keeps serving other
+            # requests while a big bucket is being listed.
+            file_obj = await asyncio.to_thread(LocalFile.get, file, root)
             if file_obj:
                 file_data = LocalFile.from_dict(file_obj.to_dict(), bucket_root).to_dict()
                 # JOIN causal version metadata from the version store (ADR-0022).

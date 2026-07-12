@@ -166,6 +166,23 @@ when the bucket does not exist or the caller is not a member).
 
 ## List / upload-status / tombstones (`api/files/list.py`)
 
+The `/files` listing resolves per-file metadata (`File.get`, `models/file.py`)
+on **asyncio worker threads** (`asyncio.to_thread`): a cache-miss recomputes
+the SHA-256 (blocking I/O + CPU), so the per-file hashing no longer blocks the
+loop. The directory walk itself, hidden/symlink checks and the per-entry
+version-store join still run on the loop (bounded, no hashing).
+
+`File.get` offloads elsewhere, and where the flow stays on the loop **on
+purpose**: upload (`upload.py`) and delta apply (`apply.py`) capture their
+broadcast metadata on a worker thread **inside the per-path FileLockManager
+section**, so the broadcast describes exactly the generation that upload
+published (no lock released → no same-path interleaving). The pre-delete hash
+(`delete.py`) and the permission-only convergence read (`permissions.py`)
+remain synchronous: offloading them would open an event-loop window in which a
+same-path upload could mix generations into the tombstone/event metadata —
+correctness over loop-freedom.
+
+
 - `get_files` (`list.py:124`) walks the bucket, skips hidden/sentinel/`.part`
   files (`is_hidden_file`, `is_hidden_dir`, `PARTIAL_DOWNLOAD_SUFFIX`), skips
   file-symlinks whose target escapes the bucket (`is_safe_symlink_target`,
@@ -205,6 +222,14 @@ See `../docs/delta-transfer.md` for user-facing documentation.
 
 **Concurrency**: The `delta_apply` endpoint uses a per-file lock manager
 (`file_lock_manager.py`) to serialize concurrent delta applies on the same file.
+Signature computation and matching (`compute_signatures`, `find_matches_file`),
+literal compression and token issuance all run on **asyncio worker threads**
+(`asyncio.to_thread`) so the event loop never blocks. Two shared caches are
+cross-thread by design: `_signature_cache` (`delta/signatures.py`, TTL 300 s,
+FIFO cap 64, guarded by `_signature_cache_lock` — computed outside the lock)
+and `delta_token_store` (`delta/tokens.py`, `threading.RLock` around
+issue/lookup/consume/discard/cleanup so the token-cap and storage checks are
+atomic). Regression coverage: `tests/test_concurrency_hardening.py`.
 This prevents race conditions where multiple clients would write to the same
 `.delta.part` file simultaneously. The lock is acquired before the base file
 race check and released after the atomic rename, ensuring that the entire

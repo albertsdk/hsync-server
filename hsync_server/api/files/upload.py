@@ -629,14 +629,24 @@ async def upload_file(
                 corrected_mtime=result.record_corrected_mtime,
             )
 
-        # Broadcast "added" event to other connected clients. Hidden files
-        # are excluded (as they are from the /files listing): peers syncing
-        # hidden files pick them up via their own watcher or the next full
-        # reconciliation, and a peer cannot push dotfiles onto clients that
-        # never asked for them.
-        src = None if is_hidden_file(file_location) else LocalFile.get(file_location)
-        if src is not None:
-            src.version = server_version_info(bucket, local_bucket, file_location)
+            # Capture the broadcast metadata while STILL holding the per-path
+            # lock: it must describe exactly the generation this upload just
+            # published — an unlocked read could interleave with a later
+            # same-path upload and broadcast its content/version under this
+            # upload's CID. The hash-on-miss inside File.get is blocking I/O,
+            # so it runs on a worker thread; the lock is already held across
+            # awaited disk I/O above (set_permissions), so this adds no new
+            # lock-hold category. Hidden files are excluded (as from the
+            # /files listing): peers syncing hidden files pick them up via
+            # their own watcher or the next full reconciliation.
+            if is_hidden_file(file_location):
+                src = None
+            else:
+                src = await asyncio.to_thread(LocalFile.get, file_location)
+                if src is not None:
+                    src.version = server_version_info(bucket, local_bucket, file_location)
+
+        # Broadcast the pre-captured metadata outside the lock.
         if src:
             manager = bucket_manager.get_manager(bucket)
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))

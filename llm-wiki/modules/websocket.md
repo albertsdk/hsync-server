@@ -12,8 +12,10 @@ on `public_router` (WS can't use header auth; auth is the first frame).
 
 Uses `hsync_common.protocol.handshake` (imported `events.py:28`):
 - Client sends an auth frame; server verifies the account token via
-  `verify_token` (`auth.py`, scrypt + KDF cache) and **hard-fails on
-  `protocol_version` mismatch** against `PROTOCOL_VERSION_WS`.
+  `verify_token` (`auth.py`, scrypt + KDF cache) — run on an asyncio worker
+  thread (`asyncio.to_thread` in `_dispatching_authenticate`, `events.py`)
+  so the CPU-heavy scrypt never blocks the loop during a handshake — and
+  **hard-fails on `protocol_version` mismatch** against `PROTOCOL_VERSION_WS`.
 - After auth, the server checks bucket existence + membership; failure closes
   with `4009` (indistinguishable from "bucket not found").
 - Replies with `build_ws_auth_ok` / `build_ws_auth_error`; client capabilities
@@ -98,7 +100,12 @@ event is rebroadcast.
 
 `handle_deleted_event` records a tombstone (`tombstones.py:49`) so the deletion
 propagates and survives peer reconciliation; uploads of the same path later clear
-it (`clear_deletion`, `tombstones.py:66`).
+it (`clear_deletion`, `tombstones.py:66`). For a recursive directory `deleted`,
+the descendant walk + hashing (`_record_tombstones_for_tree`) and the `rmtree`
+run **synchronously on the loop on purpose**: offloading them would let an
+upload publish a new descendant mid-walk that the `rmtree` then removes without
+a tombstone (a resurrection regression). Full loop-freedom here needs a bucket/
+tree mutation lock shared with upload — a documented follow-up.
 
 > Human-readable WS sequence diagram (WebSocket Event Flow): `../docs/architecture.md`.
 > The machine-readable WS contract is the generated schema in `hsync-common`

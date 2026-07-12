@@ -155,7 +155,10 @@ async def _dispatching_authenticate(
         auth_token = auth_message.get("token", "")
         store = get_auth_store()
         try:
-            ctx = verify_token(auth_token, store)
+            # scrypt verification is CPU-heavy (~sub-second): run it off the
+            # event loop like the REST dependency (sync def -> threadpool) so
+            # other connections keep being served during a handshake.
+            ctx = await asyncio.to_thread(verify_token, auth_token, store)
         except Exception:
             log.warning(f"{ActionLabel.WS} Invalid API key from {cid}")
             await websocket.close(code=4003, reason="Invalid API key")

@@ -22,6 +22,7 @@ status codes and fallbacks are identical to the stdlib LAN server.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from pathlib import Path
 from typing import Annotated
@@ -96,7 +97,12 @@ _SIGNATURE_CACHE_MAX = 64
 
 # (abs_path, sha256) -> (created, block_size, signatures). Signature computation
 # is the dominant delta cost, so reuse it while the base file is unchanged.
+# Guarded by ``_signature_cache_lock`` because ``_cached_signatures`` runs on
+# asyncio worker threads (``asyncio.to_thread``), so several requests can
+# miss/compute/evict concurrently; an unguarded FIFO eviction could pop the
+# same key twice (KeyError) or iterate a dict mutated mid-loop.
 _signature_cache: dict[tuple[str, str], tuple[float, int, list[BlockSignatureDict]]] = {}
+_signature_cache_lock = threading.Lock()
 
 
 def _cached_signatures(
@@ -105,15 +111,24 @@ def _cached_signatures(
     """Compute (or reuse cached) block signatures for an unchanged base file."""
     key = (abs_path, sha256sum)
     now = time.time()
-    hit = _signature_cache.get(key)
-    if hit is not None and hit[0] >= now - _SIGNATURE_CACHE_TTL:
-        return hit[1], hit[2]
+    with _signature_cache_lock:
+        hit = _signature_cache.get(key)
+        if hit is not None and hit[0] >= now - _SIGNATURE_CACHE_TTL:
+            return hit[1], hit[2]
+    # Signature computation is expensive: run it without the lock held so a
+    # concurrent request for another file is not blocked by this one.
     block_size = optimal_block_size(file_size)
     sigs = [s.to_dict() for s in compute_signatures(abs_path, block_size)]
-    if len(_signature_cache) >= _SIGNATURE_CACHE_MAX:
-        # Drop the oldest entry (dicts preserve insertion order).
-        _signature_cache.pop(next(iter(_signature_cache)))
-    _signature_cache[key] = (now, block_size, sigs)
+    with _signature_cache_lock:
+        # Another worker may have computed the same key meanwhile: prefer it
+        # and drop ours, keeping one entry per key.
+        current = _signature_cache.get(key)
+        if current is not None and current[0] >= now - _SIGNATURE_CACHE_TTL:
+            return current[1], current[2]
+        if len(_signature_cache) >= _SIGNATURE_CACHE_MAX and _signature_cache:
+            # Drop the oldest entry (dicts preserve insertion order).
+            _signature_cache.pop(next(iter(_signature_cache)))
+        _signature_cache[key] = (now, block_size, sigs)
     return block_size, sigs
 
 
