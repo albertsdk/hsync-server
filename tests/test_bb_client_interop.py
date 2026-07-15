@@ -141,14 +141,17 @@ class TestClientCliCapabilities:
         import json
 
         doc = json.loads(result.stdout)
+        assert "subcommands" in doc, doc
+        assert doc["subcommands"] == ["lan", "server"], doc["subcommands"]
         assert "cli_options" in doc, doc
         cli_options = doc["cli_options"]
-        assert isinstance(cli_options, list), cli_options
+        assert isinstance(cli_options, dict), cli_options
+        assert set(cli_options) == {"lan", "server"}, cli_options
         # Every supported CLI surface is advertised; the conflict model is part
         # of the protocol capability set shared with the server (SSOT in
         # hsync-common). Sanity-check a few stable well-known flags.
         for known in ("--bucket", "--ca-cert", "--insecure"):
-            assert known in cli_options, f"{known} missing from cli_options"
+            assert known in cli_options["server"], f"{known} missing from server cli_options"
 
 
 class TestClientUploadArbitrationE2E:

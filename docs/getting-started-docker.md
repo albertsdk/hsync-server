@@ -151,7 +151,7 @@ Then configure the client on each device:
 
 ```bash
 export HSYNC_API_KEY="hs_<id>_<secret>"
-hsync -s https://<server-ip>:9753 -b photos -p /path/to/dir --ca-cert /trusted/path/server.crt
+hsync server -s https://<server-ip>:9753 -b photos -p /path/to/dir --ca-cert /trusted/path/server.crt
 ```
 
 - `-s` — server URL;
