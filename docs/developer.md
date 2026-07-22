@@ -127,7 +127,6 @@ graph LR
 | Exceptions | `exceptions.py` | Custom exception hierarchy (`HSyncError` base) |
 | Constants | `constants.py` | Server-side constants |
 | SSL utilities | `ssl_utils.py` | Certificate generation, SSL context creation |
-| Path validation | `path_validation.py` | Path traversal prevention, safety checks |
 | Module entry | `__main__.py` | `python -m hsync_server` entry point |
 
 ## Two-Router Architecture

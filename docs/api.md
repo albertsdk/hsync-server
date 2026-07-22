@@ -102,6 +102,13 @@ sha256sum=bb25b1c2b2a7427401c823a90904a759e2bd7425205b0702bca5e27e937e7cff
 permissions=-rw-rw-r--
 ```
 
+> `sha256sum` is **required**: the server verifies the received bytes against
+> it and rejects the upload (400) on mismatch. Internal sync-engine filenames
+> (`.hsyncignore`, `.hsyncstate`, `.hsynctombstones`, `*.part`) are rejected,
+> and `path`/`filename` must resolve inside the target bucket (no `..`,
+> absolute paths or backslashes). Compressed uploads (`compressed=true`) must
+> declare the real file `size` and are capped at it when decompressed.
+
 **Response (201 Created):**
 ```json
 {

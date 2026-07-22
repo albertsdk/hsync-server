@@ -25,11 +25,11 @@ from hsync_common.models.dir import Dir
 from hsync_common.models.event import Event, EventName
 from hsync_common.models.file import File
 from hsync_common.models.symlink import Symlink
+from hsync_common.path_validation import is_safe_symlink_target
 from loguru import logger as log
 
 from hsync_server.api.events_handlers.validation import (
     is_path_within_bucket,
-    is_safe_symlink_target,
 )
 from hsync_server.api.file_utils import (
     cleanup_empty_dir,

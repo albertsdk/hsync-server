@@ -27,7 +27,7 @@ from hsync_server.api.file_utils import (
     ensure_sentinel_in_dir,
     is_sentinel_file,
 )
-from hsync_server.api.utils import is_valid_bucket, is_valid_dir
+from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
 from hsync_server.config import get_buckets_path
 from hsync_server.exceptions import (
     BucketNotFoundError,
@@ -75,11 +75,11 @@ async def delete_file(
     if not Path(bucket_dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket})
 
-    # Validate path to prevent traversal attacks
-    if not is_valid_dir(filename):
+    # Confine to *this* bucket: the filename is untrusted input and must
+    # never escape into a sibling bucket or outside the storage root.
+    file = resolve_within_bucket(bucket, filename)
+    if file is None:
         raise InvalidPathError(details={"path": filename})
-
-    file = f"{bucket_dir}/{filename}"
 
     if not Path(file).exists():
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})

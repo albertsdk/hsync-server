@@ -24,7 +24,8 @@ import hmac
 from json import JSONDecodeError, loads
 
 from fastapi import WebSocket, WebSocketDisconnect
-from hsync_common.models.event import EventName
+from hsync_common.models.event import EventName, is_valid_cid
+from hsync_common.path_validation import validate_remote_relpath
 from hsync_common.protocol.handshake import (
     PROTOCOL_VERSION_WS,
     Capability,
@@ -55,9 +56,27 @@ from hsync_server.constants import HSYNC_VERSION
 from hsync_server.rate_limiter import create_ws_message_bucket
 from hsync_server.routers import public_router
 
-
 # NOTE: WebSocket does not support Header Authentication
 #       and FastAPI auto-docs for WebSocket endpoints
+
+
+def _event_paths_safe(payload: object) -> bool:
+    """Return True when a WS event payload carries a safe bucket-relative path.
+
+    ``None`` payloads (e.g. a missing ``dst`` on non-rename events) are safe;
+    dict payloads must contain a ``filepath`` or ``path`` value accepted by
+    :func:`hsync_common.path_validation.validate_remote_relpath`.
+    """
+    if payload is None:
+        return True
+    if not isinstance(payload, dict):
+        return False
+    rel = payload.get("filepath") or payload.get("path")
+    if not isinstance(rel, str) or not rel:
+        return False
+    return validate_remote_relpath(rel) is not None
+
+
 @public_router.websocket("/api/v1/buckets/{bucket}/events/{cid}")
 async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
     """
@@ -88,6 +107,13 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
     try:
         # Accept the connection first (required before receiving messages)
         await websocket.accept()
+
+        # The cid comes from the URL path: reject malformed IDs before they
+        # are trusted for echo suppression or logged.
+        if not is_valid_cid(cid):
+            log.warning(f"[WEBSOCKET ] Rejecting connection with invalid cid: {cid!r}")
+            await websocket.close(code=4000, reason="Invalid client ID")
+            return
 
         # Enforce connection caps right after accept, before any auth work, so
         # unauthenticated floods cannot exhaust file descriptors / memory.
@@ -234,6 +260,16 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                     dst = message.get("dst", None)
                     bucket_dir = f"{get_buckets_path()}/{bucket}"
                     event_name = EventName(message.get("name"))
+
+                    # Event paths are untrusted wire input: reject traversal,
+                    # absolute paths, backslashes (Windows differential) and
+                    # internal engine artifacts before any filesystem
+                    # operation or relay to other clients is derived from them.
+                    if not _event_paths_safe(src) or not _event_paths_safe(dst):
+                        log.warning(
+                            f"[WEBSOCKET ] Rejected unsafe {event_name.value} event path from {cid}"
+                        )
+                        continue
 
                     # Initialize event to None - will be set if valid event processed
                     event = None

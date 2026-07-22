@@ -14,7 +14,7 @@ from hsync_server.api.utils import (
     get_dir_info,
     get_permissions,
     is_valid_bucket,
-    is_valid_dir,
+    resolve_within_bucket,
     set_permissions,
 )
 
@@ -22,6 +22,6 @@ __all__ = [
     "get_dir_info",
     "get_permissions",
     "is_valid_bucket",
-    "is_valid_dir",
+    "resolve_within_bucket",
     "set_permissions",
 ]

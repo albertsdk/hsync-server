@@ -2,6 +2,7 @@
 Integration tests for file operations API.
 """
 
+import hashlib
 import io
 import os
 
@@ -24,7 +25,12 @@ class TestFileUpload:
         response = await client.post(
             "/api/v1/buckets/uploadbucket/files",
             files={"file": ("test.txt", io.BytesIO(file_content), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "644"},
+            data={
+                "cid": "test-client-1",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(file_content).hexdigest(),
+            },
         )
 
         assert response.status_code == 201
@@ -46,7 +52,12 @@ class TestFileUpload:
         response = await client.post(
             "/api/v1/buckets/uploadbucket2/files",
             files={"file": ("nested.txt", io.BytesIO(b"nested"), "text/plain")},
-            data={"cid": "test-client-1", "path": "subdir/deep", "permissions": "644"},
+            data={
+                "cid": "test-client-1",
+                "path": "subdir/deep",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(b"nested").hexdigest(),
+            },
         )
 
         assert response.status_code == 201
@@ -62,7 +73,12 @@ class TestFileUpload:
         response = await client.post(
             "/api/v1/buckets/newbucket/files",
             files={"file": ("test.txt", io.BytesIO(b"test"), "text/plain")},
-            data={"cid": "test-client-1", "path": "subdir", "permissions": "644"},
+            data={
+                "cid": "test-client-1",
+                "path": "subdir",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(b"test").hexdigest(),
+            },
         )
 
         # Upload succeeds and creates the directory structure
@@ -212,7 +228,12 @@ class TestFileUploadValidation:
         response = await client.post(
             "/api/v1/buckets/invalid..bucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "644"},
+            data={
+                "cid": "test-client-1",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(b"content").hexdigest(),
+            },
         )
         assert response.status_code == 400
         assert "HSYNC-1001" in response.text
@@ -226,7 +247,12 @@ class TestFileUploadValidation:
         response = await client.post(
             "/api/v1/buckets/securitybucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
-            data={"cid": "test-client-1", "path": "../../../tmp", "permissions": "644"},
+            data={
+                "cid": "test-client-1",
+                "path": "../../../tmp",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(b"content").hexdigest(),
+            },
         )
         assert response.status_code == 400
         assert "HSYNC-1002" in response.text
@@ -240,7 +266,12 @@ class TestFileUploadValidation:
         response = await client.post(
             "/api/v1/buckets/permbucket/files",
             files={"file": ("test.txt", io.BytesIO(b"content"), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "invalid"},
+            data={
+                "cid": "test-client-1",
+                "path": "",
+                "permissions": "invalid",
+                "sha256sum": hashlib.sha256(b"content").hexdigest(),
+            },
         )
         assert response.status_code == 400
         assert "HSYNC-1003" in response.text
@@ -321,7 +352,12 @@ class TestFileSizeLimit:
             response = await client.post(
                 "/api/v1/buckets/sizelimitbucket/files",
                 files={"file": ("large.txt", io.BytesIO(large_content), "text/plain")},
-                data={"cid": "test-client-1", "path": "", "permissions": "644"},
+                data={
+                    "cid": "test-client-1",
+                    "path": "",
+                    "permissions": "644",
+                    "sha256sum": hashlib.sha256(large_content).hexdigest(),
+                },
             )
 
         assert response.status_code == 400
@@ -341,7 +377,12 @@ class TestFileSizeLimit:
             response = await client.post(
                 "/api/v1/buckets/sizelimitbucket2/files",
                 files={"file": ("small.txt", io.BytesIO(small_content), "text/plain")},
-                data={"cid": "test-client-1", "path": "", "permissions": "644"},
+                data={
+                    "cid": "test-client-1",
+                    "path": "",
+                    "permissions": "644",
+                    "sha256sum": hashlib.sha256(small_content).hexdigest(),
+                },
             )
 
         assert response.status_code == 201
@@ -360,7 +401,12 @@ class TestFileSizeLimit:
             response = await client.post(
                 "/api/v1/buckets/nolimitbucket/files",
                 files={"file": ("file.txt", io.BytesIO(content), "text/plain")},
-                data={"cid": "test-client-1", "path": "", "permissions": "644"},
+                data={
+                    "cid": "test-client-1",
+                    "path": "",
+                    "permissions": "644",
+                    "sha256sum": hashlib.sha256(content).hexdigest(),
+                },
             )
 
         assert response.status_code == 201
@@ -400,6 +446,7 @@ class TestFileDiskSpace:
                     "path": "",
                     "permissions": "644",
                     "size": str(len(content)),
+                    "sha256sum": hashlib.sha256(content).hexdigest(),
                 },
             )
 
@@ -436,6 +483,7 @@ class TestFileDiskSpace:
                     "path": "",
                     "permissions": "644",
                     "size": str(len(content)),
+                    "sha256sum": hashlib.sha256(content).hexdigest(),
                 },
             )
 
@@ -635,7 +683,12 @@ class TestTombstones:
         response = await client.post(
             "/api/v1/buckets/reusebucket/files",
             files={"file": ("reuse.txt", io.BytesIO(b"new content"), "text/plain")},
-            data={"cid": "test-client-1", "path": "", "permissions": "644"},
+            data={
+                "cid": "test-client-1",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(b"new content").hexdigest(),
+            },
         )
         assert response.status_code == 201
 
@@ -772,7 +825,13 @@ class TestResumableUpload:
         response = await client.post(
             "/api/v1/buckets/chunkbucket/files",
             files={"file": ("c.txt", io.BytesIO(b"12345"), "text/plain")},
-            data={"cid": "c1", "path": "", "permissions": "644", "size": "100"},
+            data={
+                "cid": "c1",
+                "path": "",
+                "permissions": "644",
+                "size": "100",
+                "sha256sum": hashlib.sha256(b"12345").hexdigest(),
+            },
         )
         assert response.status_code == 202
         body = response.json()
@@ -797,6 +856,7 @@ class TestResumableUpload:
                 "permissions": "644",
                 "offset": "5",
                 "size": "10",
+                "sha256sum": hashlib.sha256(b"AAAAABBBBB").hexdigest(),
             },
         )
         assert response.status_code == 201
@@ -815,7 +875,13 @@ class TestResumableUpload:
         response = await client.post(
             "/api/v1/buckets/mismatchbucket/files",
             files={"file": ("m.txt", io.BytesIO(b"BB"), "text/plain")},
-            data={"cid": "c1", "path": "", "offset": "10", "size": "20"},
+            data={
+                "cid": "c1",
+                "path": "",
+                "offset": "10",
+                "size": "20",
+                "sha256sum": hashlib.sha256(b"BB").hexdigest(),
+            },
         )
         assert response.status_code == 500
 
@@ -825,6 +891,12 @@ class TestResumableUpload:
         response = await client.post(
             "/api/v1/buckets/nopartbucket/files",
             files={"file": ("n.txt", io.BytesIO(b"BB"), "text/plain")},
-            data={"cid": "c1", "path": "", "offset": "5", "size": "20"},
+            data={
+                "cid": "c1",
+                "path": "",
+                "offset": "5",
+                "size": "20",
+                "sha256sum": hashlib.sha256(b"BB").hexdigest(),
+            },
         )
         assert response.status_code == 500

@@ -21,13 +21,13 @@ from fastapi.responses import FileResponse, StreamingResponse
 from hsync_common.hashing import compute_sha256_async
 from loguru import logger as log
 
-from hsync_server.api.utils import is_valid_bucket, is_valid_dir
+from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
 from hsync_server.compression import (
     CONTENT_ENCODING_ZSTD,
     async_compress_stream,
     should_compress,
 )
-from hsync_server.config import get_buckets_path, get_compression_enabled
+from hsync_server.config import get_compression_enabled
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.exceptions import (
     InvalidBucketNameError,
@@ -62,10 +62,12 @@ async def download_file(request: Request, bucket: str, filename: str):
     """
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
-    if not is_valid_dir(filename):
+    # Confine to *this* bucket: the filename is untrusted input and must
+    # never escape into a sibling bucket or outside the storage root.
+    file = resolve_within_bucket(bucket, filename)
+    if file is None:
         raise InvalidPathError(details={"path": filename})
 
-    file = f"{get_buckets_path()}/{bucket}/{filename}"
     backup_file = f"{file}.backup"
 
     # If a backup file exists (due to ongoing upload), serve that instead

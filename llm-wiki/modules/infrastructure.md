@@ -76,11 +76,13 @@ route stdlib logging into loguru. `setup_logging` (`:103`) honors
 Request correlation via `get_request_id`/`set_request_id` (`:63`/`:68`), set by
 `RequestIdMiddleware` (`middleware.py:31`).
 
-## Path validation (`path_validation.py`)
+## Path validation
 
-Thin re-export/wrapper over `hsync_common.path_validation`
-(`is_valid_filename`, `sanitize_filename`, traversal guards) — the server does not
-duplicate these primitives.
+All primitives come straight from `hsync_common.path_validation`
+(`is_valid_filename`, `sanitize_filename`, `validate_remote_relpath`,
+`resolve_within`, `is_internal_name`) — the server does not duplicate or wrap
+them (the old `path_validation.py` shim has been removed). Per-bucket
+confinement goes through `resolve_within_bucket` (`api/utils.py:46`).
 
 > User-facing config reference (env vars, defaults): `../docs/` (architecture +
 > deployment sections).
