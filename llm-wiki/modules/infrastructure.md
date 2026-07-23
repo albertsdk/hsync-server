@@ -52,9 +52,13 @@ detection without recompute.
 
 ## Compression (`compression.py`)
 
-Streaming zstd: `async_compress_stream` (`:53`, 64 KB chunks) for downloads,
-`decompress_stream` (`:94`) and `decompress_data` for uploads; `_StreamSink` (`:32`)
-adapts the zstd writer to an async iterator. Policy/levels come from
+Streaming zstd: `async_compress_stream` (`:54`, 64 KB chunks) for downloads;
+`_StreamSink` (`:33`) adapts the zstd writer to an async iterator.
+Decompression: `decompress_file_to_file` (`:95`, capped streaming
+file→file, fsync'd — run it via `asyncio.to_thread`, used by uploads so
+neither the payload nor the event loop is blocked) plus the
+`hsync_common.compression` primitives (`decompress_stream` capped streaming,
+`decompress_data` one-shot capped). Policy/levels come from
 `hsync_common.compression`.
 
 ## Errors (`error_handlers.py` + `exceptions.py`)

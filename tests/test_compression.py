@@ -2,6 +2,8 @@
 Tests for compression utilities.
 """
 
+import pytest
+
 from hsync_server import compression
 
 
@@ -30,17 +32,30 @@ class TestCompression:
         assert decompressed == original_data
 
     def test_decompress_stream(self):
-        """Test async stream decompression."""
-        import asyncio
+        """Streaming decompression yields the original content in chunks."""
+        import io
 
-        original_data = b"Test data for async decompression"
+        original_data = b"Test data for streaming decompression " * 1000
         compressed = compression.compress_data(original_data)
 
-        async def run_test():
-            return await compression.decompress_stream(compressed)
+        chunks = list(
+            compression.decompress_stream(
+                io.BytesIO(compressed), max_output_size=len(original_data)
+            )
+        )
+        assert b"".join(chunks) == original_data
 
-        result = asyncio.run(run_test())
-        assert result == original_data
+    def test_decompress_stream_cap_exceeded(self):
+        """A payload expanding beyond max_output_size is rejected (anti-bomb)."""
+        import io
+
+        import zstandard as zstd
+
+        original_data = b"B" * 100_000
+        compressed = compression.compress_data(original_data)
+
+        with pytest.raises(zstd.ZstdError):
+            list(compression.decompress_stream(io.BytesIO(compressed), max_output_size=100))
 
     def test_compress_file(self, tmp_path):
         """Test file compression."""

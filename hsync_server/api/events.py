@@ -25,7 +25,7 @@ from json import JSONDecodeError, loads
 
 from fastapi import WebSocket, WebSocketDisconnect
 from hsync_common.models.event import EventName, is_valid_cid
-from hsync_common.path_validation import validate_remote_relpath
+from hsync_common.path_validation import validate_remote_relpath, wire_relpaths
 from hsync_common.protocol.handshake import (
     PROTOCOL_VERSION_WS,
     Capability,
@@ -44,6 +44,7 @@ from hsync_server.api.event_handlers import (
     handle_renamed_event,
     handle_symlink_event,
 )
+from hsync_server.api.utils import is_valid_bucket
 from hsync_server.config import (
     get_api_key,
     get_buckets_path,
@@ -61,20 +62,22 @@ from hsync_server.routers import public_router
 
 
 def _event_paths_safe(payload: object) -> bool:
-    """Return True when a WS event payload carries a safe bucket-relative path.
+    """Return True when a WS event payload carries safe bucket-relative paths.
 
     ``None`` payloads (e.g. a missing ``dst`` on non-rename events) are safe;
     dict payloads must contain a ``filepath`` or ``path`` value accepted by
-    :func:`hsync_common.path_validation.validate_remote_relpath`.
+    :func:`hsync_common.path_validation.validate_remote_relpath`. Both keys may
+    be present at once: validating only the first would let a payload smuggle
+    a malicious second key past the gate, so every present key is validated.
     """
     if payload is None:
         return True
     if not isinstance(payload, dict):
         return False
-    rel = payload.get("filepath") or payload.get("path")
-    if not isinstance(rel, str) or not rel:
+    rels = wire_relpaths(payload)
+    if not rels:
         return False
-    return validate_remote_relpath(rel) is not None
+    return all(validate_remote_relpath(rel) is not None for rel in rels)
 
 
 @public_router.websocket("/api/v1/buckets/{bucket}/events/{cid}")
@@ -113,6 +116,15 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         if not is_valid_cid(cid):
             log.warning(f"[WEBSOCKET ] Rejecting connection with invalid cid: {cid!r}")
             await websocket.close(code=4000, reason="Invalid client ID")
+            return
+
+        # The bucket comes from the URL path too and is used to build
+        # filesystem paths (`bucket_dir`): a segment like `..` (reachable via
+        # `%2e%2e`) would escape the storage root and turn delete/rename/
+        # symlink events into arbitrary sibling-directory operations.
+        if not is_valid_bucket(bucket):
+            log.warning(f"[WEBSOCKET ] Rejecting connection with invalid bucket: {bucket!r}")
+            await websocket.close(code=4000, reason="Invalid bucket name")
             return
 
         # Enforce connection caps right after accept, before any auth work, so
@@ -186,8 +198,20 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             await websocket.close(code=4003, reason="Authentication failed")
             return
 
-        # Register the authenticated client with bucket-specific manager
+        # Register the authenticated client with bucket-specific manager.
+        # A second connection reusing an existing cid must not silently hijack
+        # the first (the cid is not a secret): evict the stale registration
+        # explicitly instead of overwriting it.
         manager = bucket_manager.get_manager(bucket)
+        stale = manager.active_connections.get(cid)
+        if stale is not None:
+            log.warning(f"[WEBSOCKET ] cid {cid} reconnected: evicting stale registration")
+            try:
+                await stale.close(code=4000, reason="Replaced by a newer connection")
+            except Exception:
+                pass
+            if manager.active_connections.get(cid) is stale:
+                manager.active_connections.pop(cid, None)
         manager.active_connections[cid] = websocket
         log.info(f"[WEBSOCKET ] Client connected: {cid} (bucket: {bucket})")
 
@@ -311,7 +335,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                 await heartbeat_task
             except asyncio.CancelledError:
                 pass
-            manager.disconnect(cid)
+            manager.disconnect(cid, websocket)
     except Exception:
         # Handle any outer exception (e.g., auth failure)
         log.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")

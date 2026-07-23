@@ -24,6 +24,7 @@ from hsync_common.compression import (  # noqa: F401
     compress_data,
     compress_file,
     decompress_data,
+    decompress_stream,
     should_compress,
 )
 from loguru import logger as log
@@ -91,17 +92,32 @@ async def async_compress_stream(filepath: str, chunk_size: int = 64 * 1024) -> A
         yield out
 
 
-async def decompress_stream(data: bytes) -> bytes:
-    """
-    Decompress data asynchronously (for FastAPI handlers).
+def decompress_file_to_file(src_path: str, dst_path: str, max_output_size: int) -> int:
+    """Expand a zstd-compressed file into another file, streaming.
+
+    Blocking by design (sync file I/O + CPU-bound decompression): call it via
+    ``asyncio.to_thread`` from async handlers so the event loop stays free.
 
     Args:
-        data: Compressed bytes.
+        src_path: Path of the compressed input file.
+        dst_path: Path of the output file to create/overwrite.
+        max_output_size: Hard cap on the expanded bytes (anti
+            decompression-bomb); a :class:`zstandard.ZstdError` is raised
+            before the cap is exceeded.
 
     Returns:
-        Decompressed bytes.
+        The number of decompressed bytes written (fsync'd before returning).
     """
-    return decompress_data(data)
+    from os import fsync
+
+    total = 0
+    with open(src_path, "rb") as src, open(dst_path, "wb") as dst:
+        for chunk in decompress_stream(src, max_output_size=max_output_size):
+            dst.write(chunk)
+            total += len(chunk)
+        dst.flush()
+        fsync(dst.fileno())
+    return total
 
 
 log.debug(f"Module {__name__} loaded")

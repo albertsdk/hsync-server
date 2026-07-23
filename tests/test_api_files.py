@@ -327,7 +327,9 @@ class TestFileUploadValidation:
                 "cid": "test-client-1",
                 "path": "",
                 "permissions": "644",
-                "sha256sum": "wrongchecksum",
+                # Well-formed but wrong digest (a malformed one is rejected
+                # earlier by the format gate).
+                "sha256sum": "0" * 64,
             },
         )
         assert response.status_code == 400
