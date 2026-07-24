@@ -313,6 +313,51 @@ class TestFileUploadValidation:
         )
         assert response.status_code == 409
         assert "already present" in response.json()["info"]
+        # H7: the 409 must return a bucket-relative path, never the
+        # absolute filesystem path of the stored file.
+        returned_path = response.json().get("file", "")
+        assert temp_buckets_dir not in returned_path
+        assert returned_path.startswith("dupbucket/")
+
+    @pytest.mark.asyncio
+    async def test_upload_file_already_exists_with_path(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """409 on a nested duplicate returns a bucket-relative path."""
+        import hashlib
+
+        bucket_path = os.path.join(temp_buckets_dir, "dupbucket2", "sub")
+        os.makedirs(bucket_path)
+
+        file_content = b"duplicate content"
+        sha256sum = hashlib.sha256(file_content).hexdigest()
+
+        response = await client.post(
+            "/api/v1/buckets/dupbucket2/files",
+            files={"file": ("dup.txt", io.BytesIO(file_content), "text/plain")},
+            data={
+                "cid": "test-client-1",
+                "path": "sub",
+                "permissions": "644",
+                "sha256sum": sha256sum,
+            },
+        )
+        assert response.status_code == 201
+
+        response = await client.post(
+            "/api/v1/buckets/dupbucket2/files",
+            files={"file": ("dup.txt", io.BytesIO(file_content), "text/plain")},
+            data={
+                "cid": "test-client-1",
+                "path": "sub",
+                "permissions": "644",
+                "sha256sum": sha256sum,
+            },
+        )
+        assert response.status_code == 409
+        returned_path = response.json().get("file", "")
+        assert temp_buckets_dir not in returned_path
+        assert "/" in returned_path
 
     @pytest.mark.asyncio
     async def test_upload_checksum_mismatch(self, client: AsyncClient, temp_buckets_dir: str):
@@ -902,3 +947,8 @@ class TestResumableUpload:
             },
         )
         assert response.status_code == 500
+        # H7: error details must never embed the absolute partial-file path.
+        body = response.json()
+        body_str = str(body)
+        assert temp_buckets_dir not in body_str
+        assert "partial_file" not in body_str

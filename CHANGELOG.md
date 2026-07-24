@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **Path leak on error responses (H7)**: upload error responses no longer
+  expose absolute filesystem paths. The 409 "file already present" returns a
+  bucket-relative path; `UploadError.details` exposes only the exception
+  type (not `str(e)`, which commonly embeds absolute paths); the
+  `partial_file` field was removed from the resume-error details. Full
+  diagnostics remain in the server log.
 - **Upload integrity (breaking)**: `sha256sum` is now a required multipart
   form field — uploads without a checksum, or whose bytes do not hash to it,
   are rejected (OpenAPI snapshot regenerated accordingly)

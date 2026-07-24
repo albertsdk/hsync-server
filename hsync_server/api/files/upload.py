@@ -242,11 +242,15 @@ async def upload_file(
             if Path(partial_file_path).exists():
                 remove(partial_file_path)
             upload_successful = True
+            # H7: never leak absolute filesystem paths on the wire — the
+            # client already knows the bucket-relative path it uploaded.
             return JSONResponse(
                 status_code=409,
                 content={
                     "info": "File already present",
-                    "file": file_location,
+                    "file": f"{bucket}/{path}/{file.filename}"
+                    if path
+                    else f"{bucket}/{file.filename}",
                 },
             )
 
@@ -266,7 +270,7 @@ async def upload_file(
             if not Path(partial_file_path).exists():
                 raise UploadError(
                     message="Cannot resume: partial file not found",
-                    details={"offset": offset, "partial_file": partial_file_path},
+                    details={"offset": offset},
                 )
             current_size = Path(partial_file_path).stat().st_size
             if current_size != offset:
@@ -482,7 +486,10 @@ async def upload_file(
             log.info(f"Restored backup for file: {file_location}")
         raise UploadError(
             message=f"Upload failed for file {file.filename}",
-            details={"filename": file.filename, "error": str(e)},
+            # H7: only expose the exception type, never the raw message
+            # (which commonly embeds absolute filesystem paths). The full
+            # traceback is already in the server log above.
+            details={"filename": file.filename, "error": type(e).__name__},
         )
     finally:
         if upload_successful:
