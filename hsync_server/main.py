@@ -27,7 +27,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from .api import buckets, events, files, health  # noqa: F401
 from .config import get_api_key, get_buckets_path, get_cors_enabled, get_cors_origins, get_settings
-from .constants import HSYNC_VERSION
+from .constants import HEADER_CLIENT_NAME, HEADER_CLIENT_VERSION, HSYNC_VERSION
 from .error_handlers import register_exception_handlers
 from .hashes import set_sha256_hashes
 from .middleware import RequestIdMiddleware, VersionMiddleware
@@ -109,7 +109,7 @@ if get_cors_enabled():
         allow_origins=cors_origins or ["*"],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Client-Name", "X-Client-Version"],
+        allow_headers=["Authorization", "Content-Type", HEADER_CLIENT_NAME, HEADER_CLIENT_VERSION],
     )
 
 # Add Request ID middleware for distributed tracing

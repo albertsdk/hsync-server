@@ -10,7 +10,6 @@ from fastapi.exceptions import RequestValidationError
 
 from hsync_server.error_handlers import (
     EXCEPTION_STATUS_CODES,
-    ErrorResponse,
     get_status_code_for_exception,
     global_exception_handler,
     hsync_exception_handler,
@@ -26,23 +25,6 @@ from hsync_server.exceptions import (
     ResourceNotFoundError,
     ValidationError,
 )
-
-
-class TestErrorResponse:
-    """Tests for ErrorResponse model."""
-
-    def test_error_response_basic(self):
-        """Test basic error response."""
-        resp = ErrorResponse(error="HSYNC-1000", message="Test error")
-        assert resp.error == "HSYNC-1000"
-        assert resp.message == "Test error"
-        assert resp.details is None
-
-    def test_error_response_with_details(self):
-        """Test error response with details."""
-        details = {"field": "value", "count": 42}
-        resp = ErrorResponse(error="HSYNC-1001", message="Test error", details=details)
-        assert resp.details == details
 
 
 class TestExceptionStatusCodes:

@@ -13,14 +13,11 @@ This module provides:
 - Mapping from custom exceptions to HTTP status codes
 """
 
-from typing import Any
-
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from hsync_common.text import safe_json_for_log
 from loguru import logger as log
-from pydantic import BaseModel
 
 from .exceptions import (
     AuthenticationError,
@@ -32,22 +29,6 @@ from .exceptions import (
     ResourceNotFoundError,
     ValidationError,
 )
-
-
-class ErrorResponse(BaseModel):
-    """
-    Standardized error response format.
-
-    Attributes:
-        error: Error code (e.g., "HSYNC-1001").
-        message: Human-readable error message.
-        details: Optional additional error details.
-    """
-
-    error: str
-    message: str
-    details: dict[str, Any] | None = None
-
 
 # Mapping from exception types to HTTP status codes
 EXCEPTION_STATUS_CODES: dict[type, int] = {

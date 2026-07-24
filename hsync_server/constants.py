@@ -30,33 +30,11 @@ HSYNC_VERSION = VERSION
 
 
 # =============================================================================
-# API Configuration
-# =============================================================================
-
-# API version prefix
-API_VERSION = "v1"
-API_PREFIX = f"/api/{API_VERSION}"
-
-# API endpoint paths (relative to API_PREFIX)
-ENDPOINT_HEALTH = "/health"
-ENDPOINT_BUCKETS = "/buckets"
-ENDPOINT_FILES = "/files"
-ENDPOINT_FILES_DOWNLOAD = "/files/download"
-ENDPOINT_EVENTS = "/events"
-
-
-# =============================================================================
 # File Defaults
 # =============================================================================
 
 # Default file permissions for uploaded files (octal)
 DEFAULT_FILE_PERMISSIONS = "664"
-
-# Default directory permissions (octal)
-DEFAULT_DIR_PERMISSIONS = "775"
-
-
-# HSYNCKEEP_FILENAME is re-exported from hsync_common.constants above
 
 
 # =============================================================================
@@ -64,8 +42,6 @@ DEFAULT_DIR_PERMISSIONS = "775"
 # =============================================================================
 
 # Custom headers used in responses
-HEADER_SHA256 = "X-SHA256"
-HEADER_PERMISSIONS = "X-Permissions"
 HEADER_CLIENT_NAME = "X-Client-Name"
 HEADER_CLIENT_VERSION = "X-Client-Version"
 HEADER_SERVER_VERSION = "X-Server-Version"
@@ -78,7 +54,6 @@ HEADER_PROTOCOL_VERSION = "X-Protocol-Version"
 # Content Types
 # =============================================================================
 
-CONTENT_TYPE_JSON = "application/json"
 CONTENT_TYPE_OCTET_STREAM = "application/octet-stream"
 
 
@@ -88,5 +63,3 @@ CONTENT_TYPE_OCTET_STREAM = "application/octet-stream"
 
 # Authentication message types
 WS_MSG_TYPE_AUTH = "auth"
-WS_MSG_STATUS_OK = "ok"
-WS_MSG_STATUS_ERROR = "error"

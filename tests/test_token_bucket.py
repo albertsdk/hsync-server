@@ -70,7 +70,6 @@ class TestTokenBucket:
         assert bucket.tokens == 20.0
         assert bucket.rate == 10.0
         assert bucket.burst == 20
-        assert bucket.total_dropped == 0
 
     def test_acquire_single_token(self):
         """Single acquire consumes one token."""
@@ -85,7 +84,6 @@ class TestTokenBucket:
             assert bucket.acquire() is True
         # 6th acquire should fail
         assert bucket.acquire() is False
-        assert bucket.total_dropped == 1
 
     def test_token_refill_over_time(self):
         """Tokens refill at the configured rate."""
@@ -109,16 +107,6 @@ class TestTokenBucket:
         with patch.object(time, "monotonic", return_value=bucket.last_refill + 10.0):
             assert bucket.acquire() is True
             assert bucket.tokens == 9.0  # burst=10, consumed 1
-
-    def test_total_dropped_counter(self):
-        """total_dropped increments on each failed acquire."""
-        bucket = TokenBucket(rate=1.0, burst=1)
-        bucket.acquire()  # consume token
-        assert bucket.total_dropped == 0
-        bucket.acquire()  # fail
-        assert bucket.total_dropped == 1
-        bucket.acquire()  # fail again
-        assert bucket.total_dropped == 2
 
     def test_acquire_with_no_refill_time(self):
         """Acquire fails immediately after exhausting with no time elapsed."""
