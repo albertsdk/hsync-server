@@ -313,7 +313,7 @@ class TestFileUploadValidation:
         )
         assert response.status_code == 409
         assert "already present" in response.json()["info"]
-        # H7: the 409 must return a bucket-relative path, never the
+        # The 409 must return a bucket-relative path, never the
         # absolute filesystem path of the stored file.
         returned_path = response.json().get("file", "")
         assert temp_buckets_dir not in returned_path
@@ -947,7 +947,7 @@ class TestResumableUpload:
             },
         )
         assert response.status_code == 500
-        # H7: error details must never embed the absolute partial-file path.
+        # Error details must never embed the absolute partial-file path.
         body = response.json()
         body_str = str(body)
         assert temp_buckets_dir not in body_str

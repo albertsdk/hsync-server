@@ -242,7 +242,7 @@ async def upload_file(
             if Path(partial_file_path).exists():
                 remove(partial_file_path)
             upload_successful = True
-            # H7: never leak absolute filesystem paths on the wire — the
+            # Never leak absolute filesystem paths on the wire — the
             # client already knows the bucket-relative path it uploaded.
             return JSONResponse(
                 status_code=409,
@@ -486,7 +486,7 @@ async def upload_file(
             log.info(f"Restored backup for file: {file_location}")
         raise UploadError(
             message=f"Upload failed for file {file.filename}",
-            # H7: only expose the exception type, never the raw message
+            # Only expose the exception type, never the raw message
             # (which commonly embeds absolute filesystem paths). The full
             # traceback is already in the server log above.
             details={"filename": file.filename, "error": type(e).__name__},
