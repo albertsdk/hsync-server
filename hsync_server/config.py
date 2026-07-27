@@ -16,6 +16,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, Literal
 
+from hsync_common.constants import DELTA_TOKEN_TTL
 from hsync_common.env import load_env_file as _load_env_file
 from hsync_common.logger import (
     DEFAULT_LOG_COMPRESSION,
@@ -124,6 +125,20 @@ class Settings(BaseSettings):
     # Compression Configuration
     compression_enabled: bool = Field(
         default=True, description="Enable zstd compression for file transfers"
+    )
+
+    # Delta Transfer Configuration
+    delta_enabled: bool = Field(
+        default=True, description="Enable rsync-style delta transfer endpoints"
+    )
+    delta_token_ttl: int = Field(
+        default=DELTA_TOKEN_TTL,
+        ge=30,
+        description="Seconds a literal-payload download token stays valid",
+    )
+    rate_limit_delta: str = Field(
+        default="100/minute",
+        description="Rate limit for delta transfer endpoints",
     )
 
     # SSL/TLS Configuration
@@ -408,6 +423,21 @@ def get_ssl_cert_dir() -> str:
 def get_compression_enabled() -> bool:
     """Get compression enabled flag from environment (late binding)."""
     return get_settings().compression_enabled
+
+
+def get_delta_enabled() -> bool:
+    """Get delta transfer enabled flag from environment (late binding)."""
+    return get_settings().delta_enabled
+
+
+def get_delta_token_ttl() -> int:
+    """Get literal-payload token TTL in seconds from environment (late binding)."""
+    return get_settings().delta_token_ttl
+
+
+def get_rate_limit_delta() -> str:
+    """Get delta endpoint rate limit from environment (late binding)."""
+    return get_settings().rate_limit_delta
 
 
 def get_ws_heartbeat_interval() -> int:

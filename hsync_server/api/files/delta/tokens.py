@@ -1,0 +1,121 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Copyright (C) 2025 Alberto Basso
+
+"""
+Literal-payload download tokens for the delta transfer endpoints.
+
+When a download-delta request (POST ``/delta/signatures``) is accepted, the
+server parks the literal payload in a temp file and hands the client a
+single-use, short-lived token bound to ``(bucket, path)``; the client then
+fetches the payload via GET ``/delta/data/{token}``. Tokens live in memory
+(and payloads on disk, so multi-GB literals never sit in RAM); expired
+entries are reaped lazily on every store access.
+"""
+
+from __future__ import annotations
+
+import time
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+
+from loguru import logger as log
+
+from hsync_server.config import get_buckets_path, get_delta_token_ttl
+
+# Hard cap on concurrently live tokens (DoS guard).
+DELTA_MAX_ACTIVE_TOKENS = 1_000
+
+# Subdirectory of the buckets root holding literal payloads. It sits *outside*
+# every bucket, so it is never picked up by sync listings.
+_DELTA_TMP_DIRNAME = ".delta-tokens"
+
+
+@dataclass(frozen=True)
+class DeltaTokenEntry:
+    """A parked literal payload awaiting download."""
+
+    bucket: str
+    path: str  # bucket-relative file path the payload belongs to
+    payload_file: str  # absolute temp file holding the literal bytes
+    compressed: bool  # payload is a single zstd frame
+    created: float  # time.time() of issuance
+
+
+def delta_tmp_dir() -> Path:
+    """Return (creating if needed) the directory holding literal payloads."""
+    tmp = Path(get_buckets_path()) / _DELTA_TMP_DIRNAME
+    tmp.mkdir(parents=True, exist_ok=True)
+    return tmp
+
+
+class DeltaTokenStore:
+    """In-memory token registry with TTL and lazy expiry."""
+
+    def __init__(self, ttl: int | None = None):
+        self._ttl = ttl
+        self._tokens: dict[str, DeltaTokenEntry] = {}
+
+    @property
+    def ttl(self) -> int:
+        """Token time-to-live in seconds (late binding from config)."""
+        return self._ttl if self._ttl is not None else get_delta_token_ttl()
+
+    def _delete_payload(self, entry: DeltaTokenEntry) -> None:
+        """Best-effort removal of the parked payload file."""
+        try:
+            Path(entry.payload_file).unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning(f"Cannot remove delta payload {entry.payload_file}: {exc}")
+
+    def cleanup(self, now: float | None = None) -> int:
+        """Drop expired tokens and their payload files; return the count."""
+        cutoff = (now if now is not None else time.time()) - self.ttl
+        expired = [t for t, e in self._tokens.items() if e.created < cutoff]
+        for token in expired:
+            entry = self._tokens.pop(token)
+            self._delete_payload(entry)
+        return len(expired)
+
+    def issue(self, *, bucket: str, path: str, payload: bytes, compressed: bool) -> str:
+        """Park *payload* on disk and return its download token (UUID v4)."""
+        self.cleanup()
+        if len(self._tokens) >= DELTA_MAX_ACTIVE_TOKENS:
+            raise RuntimeError("Too many active delta tokens")
+        token = uuid.uuid4().hex
+        payload_file = str(delta_tmp_dir() / f"delta_{token}.bin")
+        with open(payload_file, "wb") as f:
+            f.write(payload)
+        self._tokens[token] = DeltaTokenEntry(
+            bucket=bucket,
+            path=path,
+            payload_file=payload_file,
+            compressed=compressed,
+            created=time.time(),
+        )
+        return token
+
+    def lookup(self, token: str) -> DeltaTokenEntry | None:
+        """Return the entry for *token*, or None when unknown."""
+        return self._tokens.get(token)
+
+    def is_expired(self, entry: DeltaTokenEntry, now: float | None = None) -> bool:
+        """Return True when the entry is older than the configured TTL."""
+        return entry.created < (now if now is not None else time.time()) - self.ttl
+
+    def consume(self, token: str) -> DeltaTokenEntry | None:
+        """Remove and return the entry for *token* (single-use semantics)."""
+        return self._tokens.pop(token, None)
+
+    def discard(self, token: str) -> None:
+        """Drop a token and its payload file without serving it."""
+        entry = self._tokens.pop(token, None)
+        if entry is not None:
+            self._delete_payload(entry)
+
+
+# Process-wide store shared by the endpoints.
+delta_token_store = DeltaTokenStore()
