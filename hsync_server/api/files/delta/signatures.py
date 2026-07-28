@@ -78,6 +78,10 @@ _VALID_BLOCK_SIZES = frozenset(
     }
 )
 
+# Maximum size of POST /delta/signatures body (50 MB) — bounds JSON payload
+# and signature list size to prevent DoS via oversized requests.
+_MAX_SIGNATURES_BODY_SIZE = 50 * 1024 * 1024  # 50 MB
+
 # TTL (seconds) of the signature cache entries — same order as token TTL.
 _SIGNATURE_CACHE_TTL = 300
 _SIGNATURE_CACHE_MAX = 64
@@ -126,6 +130,8 @@ async def get_delta_signatures(request: Request, bucket: str, path: str) -> JSON
     The client compares ``sha256`` with its expected ``base_hash`` first
     (early-out) and then scans its newer file against these signatures.
     """
+    start_time = time.time()
+
     if not get_delta_enabled():
         return _delta_disabled()
     if not is_valid_bucket(bucket):
@@ -138,7 +144,18 @@ async def get_delta_signatures(request: Request, bucket: str, path: str) -> JSON
 
     file_size = Path(file).stat().st_size
     sha256sum = get_sha256_hash(file) or await compute_sha256_async(file)
+
+    sig_start = time.time()
     block_size, sigs = await asyncio.to_thread(_cached_signatures, file, sha256sum, file_size)
+    sig_duration = time.time() - sig_start
+
+    # Record metrics for upload delta signatures request
+    from hsync_server.metrics import record_delta_transfer, record_transfer_duration
+
+    record_delta_transfer("upload", "success")
+    record_transfer_duration("upload", "signatures", sig_duration)
+    record_transfer_duration("upload", "total", time.time() - start_time)
+
     return JSONResponse(
         status_code=200,
         content={
@@ -161,6 +178,16 @@ async def post_delta_signatures(
     literal payload, or ``{delta: false, reason}`` when a full transfer is
     cheaper (the client then falls back to a plain download).
     """
+    start_time = time.time()
+
+    # Check body size limit (50 MB) before parsing
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > _MAX_SIGNATURES_BODY_SIZE:
+        raise ValidationError(
+            message="Request body too large",
+            details={"max_size": _MAX_SIGNATURES_BODY_SIZE},
+        )
+
     if not get_delta_enabled():
         return _delta_disabled()
     if not is_valid_bucket(bucket):
@@ -194,14 +221,23 @@ async def post_delta_signatures(
     new_size = Path(file).stat().st_size
     new_sha256 = get_sha256_hash(file) or await compute_sha256_async(file)
 
+    match_start = time.time()
+
     def _match() -> tuple[list, bytes]:
         return find_matches_file(file, sigs, body.block_size)
 
     ops, literals = await asyncio.to_thread(_match)
+    match_duration = time.time() - match_start
 
     # The base file size as seen by the client: covered span of its signatures.
     base_size = max((s.offset + s.length for s in sigs), default=0)
     ratio = changed_block_ratio(ops, base_size, body.block_size)
+
+    # Record change ratio metric
+    from hsync_server.metrics import record_change_ratio
+
+    record_change_ratio("download", ratio)
+
     if not is_delta_worthwhile(ops, base_size, len(literals), body.block_size):
         reason = (
             "literal_payload_too_large"
@@ -209,6 +245,13 @@ async def post_delta_signatures(
             else "too_many_changed_blocks"
         )
         log.info(f"Delta not worthwhile for {body.path}: {reason} (ratio={ratio:.2f})")
+
+        # Record rejected transfer
+        from hsync_server.metrics import record_delta_transfer, record_transfer_duration
+
+        record_delta_transfer("download", "rejected")
+        record_transfer_duration("download", "total", time.time() - start_time)
+
         return JSONResponse(
             status_code=200,
             content={"delta": False, "reason": reason, "changed_percentage": round(ratio, 4)},
@@ -228,6 +271,21 @@ async def post_delta_signatures(
         payload=payload,
         compressed=compressed,
     )
+
+    # Record successful transfer and bytes saved
+    from hsync_server.metrics import (
+        record_bytes_saved,
+        record_delta_transfer,
+        record_transfer_duration,
+    )
+
+    record_delta_transfer("download", "success")
+    record_transfer_duration("download", "match", match_duration)
+    record_transfer_duration("download", "total", time.time() - start_time)
+    # Bytes saved = original size - literal size (what we're actually sending)
+    bytes_saved = max(0, new_size - len(literals))
+    record_bytes_saved("download", bytes_saved)
+
     log.info(
         f"Delta download prepared for {body.path}: {len(ops)} ops, "
         f"{len(literals)} literal bytes (ratio={ratio:.2f})"

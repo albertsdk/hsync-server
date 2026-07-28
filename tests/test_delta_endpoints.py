@@ -434,3 +434,75 @@ class TestRoundTrips:
         apply_delta(str(client_base), ops, payload_resp.content, str(out))
         assert out.read_bytes() == bytes(new)
         assert sha256(out.read_bytes()).hexdigest() == body["new_sha256"]
+
+
+# ---------------------------------------------------------------------------
+# Concurrency: per-file lock serializes concurrent applies
+# ---------------------------------------------------------------------------
+
+
+class TestConcurrency:
+    async def test_concurrent_applies_serialized(self, client, bucket_dir):
+        """Two concurrent delta applies on the same file must be serialized."""
+        import asyncio
+
+        base = _base_bytes()
+        rel = _write_base(bucket_dir, base)
+
+        # Get signatures once (both applies will use the same base)
+        resp = await client.get(
+            "/api/v1/buckets/bucket1/files/delta/signatures", params={"path": rel}
+        )
+        assert resp.status_code == 200
+        sig_body = resp.json()
+
+        # Create two different modifications
+        new1 = bytearray(base)
+        new1[50:110] = b"A" * 60
+        sigs = [BlockSignature(**s) for s in sig_body["signatures"]]
+        ops1, literals1 = find_matches(bytes(new1), sigs, sig_body["block_size"])
+        metadata1 = {
+            "cid": "client-1",
+            "base_sha256": sig_body["sha256"],
+            "new_sha256": sha256(bytes(new1)).hexdigest(),
+            "new_size": len(new1),
+            "block_size": sig_body["block_size"],
+            "compressed": False,
+            "ops": [op.to_dict() for op in ops1],
+        }
+
+        new2 = bytearray(base)
+        new2[50:110] = b"B" * 60
+        ops2, literals2 = find_matches(bytes(new2), sigs, sig_body["block_size"])
+        metadata2 = {
+            "cid": "client-2",
+            "base_sha256": sig_body["sha256"],
+            "new_sha256": sha256(bytes(new2)).hexdigest(),
+            "new_size": len(new2),
+            "block_size": sig_body["block_size"],
+            "compressed": False,
+            "ops": [op.to_dict() for op in ops2],
+        }
+
+        # Launch both applies concurrently
+        async def apply_delta_req(metadata, literals):
+            return await client.post(
+                "/api/v1/buckets/bucket1/files/delta/apply",
+                data={"path": rel, "metadata": json.dumps(metadata)},
+                files={"file": ("delta.bin", literals, "application/octet-stream")},
+            )
+
+        results = await asyncio.gather(
+            apply_delta_req(metadata1, literals1),
+            apply_delta_req(metadata2, literals2),
+        )
+
+        # Both requests should complete (one succeeds, one gets 409)
+        statuses = sorted([r.status_code for r in results])
+        assert statuses == [200, 409], f"Expected one success and one conflict, got {statuses}"
+
+        # The final file should be one of the two modifications (not corrupted)
+        final_content = (bucket_dir / rel).read_bytes()
+        assert final_content in (bytes(new1), bytes(new2)), (
+            "File content should be one of the two modifications"
+        )

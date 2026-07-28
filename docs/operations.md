@@ -236,6 +236,68 @@ automatically. Configure rotation with:
 
 ---
 
+## Monitoring
+
+HSYNC Server exposes Prometheus metrics at the `/metrics` endpoint (when
+`prometheus-fastapi-instrumentator` is installed). The following metrics are
+available for monitoring server health and performance:
+
+### Delta Transfer Metrics
+
+Delta transfer operations expose the following Prometheus metrics:
+
+- **`hsync_delta_transfer_total`**: Counter for delta transfer attempts
+  - Labels: `direction` (upload/download), `status` (success/failure/rejected/conflict)
+  - Use to track transfer success rates and identify failure patterns
+
+- **`hsync_delta_bytes_saved`**: Counter for bytes saved by delta transfer
+  - Label: `direction` (upload/download)
+  - Use to measure bandwidth savings from delta transfer
+
+- **`hsync_delta_transfer_duration_seconds`**: Histogram of transfer duration
+  - Labels: `direction` (upload/download), `phase` (signatures/match/apply/data/total)
+  - Buckets: 0.01s, 0.05s, 0.1s, 0.5s, 1s, 2s, 5s, 10s, 30s, 60s, 120s
+  - Use to identify performance bottlenecks and slow transfers
+
+- **`hsync_delta_block_change_ratio`**: Histogram of block change ratios
+  - Label: `direction` (upload/download)
+  - Buckets: 0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0
+  - Use to identify when files are too different for delta to be worthwhile
+
+- **`hsync_delta_active_tokens`**: Gauge for currently active download tokens
+  - Use to monitor token usage and detect token leaks
+
+- **`hsync_delta_temp_storage_bytes`**: Gauge for total bytes used by temp files
+  - Use to monitor temp storage usage and detect storage leaks
+
+### Example Prometheus Queries
+
+```promql
+# Delta transfer success rate (last 5 minutes)
+rate(hsync_delta_transfer_total{status="success"}[5m]) / rate(hsync_delta_transfer_total[5m])
+
+# Average transfer duration (last 5 minutes)
+rate(hsync_delta_transfer_duration_seconds_sum[5m]) / rate(hsync_delta_transfer_duration_seconds_count[5m])
+
+# Bytes saved per minute
+rate(hsync_delta_bytes_saved[1m])
+
+# Active tokens (current)
+hsync_delta_active_tokens
+
+# Temp storage usage (current)
+hsync_delta_temp_storage_bytes
+```
+
+### Alerting Recommendations
+
+Consider setting up alerts for:
+
+- High failure rate: `rate(hsync_delta_transfer_total{status="failure"}[5m]) > 0.1`
+- Long transfer duration: `histogram_quantile(0.95, rate(hsync_delta_transfer_duration_seconds_bucket[5m])) > 30`
+- Token leak: `hsync_delta_active_tokens > 900` (approaching 1000 limit)
+- Storage leak: `hsync_delta_temp_storage_bytes > 9 * 1024 * 1024 * 1024` (approaching 10GB limit)
+
 ## Performance and Limits
 
 ### Scalability guidelines

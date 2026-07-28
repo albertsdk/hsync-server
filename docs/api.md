@@ -76,6 +76,44 @@ files during a full reconciliation.
 | `GET` | `/api/v1/buckets/{bucket}/tombstones` | List deletion markers for a bucket | 500/min |
 | `POST` | `/api/v1/buckets/{bucket}/tombstones` | Merge deletion markers pushed by a peer (LWW) | 500/min |
 
+### Delta Transfer
+
+Delta transfer endpoints (rsync-style block sync) for efficient file updates.
+See [Delta Transfer](delta-transfer.md) for detailed documentation.
+
+| Method | Endpoint | Description | Rate Limit |
+|--------|----------|-------------|------------|
+| `GET` | `/api/v1/buckets/{bucket}/files/delta/signatures?path={path}` | Get block signatures of a file | 100/min |
+| `POST` | `/api/v1/buckets/{bucket}/files/delta/signatures` | Match client signatures, get delta instructions | 100/min |
+| `POST` | `/api/v1/buckets/{bucket}/files/delta/apply` | Apply delta to rebuild file | 100/min |
+| `GET` | `/api/v1/buckets/{bucket}/files/delta/data/{token}` | Download literal payload for delta | 1000/min |
+
+**Concurrency**: The `POST /delta/apply` endpoint serializes concurrent delta applies on the same file using a per-file lock. This prevents race conditions where multiple clients would write to the same `.delta.part` file simultaneously. If two clients attempt concurrent applies on the same file, one will succeed and the other will receive a `409 Conflict` response (base file changed), which is the expected behavior for the delta protocol.
+
+### Delta Transfer
+
+Delta transfer endpoints enable rsync-style block-level synchronization for
+efficient file updates. Instead of transferring entire files, only the changed
+blocks are sent, significantly reducing bandwidth usage for large files with
+small changes.
+
+| Method | Endpoint | Description | Rate Limit |
+|--------|----------|-------------|------------|
+| `GET` | `/api/v1/buckets/{bucket}/files/delta/signatures?path={path}` | Get block signatures of a file (for upload delta) | 100/min |
+| `POST` | `/api/v1/buckets/{bucket}/files/delta/signatures` | Match client signatures against server file (for download delta) | 100/min |
+| `POST` | `/api/v1/buckets/{bucket}/files/delta/apply` | Apply a computed delta to update a file | 100/min |
+| `GET` | `/api/v1/buckets/{bucket}/files/delta/data/{token}` | Download literal payload for a delta operation | 1000/min |
+
+**Concurrency**: Delta apply operations on the same file are automatically
+serialized using per-file locks. If multiple clients attempt to apply deltas
+to the same file concurrently, they will be processed sequentially. The first
+operation to complete will succeed; subsequent operations will receive a 409
+Conflict response if the base file has changed, allowing them to retry with
+updated signatures.
+
+See [Delta Transfer Guide](delta-transfer.md) for detailed usage examples and
+best practices.
+
 ### Monitoring & Sync
 
 | Method | Endpoint | Description | Auth |

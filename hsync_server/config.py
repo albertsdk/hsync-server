@@ -131,6 +131,17 @@ class Settings(BaseSettings):
     delta_enabled: bool = Field(
         default=True, description="Enable rsync-style delta transfer endpoints"
     )
+    delta_min_file_size: int = Field(
+        default=256 * 1024,  # 256 KB
+        ge=0,
+        description="Minimum file size in bytes for delta transfer (files smaller are transferred in full)",
+    )
+    delta_max_change_ratio: float = Field(
+        default=0.50,
+        ge=0.0,
+        le=1.0,
+        description="Maximum ratio of changed blocks (0.50 = 50%) before delta is rejected",
+    )
     delta_token_ttl: int = Field(
         default=DELTA_TOKEN_TTL,
         ge=30,
