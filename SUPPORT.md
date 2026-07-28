@@ -14,3 +14,7 @@
 2. Check the [documentation](docs/README.md) — the deployment, operations, and troubleshooting guides cover common issues.
 3. Enable debug logging (`HSYNC_LOG_LEVEL=debug`) and check your logs for error messages.
 4. Verify your configuration: `HSYNC_API_KEY` must be set, the bucket directory must exist and be writable.
+
+## 💚 Solo project
+
+HSYNC is developed entirely by a single person in their spare time. Feature requests, bug reports, and pull requests are reviewed as soon as possible, but response times may vary. The developer does their best to maintain and improve the project — thank you for your patience and support!
