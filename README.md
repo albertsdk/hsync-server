@@ -103,6 +103,7 @@ flowchart TB
 - ⏩ Resumable uploads (offset-based, with `upload-status` checks)
 - 🪦 Deletion tombstones to prevent resurrecting files deleted on another peer
 - ⏱️ Clock-synchronization endpoint for NTP-like client offset correction
+- 🧩 Delta transfer (rsync-style block sync for large files)
 - 🗜️ Zstandard (zstd) transfer compression
 
 ## Quick Start
