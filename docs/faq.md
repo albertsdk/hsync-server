@@ -170,7 +170,9 @@ sudo ufw allow 8765/tcp
 - If using a reverse proxy, ensure the proxy is running and the certificate is
   valid.
 - If using self-signed certificates, clients need `--ca-cert <file>` or
-  `--insecure`. See [README → Client Connection with Self-Signed Certificates](README.md#client-connection-with-self-signed-certificates).
+  `--insecure`. See the
+  [Client Configuration → SSL/TLS](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration.md#ssltls-httpswss)
+  guide.
 - Clients always connect with `https://` / `wss://` and refuse to send API keys
   over plain HTTP.
 
@@ -196,7 +198,8 @@ sudo ufw allow 8765/tcp
 - The client IP may have exceeded the per-IP rate limit.
 - If behind a reverse proxy, ensure `HSYNC_TRUSTED_PROXIES` includes the proxy's
   IP range so that `X-Forwarded-For` is honoured.
-- Check the current rate limits in [README → Rate Limiting](README.md#rate-limiting).
+- Check the current rate limits in the
+  [Environment Variables table](README.md#environment-variables) of the README.
 
 ### File operations fail
 

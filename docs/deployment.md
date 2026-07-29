@@ -112,7 +112,8 @@ HSYNC_API_KEY=secret \
 ```
 
 The script forwards all `HSYNC_SSL_*` variables to the container. See
-[README → SSL/TLS Configuration](README.md#ssltls-configuration) for details.
+[README → Environment Variables](README.md#environment-variables) for the
+complete SSL variable list.
 
 ### Restart with the same configuration
 
@@ -361,7 +362,8 @@ sudo ufw allow 8765/tcp
 **TLS certificate error:**
 - Ensure the reverse proxy is properly configured and the certificate is valid.
 - Clients connecting with self-signed certificates need `--ca-cert` or `--insecure`.
-  See [README → Client Connection with Self-Signed Certificates](README.md#client-connection-with-self-signed-certificates).
+  See the [Client Configuration → SSL/TLS](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration.md#ssltls-httpswss)
+  guide.
 
 **API key mismatch:**
 - Verify that the client is using the same `HSYNC_API_KEY` as the server.
