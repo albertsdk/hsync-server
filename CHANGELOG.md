@@ -139,6 +139,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CI auto-build + push to GHCR + GitHub Release with `install.sh`,
   `compose.yaml`, `SHA256SUMS`) instead of the old manual Docker tag/push
   and release steps.
+- **Docs**: `docs/getting-started.md` now shows a one-command quick install
+  (`curl -fsSL … | bash`) as the primary path, with the verified multi-step
+  download as an alternative. The LAN setup section also shows the one-liner
+  with `--bind-address`.
 
 ## [1.0.0] — 2025-12-xx
 

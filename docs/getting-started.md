@@ -21,7 +21,19 @@ changes firewall rules, or installs system packages.
 
 ## Install
 
-Choose a released version and download its installer and checksum file:
+### Quick install (one command)
+
+```bash
+curl -fsSL https://github.com/albertobasso/hsync-server/releases/download/v1.0.0/install-v1.0.0.sh | bash
+```
+
+This downloads and runs the installer in one step. The default installation
+listens on `localhost` only — see [LAN setup](#lan-setup) below to bind a
+concrete LAN address.
+
+### Verified install (checksum)
+
+If you prefer to verify the download before running it:
 
 ```bash
 VERSION=v1.0.0
@@ -44,13 +56,18 @@ The default installation:
 - stores files and certificates in Docker named volumes;
 - generates the API key and private-key password locally without printing them.
 
+### LAN setup
+
 To connect from other devices on a private LAN, provide the server's concrete
-LAN address on the **first installation**. Use this command instead of the
-default invocation above. The installer also uses this address as the container
-hostname so the generated certificate contains a matching IP Subject Alternative
-Name:
+LAN address on the **first installation**. The installer also uses this address
+as the container hostname so the generated certificate contains a matching IP
+Subject Alternative Name:
 
 ```bash
+# Quick install with a LAN bind address
+curl -fsSL https://github.com/albertobasso/hsync-server/releases/download/v1.0.0/install-v1.0.0.sh | bash -s -- --bind-address 192.168.1.20
+
+# Or, with the verified download:
 ./install-v1.0.0.sh --bind-address 192.168.1.20
 ```
 
