@@ -11,8 +11,8 @@ links to the relevant guide.
   files as plain files in per-bucket directories — there is no database to
   provision, tune, or back up separately. See [Architecture](architecture.md).
 - **Run it anywhere.** Pull the prebuilt multi-arch image (`amd64`/`arm64`) from
-  GHCR, build locally with `./docker.sh`, or run straight from Poetry. See
-  [README → Install & quickstart](README.md#install--quickstart).
+  GHCR with the [recommended installer](getting-started.md), or choose a source
+  or native method from [Installation Alternatives](installation-alternatives.md).
 - **Secure by default.** Every authenticated endpoint requires a Bearer API key
   (constant-time comparison) and is meant to run behind HTTPS/WSS.
 - **Real-time fan-out.** A WebSocket hub relays change events to all connected
@@ -45,7 +45,7 @@ for the complete list with defaults and descriptions.
 ### What port does the server use?
 
 `8765` by default. Map or override it as needed when you start the container. See
-[README → Install & quickstart](README.md#install--quickstart).
+[Getting Started](getting-started.md).
 
 ### Can I put the server behind a reverse proxy?
 
@@ -122,7 +122,7 @@ Create, inspect, and delete buckets through the REST API. See
 
 Use a version tag instead of `latest`, e.g.
 `ghcr.io/albertobasso/hsync-server:v1.0.0`. See
-[README → Install & quickstart](README.md#install--quickstart).
+[Getting Started](getting-started.md).
 
 ## Troubleshooting
 

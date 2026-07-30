@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Canonical Compose installer**: release assets now include a version-pinned,
+  checksum-published `install.sh` and `compose.yaml`. The idempotent bootstrap
+  generates local API/TLS secrets, persists buckets and the self-signed LAN
+  certificate in named volumes, validates Compose, and waits for server health.
+- **Single getting-started path**: `docs/getting-started.md` is now the canonical
+  private-LAN quick start; source, direct-Docker, Poetry, and systemd methods are
+  organized separately by use case.
 - **Delta transfer endpoints**: four new REST endpoints for rsync-style block
   synchronization (`/api/v1/buckets/{bucket}/files/delta/`): `GET /signatures`
   (fetch block signatures of a file), `POST /signatures` (match client signatures

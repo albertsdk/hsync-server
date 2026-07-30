@@ -31,9 +31,11 @@ the server-local choices not big enough for an ADR.
 - **Tag-driven GHCR release** (`.github/workflows/release.yml`): pushing a
   `vX.Y.Z` tag builds and pushes a multi-arch (`linux/amd64`, `linux/arm64`)
   image to `ghcr.io/albertobasso/hsync-server`, tagged with the version and
-  `latest`. Build context is the repo root with `../hsync-common` checked out
-  alongside, matching `docker.sh`/`Dockerfile`. The server ships only as an
-  image — no standalone binary.
+  `latest`, then publishes the version-stamped `install.sh`, `compose.yaml`, and
+  `SHA256SUMS` as GitHub release assets. Build context is the repo root with
+  `../hsync-common` checked out alongside, matching `docker.sh`/`Dockerfile`.
+  `install.sh` generates local secrets and deploys that pinned image; the server
+  still ships only as an image, not as a standalone binary.
 
 ## House rules (from `CLAUDE.md`)
 

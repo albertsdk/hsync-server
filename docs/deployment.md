@@ -6,15 +6,16 @@ with automatic TLS, reverse proxy configuration, and running as a systemd servic
 > For day-to-day operations (backup, upgrade, monitoring, performance) see the
 > [Operations Guide](operations.md).
 >
-> For a quick start (single container, development, or LAN testing) see the
-> [README → Install & quickstart](README.md#install--quickstart).
+> For a private-LAN quick start, see [Getting Started](getting-started.md).
+> For source builds and other methods, see
+> [Installation Alternatives](installation-alternatives.md).
 
 ---
 
 ## Table of Contents
 
 - [System Requirements](#system-requirements)
-- [Docker Management with `docker.sh`](#docker-management-with-dockersh)
+- [Build from Source with `docker.sh`](#build-from-source-with-dockersh)
 - [Docker Compose (recommended for production)](#docker-compose-recommended-for-production)
 - [Reverse Proxy Configuration](#reverse-proxy-configuration)
 - [Systemd Service (without Docker)](#systemd-service-without-docker)
@@ -44,12 +45,12 @@ with automatic TLS, reverse proxy configuration, and running as a systemd servic
 
 ---
 
-## Docker Management with `docker.sh`
+## Build from Source with `docker.sh`
 
-The project includes a [`docker.sh`](../docker.sh) script that simplifies all
-Docker operations. It handles image building, container lifecycle, volume
-management, and SSL configuration — without needing to remember raw `docker`
-commands.
+The project includes a [`docker.sh`](../docker.sh) script for contributors and
+source deployments. It handles image building, container lifecycle, volume
+management, and SSL configuration. It is not the release quick start; use the
+[verified Compose bootstrap](getting-started.md) unless you need a local build.
 
 ### Available commands
 
@@ -64,7 +65,7 @@ commands.
 ./docker.sh clean       # Remove container, image, and SSL certificate volume
 ```
 
-### Quick start with `docker.sh`
+### Build and start from source
 
 ```bash
 # 1. Build the image (first time only, or after pulling changes)
@@ -147,7 +148,7 @@ Docker Compose with a reverse proxy. Below is a complete example with Caddy.
 # docker-compose.yml
 services:
   hsync-server:
-    image: ghcr.io/albertobasso/hsync-server:latest
+    image: ghcr.io/albertobasso/hsync-server:v1.0.0
     container_name: hsync-server
     restart: unless-stopped
     expose:
@@ -159,7 +160,11 @@ services:
       - hsync-certs:/project/certs
       - hsync-logs:/project/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
+      test:
+        - CMD
+        - python
+        - -c
+        - 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8765/health", timeout=5)'
       interval: 30s
       timeout: 5s
       retries: 3
@@ -219,6 +224,7 @@ HSYNC_LOG_ROTATION=100 MB
 HSYNC_LOG_RETENTION=30 days
 HSYNC_TZ=UTC
 HSYNC_BUCKETS=/project/buckets
+HSYNC_SSL_ENABLED=false
 HSYNC_MAX_UPLOAD_SIZE=10737418240
 HSYNC_MIN_FREE_DISK_SPACE=524288000
 HSYNC_TOMBSTONE_TTL_DAYS=30
@@ -264,17 +270,33 @@ via Poetry and manage it with systemd.
 ### Install
 
 ```bash
-# Clone the repository
-git clone https://github.com/albertobasso/hsync-server.git
-cd hsync-server
+# Create the service account and sibling checkout layout
+sudo useradd --system --home /opt/hsync --shell /usr/sbin/nologin hsync
+sudo install -d -o hsync -g hsync /opt/hsync
+sudo -u hsync git clone https://github.com/albertobasso/hsync-server.git /opt/hsync/hsync-server
+sudo -u hsync git clone https://github.com/albertobasso/hsync-common.git /opt/hsync/hsync-common
 
 # Install dependencies
-poetry install --only main
+cd /opt/hsync/hsync-server
+sudo -u hsync env POETRY_VIRTUALENVS_IN_PROJECT=true poetry install --only main
 
 # Create required directories
-sudo mkdir -p /opt/hsync-server/{buckets,certs,logs}
-sudo chown -R hsync:hsync /opt/hsync-server
+sudo -u hsync mkdir -p /opt/hsync/{buckets,certs,logs}
 ```
+
+Create `/opt/hsync/prod.env` with at least a strong `HSYNC_API_KEY` and these
+host paths. If a reverse proxy terminates TLS, keep built-in SSL disabled:
+
+```dotenv
+HSYNC_API_KEY=<generate-a-strong-random-key>
+HSYNC_BUCKETS=/opt/hsync/buckets
+HSYNC_SSL_CERT_DIR=/opt/hsync/certs
+HSYNC_LOG_FILE=/opt/hsync/logs/hsync-server.log
+HSYNC_SSL_ENABLED=false
+```
+
+Protect it with `sudo chown hsync:hsync /opt/hsync/prod.env` and
+`sudo chmod 600 /opt/hsync/prod.env`.
 
 ### Systemd unit
 
@@ -288,9 +310,9 @@ After=network.target
 Type=simple
 User=hsync
 Group=hsync
-WorkingDirectory=/opt/hsync-server
-EnvironmentFile=/opt/hsync-server/prod.env
-ExecStart=/usr/local/bin/poetry run hsync-server
+WorkingDirectory=/opt/hsync/hsync-server
+EnvironmentFile=/opt/hsync/prod.env
+ExecStart=/opt/hsync/hsync-server/.venv/bin/hsync-server
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -301,7 +323,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/opt/hsync-server/buckets /opt/hsync-server/certs /opt/hsync-server/logs
+ReadWritePaths=/opt/hsync/buckets /opt/hsync/certs /opt/hsync/logs
 
 [Install]
 WantedBy=multi-user.target
@@ -397,7 +419,8 @@ Or set `HSYNC_LOG_LEVEL=debug` in your environment file.
 ## See also
 
 - [Operations Guide](operations.md) — backup, upgrade, monitoring, performance.
-- [README](README.md) — install and quickstart.
+- [Getting Started](getting-started.md) — recommended private-LAN install.
+- [Installation Alternatives](installation-alternatives.md) — source and manual installs.
 - [API Reference](api.md) — complete REST + WebSocket contract.
 - [Architecture](architecture.md) — server components and module structure.
 - [Reverse Proxy Guide](reverse-proxy.md) — nginx and Traefik configuration.

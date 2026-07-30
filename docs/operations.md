@@ -38,14 +38,82 @@ With `docker.sh`, these volumes are managed automatically:
   restarts; removed by `./docker.sh clean`)
 - `buckets/` — bind-mounted from the project directory
 
+The recommended Compose installer uses stable named volumes:
+
+- `hsync-server-buckets` — files and tombstones
+- `hsync-server-certs` — the persistent self-signed certificate and key
+
 ---
 
 ## Backup and Restore
 
 ### What to back up
 
-The only data that needs to be backed up is the **buckets directory**. It
-contains all uploaded files and tombstones.
+The **buckets directory** contains all uploaded files and tombstones. A complete
+recovery of the recommended installer deployment must also preserve:
+
+- `hsync-server-certs`, containing the certificate and matching encrypted key;
+- the private `.env`, containing the API key and private-key password.
+
+Losing either the certificate volume or its password changes the server TLS
+identity and requires every client to establish trust again.
+
+### Compose installer backup
+
+Stop the canonical Compose deployment and archive both named volumes plus its
+private configuration:
+
+```bash
+INSTALL_DIR="$HOME/.local/share/hsync-server"
+BACKUP_DIR="$HOME/hsync-backups"
+TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+
+docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR" stop
+install -m 600 "$INSTALL_DIR/.env" "$BACKUP_DIR/hsync-config-$TIMESTAMP.env"
+docker run --rm \
+  -v hsync-server-buckets:/snapshot/buckets:ro \
+  -v hsync-server-certs:/snapshot/certs:ro \
+  -v "$BACKUP_DIR:/backup" \
+  alpine:3.22 tar -czf "/backup/hsync-volumes-$TIMESTAMP.tar.gz" \
+    -C /snapshot buckets certs
+docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR" start
+```
+
+Store the archive and `.env` backup together in a location with access controls
+appropriate for secrets.
+
+### Compose installer restore
+
+Restore only into a stopped server, and keep the current volume as a safety copy
+until the restored data has been verified:
+
+```bash
+INSTALL_DIR="$HOME/.local/share/hsync-server"
+ARCHIVE="$HOME/hsync-backups/hsync-volumes-20260101-120000.tar.gz"
+CONFIG_BACKUP="$HOME/hsync-backups/hsync-config-20260101-120000.env"
+
+docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR" stop
+for volume in hsync-server-buckets-restored hsync-server-certs-restored; do
+  if docker volume inspect "$volume" >/dev/null 2>&1; then
+    echo "Refusing to overlay existing restore volume: $volume" >&2
+    exit 1
+  fi
+done
+docker volume create hsync-server-buckets-restored
+docker volume create hsync-server-certs-restored
+docker run --rm \
+  -v hsync-server-buckets-restored:/restore/buckets \
+  -v hsync-server-certs-restored:/restore/certs \
+  -v "$(dirname "$ARCHIVE"):/backup:ro" \
+  alpine:3.22 tar -xzf "/backup/$(basename "$ARCHIVE")" -C /restore
+install -m 600 "$CONFIG_BACKUP" "$INSTALL_DIR/.env"
+```
+
+After inspecting the restored volumes, change both volume `name` values in
+`compose.yaml` to `hsync-server-buckets-restored` and
+`hsync-server-certs-restored`, start the server, and run the verification below.
+Keep the original volumes until the restore is confirmed.
 
 ### Backup strategies
 
@@ -120,24 +188,32 @@ tar -xzf "$BACKUP_DIR/hsync-buckets-20250101-120000.tar.gz" -C buckets
 After restoring, verify the server sees the files correctly:
 
 ```bash
-# Check health
-curl http://localhost:8765/health
+INSTALL_DIR="$HOME/.local/share/hsync-server"
+SERVER_URL="https://127.0.0.1:8765"  # Use the configured LAN IP when applicable.
+
+# Export and verify the restored public certificate.
+docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR" \
+  cp server:/project/certs/server.crt "$INSTALL_DIR/server.crt"
+curl --cacert "$INSTALL_DIR/server.crt" "$SERVER_URL/health"
 
 # List files in each bucket
-curl -H "Authorization: Bearer $HSYNC_API_KEY" \
-  http://localhost:8765/api/v1/buckets/mybucket/files
+HSYNC_API_KEY="$(grep '^HSYNC_API_KEY=' "$INSTALL_DIR/.env" | cut -d= -f2-)"
+curl --cacert "$INSTALL_DIR/server.crt" \
+  -H "Authorization: Bearer $HSYNC_API_KEY" \
+  "$SERVER_URL/api/v1/buckets/mybucket/files"
 ```
 
 ### Disaster recovery scenario
 
 If you lose the entire server (hardware failure, VM destroyed):
 
-1. Provision a new server with Docker installed
-2. Clone the repository: `git clone https://github.com/albertobasso/hsync-server.git`
-3. Copy your `prod.env` and latest backup to the new server
-4. Restore buckets as above
-5. Update DNS to point to the new server's IP
-6. Clients will automatically reconnect (they retry on connection loss)
+1. Provision a new server with Docker and Docker Compose v2 installed.
+2. Download and verify the same or target release installer.
+3. Run it with `--no-start` and the original bind address.
+4. Restore the `.env`, bucket volume, and certificate volume as described above.
+5. Start the Compose deployment and verify the certificate fingerprint and files.
+6. Update DNS or the client server address if the host address changed. A changed
+   address requires a certificate rotation and renewed client trust.
 
 ---
 
@@ -164,7 +240,17 @@ export HSYNC_VERSION=v1.0.0
 ./docker.sh start --env-file prod.env
 ```
 
-### Docker Compose
+### Recommended Compose installer
+
+Download and verify the installer for the target release, then run it with the
+same installation directory. It preserves secrets and volumes, updates the
+pinned image, and waits for the upgraded service to become healthy:
+
+```bash
+./install-v1.1.0.sh --install-dir "$HOME/.local/share/hsync-server"
+```
+
+### Manual Docker Compose
 
 ```bash
 docker compose pull
@@ -327,6 +413,6 @@ automatically. Configure rotation with:
 ## See also
 
 - [Deployment Guide](deployment.md) — Docker Compose, reverse proxy, systemd.
-- [README](README.md) — install and quickstart.
+- [Getting Started](getting-started.md) — recommended private-LAN install.
 - [API Reference](api.md) — complete REST + WebSocket contract.
 - [FAQ](faq.md) — frequently asked questions and troubleshooting.

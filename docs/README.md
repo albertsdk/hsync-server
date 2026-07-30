@@ -40,42 +40,15 @@ Neither should exceed a few MB in practice.
 For detailed performance and scalability guidelines, see the
 [Operations Guide → Performance and Limits](operations.md#performance-and-limits).
 
-## Install & quickstart
+## Start here
 
-Pull the prebuilt multi-arch image (`linux/amd64`, `linux/arm64`) from GHCR and
-run it directly — no build required:
+- **Private LAN:** follow the single [Getting Started guide](getting-started.md).
+- **Public production server:** follow the [Deployment Guide](deployment.md).
+- **Manual or development setup:** choose from
+  [Installation Alternatives](installation-alternatives.md).
 
-```bash
-docker pull ghcr.io/albertobasso/hsync-server:latest
-docker run -d --name hsync-server \
-  -p 8765:8765 \
-  -e HSYNC_API_KEY=<your-key> \
-  -v "$(pwd)/buckets:/project/buckets" \
-  ghcr.io/albertobasso/hsync-server:latest
-```
-
-Pin a specific release with a version tag instead of `latest`, e.g.
-`ghcr.io/albertobasso/hsync-server:v1.0.0`. Configuration is driven entirely by `HSYNC_*` environment variables.
-See the [Environment Variables](#environment-variables) section below for the
-full list.
-
-Or build and run the container locally from a checkout:
-
-```bash
-cd hsync-server
-./docker.sh start          # build + run; see ./docker.sh --help for options
-```
-
-Or run it directly from a Poetry environment:
-
-```bash
-poetry install
-poetry run hsync-server    # honors HSYNC_* env vars (host/port, API key, SSL)
-```
-
-Clients then point at it with `-s https://<host>:<port>` and the matching
-`HSYNC_API_KEY`. See [Getting Started](https://github.com/albertobasso/hsync-client/blob/main/docs/getting-started.md)
-on the client side.
+The quick-start commands live only in `getting-started.md` so installation
+instructions cannot drift between this index and the project README.
 
 ## Where to start
 
@@ -92,6 +65,8 @@ on the client side.
 
 | Document | What it covers |
 | -------- | -------------- |
+| [getting-started.md](getting-started.md) | Canonical private-LAN installation and first connection. |
+| [installation-alternatives.md](installation-alternatives.md) | Manual Compose, direct Docker, source build, and Poetry. |
 | [architecture.md](architecture.md) | Server components: FastAPI app, connection manager, storage, hashing. |
 | [deployment.md](deployment.md) | Production deployment: Docker Compose, systemd service, troubleshooting. |
 | [reverse-proxy.md](reverse-proxy.md) | Reverse proxy configuration: Nginx and Traefik examples. |
