@@ -63,8 +63,10 @@ tests/
 ├── test_bb_bucket_lifecycle.py         # Black-box: bucket create/read/list/delete lifecycle, isolation, presence
 ├── test_bb_client_interop.py           # Black-box: real hsync-client CLI driven from the server repo (TLS interop)
 ├── test_bb_delta_transfer.py           # Black-box: delta transfer use case (signatures, tokens, apply)
+├── test_bb_download_compression.py     # Black-box: download-side zstd compression for large files
 ├── test_bb_file_download_delete.py     # Black-box: file download and delete use cases
 ├── test_bb_file_upload.py              # Black-box: file upload use case (resume, compression, overwrite)
+├── test_bb_members_presence.py         # Black-box: bucket membership (grant/list/revoke) and presence counters
 ├── test_bb_tombstones_status.py        # Black-box: tombstone listing, merge, and resumable upload-status
 ├── test_bb_websocket_relay.py          # Black-box: WebSocket event-relay (handshake, fan-out, echo suppression)
 ├── test_compression.py                 # Zstandard compression unit tests
@@ -263,8 +265,10 @@ than unit tests.
 | `test_bb_bucket_lifecycle.py` | Bucket create / read / list / delete lifecycle, cross‑bucket isolation, presence. |
 | `test_bb_client_interop.py` | Real hsync‑client CLI driven from the server repo over TLS (capabilities, upload, two‑client convergence). |
 | `test_bb_delta_transfer.py` | Delta transfer use case (signatures, tokens, apply, negatives). |
+| `test_bb_download_compression.py` | Download-side zstd compression for large files (`Content-Encoding: zstd`). |
 | `test_bb_file_download_delete.py` | File download and delete use cases. |
 | `test_bb_file_upload.py` | File upload use case (resume, compression, overwrite, validation). |
+| `test_bb_members_presence.py` | Bucket membership (grant/list/revoke) and presence counters with a connected member. |
 | `test_bb_tombstones_status.py` | Tombstone listing, causal merge, and resumable upload‑status. |
 | `test_bb_websocket_relay.py` | WebSocket event‑relay (handshake, fan‑out, echo suppression, rejection). |
 
