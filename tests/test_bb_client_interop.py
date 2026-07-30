@@ -22,6 +22,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -56,6 +57,14 @@ pytestmark = [
 def _raw_client_env() -> dict[str, str]:
     """Process environment scrubbed of every ``HSYNC_*`` variable."""
     return {k: v for k, v in os.environ.items() if not k.startswith("HSYNC_")}
+
+
+def _server_host_port(base_url: str) -> tuple[str, int]:
+    """Split a live-server base URL into the bare host + port the client
+    ``server`` subcommand expects (``hsync server HOSTNAME --port N``)."""
+    parts = urlsplit(base_url)
+    assert parts.hostname is not None, f"unexpected base_url: {base_url}"
+    return parts.hostname, parts.port or 9753
 
 
 @contextlib.contextmanager
@@ -179,15 +188,18 @@ class TestClientUploadArbitrationE2E:
         # Client env: hsync-client still reads HSYNC_API_KEY and sends its value
         # verbatim as the Bearer token (the full hs_HsyncAdminBootstrap01_<secret>).
         env["HSYNC_API_KEY"] = api_key
+        host, port = _server_host_port(base_url)
         result = subprocess.run(
             [
                 sys.executable,
                 "-m",
                 "hsync_client",
+                "server",
+                host,
+                "--port",
+                str(port),
                 "-b",
                 bucket,
-                "-s",
-                base_url,
                 "-p",
                 str(tmp_path),
                 "--yes",
@@ -236,15 +248,18 @@ class TestTwoClientSyncE2E:
         """One-shot sync of *path* against the server; returns the CLI result."""
         env = _raw_client_env()
         env["HSYNC_API_KEY"] = api_key
+        host, port = _server_host_port(base_url)
         return subprocess.run(
             [
                 sys.executable,
                 "-m",
                 "hsync_client",
+                "server",
+                host,
+                "--port",
+                str(port),
                 "-b",
                 bucket,
-                "-s",
-                base_url,
                 "-p",
                 str(path),
                 "--yes",
