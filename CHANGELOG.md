@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- **Transport/TLS model clarified and made consistent**: documentation now
+  states uniformly that the server speaks HTTP/HTTPS with optional TLS in two
+  topologies — behind a TLS-terminating reverse proxy (recommended for
+  Internet-facing servers) or with the built-in persistent self-signed
+  certificate (trusted private LAN) — while clients always use `https://`/`wss://`.
+  Aligned the self-signed certificate wording across `docs/faq.md` and
+  `docs/security-best-practices.md`, added a "Transport and TLS" section to
+  `docs/architecture.md`, documented the healthcheck scheme caveat when built-in
+  TLS is enabled in `docs/deployment.md`, and recorded the two topologies in
+  `llm-wiki/modules/infrastructure.md`.
+
 ### Added
 - **Canonical Compose installer**: release assets now include a version-pinned,
   checksum-published `install.sh` and `compose.yaml`. The idempotent bootstrap

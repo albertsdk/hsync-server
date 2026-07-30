@@ -46,6 +46,13 @@ logging. Wired as a router-level dependency on `auth_router`.
   `get_ssl_cert_dir()` (`config.py:432`) so the fingerprint is stable across
   restarts (TOFU pinning by peers); `get_ssl_config` (`:172`) returns the uvicorn
   SSL kwargs gated by `get_ssl_enabled()` (`config.py:412`).
+- **Two transport topologies** (server TLS is optional):
+  (1) behind a TLS-terminating reverse proxy → `get_ssl_enabled()` is `false`, the
+  server listens on plain HTTP, and `TRUSTED_PROXIES` gates `X-Forwarded-For`
+  (`rate_limiter.py:67`); (2) built-in TLS on a trusted LAN → `get_ssl_enabled()`
+  is `true` and uvicorn terminates HTTPS/WSS with the persisted self-signed cert.
+  Clients always use `https://`/`wss://` in both cases. User-facing description:
+  `../docs/architecture.md` (Transport and TLS).
 
 ## Hash cache (`hashes.py`)
 

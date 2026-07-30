@@ -108,8 +108,10 @@ HSYNC_TRUSTED_PROXIES=10.0.0.5,172.16.0.0/12
 
 ### Always use HTTPS in production
 
-The built-in SSL support (`HSYNC_SSL_ENABLED`) generates self-signed
-certificates suitable **only** for development and LAN testing. For production:
+The built-in SSL support (`HSYNC_SSL_ENABLED`) generates a persistent
+self-signed certificate suitable for a **trusted private LAN**, but not for
+exposing the server directly to the Internet. For an Internet-facing production
+deployment:
 
 - Use a reverse proxy (nginx, Caddy, Traefik) with Let's Encrypt
 - Redirect all HTTP traffic to HTTPS

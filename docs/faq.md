@@ -68,13 +68,22 @@ variable. See [API → Authentication](api.md#authentication-flow).
 
 ### Is communication encrypted?
 
-The server is designed to run behind a TLS-terminating reverse proxy (nginx,
-Caddy, Traefik) for production use. The built-in SSL support
-(`HSYNC_SSL_ENABLED`) generates self-signed certificates suitable for
-development and LAN testing only — it is not a production TLS terminator.
+Yes. Two transport modes are supported:
 
-Clients always connect with `https://` / `wss://` and refuse to send API keys
-over plain HTTP. See [Architecture](architecture.md).
+- **Reverse proxy (recommended for Internet-facing servers)**: run the server
+  behind a TLS-terminating reverse proxy (nginx, Caddy, Traefik). The proxy
+  serves `https://`/`wss://` externally and forwards to the server over the
+  internal network; the built-in SSL terminator stays disabled
+  (`HSYNC_SSL_ENABLED=false`).
+- **Built-in TLS with a persistent self-signed certificate (trusted private
+  LAN)**: enable `HSYNC_SSL_ENABLED` and the server terminates HTTPS/WSS itself.
+  The self-signed certificate is persisted so its fingerprint stays stable
+  across restarts, which is what makes it usable for a trusted LAN — it is not
+  meant for exposing the server directly to the Internet.
+
+In both cases clients always connect with `https://` / `wss://` and refuse to
+send API keys over plain HTTP. See [Architecture](architecture.md) and
+[Security Best Practices → TLS Configuration](security-best-practices.md#tls-configuration).
 
 ### How does the server protect against abuse?
 
