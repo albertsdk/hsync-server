@@ -44,7 +44,7 @@ for the complete list with defaults and descriptions.
 
 ### What port does the server use?
 
-`8765` by default. Map or override it as needed when you start the container. See
+`9753` by default. Map or override it as needed when you start the container. See
 [Getting Started](getting-started.md).
 
 ### Can I put the server behind a reverse proxy?
@@ -128,12 +128,12 @@ Use a version tag instead of `latest`, e.g.
 
 ### Server won't start
 
-**"Address already in use" on port 8765:**
+**"Address already in use" on port 9753:**
 ```bash
 # Find the process using the port
-sudo lsof -i :8765
+sudo lsof -i :9753
 # Or use ss
-sudo ss -tlnp | grep 8765
+sudo ss -tlnp | grep 9753
 ```
 Either stop the conflicting process or change the server port with `HSYNC_PORT`.
 
@@ -158,12 +158,12 @@ encrypted on disk.
 **Connection refused:**
 ```bash
 # Verify the server is listening
-curl http://localhost:8765/health
+curl http://localhost:9753/health
 
 # Check firewall rules
 sudo ufw status
 # Open the port if needed
-sudo ufw allow 8765/tcp
+sudo ufw allow 9753/tcp
 ```
 
 **TLS/SSL errors:**
@@ -185,7 +185,7 @@ sudo ufw allow 8765/tcp
 - Ensure the client sends an `auth` frame as the first message after connecting.
 - The WebSocket URL format is:
   ```
-  wss://host:8765/api/v1/buckets/{bucket}/events/{cid}
+  wss://host:9753/api/v1/buckets/{bucket}/events/{cid}
   ```
 - Check the WebSocket close code:
   - `4001` — first frame was not a valid `auth` message.

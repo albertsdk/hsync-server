@@ -64,14 +64,14 @@ RUN addgroup -S hsync \
 ENV PATH="/project/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     HSYNC_LOG_LEVEL=info \
-    HSYNC_PORT=8765 \
+    HSYNC_PORT=9753 \
     HSYNC_WORKERS=1 \
     HSYNC_TZ=UTC \
     HSYNC_BUCKETS=/project/buckets \
     HSYNC_SSL_CERT_DIR=/project/certs
 
 # Expose default port (can be changed via HSYNC_PORT)
-EXPOSE 8765
+EXPOSE 9753
 
 # Run as an unprivileged application user for security
 USER hsync

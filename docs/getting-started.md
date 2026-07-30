@@ -39,7 +39,7 @@ The default installation:
 
 - stores configuration in `~/.local/share/hsync-server`;
 - runs `ghcr.io/albertobasso/hsync-server:v1.0.0`;
-- listens on port `8765` on localhost only;
+- listens on port `9753` on localhost only;
 - enables built-in HTTPS with a persistent self-signed certificate;
 - stores files and certificates in Docker named volumes;
 - generates the API key and private-key password locally without printing them.
@@ -67,7 +67,7 @@ validation-only, and dry-run options.
 The installer waits for the container health check. You can verify it again with:
 
 ```bash
-curl --insecure https://localhost:8765/health
+curl --insecure https://localhost:9753/health
 ```
 
 Read the generated API key locally:
@@ -86,7 +86,7 @@ openssl x509 -in server.crt -noout -fingerprint -sha256
 
 Configure clients with:
 
-- server URL: `https://<server-ip>:8765`;
+- server URL: `https://<server-ip>:9753`;
 - the generated `HSYNC_API_KEY` value;
 - `--ca-cert /trusted/path/server.crt` to verify the self-signed certificate.
 

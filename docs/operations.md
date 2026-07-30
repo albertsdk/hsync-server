@@ -189,7 +189,7 @@ After restoring, verify the server sees the files correctly:
 
 ```bash
 INSTALL_DIR="$HOME/.local/share/hsync-server"
-SERVER_URL="https://127.0.0.1:8765"  # Use the configured LAN IP when applicable.
+SERVER_URL="https://127.0.0.1:9753"  # Use the configured LAN IP when applicable.
 
 # Export and verify the restored public certificate.
 docker compose -f "$INSTALL_DIR/compose.yaml" --project-directory "$INSTALL_DIR" \
@@ -284,7 +284,7 @@ for changelogs and migration notes before upgrading.
 ### Health check
 
 ```bash
-curl http://localhost:8765/health
+curl http://localhost:9753/health
 # → 200 OK (empty body)
 ```
 
@@ -294,7 +294,7 @@ health checks.
 ### Prometheus metrics
 
 ```bash
-curl http://localhost:8765/metrics
+curl http://localhost:9753/metrics
 ```
 
 The `/metrics` endpoint exposes standard FastAPI metrics (request count, latency,

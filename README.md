@@ -127,7 +127,7 @@ hsync-server [options]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--env-file PATH` | Load environment variables from file | - |
-| `-p, --port PORT` | Server port | `8765` |
+| `-p, --port PORT` | Server port | `9753` |
 | `--log-level LEVEL` | Log level (debug, info, warning, error) | `info` |
 | `--ssl` | Enable HTTPS/WSS (auto-generates certs if not provided) | disabled |
 | `--ssl-cert FILE` | Path to SSL certificate (PEM format) | auto-generated |
@@ -146,7 +146,7 @@ Key variables:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `HSYNC_API_KEY` | API key for authentication **(required)** | — |
-| `HSYNC_PORT` | Server port | `8765` |
+| `HSYNC_PORT` | Server port | `9753` |
 | `HSYNC_LOG_LEVEL` | Log level | `info` |
 | `HSYNC_BUCKETS` | Directory for bucket data storage | `./buckets` |
 | `HSYNC_MAX_UPLOAD_SIZE` | Maximum upload size in bytes | `10737418240` (10 GiB) |

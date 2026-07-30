@@ -8,7 +8,7 @@ readonly DEFAULT_INSTALL_DIR="${HOME}/.local/share/hsync-server"
 INSTALL_DIR="${DEFAULT_INSTALL_DIR}"
 VERSION="${DEFAULT_VERSION}"
 BIND_ADDRESS="127.0.0.1"
-PUBLIC_PORT="8765"
+PUBLIC_PORT="9753"
 BIND_ADDRESS_SET=false
 PUBLIC_PORT_SET=false
 START_SERVER=true
@@ -24,7 +24,7 @@ Options:
   --version VERSION       Image version to install (default: ${DEFAULT_VERSION})
   --install-dir PATH      Configuration directory
   --bind-address ADDRESS  Concrete host IPv4 address (default: 127.0.0.1)
-  --port PORT             Host port (default: 8765)
+  --port PORT             Host port (default: 9753)
   --no-start              Generate and validate files without starting the server
   --dry-run               Show the planned configuration without changing files
   -h, --help              Show this help
@@ -123,7 +123,7 @@ services:
     hostname: ${HSYNC_CERT_HOSTNAME:-127.0.0.1}
     restart: unless-stopped
     ports:
-      - "${HSYNC_BIND_ADDRESS:-127.0.0.1}:${HSYNC_PUBLIC_PORT:-8765}:8765"
+      - "${HSYNC_BIND_ADDRESS:-127.0.0.1}:${HSYNC_PUBLIC_PORT:-9753}:9753"
     env_file:
       - .env
     volumes:
@@ -136,7 +136,7 @@ services:
         - -c
         - >-
           import ssl, urllib.request;
-          urllib.request.urlopen("https://127.0.0.1:8765/health",
+          urllib.request.urlopen("https://127.0.0.1:9753/health",
           context=ssl._create_unverified_context(), timeout=5)
       interval: 10s
       timeout: 5s

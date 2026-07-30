@@ -29,7 +29,7 @@ readonly CERTS_VOLUME="${CONTAINER_NAME}-certs"
 readonly ENV_STATE_FILE="${SCRIPT_DIR}/.hsync-last-env-file"
 
 # Default environment variables
-export HSYNC_PORT="${HSYNC_PORT:-8765}"
+export HSYNC_PORT="${HSYNC_PORT:-9753}"
 export HSYNC_LOG_LEVEL="${HSYNC_LOG_LEVEL:-info}"
 export HSYNC_WORKERS="${HSYNC_WORKERS:-1}"
 export HSYNC_API_KEY="${HSYNC_API_KEY:-}"
@@ -120,7 +120,7 @@ ${BOLD}Options:${RESET}
     -h, --help      Show this help message
 
 ${BOLD}Environment Variables:${RESET}
-    HSYNC_PORT        Server port (default: 8765)
+    HSYNC_PORT        Server port (default: 9753)
     HSYNC_LOG_LEVEL   Log level: debug, info, warning, error (default: info)
     HSYNC_WORKERS     Number of workers (default: 1)
     HSYNC_API_KEY     API key for authentication (required)

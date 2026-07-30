@@ -226,7 +226,7 @@ Unix epoch seconds. Clients use this for NTP-like clock-offset estimation.
 ### Endpoint
 
 ```
-ws(s)://host:8765/api/v1/buckets/{bucket}/events/{cid}
+ws(s)://host:9753/api/v1/buckets/{bucket}/events/{cid}
 ```
 
 > Use `wss://` when the server is behind TLS (recommended for production).

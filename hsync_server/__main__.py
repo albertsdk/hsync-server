@@ -68,7 +68,7 @@ def main(
         typer.Option(
             "-p",
             "--port",
-            help="Server port (default: 8765).",
+            help="Server port (default: 9753).",
             metavar="PORT",
             rich_help_panel="Server",
         ),
@@ -165,7 +165,7 @@ def main(
 
     [bold]Examples:[/bold]
 
-        [dim]# Start server on default port (8765)[/dim]
+        [dim]# Start server on default port (9753)[/dim]
         $ hsync-server
 
         [dim]# Start server on custom port[/dim]

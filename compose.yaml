@@ -6,7 +6,7 @@ services:
     hostname: ${HSYNC_CERT_HOSTNAME:-127.0.0.1}
     restart: unless-stopped
     ports:
-      - "${HSYNC_BIND_ADDRESS:-127.0.0.1}:${HSYNC_PUBLIC_PORT:-8765}:8765"
+      - "${HSYNC_BIND_ADDRESS:-127.0.0.1}:${HSYNC_PUBLIC_PORT:-9753}:9753"
     env_file:
       - .env
     volumes:
@@ -19,7 +19,7 @@ services:
         - -c
         - >-
           import ssl, urllib.request;
-          urllib.request.urlopen("https://127.0.0.1:8765/health",
+          urllib.request.urlopen("https://127.0.0.1:9753/health",
           context=ssl._create_unverified_context(), timeout=5)
       interval: 10s
       timeout: 5s

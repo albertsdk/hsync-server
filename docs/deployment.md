@@ -152,7 +152,7 @@ services:
     container_name: hsync-server
     restart: unless-stopped
     expose:
-      - "8765"
+      - "9753"
     env_file:
       - ./prod.env
     volumes:
@@ -164,7 +164,7 @@ services:
         - CMD
         - python
         - -c
-        - 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8765/health", timeout=5)'
+        - 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:9753/health", timeout=5)'
       interval: 30s
       timeout: 5s
       retries: 3
@@ -205,7 +205,7 @@ networks:
 ```caddy
 # Caddyfile
 your-domain.com {
-    reverse_proxy hsync-server:8765
+    reverse_proxy hsync-server:9753
 }
 ```
 
@@ -346,8 +346,8 @@ sudo systemctl status hsync-server
 
 **Port already in use:**
 ```bash
-# Check what is using port 8765
-sudo lsof -i :8765
+# Check what is using port 9753
+sudo lsof -i :9753
 # Or change the port with HSYNC_PORT in your env file
 ```
 
@@ -373,12 +373,12 @@ Set `HSYNC_SSL_KEYFILE_PASSWORD` when `HSYNC_SSL_ENABLED=true`.
 **Connection refused:**
 ```bash
 # Verify the server is listening
-curl http://localhost:8765/health
+curl http://localhost:9753/health
 
 # Check firewall rules
 sudo ufw status
 # Open the port if needed
-sudo ufw allow 8765/tcp
+sudo ufw allow 9753/tcp
 ```
 
 **TLS certificate error:**
@@ -392,7 +392,7 @@ sudo ufw allow 8765/tcp
 - Check the server logs for authentication failures.
 
 **Wrong WebSocket endpoint:**
-- The WebSocket URL is `wss://host:8765/api/v1/buckets/{bucket}/events/{cid}`.
+- The WebSocket URL is `wss://host:9753/api/v1/buckets/{bucket}/events/{cid}`.
 - The client must send an `auth` frame as the first message.
 
 ### Where to find server logs
