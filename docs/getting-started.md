@@ -24,7 +24,7 @@ changes firewall rules, or installs system packages.
 ### Quick install (one command)
 
 ```bash
-curl -fsSL https://github.com/albertobasso/hsync-server/releases/download/v1.0.0/install-v1.0.0.sh | bash
+curl -fsSL https://github.com/albertobasso/hsync-server/releases/download/v1.0.0/install.sh | bash
 ```
 
 This downloads and runs the installer in one step. The default installation
@@ -37,14 +37,14 @@ If you prefer to verify the download before running it:
 
 ```bash
 VERSION=v1.0.0
-curl -fLO "https://github.com/albertobasso/hsync-server/releases/download/${VERSION}/install-${VERSION}.sh"
+curl -fLO "https://github.com/albertobasso/hsync-server/releases/download/${VERSION}/install.sh"
 curl -fLO "https://github.com/albertobasso/hsync-server/releases/download/${VERSION}/SHA256SUMS"
 sha256sum --ignore-missing -c SHA256SUMS
-chmod 700 "install-${VERSION}.sh"
-./install-${VERSION}.sh
+chmod 700 install.sh
+./install.sh
 ```
 
-On macOS, use `shasum -a 256 "install-${VERSION}.sh"` and compare the result
+On macOS, use `shasum -a 256 install.sh` and compare the result
 with the matching line in `SHA256SUMS`.
 
 The default installation:
@@ -65,10 +65,10 @@ Subject Alternative Name:
 
 ```bash
 # Quick install with a LAN bind address
-curl -fsSL https://github.com/albertobasso/hsync-server/releases/download/v1.0.0/install-v1.0.0.sh | bash -s -- --bind-address 192.168.1.20
+curl -fsSL https://github.com/albertobasso/hsync-server/releases/download/v1.0.0/install.sh | bash -s -- --bind-address 192.168.1.20
 
 # Or, with the verified download:
-./install-v1.0.0.sh --bind-address 192.168.1.20
+./install.sh --bind-address 192.168.1.20
 ```
 
 The installer refuses to change the address later because the persisted
@@ -76,7 +76,7 @@ certificate identifies the original address. Moving the service to another IP
 requires an explicit certificate rotation or a separate installation, followed
 by re-establishing client trust.
 
-Run `./install-v1.0.0.sh --help` for version, port, install-directory,
+Run `./install.sh --help` for version, port, install-directory,
 validation-only, and dry-run options.
 
 ## Verify and connect
@@ -137,7 +137,7 @@ the same installation directory. It updates the pinned image version while
 preserving secrets and volumes:
 
 ```bash
-./install-v1.1.0.sh
+./install.sh
 ```
 
 Review the release notes and back up the buckets before updating. See the

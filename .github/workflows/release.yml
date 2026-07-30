@@ -70,12 +70,13 @@ jobs:
           persist-credentials: false
       - name: Prepare deployment assets
         run: |
-          sed "s/^readonly DEFAULT_VERSION=.*/readonly DEFAULT_VERSION=\"${GITHUB_REF_NAME}\"/" install.sh > install-${GITHUB_REF_NAME}.sh
-          chmod 755 install-${GITHUB_REF_NAME}.sh
-          sha256sum install-${GITHUB_REF_NAME}.sh compose.yaml > SHA256SUMS
+          sed "s/^readonly DEFAULT_VERSION=.*/readonly DEFAULT_VERSION=\"${GITHUB_REF_NAME}\"/" install.sh > install.sh.tmp
+          mv install.sh.tmp install.sh
+          chmod 755 install.sh
+          sha256sum install.sh compose.yaml > SHA256SUMS
       - name: Publish GitHub release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag \
-            "install-${GITHUB_REF_NAME}.sh" compose.yaml SHA256SUMS
+            install.sh compose.yaml SHA256SUMS

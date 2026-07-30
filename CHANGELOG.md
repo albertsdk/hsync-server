@@ -143,6 +143,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`curl -fsSL … | bash`) as the primary path, with the verified multi-step
   download as an alternative. The LAN setup section also shows the one-liner
   with `--bind-address`.
+- **Release**: The installer asset is now published as `install.sh` (was
+  `install-<version>.sh`) since the version is already in the release URL
+  path. The `release.yml` workflow and all documentation URLs have been
+  updated accordingly.
 
 ## [1.0.0] — 2025-12-xx
 
