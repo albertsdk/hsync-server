@@ -132,6 +132,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs**: Note in the user documentation (`README.md`, `faq.md`) that the
   desktop GUI (`hsync-desktop`) and Android app (`hsync-android`) are still
   under active development and not yet ready for production use.
+- **Docs**: Updated `CONTRIBUTING.md` — the test-structure table now reflects
+  the actual test files organised by area (REST API, WebSocket, middleware,
+  config, file utils, compression, delta, contract, scripts), and the release
+  process documents the tag-driven `release.yml` workflow (push `vX.Y.Z` →
+  CI auto-build + push to GHCR + GitHub Release with `install.sh`,
+  `compose.yaml`, `SHA256SUMS`) instead of the old manual Docker tag/push
+  and release steps.
 
 ## [1.0.0] — 2025-12-xx
 
