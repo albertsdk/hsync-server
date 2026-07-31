@@ -1,7 +1,7 @@
 # hsync-server — Decisions
 
 Ecosystem-wide ADRs are recorded once under
-[`../../hsync-common/docs/adr/`](../../hsync-common/docs/adr/README.md). This page
+[`../../hsync-common/docs/internal/adr/`](../../hsync-common/docs/internal/adr/README.md). This page
 maps the ones that constrain the server to the server code that honors them, plus
 the server-local choices not big enough for an ADR.
 
@@ -9,10 +9,10 @@ the server-local choices not big enough for an ADR.
 
 | ADR | Server code that implements it |
 | --- | ------------------------------ |
-| [0001 server-vs-lan-modes](../../hsync-common/docs/adr/0001-server-vs-lan-modes.md) | this whole process is the REST/WS server half; LAN is client-only |
-| [0003 tombstone-gossip](../../hsync-common/docs/adr/0003-tombstone-gossip.md) | `tombstones.py`; `GET/POST .../tombstones` (`api/files/list.py:194`) |
-| [0005 protocol-versioning](../../hsync-common/docs/adr/0005-protocol-versioning.md) | REST `VersionMiddleware` hard-fail 426 (`middleware.py:111`); WS handshake mismatch (`api/events.py`) |
-| [0006 master-authoritative-conflict-model](../../hsync-common/docs/adr/0006-master-authoritative-conflict-model.md) | server stores authoritative bytes; SHA-256 dedup (`hashes.py`) + checksum verify on upload |
+| [0001 server-vs-lan-modes](../../hsync-common/docs/internal/adr/0001-server-vs-lan-modes.md) | this whole process is the REST/WS server half; LAN is client-only |
+| [0003 tombstone-gossip](../../hsync-common/docs/internal/adr/0003-tombstone-gossip.md) | `tombstones.py`; `GET/POST .../tombstones` (`api/files/list.py:194`) |
+| [0005 protocol-versioning](../../hsync-common/docs/internal/adr/0005-protocol-versioning.md) | REST `VersionMiddleware` hard-fail 426 (`middleware.py:111`); WS handshake mismatch (`api/events.py`) |
+| [0006 master-authoritative-conflict-model](../../hsync-common/docs/internal/adr/0006-master-authoritative-conflict-model.md) | server stores authoritative bytes; SHA-256 dedup (`hashes.py`) + checksum verify on upload |
 
 ## Server-local decisions
 

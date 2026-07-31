@@ -430,7 +430,7 @@ Or set `HSYNC_LOG_LEVEL=debug` in your environment file.
 - [Getting Started](getting-started.md) — recommended private-LAN install.
 - [Installation Alternatives](installation-alternatives.md) — source and manual installs.
 - [API Reference](api.md) — complete REST + WebSocket contract.
-- [Architecture](architecture.md) — server components and module structure.
+- [Architecture](internal/architecture.md) — server components and module structure.
 - [Reverse Proxy Guide](reverse-proxy.md) — nginx and Traefik configuration.
 - [Sync Flow](sync-flow.md) — end-to-end synchronization behavior.
 - [FAQ](faq.md) — frequently asked questions.

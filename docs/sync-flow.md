@@ -198,5 +198,5 @@ The server exposes unauthenticated endpoints for operational monitoring:
 ## See also
 
 - [API Reference](api.md) — complete REST + WebSocket contract.
-- [Architecture](architecture.md) — server components and module structure.
+- [Architecture](internal/architecture.md) — server components and module structure.
 - [FAQ](faq.md) — frequently asked questions.

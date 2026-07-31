@@ -52,12 +52,12 @@ instructions cannot drift between this index and the project README.
 
 ## Where to start
 
-- **New to HSYNC?** → Start with the [Architecture overview](architecture.md).
+- **New to HSYNC?** → Start with the [Architecture overview](internal/architecture.md).
 - **Deploying for the first time?** → Go to the [Deployment Guide](deployment.md).
 - **Already running?** → See [Operations Guide](operations.md) for day-to-day tasks.
 - **Hardening a production instance?** → Follow the [Security Best Practices](security-best-practices.md) checklist.
 - **Integrating with the API?** → Read the [API Reference](api.md).
-- **Contributing to the project?** → Start with the [Developer Guide](developer.md).
+- **Contributing to the project?** → Start with the [Developer Guide](internal/developer.md).
 
 ## Documentation map
 
@@ -67,7 +67,6 @@ instructions cannot drift between this index and the project README.
 | -------- | -------------- |
 | [getting-started.md](getting-started.md) | Canonical private-LAN installation and first connection. |
 | [installation-alternatives.md](installation-alternatives.md) | Manual Compose, direct Docker, source build, and Poetry. |
-| [architecture.md](architecture.md) | Server components: FastAPI app, connection manager, storage, hashing. |
 | [deployment.md](deployment.md) | Production deployment: Docker Compose, systemd service, troubleshooting. |
 | [reverse-proxy.md](reverse-proxy.md) | Reverse proxy configuration: Nginx and Traefik examples. |
 
@@ -85,13 +84,15 @@ instructions cannot drift between this index and the project README.
 | -------- | -------------- |
 | [api.md](api.md) | Complete REST + WebSocket API reference. |
 | [sync-flow.md](sync-flow.md) | Server-side sync flow: file storage, event broadcast, tombstones. |
+| [delta-transfer.md](delta-transfer.md) | Rsync-style block sync protocol — algorithm, endpoints, and configuration. |
 
-### For Contributors
+### Internal / For Contributors
 
 | Document | What it covers |
 | -------- | -------------- |
-| [developer.md](developer.md) | Internal implementation details: module structure and component reference. |
-| [testing.md](testing.md) | Test suite guide: structure, fixtures, mocking, contract tests. |
+| [internal/architecture.md](internal/architecture.md) | Server components: FastAPI app, connection manager, storage, hashing. |
+| [internal/developer.md](internal/developer.md) | Internal implementation details: module structure and component reference. |
+| [internal/testing.md](internal/testing.md) | Test suite guide: structure, fixtures, mocking, contract tests. |
 
 ## Environment Variables
 
@@ -134,6 +135,11 @@ all defaults.
 | `HSYNC_LOG_RETENTION` | `7 days` | Log retention period |
 | `HSYNC_LOG_COMPRESSION` | `xz` | Compression for rotated logs |
 | `HSYNC_COMPRESSION_ENABLED` | `true` | Enable zstd compression for file transfers |
+| `HSYNC_DELTA_ENABLED` | `true` | Enable rsync-style delta transfer endpoints |
+| `HSYNC_DELTA_MIN_FILE_SIZE` | `262144` (256 KB) | Minimum file size in bytes for delta transfer (files smaller are transferred in full) |
+| `HSYNC_DELTA_MAX_CHANGE_RATIO` | `0.50` | Maximum ratio of changed blocks (0.50 = 50%) before delta is rejected |
+| `HSYNC_DELTA_TOKEN_TTL` | `300` | Seconds a literal-payload download token stays valid |
+| `HSYNC_RATE_LIMIT_DELTA` | `100/minute` | Rate limit for delta transfer endpoints |
 | `HSYNC_RELOAD` | `false` | Enable uvicorn auto-reload (development only) |
 | `HSYNC_ENABLE_DOCS` | `false` | Expose `/docs` (Swagger UI) and `/redoc` |
 
@@ -144,7 +150,7 @@ all defaults.
 > development and LAN testing only.
 
 For the ecosystem-wide decision records, see the
-[ADRs in hsync-common](https://github.com/albertobasso/hsync-common/blob/main/docs/adr/README.md).
+[ADRs in hsync-common](https://github.com/albertobasso/hsync-common/blob/main/docs/internal/adr/README.md).
 
 ## Upgrade
 
