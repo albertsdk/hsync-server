@@ -593,24 +593,49 @@ class TestFileListValidation:
         assert "HSYNC-2001" in response.text
 
     @pytest.mark.asyncio
-    async def test_list_files_skips_hidden(self, client: AsyncClient, temp_buckets_dir: str):
-        """List files skips hidden files and directories."""
-        bucket_path = os.path.join(temp_buckets_dir, "hiddenbucket")
+    async def test_list_files_skips_os_cache(self, client: AsyncClient, temp_buckets_dir: str):
+        """List files skips OS cache files (.DS_Store, Thumbs.db)."""
+        bucket_path = os.path.join(temp_buckets_dir, "cachebucket")
         os.makedirs(bucket_path)
 
-        # Create visible and hidden files
+        # Create visible and OS cache files
         with open(os.path.join(bucket_path, "visible.txt"), "w") as f:
             f.write("visible")
-        with open(os.path.join(bucket_path, ".hidden"), "w") as f:
-            f.write("hidden")
+        with open(os.path.join(bucket_path, ".DS_Store"), "w") as f:
+            f.write("cache")
+        with open(os.path.join(bucket_path, "Thumbs.db"), "w") as f:
+            f.write("cache")
 
-        response = await client.get("/api/v1/buckets/hiddenbucket/files")
+        response = await client.get("/api/v1/buckets/cachebucket/files")
         assert response.status_code == 200
         data = response.json()
         # Response is a list of file objects
         filenames = [f["filepath"] for f in data]
         assert any("visible.txt" in f for f in filenames)
-        assert not any(".hidden" in f for f in filenames)
+        assert not any(".DS_Store" in f for f in filenames)
+        assert not any("Thumbs.db" in f for f in filenames)
+
+    @pytest.mark.asyncio
+    async def test_list_files_includes_dotfiles(self, client: AsyncClient, temp_buckets_dir: str):
+        """List files includes dotfiles (.env, .gitignore) - industry standard."""
+        bucket_path = os.path.join(temp_buckets_dir, "dotfilebucket")
+        os.makedirs(bucket_path)
+
+        # Create visible and dotfiles
+        with open(os.path.join(bucket_path, "visible.txt"), "w") as f:
+            f.write("visible")
+        with open(os.path.join(bucket_path, ".env"), "w") as f:
+            f.write("env")
+        with open(os.path.join(bucket_path, ".gitignore"), "w") as f:
+            f.write("git")
+
+        response = await client.get("/api/v1/buckets/dotfilebucket/files")
+        assert response.status_code == 200
+        data = response.json()
+        filenames = [f["filepath"] for f in data]
+        assert any("visible.txt" in f for f in filenames)
+        assert any(".env" in f for f in filenames)
+        assert any(".gitignore" in f for f in filenames)
 
 
 class TestFileDeleteValidation:

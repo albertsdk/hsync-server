@@ -98,41 +98,64 @@ class TestSetSHA256Hashes:
             assert count == 3
             assert len(hashes.FILE_HASHES) == 3
 
-    def test_set_sha256_hashes_skips_hidden(self):
-        """Test that hidden files are skipped."""
+    def test_set_sha256_hashes_skips_os_cache(self):
+        """Test that OS cache files (.DS_Store, Thumbs.db) are skipped."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create regular file
             regular_file = os.path.join(temp_dir, "regular.txt")
             with open(regular_file, "w") as f:
                 f.write("regular content")
 
-            # Create hidden file
-            hidden_file = os.path.join(temp_dir, ".hidden")
-            with open(hidden_file, "w") as f:
-                f.write("hidden content")
+            # Create OS cache files
+            ds_store = os.path.join(temp_dir, ".DS_Store")
+            with open(ds_store, "w") as f:
+                f.write("cache content")
+            thumbs = os.path.join(temp_dir, "Thumbs.db")
+            with open(thumbs, "w") as f:
+                f.write("cache content")
 
             count = hashes.set_sha256_hashes(temp_dir)
 
             assert count == 1  # Only regular file
 
-    def test_set_sha256_hashes_skips_hidden_dirs(self):
-        """Test that hidden directories are skipped."""
+    def test_set_sha256_hashes_includes_dotfiles(self):
+        """Test that dotfiles (.env, .gitignore) are included (industry standard)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create regular file
+            regular_file = os.path.join(temp_dir, "regular.txt")
+            with open(regular_file, "w") as f:
+                f.write("regular content")
+
+            # Create dotfiles (should be included)
+            env_file = os.path.join(temp_dir, ".env")
+            with open(env_file, "w") as f:
+                f.write("env content")
+            gitignore_file = os.path.join(temp_dir, ".gitignore")
+            with open(gitignore_file, "w") as f:
+                f.write("git content")
+
+            count = hashes.set_sha256_hashes(temp_dir)
+
+            assert count == 3  # regular + .env + .gitignore
+
+    def test_set_sha256_hashes_includes_dotfile_dirs(self):
+        """Test that dotfile directories (.git/) are included (industry standard)."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create regular file in root
             regular_file = os.path.join(temp_dir, "regular.txt")
             with open(regular_file, "w") as f:
                 f.write("content")
 
-            # Create hidden directory with file inside
-            hidden_dir = os.path.join(temp_dir, ".hidden")
-            os.makedirs(hidden_dir)
-            hidden_file = os.path.join(hidden_dir, "file.txt")
-            with open(hidden_file, "w") as f:
-                f.write("hidden content")
+            # Create dotfile directory with file inside
+            dot_dir = os.path.join(temp_dir, ".git")
+            os.makedirs(dot_dir)
+            dot_file = os.path.join(dot_dir, "config")
+            with open(dot_file, "w") as f:
+                f.write("git config")
 
             count = hashes.set_sha256_hashes(temp_dir)
 
-            assert count == 1  # Only regular file in root
+            assert count == 2  # regular + .git/config
 
     def test_set_sha256_hashes_recursive(self):
         """Test recursive directory traversal."""
