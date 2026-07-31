@@ -1,17 +1,16 @@
 # HSYNC Server
 
+**HSYNC Server** is the central hub that keeps your files in sync across all your
+devices. It stores shared folders, accepts file changes from any device, and
+instantly notifies all other connected devices so they can pull the updates —
+all over standard HTTP/HTTPS.
+
 > [!WARNING]
 > **HSYNC manipulates files and directories** — it creates, overwrites, moves, and deletes data.
 > Misconfiguration, software defects, or other unforeseen conditions may lead to **data loss or
 > corruption**. **Use at your own risk and always keep verified, independent backups.**
 > The software is provided "as is", without warranty of any kind — see the full
 > [Disclaimer](#disclaimer) and [License](#license) below.
-
-
-**HSYNC Server** is the central hub that keeps your files in sync across all your
-devices. It stores shared folders, accepts file changes from any device, and
-instantly notifies all other connected devices so they can pull the updates —
-all over standard HTTP/HTTPS.
 
 ---
 
