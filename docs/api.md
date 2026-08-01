@@ -30,7 +30,6 @@ graph LR
 
         subgraph Tombstones["⑤ Tombstones"]
             GT["GET .../buckets/:bucket/tombstones"]
-            PT["POST .../buckets/:bucket/tombstones"]
         end
     end
 ```
@@ -74,7 +73,6 @@ files during a full reconciliation.
 | Method | Endpoint | Description | Rate Limit |
 |--------|----------|-------------|------------|
 | `GET` | `/api/v1/buckets/{bucket}/tombstones` | List deletion markers for a bucket | 500/min |
-| `POST` | `/api/v1/buckets/{bucket}/tombstones` | Merge deletion markers pushed by a peer (LWW) | 500/min |
 
 ### Delta Transfer
 
@@ -366,7 +364,6 @@ Errors are categorized by prefix:
 |------|------|-------------|
 | `HSYNC-4000` | FileOperationError | Generic file operation failure |
 | `HSYNC-4001` | UploadError | File upload failed |
-| `HSYNC-4002` | DownloadError | File download failed |
 | `HSYNC-4003` | DeleteError | File deletion failed |
 
 #### Server Errors (5XXX)
