@@ -36,6 +36,13 @@ the server-local choices not big enough for an ADR.
   `../hsync-common` checked out alongside, matching `docker.sh`/`Dockerfile`.
   `install.sh` generates local secrets and deploys that pinned image; the server
   still ships only as an image, not as a standalone binary.
+- **`install.sh --version latest`**: the installer resolves the latest stable
+  GitHub Release by following the `github.com/<repo>/releases/latest` redirect
+  with `curl -fsSIL -w %{url_effective}` (no GitHub API, no rate limit; drafts
+  and pre-releases are excluded by GitHub), then pins the **resolved** `vX.Y.Z`
+  tag in `.env` — the floating GHCR `:latest` tag is deliberately not written
+  to `.env`, so a plain `docker compose pull` never upgrades implicitly
+  (`install.sh`, `resolve_latest_version`).
 
 ## House rules (from `CLAUDE.md`)
 

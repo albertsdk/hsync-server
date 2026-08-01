@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `llm-wiki/modules/infrastructure.md`.
 
 ### Added
+- **`install.sh --version latest`**: the installer now accepts `latest` as the
+  version value, resolving the newest stable GitHub Release automatically
+  (via the `releases/latest` redirect; drafts and pre-releases are excluded)
+  and pinning the resolved `vX.Y.Z` image tag in `.env`, so users no longer
+  need to know a release tag in advance. The getting-started guide now points
+  at `releases/latest/download/install.sh` for a version-free bootstrap.
 - **Canonical Compose installer**: release assets now include a version-pinned,
   checksum-published `install.sh` and `compose.yaml`. The idempotent bootstrap
   generates local API/TLS secrets, persists buckets and the self-signed LAN

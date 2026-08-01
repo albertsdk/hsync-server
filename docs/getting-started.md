@@ -21,10 +21,10 @@ changes firewall rules, or installs system packages.
 
 ## Install
 
-### Quick install (one command)
+### Quick install (one command, latest stable release)
 
 ```bash
-curl -fsSL https://github.com/albertobasso/hsync-server/releases/download/v1.0.0/install.sh | bash
+curl -fsSL https://github.com/albertobasso/hsync-server/releases/latest/download/install.sh | bash
 ```
 
 This downloads and runs the installer in one step. The default installation
@@ -36,9 +36,8 @@ concrete LAN address.
 If you prefer to verify the download before running it:
 
 ```bash
-VERSION=v1.0.0
-curl -fLO "https://github.com/albertobasso/hsync-server/releases/download/${VERSION}/install.sh"
-curl -fLO "https://github.com/albertobasso/hsync-server/releases/download/${VERSION}/SHA256SUMS"
+curl -fLO "https://github.com/albertobasso/hsync-server/releases/latest/download/install.sh"
+curl -fLO "https://github.com/albertobasso/hsync-server/releases/latest/download/SHA256SUMS"
 sha256sum --ignore-missing -c SHA256SUMS
 chmod 700 install.sh
 ./install.sh
@@ -50,7 +49,7 @@ with the matching line in `SHA256SUMS`.
 The default installation:
 
 - stores configuration in `~/.local/share/hsync-server`;
-- runs `ghcr.io/albertobasso/hsync-server:v1.0.0`;
+- runs the latest stable `ghcr.io/albertobasso/hsync-server:vX.Y.Z` image;
 - listens on port `9753` on localhost only;
 - enables built-in HTTPS with a persistent self-signed certificate;
 - stores files and certificates in Docker named volumes;
@@ -65,7 +64,7 @@ Subject Alternative Name:
 
 ```bash
 # Quick install with a LAN bind address
-curl -fsSL https://github.com/albertobasso/hsync-server/releases/download/v1.0.0/install.sh | bash -s -- --bind-address 192.168.1.20
+curl -fsSL https://github.com/albertobasso/hsync-server/releases/latest/download/install.sh | bash -s -- --bind-address 192.168.1.20
 
 # Or, with the verified download:
 ./install.sh --bind-address 192.168.1.20
@@ -78,6 +77,12 @@ by re-establishing client trust.
 
 Run `./install.sh --help` for version, port, install-directory,
 validation-only, and dry-run options.
+
+To install a **specific version** instead of the latest stable one, download the
+installer from that release (replace `latest/download` with `download/vX.Y.Z`
+in the URLs above) or pass the version explicitly:
+`./install.sh --version v1.0.0`. Conversely, `--version latest` makes any
+installer resolve and pin the latest stable release automatically.
 
 ## Verify and connect
 
