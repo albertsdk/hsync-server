@@ -70,7 +70,7 @@ async def handle_added_event(
             log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dir_obj.path}"')
             return None
         if dir_obj.path and dir_obj.permissions:
-            log.info(f'[WEBSOCKET ] Added dir "{dir_obj.path}"')
+            log.info(f'[WEBSOCKET ] Added dir "{dir_obj.path}" (CID: {cid})')
             Path(dir_obj.path).mkdir(parents=True, exist_ok=True)
             await set_directory_permissions(dir_obj.path, dir_obj.permissions)
             return Event(cid, bucket_dir, bucket, EventName.added, dir_obj)
@@ -82,7 +82,7 @@ async def handle_added_event(
         if file_obj.filepath is None or not is_path_within_bucket(file_obj.filepath, bucket_dir):
             log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
             return None
-        log.info(f'[WEBSOCKET ] Added file "{file_obj.filepath}"')
+        log.info(f'[WEBSOCKET ] Added file "{file_obj.filepath}" (CID: {cid})')
         # A (re-)created file invalidates any prior deletion marker so peers
         # do not delete the freshly added file on their next full sync.
         if not is_sentinel_file(file_obj.filepath):
@@ -121,7 +121,7 @@ async def handle_modified_event(
             log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dir_obj.path}"')
             return None
         if dir_obj.path and dir_obj.permissions:
-            log.info(f'[WEBSOCKET ] Modified dir "{dir_obj.path}"')
+            log.info(f'[WEBSOCKET ] Modified dir "{dir_obj.path}" (CID: {cid})')
             await set_directory_permissions(dir_obj.path, dir_obj.permissions)
             return Event(cid, bucket_dir, bucket, EventName.modified, dir_obj)
 
@@ -132,7 +132,7 @@ async def handle_modified_event(
         if file_obj.filepath is None or not is_path_within_bucket(file_obj.filepath, bucket_dir):
             log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{file_obj.filepath}"')
             return None
-        log.info(f'[WEBSOCKET ] Modified file "{file_obj.filepath}"')
+        log.info(f'[WEBSOCKET ] Modified file "{file_obj.filepath}" (CID: {cid})')
         if not is_sentinel_file(file_obj.filepath):
             clear_deletion(bucket, bucket_dir, file_obj.filepath)
         return Event(cid, bucket_dir, bucket, EventName.modified, file_obj)
@@ -176,7 +176,7 @@ async def handle_deleted_event(
             if not Path(dir_obj.path).exists():
                 log.warning(f'[WEBSOCKET ] Dir: "{dir_obj.path}" not found.')
             else:
-                log.info(f'[WEBSOCKET ] Deleted dir "{dir_obj.path}"')
+                log.info(f'[WEBSOCKET ] Deleted dir "{dir_obj.path}" (CID: {cid})')
                 rmtree(dir_obj.path, ignore_errors=False)
             return Event(cid, bucket_dir, bucket, EventName.deleted, dir_obj)
 
@@ -191,7 +191,7 @@ async def handle_deleted_event(
             if not Path(file_obj.filepath).exists():
                 log.warning(f'[WEBSOCKET ] File: "{file_obj.filepath}" not found.')
             else:
-                log.info(f'[WEBSOCKET ] Deleted file "{file_obj.filepath}"')
+                log.info(f'[WEBSOCKET ] Deleted file "{file_obj.filepath}" (CID: {cid})')
                 remove(file_obj.filepath)
                 parent = str(Path(file_obj.filepath).parent)
                 if is_sentinel_file(file_obj.filepath):
@@ -252,7 +252,7 @@ async def handle_renamed_event(
             log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dst_dir.path}"')
             return None
         if src_dir.path and dst_dir.path:
-            log.info(f'[WEBSOCKET ] Renamed "{src_dir.path}" -> "{dst_dir.path}"')
+            log.info(f'[WEBSOCKET ] Renamed "{src_dir.path}" -> "{dst_dir.path}" (CID: {cid})')
             rename(src_dir.path, dst_dir.path)
             return Event(cid, bucket_dir, bucket, EventName.renamed, src_dir, dst_dir)
 
@@ -268,7 +268,9 @@ async def handle_renamed_event(
             log.warning(f'[WEBSOCKET ] Rejected path traversal attempt: "{dst_file.filepath}"')
             return None
         if src_file.filepath and dst_file.filepath:
-            log.info(f'[WEBSOCKET ] Renamed "{src_file.filepath}" -> "{dst_file.filepath}"')
+            log.info(
+                f'[WEBSOCKET ] Renamed "{src_file.filepath}" -> "{dst_file.filepath}" (CID: {cid})'
+            )
             rename(src_file.filepath, dst_file.filepath)
             return Event(cid, bucket_dir, bucket, EventName.renamed, src_file, dst_file)
 
@@ -316,7 +318,7 @@ async def handle_symlink_event(
                 )
                 return None
 
-            log.info(f'[WEBSOCKET ] Symlink "{link.filepath}" -> "{target}"')
+            log.info(f'[WEBSOCKET ] Symlink "{link.filepath}" -> "{target}" (CID: {cid})')
             # Ensure parent directory exists
             parent_dir = str(Path(link.filepath).parent)
             if not Path(parent_dir).exists():
