@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `llm-wiki/modules/infrastructure.md`.
 
 ### Added
+- **Runtime environment awareness**: at startup the server logs a one-line
+  summary of the detected runtime environment (container runtime, cgroup
+  memory/CPU limits, TTY state) via `hsync_common.runtime.runtime_summary()`.
+  Colored output now also honors the standard [`NO_COLOR`](https://no-color.org)
+  environment variable, in addition to `--no-color` and the automatic non-TTY
+  detection.
 - **`install.sh --version latest`**: the installer now accepts `latest` as the
   version value, resolving the newest stable GitHub Release automatically
   (via the `releases/latest` redirect; drafts and pre-releases are excluded)

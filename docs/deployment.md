@@ -81,6 +81,22 @@ management, and SSL configuration. It is not the release quick start; use the
 ./docker.sh logs -f
 ```
 
+### Container-aware behavior
+
+At startup the server detects whether it runs inside a container and logs a
+summary line with the container runtime, the cgroup memory/CPU limits and the
+TTY state, e.g.:
+
+```text
+Runtime environment: container=docker (via /.dockerenv), mem_limit=512.0 MB, cpu_quota=1.5 cores, tty=no
+```
+
+Inside a container the sensible non-interactive defaults apply automatically:
+colored output is disabled (no TTY; the standard
+[`NO_COLOR`](https://no-color.org) variable is also honored) and logs go to
+stdout for `docker logs` / `docker compose logs`. For log aggregation
+pipelines, structured JSON output is available with `HSYNC_LOG_FORMAT=json`.
+
 ### Passing environment variables
 
 The script accepts an `--env-file` option to pass a file with `HSYNC_*`

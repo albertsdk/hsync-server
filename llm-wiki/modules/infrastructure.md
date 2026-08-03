@@ -109,6 +109,10 @@ neither the payload nor the event loop is blocked) plus the
 `InterceptHandler` (`logger.py:73`) extends the common `BaseInterceptHandler` to
 route stdlib logging into loguru. `setup_logging` (`:103`) honors
 `get_log_level`/`get_log_format`/`get_log_file`/rotation (`config.py:332`–`347`).
+Console colors are gated by `hsync_common.runtime.color_output_enabled`
+(`--no-color` flag, `NO_COLOR` env, stdout TTY). At startup the entry point logs
+`hsync_common.runtime.runtime_summary()` (`__main__.py:233`) with the detected
+container runtime, cgroup memory/CPU limits and TTY state.
 Request correlation via `get_request_id`/`set_request_id` (`:63`/`:68`), set by
 `RequestIdMiddleware` (`middleware.py:31`).
 

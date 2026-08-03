@@ -12,6 +12,7 @@ from typing import Annotated
 
 import typer
 import uvicorn
+from hsync_common.runtime import runtime_summary
 from pydantic import ValidationError
 
 from hsync_server.config import (
@@ -230,6 +231,7 @@ def main(
 
     # Log version at startup
     log.info(f"HSYNC Server v{HSYNC_VERSION}")
+    log.info(runtime_summary())
 
     # Get SSL configuration (empty dict if SSL disabled)
     ssl_config = get_ssl_config(

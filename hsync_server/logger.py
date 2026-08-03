@@ -19,7 +19,7 @@ This module provides a standardized logging setup with enterprise-grade features
 - Optional JSON structured logging for log aggregation systems
 - Configurable log levels
 - Unified logging for uvicorn and all application logs
-- Automatic color detection (disabled for non-TTY)
+- Automatic color detection (disabled for non-TTY or when NO_COLOR is set)
 - File output support with log rotation
 
 Log rotation configuration (via environment variables):
@@ -34,7 +34,6 @@ Log formats:
 """
 
 import logging
-import sys
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
@@ -43,6 +42,7 @@ from hsync_common.logger import (
     build_record_formatter,
     configure_handlers,
 )
+from hsync_common.runtime import color_output_enabled
 from loguru import logger
 
 from hsync_server.config import (
@@ -146,8 +146,9 @@ def setup_logging(
     log_file = logfile or get_log_file()
 
     is_json = log_format == "json"
-    # Colors are enabled only when --no-color is not set and stdout is a TTY.
-    use_colors = not is_json and not no_color and sys.stdout.isatty()
+    # Colors are enabled only when --no-color is not set, the NO_COLOR env is
+    # unset, and stdout is a TTY.
+    use_colors = not is_json and color_output_enabled(no_color=no_color)
     console_format = _format_record_colored if use_colors else _format_record_plain
 
     configure_handlers(
