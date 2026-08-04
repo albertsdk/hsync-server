@@ -115,18 +115,6 @@ This prevents race conditions where multiple clients would write to the same
 race check and released after the atomic rename, ensuring that the entire
 apply operation is atomic with respect to other delta applies on the same file.
 
-## Delta Transfer (`api/files/delta/`)
-
-Delta transfer endpoints (rsync-style block sync) for efficient file updates.
-See `../docs/delta-transfer.md` for user-facing documentation.
-
-| Method + path | Handler | Auth | Rate limit |
-| ------------- | ------- | ---- | ---------- |
-| `GET /buckets/{bucket}/files/delta/signatures` | `delta.signatures.get_signatures` (`delta/signatures.py:50`) | key | delta |
-| `POST /buckets/{bucket}/files/delta/signatures` | `delta.signatures.match_signatures` (`delta/signatures.py:100`) | key | delta |
-| `POST /buckets/{bucket}/files/delta/apply` | `delta.apply.delta_apply` (`delta/apply.py:140`) | key | delta |
-| `GET /buckets/{bucket}/files/delta/data/{token}` | `delta.data.get_delta_data` (`delta/data.py:40`) | key | delta |
-
 **Caps and limits**:
 - `POST /delta/signatures` body size: max 50 MB (`_MAX_SIGNATURES_BODY_SIZE`)
 - Total temp file storage: max 10 GB (`DELTA_MAX_TEMP_STORAGE_BYTES`)

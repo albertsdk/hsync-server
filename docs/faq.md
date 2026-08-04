@@ -305,6 +305,7 @@ HSYNC_LOG_LEVEL=debug ./docker.sh start
 | 422 | Unprocessable Entity | Request body validation failed |
 | 429 | Too Many Requests | Rate limit exceeded |
 | 500 | Internal Server Error | Unexpected server error |
+| 507 | Insufficient Storage | Not enough free disk space for upload |
 
 For a complete list of error codes, see [API → Error Codes Reference](api.md#error-codes-reference).
 

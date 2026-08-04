@@ -59,6 +59,7 @@ logging. Wired as a router-level dependency on `auth_router`.
 In-memory `FILE_HASHES: dict[str, str]` (`hashes.py:25`). `set_sha256_hash` (`:28`),
 `get_sha256_hash` (`:42`), `del_sha256_hash` (`:56`); `set_sha256_hashes` (`:73`)
 walks the buckets tree at startup (called from `main.py:58`) for fast duplicate
+detection without recompute.
 
 ## Prometheus metrics (`metrics.py`)
 
@@ -80,7 +81,6 @@ Metrics are recorded in the delta endpoints (`signatures.py`, `apply.py`, `data.
 available). Helper functions: `record_delta_transfer`, `record_bytes_saved`,
 `record_transfer_duration`, `record_change_ratio`, `update_active_tokens`,
 `update_temp_storage`.
-detection without recompute.
 
 ## Compression (`compression.py`)
 

@@ -100,7 +100,7 @@ stream the data efficiently.
 | `GET /delta/signatures` | 100/min |
 | `POST /delta/signatures` | 100/min |
 | `POST /delta/apply` | 100/min |
-| `GET /delta/data/{token}` | 1000/min |
+| `GET /delta/data/{token}` | 100/min |
 
 ## Upload delta flow
 
@@ -155,9 +155,9 @@ control its behavior:
 |----------|---------|-------------|
 | `HSYNC_DELTA_ENABLED` | `true` | Enable/disable delta transfer entirely |
 | `HSYNC_DELTA_MIN_FILE_SIZE` | `262144` (256 KB) | Minimum file size for delta in server mode |
-| `HSYNC_DELTA_MIN_FILE_SIZE_LAN` | `1048576` (1 MB) | Minimum file size for delta in LAN mode |
-| `HSYNC_DELTA_MAX_FILE_SIZE` | `1073741824` (1 GB) | Maximum file size for delta transfer |
-| `HSYNC_DELTA_MAX_BLOCKS` | `65536` | Maximum number of blocks in a signature request |
+| `HSYNC_DELTA_MAX_CHANGE_RATIO` | `0.50` | Maximum ratio of changed blocks (0.50 = 50%) before delta is rejected |
+| `HSYNC_DELTA_TOKEN_TTL` | `300` | Seconds a literal-payload download token stays valid |
+| `HSYNC_RATE_LIMIT_DELTA` | `100/minute` | Rate limit for delta transfer endpoints |
 
 Disable delta transfer with:
 
@@ -207,8 +207,12 @@ The server exposes Prometheus metrics for delta transfer:
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `hsync_delta_transfer_total` | Counter | Total delta transfer attempts, tagged by `status` (`success`, `fallback`, `conflict`) and `direction` (`upload`, `download`) |
+| `hsync_delta_transfer_total` | Counter | Total delta transfer attempts, tagged by `status` (`success`, `failure`, `rejected`, `conflict`) and `direction` (`upload`, `download`) |
 | `hsync_delta_bytes_saved` | Counter | Estimated bytes saved by delta transfer (original size - transferred size) |
+| `hsync_delta_transfer_duration_seconds` | Histogram | Duration of delta transfer operations by phase (`signatures`, `match`, `apply`, `data`, `total`) |
+| `hsync_delta_block_change_ratio` | Histogram | Ratio of changed blocks in delta transfer (0.0 = no change, 1.0 = all changed) |
+| `hsync_delta_active_tokens` | Gauge | Number of currently active delta download tokens |
+| `hsync_delta_temp_storage_bytes` | Gauge | Total bytes used by delta transfer temporary files |
 
 Example PromQL queries:
 

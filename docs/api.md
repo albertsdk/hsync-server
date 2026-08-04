@@ -86,7 +86,7 @@ small changes.
 | `GET` | `/api/v1/buckets/{bucket}/files/delta/signatures?path={path}` | Get block signatures of a file (for upload delta) | 100/min |
 | `POST` | `/api/v1/buckets/{bucket}/files/delta/signatures` | Match client signatures against server file (for download delta) | 100/min |
 | `POST` | `/api/v1/buckets/{bucket}/files/delta/apply` | Apply a computed delta to update a file | 100/min |
-| `GET` | `/api/v1/buckets/{bucket}/files/delta/data/{token}` | Download literal payload for a delta operation | 1000/min |
+| `GET` | `/api/v1/buckets/{bucket}/files/delta/data/{token}` | Download literal payload for a delta operation | 100/min |
 
 **Concurrency**: Delta apply operations on the same file are automatically
 serialized using per-file locks. If multiple clients attempt to apply deltas
@@ -257,10 +257,13 @@ its `version` and `compression_enabled` capability.
 
 | Code | Meaning |
 |------|---------|
+| `4000` | Invalid client ID or bucket name; connection replaced by a newer one |
 | `4001` | Invalid auth message (first frame was not a valid `auth` message) |
 | `4002` | Version incompatible (client/server protocol mismatch) |
 | `4003` | Invalid API key / authentication failed |
+| `4004` | Heartbeat timeout (no pong received within the timeout window) |
 | `4008` | Authentication timeout (no auth frame within the timeout window) |
+| `1013` | Connection limit reached (global or per-IP cap exceeded) |
 
 ### Event Types
 
@@ -300,9 +303,11 @@ its `version` and `compression_enabled` capability.
 | 401 | Unauthorized - Invalid API key |
 | 403 | Forbidden - Missing API key |
 | 404 | Not Found - Resource not found |
+| 409 | Conflict - File already exists (same SHA-256) or base file changed |
 | 422 | Unprocessable Entity - Request body validation failed |
 | 429 | Too Many Requests - Rate limit exceeded |
 | 500 | Internal Server Error |
+| 507 | Insufficient Storage - Not enough free disk space for upload |
 
 ### Error Response Format
 
@@ -365,6 +370,7 @@ Errors are categorized by prefix:
 | `HSYNC-4000` | FileOperationError | Generic file operation failure |
 | `HSYNC-4001` | UploadError | File upload failed |
 | `HSYNC-4003` | DeleteError | File deletion failed |
+| `HSYNC-4004` | InsufficientStorageError | Insufficient storage space on server |
 
 #### Server Errors (5XXX)
 
