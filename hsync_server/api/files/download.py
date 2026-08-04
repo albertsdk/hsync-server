@@ -28,7 +28,7 @@ from hsync_server.compression import (
     should_compress,
 )
 from hsync_server.config import get_compression_enabled
-from hsync_server.constants import CONTENT_TYPE_OCTET_STREAM
+from hsync_server.constants import CONTENT_TYPE_OCTET_STREAM, ActionLabel
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.exceptions import (
     InvalidBucketNameError,
@@ -102,6 +102,7 @@ async def download_file(request: Request, bucket: str, filename: str):
         # Streaming compression: reads and compresses the file in chunks and
         # streams the single zstd frame to the client, so neither the file nor
         # its compressed form is ever fully buffered in memory (memory-bomb DoS).
+        log.info(f'{ActionLabel.DOWNLOAD} "{bucket}/{filename}" ({file_size} bytes, zstd)')
         log.debug(f"Compressed streaming download: {file} ({file_size} bytes)")
         return StreamingResponse(
             async_compress_stream(file),
@@ -114,4 +115,5 @@ async def download_file(request: Request, bucket: str, filename: str):
         )
 
     # Standard download (streaming, supports Range requests)
+    log.info(f'{ActionLabel.DOWNLOAD} "{bucket}/{filename}" ({file_size} bytes)')
     return FileResponse(file, filename=filename, headers=checksum_header)

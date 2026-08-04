@@ -133,6 +133,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in favour of the common SSOT
 
 ### Changed
+- **Log label format normalized to spaces**: multi-word action labels now print
+  with spaces (`[NO MASTER]`, `[TO DOWNLOAD]`, …) instead of underscores,
+  matching the shared `hsync_common.labels` SSOT. Breaking for log parsers that
+  match the old underscored strings; updated atomically with the client/Android.
+- **Unified log-label colorization via shared SSOT**: the server now emits
+  every bracketed log label through `ActionLabel` (re-exported from
+  `hsync_common.labels`) and colorizes lines via the shared `colorize_labels`
+  helper, matching the client's output. The legacy `[WEBSOCKET ]` infra tag is
+  now `[WS]`; REST file endpoints log `[UPLOAD]`/`[DOWNLOAD]` on success and
+  the WS event handlers log `[CREATE]`/`[MODIFY]`/`[DELETE]`/`[RENAME]`/
+  `[SYMLINK]`/`[SECURITY]` instead of a generic `[WEBSOCKET ]` prefix.
 - Upload broadcasts now skip hidden files (consistent with the `/files`
   listing): peers no longer receive pushed dotfiles they never asked for
 - **Deps**: Updated runtime and development dependencies: uvicorn 0.51.0,

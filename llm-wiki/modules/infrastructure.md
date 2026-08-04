@@ -116,6 +116,16 @@ container runtime, cgroup memory/CPU limits and TTY state.
 Request correlation via `get_request_id`/`set_request_id` (`:63`/`:68`), set by
 `RequestIdMiddleware` (`middleware.py:31`).
 
+**Action-label colorization**: the server has no project-local label table.
+`ActionLabel` is re-exported from `hsync_common.labels`
+(`hsync_server/constants.py:23`), and the formatter's `message_transform`
+calls `hsync_common.labels.colorize_labels` (`logger.py:98`) so the server's
+log lines are colorized identically to the client's. REST/WS handlers emit
+labels via `ActionLabel.*` (e.g. `[UPLOAD]`/`[DOWNLOAD]` in `api/files/`,
+`[WS]` infra messages in `api/events.py` + `api/connection_manager.py`,
+`[CREATE]`/`[MODIFY]`/`[DELETE]`/`[RENAME]`/`[SYMLINK]`/`[SECURITY]` in the
+WS event `handlers.py`).
+
 ## Path validation
 
 All primitives come straight from `hsync_common.path_validation`

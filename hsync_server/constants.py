@@ -20,6 +20,7 @@ from hsync_common.constants import (  # noqa: E402, F401
     HSYNCKEEP_FILENAME,
     VERSION,
 )
+from hsync_common.labels import ActionLabel  # noqa: E402, F401
 from hsync_common.protocol.handshake import (  # noqa: E402, F401
     PROTOCOL_VERSION_REST,
     PROTOCOL_VERSION_WS,

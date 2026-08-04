@@ -37,6 +37,7 @@ import logging
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
+from hsync_common.labels import colorize_labels
 from hsync_common.logger import (
     BaseInterceptHandler,
     build_record_formatter,
@@ -94,10 +95,24 @@ def get_log_format() -> str:
     return get_config_log_format()
 
 
+def _transform_colored(record, message: str) -> str:
+    """Colorize action labels in the message."""
+    return colorize_labels(message, use_colors=True)
+
+
+def _transform_plain(record, message: str) -> str:
+    """Return the message unchanged (no label colorizing)."""
+    return message
+
+
 # Format functions sharing the common factory; the server adds the per-request
 # correlation id as an extra field.
-_format_record_colored = build_record_formatter(colored=True, extra_fields=("request_id",))
-_format_record_plain = build_record_formatter(colored=False, extra_fields=("request_id",))
+_format_record_colored = build_record_formatter(
+    colored=True, extra_fields=("request_id",), message_transform=_transform_colored
+)
+_format_record_plain = build_record_formatter(
+    colored=False, extra_fields=("request_id",), message_transform=_transform_plain
+)
 
 
 def setup_logging(

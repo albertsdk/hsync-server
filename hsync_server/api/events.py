@@ -53,7 +53,7 @@ from hsync_server.config import (
     get_ws_heartbeat_interval,
     get_ws_heartbeat_timeout,
 )
-from hsync_server.constants import HSYNC_VERSION, WS_MSG_TYPE_AUTH
+from hsync_server.constants import HSYNC_VERSION, WS_MSG_TYPE_AUTH, ActionLabel
 from hsync_server.rate_limiter import create_ws_message_bucket
 from hsync_server.routers import public_router
 
@@ -114,7 +114,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         # The cid comes from the URL path: reject malformed IDs before they
         # are trusted for echo suppression or logged.
         if not is_valid_cid(cid):
-            log.warning(f"[WEBSOCKET ] Rejecting connection with invalid cid: {cid!r}")
+            log.warning(f"{ActionLabel.WS} Rejecting connection with invalid cid: {cid!r}")
             await websocket.close(code=4000, reason="Invalid client ID")
             return
 
@@ -123,7 +123,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         # `%2e%2e`) would escape the storage root and turn delete/rename/
         # symlink events into arbitrary sibling-directory operations.
         if not is_valid_bucket(bucket):
-            log.warning(f"[WEBSOCKET ] Rejecting connection with invalid bucket: {bucket!r}")
+            log.warning(f"{ActionLabel.WS} Rejecting connection with invalid bucket: {bucket!r}")
             await websocket.close(code=4000, reason="Invalid bucket name")
             return
 
@@ -131,7 +131,9 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         # unauthenticated floods cannot exhaust file descriptors / memory.
         client_ip = websocket.client.host if websocket.client else "unknown"
         if not bucket_manager.try_acquire_slot(client_ip):
-            log.warning(f"[WEBSOCKET ] Connection limit reached, rejecting {cid} from {client_ip}")
+            log.warning(
+                f"{ActionLabel.WS} Connection limit reached, rejecting {cid} from {client_ip}"
+            )
             await websocket.close(code=1013, reason="Connection limit reached")
             return
         slot_acquired = True
@@ -145,14 +147,14 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             auth_message = loads(auth_data)
 
             if auth_message.get("type") != WS_MSG_TYPE_AUTH:
-                log.warning(f"[WEBSOCKET ] Invalid auth message type from {cid}")
+                log.warning(f"{ActionLabel.WS} Invalid auth message type from {cid}")
                 await websocket.close(code=4001, reason="Invalid auth message")
                 return
 
             auth_token = auth_message.get("token", "")
             # Use constant-time comparison to prevent timing attacks
             if not hmac.compare_digest(auth_token, get_api_key()):
-                log.warning(f"[WEBSOCKET ] Invalid API key from {cid}")
+                log.warning(f"{ActionLabel.WS} Invalid API key from {cid}")
                 await websocket.close(code=4003, reason="Invalid API key")
                 return
 
@@ -162,7 +164,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             client_protocol = auth_message.get("protocol_version", "")
             if client_protocol != PROTOCOL_VERSION_WS:
                 log.warning(
-                    f"[WEBSOCKET ] Rejecting client {cid} with incompatible "
+                    f"{ActionLabel.WS} Rejecting client {cid} with incompatible "
                     f"protocol {client_protocol or 'missing'} (server: {PROTOCOL_VERSION_WS})"
                 )
                 await websocket.send_json(
@@ -177,7 +179,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             # Client capabilities are advisory feature flags for this session.
             client_caps = decode_capabilities(auth_message.get("capabilities"))
             log.debug(
-                f"[WEBSOCKET ] Client {cid} authenticated "
+                f"{ActionLabel.WS} Client {cid} authenticated "
                 f"(capabilities: {sorted(c.value for c in client_caps) or 'none'})"
             )
 
@@ -190,11 +192,11 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             )
 
         except TimeoutError:
-            log.warning(f"[WEBSOCKET ] Auth timeout for {cid} from {client_ip}")
+            log.warning(f"{ActionLabel.WS} Auth timeout for {cid} from {client_ip}")
             await websocket.close(code=4008, reason="Authentication timeout")
             return
         except Exception as e:
-            log.warning(f"[WEBSOCKET ] Auth failed for {cid}: {e}")
+            log.warning(f"{ActionLabel.WS} Auth failed for {cid}: {e}")
             await websocket.close(code=4003, reason="Authentication failed")
             return
 
@@ -205,7 +207,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
         manager = bucket_manager.get_manager(bucket)
         stale = manager.active_connections.get(cid)
         if stale is not None:
-            log.warning(f"[WEBSOCKET ] cid {cid} reconnected: evicting stale registration")
+            log.warning(f"{ActionLabel.WS} cid {cid} reconnected: evicting stale registration")
             try:
                 await stale.close(code=4000, reason="Replaced by a newer connection")
             except Exception:
@@ -213,7 +215,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             if manager.active_connections.get(cid) is stale:
                 manager.active_connections.pop(cid, None)
         manager.active_connections[cid] = websocket
-        log.info(f"[WEBSOCKET ] Client connected: {cid} (bucket: {bucket})")
+        log.info(f"{ActionLabel.WS} Client connected: {cid} (bucket: {bucket})")
 
         # Create per-connection rate limiter for event messages
         ws_bucket = create_ws_message_bucket()
@@ -248,11 +250,11 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         websocket.receive_text(), timeout=heartbeat_interval + heartbeat_timeout
                     )
                 except TimeoutError:
-                    log.warning(f"[WEBSOCKET ] Heartbeat timeout for {cid}")
+                    log.warning(f"{ActionLabel.WS} Heartbeat timeout for {cid}")
                     await websocket.close(code=4004, reason="Heartbeat timeout")
                     break
 
-                log.debug(f"[WEBSOCKET ] Received message: {escape_loguru_markup(data)}")
+                log.debug(f"{ActionLabel.WS} Received message: {escape_loguru_markup(data)}")
                 try:
                     message = loads(data)
 
@@ -260,12 +262,14 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                     msg_type = message.get("type")
                     if msg_type == "pong":
                         # Client responded to ping, connection is alive
-                        log.debug(f"[WEBSOCKET ] Received pong from {cid}")
+                        log.debug(f"{ActionLabel.WS} Received pong from {cid}")
                         continue
 
                     # Rate limit event messages (pong excluded to avoid heartbeat deadlock)
                     if not ws_bucket.acquire():
-                        log.warning(f"[WEBSOCKET ] Rate limit exceeded for {cid}, dropping event")
+                        log.warning(
+                            f"{ActionLabel.WS} Rate limit exceeded for {cid}, dropping event"
+                        )
                         continue
 
                     # Validate event type
@@ -291,7 +295,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                     # operation or relay to other clients is derived from them.
                     if not _event_paths_safe(src) or not _event_paths_safe(dst):
                         log.warning(
-                            f"[WEBSOCKET ] Rejected unsafe {event_name.value} event path from {cid}"
+                            f"{ActionLabel.WS} Rejected unsafe {event_name.value} event path from {cid}"
                         )
                         continue
 
@@ -315,17 +319,19 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                         await manager.send_message(event)
 
                 except JSONDecodeError:
-                    log.error(f"[WEBSOCKET ] Invalid JSON received: {escape_loguru_markup(data)}")
+                    log.error(
+                        f"{ActionLabel.WS} Invalid JSON received: {escape_loguru_markup(data)}"
+                    )
                 except Exception as e:
-                    log.error(f"[WEBSOCKET ] Exception data: {escape_loguru_markup(data)}")
-                    log.error(f"[WEBSOCKET ] Exception: {e}", exc_info=True)
+                    log.error(f"{ActionLabel.WS} Exception data: {escape_loguru_markup(data)}")
+                    log.error(f"{ActionLabel.WS} Exception: {e}", exc_info=True)
 
         except WebSocketDisconnect:
             # Client disconnected normally
-            log.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")
+            log.warning(f"{ActionLabel.WS} Disconnected (CID: {cid})")
         except Exception as e:
             # Client disconnected with error
-            log.warning(f"[WEBSOCKET ] Disconnected (CID: {cid}) ({e})")
+            log.warning(f"{ActionLabel.WS} Disconnected (CID: {cid}) ({e})")
             await websocket.close()
         finally:
             # Cancel heartbeat task and cleanup
@@ -338,7 +344,7 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             manager.disconnect(cid, websocket)
     except Exception:
         # Handle any outer exception (e.g., auth failure)
-        log.warning(f"[WEBSOCKET ] Disconnected (CID: {cid})")
+        log.warning(f"{ActionLabel.WS} Disconnected (CID: {cid})")
         await websocket.close()
     finally:
         # Always release the connection slot reserved right after accept().

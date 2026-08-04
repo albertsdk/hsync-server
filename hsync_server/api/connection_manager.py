@@ -17,6 +17,7 @@ from hsync_common.models.event import Event
 from loguru import logger as log
 
 from hsync_server.config import get_ws_max_connections, get_ws_max_connections_per_ip
+from hsync_server.constants import ActionLabel
 
 
 class ConnectionManager:
@@ -66,7 +67,7 @@ class ConnectionManager:
                 try:
                     await connection.send_json(event.to_dict())
                 except Exception as e:
-                    log.warning(f"[WEBSOCKET ] Dropping dead connection for {cid}: {e}")
+                    log.warning(f"{ActionLabel.WS} Dropping dead connection for {cid}: {e}")
                     if self.active_connections.get(cid) is connection:
                         self.active_connections.pop(cid, None)
 
