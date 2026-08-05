@@ -98,7 +98,7 @@ async def delete_file(
         # Remove the file
         remove(file)
         invalidate_sha256_cache(file)
-        log.info(f'{ActionLabel.DELETE} File: "{file}" deleted successfully')
+        log.info(f'{ActionLabel.DELETE} File: "{file}" deleted successfully (CID: {cid})')
 
         # Record a tombstone so peers offline at deletion time do not
         # resurrect the file on their next full sync. Sentinel files are

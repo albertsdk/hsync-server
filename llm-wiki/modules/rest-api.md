@@ -79,6 +79,8 @@ Streams the file; supports zstd via `compression.async_compress_stream`
 (`compression.py:53`) when `get_compression_enabled()` (`config.py:437`). The
 `filename` is confined with `resolve_within_bucket` (rejects cross-bucket and
 internal-engine paths). Missing file → `FileNotFoundError` (`exceptions.py:118`).
+Accepts an optional `cid` query parameter (sent by the client) that is included
+in the `[DOWNLOAD]` log line for request attribution.
 
 ## List / upload-status / tombstones (`api/files/list.py`)
 
