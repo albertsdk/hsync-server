@@ -3,10 +3,16 @@ Pytest fixtures for hsync-server tests.
 """
 
 import os
+import shutil
+import socket
+import subprocess
+import sys
 import tempfile
+import time
 from collections.abc import AsyncGenerator, Generator
 from unittest.mock import patch
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -188,3 +194,196 @@ async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGener
         transport = ASGITransport(app=test_app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac
+
+
+# =============================================================================
+# Black-box harness (test_bb_*.py)
+#
+# Behavioural, use-case-driven tests drive the *real* server over loopback HTTP
+# and WebSocket. To stay isolated from this repo's in-process config tests
+# (which mutate ``HSYNC_*`` env and clear the settings cache mid-session), the
+# live server runs as a **subprocess** with its own process state. No internal
+# logic is mocked: only the filesystem (a temp buckets dir) and the API key are
+# test fixtures. See ``.kilo/plans/1786000181361-blackbox-test-suite.md``.
+# =============================================================================
+
+# A fixed, strong API key for every black-box run (>= 16 chars per Settings).
+BB_API_KEY = "test-bb-api-key-0123456789abcdef"
+
+
+def _free_port() -> int:
+    """Reserve and release an ephemeral loopback port for the server to bind."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+    finally:
+        sock.close()
+
+
+def _start_live_server(
+    env_overrides: dict[str, str] | None = None,
+) -> tuple[subprocess.Popen, int, str]:
+    """Start the real hsync-server on an ephemeral loopback port.
+
+    Returns (process, port, buckets_dir). The caller owns termination and
+    cleanup. Raises ``RuntimeError`` if the server does not become healthy.
+    """
+    buckets_dir = tempfile.mkdtemp(prefix="hsync_bb_buckets_")
+    port = _free_port()
+    env = {
+        **os.environ,
+        "HSYNC_API_KEY": BB_API_KEY,
+        "HSYNC_BUCKETS": buckets_dir,
+        # Raise limits so the behavioural suite never trips a 429; individual
+        # rate-limit tests spawn a dedicated low-limit server instead.
+        "HSYNC_RATE_LIMIT_DEFAULT": "1000000/minute",
+        "HSYNC_RATE_LIMIT_UPLOAD": "1000000/minute",
+        "HSYNC_RATE_LIMIT_DOWNLOAD": "1000000/minute",
+        "HSYNC_RATE_LIMIT_DELTA": "1000000/minute",
+        "HSYNC_RATE_LIMIT_WEBSOCKET": "1000000/minute",
+        "HSYNC_RATE_LIMIT_WS_MESSAGES": "1000000/second",
+        "HSYNC_WS_AUTH_TIMEOUT": "5",
+        "HSYNC_WS_HEARTBEAT_INTERVAL": "5",
+        "HSYNC_WS_HEARTBEAT_TIMEOUT": "3",
+        "HSYNC_MIN_FREE_DISK_SPACE": "0",
+        "HSYNC_ENABLE_DOCS": "false",
+    }
+    if env_overrides:
+        env.update(env_overrides)
+
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "hsync_server", "--port", str(port), "--log-level", "warning"],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    import httpx
+
+    base_url = f"http://127.0.0.1:{port}"
+    deadline = time.time() + 30
+    last_exc: Exception | None = None
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            out = proc.stdout.read() if proc.stdout else ""
+            shutil.rmtree(buckets_dir, ignore_errors=True)
+            raise RuntimeError(f"hsync-server exited early (code {proc.returncode}):\n{out}")
+        try:
+            r = httpx.get(f"{base_url}/health", timeout=1.0)
+            if r.status_code == 200:
+                return proc, port, buckets_dir
+        except Exception as exc:  # noqa: BLE001 - startup not ready yet
+            last_exc = exc
+        time.sleep(0.15)
+    _stop_proc(proc)
+    shutil.rmtree(buckets_dir, ignore_errors=True)
+    raise RuntimeError(f"hsync-server did not become healthy on port {port}: {last_exc}")
+
+
+def _stop_proc(proc: subprocess.Popen) -> None:
+    """Terminate and reap a server subprocess, killing if needed."""
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+@pytest.fixture(scope="session")
+def live_server() -> Generator[tuple[str, str]]:
+    """Session-scoped real loopback server: yields (base_url, api_key)."""
+    proc, port, buckets_dir = _start_live_server()
+    try:
+        yield f"http://127.0.0.1:{port}", BB_API_KEY
+    finally:
+        _stop_proc(proc)
+        shutil.rmtree(buckets_dir, ignore_errors=True)
+
+
+@pytest.fixture
+def start_live_server():
+    """Expose a context-managed starter for tests needing a custom-config server.
+
+    Returns a callable ``start(env_overrides=None)`` that yields
+    ``(base_url, api_key)`` and guarantees process termination + temp dir
+    cleanup on exit, so callers never need to manage teardown themselves.
+    """
+    import contextlib
+
+    @contextlib.contextmanager
+    def _start(env_overrides: dict[str, str] | None = None):
+        proc, port, buckets_dir = _start_live_server(env_overrides)
+        try:
+            yield f"http://127.0.0.1:{port}", BB_API_KEY
+        finally:
+            _stop_proc(proc)
+            shutil.rmtree(buckets_dir, ignore_errors=True)
+
+    return _start
+
+
+@pytest.fixture
+def bb_http(live_server: tuple[str, str]) -> Generator[httpx.Client]:
+    """Synchronous HTTP client authenticated against the live server."""
+    import httpx
+
+    base_url, api_key = live_server
+    with httpx.Client(
+        base_url=base_url,
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=30.0,
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+def bb_bucket(bb_http: httpx.Client) -> Generator[str]:
+    """Create a uniquely-named bucket for one test; remove it afterwards."""
+    import uuid
+
+    name = f"bb-{uuid.uuid4().hex[:10]}"
+    r = bb_http.post("/api/v1/buckets", params={"bucket": name})
+    assert r.status_code == 201, r.text
+    yield name
+    bb_http.delete(f"/api/v1/buckets/{name}")
+
+
+@pytest.fixture
+def bb_upload():
+    """Helper to upload a file to the live server over HTTP (black-box)."""
+    import hashlib
+
+    def _upload(
+        client: httpx.Client,
+        bucket: str,
+        filename: str,
+        content: bytes,
+        *,
+        path: str = "",
+        sha256sum: str | None = None,
+        permissions: str = "644",
+        offset: int = 0,
+        size: int = 0,
+        compressed: str = "false",
+        cid: str = "bbclient0001",
+    ) -> httpx.Response:
+        return client.post(
+            f"/api/v1/buckets/{bucket}/files",
+            data={
+                "cid": cid,
+                "path": path,
+                "sha256sum": sha256sum
+                if sha256sum is not None
+                else hashlib.sha256(content).hexdigest(),
+                "permissions": permissions,
+                "offset": str(offset),
+                "size": str(size),
+                "compressed": compressed,
+            },
+            files={"file": (filename, content, "application/octet-stream")},
+        )
+
+    return _upload
