@@ -115,7 +115,7 @@ POST /api/v1/buckets/mybucket/files HTTP/1.1
 Authorization: Bearer your-api-key
 Content-Type: multipart/form-data
 
-cid=client-123
+cid=Client123
 file=@document.pdf
 path=documents/
 ctime=2024-01-15T10:30:00Z
@@ -279,7 +279,7 @@ its `version` and `compression_enabled` capability.
 
 ```json
 {
-  "cid": "client-123",
+  "cid": "client123",
   "bucket": "mybucket",
   "name": "added",
   "src": {
