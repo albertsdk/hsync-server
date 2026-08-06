@@ -35,6 +35,7 @@ from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from hsync_common.constants import DELTA_MAX_LITERAL_SIZE, PARTIAL_DELTA_SUFFIX
 from hsync_common.delta import DeltaError, apply_delta
+from hsync_common.format import format_duration
 from hsync_common.hashing import compute_sha256_async, is_sha256_hex
 from hsync_common.models.delta import (
     OP_TYPE_COPY,
@@ -299,7 +300,10 @@ async def delta_apply(
             bytes_saved = max(0, new_size - literal_size)
             record_bytes_saved("upload", bytes_saved)
 
-            log.info(f"Delta apply completed for {path} ({new_size} bytes)")
+            log.info(
+                f"Delta apply completed for {path} ({new_size} bytes) "
+                f"in {format_duration(time.time() - start_time, subsecond=True)}"
+            )
             return JSONResponse(
                 status_code=200,
                 content={"status": "ok", "sha256": rebuilt_sha256, "size": new_size},

@@ -14,10 +14,12 @@ This module provides the REST API endpoint for file download with:
 """
 
 from pathlib import Path
+from time import monotonic
 
 from aiofiles.ospath import isfile
-from fastapi import Request
+from fastapi import BackgroundTasks, Request
 from fastapi.responses import FileResponse, StreamingResponse
+from hsync_common.format import format_duration
 from hsync_common.hashing import compute_sha256_async
 from loguru import logger as log
 
@@ -41,7 +43,13 @@ from hsync_server.routers import auth_router
 
 @auth_router.get("/api/v1/buckets/{bucket}/files/download")
 @limiter.limit(RATE_LIMIT_DOWNLOAD)
-async def download_file(request: Request, bucket: str, filename: str, cid: str = ""):
+async def download_file(
+    request: Request,  # Required by rate limiter
+    background_tasks: BackgroundTasks,
+    bucket: str,
+    filename: str,
+    cid: str = "",
+):
     """
     Download a file from a bucket with optional zstd compression.
 
@@ -61,6 +69,7 @@ async def download_file(request: Request, bucket: str, filename: str, cid: str =
         InvalidPathError: If path is invalid.
         HSyncFileNotFoundError: If file does not exist.
     """
+    t0 = monotonic()
     if not is_valid_bucket(bucket):
         raise InvalidBucketNameError(details={"bucket": bucket})
     # Confine to *this* bucket: the filename is untrusted input and must
@@ -98,14 +107,26 @@ async def download_file(request: Request, bucket: str, filename: str, cid: str =
         get_compression_enabled() and should_compress(filename, file_size) and not has_range_header
     )
 
+    # The download log is deferred to a background task so it can include the
+    # actual transfer duration: the response body is streamed after this
+    # function returns, so the wall-clock time is only known once the last
+    # byte has been sent to the client.
+    cid_suffix = f" (CID: {cid})" if cid else ""
+    zstd_suffix = ", zstd" if use_compression else ""
+
+    def _log_download_duration() -> None:
+        log.info(
+            f'{ActionLabel.DOWNLOAD} "{bucket}/{filename}" '
+            f"({file_size} bytes{zstd_suffix}){cid_suffix} "
+            f"in {format_duration(monotonic() - t0, subsecond=True)}"
+        )
+
+    background_tasks.add_task(_log_download_duration)
+
     if use_compression:
         # Streaming compression: reads and compresses the file in chunks and
         # streams the single zstd frame to the client, so neither the file nor
         # its compressed form is ever fully buffered in memory (memory-bomb DoS).
-        cid_suffix = f" (CID: {cid})" if cid else ""
-        log.info(
-            f'{ActionLabel.DOWNLOAD} "{bucket}/{filename}" ({file_size} bytes, zstd){cid_suffix}'
-        )
         log.debug(f"Compressed streaming download: {file} ({file_size} bytes)")
         return StreamingResponse(
             async_compress_stream(file),
@@ -118,6 +139,4 @@ async def download_file(request: Request, bucket: str, filename: str, cid: str =
         )
 
     # Standard download (streaming, supports Range requests)
-    cid_suffix = f" (CID: {cid})" if cid else ""
-    log.info(f'{ActionLabel.DOWNLOAD} "{bucket}/{filename}" ({file_size} bytes){cid_suffix}')
     return FileResponse(file, filename=filename, headers=checksum_header)

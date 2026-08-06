@@ -72,6 +72,9 @@ Multipart form fields: `cid, file, path, ctime, mtime, sha256sum, permissions`
   `str(e)`, which typically embeds absolute paths); the resume-missing-partial
   error no longer includes the `partial_file` field. Full diagnostics remain
   in the server log (`log.error(..., exc_info=True)`).
+- **Duration logging**: the `[UPLOAD]` success log includes the wall-clock
+  duration via `format_duration(..., subsecond=True)` — e.g.
+  `[UPLOAD] "bucket/path/file" (CID: abc) in 1.2s`.
 
 ## Download (`api/files/download.py:43`)
 
@@ -80,7 +83,11 @@ Streams the file; supports zstd via `compression.async_compress_stream`
 `filename` is confined with `resolve_within_bucket` (rejects cross-bucket and
 internal-engine paths). Missing file → `FileNotFoundError` (`exceptions.py:118`).
 Accepts an optional `cid` query parameter (sent by the client) that is included
-in the `[DOWNLOAD]` log line for request attribution.
+in the `[DOWNLOAD]` log line for request attribution. The log is deferred to a
+`BackgroundTasks` callback so it can include the actual transfer duration
+(measured from request start to last byte sent) via
+`format_duration(..., subsecond=True)` — e.g.
+`[DOWNLOAD] "bucket/file" (1500000 bytes) in 5.2s`.
 
 ## List / upload-status / tombstones (`api/files/list.py`)
 
@@ -125,7 +132,8 @@ apply operation is atomic with respect to other delta applies on the same file.
 
 **Metrics**: All delta endpoints record Prometheus metrics (see `metrics.py`):
 transfer counts by status, bytes saved, duration by phase, block change ratios,
-active tokens gauge, temp storage gauge.
+active tokens gauge, temp storage gauge. The `delta_apply` success log also
+includes the wall-clock duration via `format_duration(..., subsecond=True)`.
 
 ## Shared helpers (`api/utils.py`, `api/file_utils.py`)
 
