@@ -99,16 +99,15 @@ class TestWebSocketAuthentication:
     @pytest.mark.asyncio
     async def test_auth_success(self, mock_websocket):
         """Successful authentication allows connection."""
+        from fastapi import WebSocketDisconnect
+
         mock_websocket.receive_text.side_effect = [
             _auth_frame("test-api-key"),
-            Exception("disconnect"),  # End the loop
+            WebSocketDisconnect(),  # End the loop cleanly
         ]
 
         with patch("hsync_server.api.events.get_api_key", return_value="test-api-key"):
-            try:
-                await ws_events(mock_websocket, "testbucket", "client1")
-            except Exception:
-                pass
+            await ws_events(mock_websocket, "testbucket", "client1")
 
         mock_websocket.accept.assert_called_once()
         expected_caps = {Capability.compression} if get_compression_enabled() else set()
@@ -215,7 +214,14 @@ class TestWebSocketEvents:
         with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
 
-        # Should not raise, just log and continue
+        # Connection accepted and authenticated
+        mock_websocket.accept.assert_called_once()
+        expected_caps = {Capability.compression} if get_compression_enabled() else set()
+        mock_websocket.send_json.assert_called_with(
+            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=expected_caps)
+        )
+        # Invalid event should not close the connection
+        mock_websocket.close.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_malformed_event_json_ignored(self, mock_websocket):
@@ -231,7 +237,14 @@ class TestWebSocketEvents:
         with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
             await ws_events(mock_websocket, "testbucket", "client1")
 
-        # Should not raise, just log and continue
+        # Connection accepted and authenticated
+        mock_websocket.accept.assert_called_once()
+        expected_caps = {Capability.compression} if get_compression_enabled() else set()
+        mock_websocket.send_json.assert_called_with(
+            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=expected_caps)
+        )
+        # Malformed JSON should not close the connection
+        mock_websocket.close.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_client_disconnect_cleanup(self, mock_websocket):
@@ -406,8 +419,16 @@ class TestWebSocketEvents:
         ]
 
         with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
-            # Should not raise
             await ws_events(mock_websocket, "testbucket", "client1")
+
+        # Connection was accepted and authenticated before the event
+        mock_websocket.accept.assert_called_once()
+        expected_caps = {Capability.compression} if get_compression_enabled() else set()
+        mock_websocket.send_json.assert_called_with(
+            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=expected_caps)
+        )
+        # Exception during processing should not close the connection
+        mock_websocket.close.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_client_disconnect_with_error(self, mock_websocket):

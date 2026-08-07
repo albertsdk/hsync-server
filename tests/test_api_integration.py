@@ -25,6 +25,8 @@ class TestHealthEndpoint:
         response = await client_no_auth.get("/health")
         # Should not return 401 or 403
         assert response.status_code == 200
+        # Health endpoint returns empty body
+        assert response.text in ["", '""']
 
     @pytest.mark.asyncio
     async def test_health_check_content_type(self, client_no_auth: AsyncClient):
@@ -95,6 +97,9 @@ class TestBucketEndpoints:
 
         response = await client.delete("/api/v1/buckets/to-delete")
         assert response.status_code == 200
+        data = response.json()
+        assert data["info"] == "Bucket deleted successfully"
+        assert data["bucket"] == "to-delete"
 
         # Verify bucket was deleted
         assert not os.path.exists(bucket_path)
