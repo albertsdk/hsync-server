@@ -59,6 +59,7 @@ corporate networks, cloud environments, and restricted infrastructures.
 - ☁️ **Cloud environments** — services behind load balancers or reverse proxies
 - 🔒 **Restricted infrastructures** — SSH is disabled, VPNs unavailable
 - 🌐 **Web-friendly setups** — route traffic through CDNs, WAFs, or API gateways
+- ⚡ **Real-time reactivity** — unlike traditional HTTP-based tools that rely on periodic polling, HSYNC reacts instantly to file changes using local watchdogs and event-driven WebSockets.
 
 ## Architecture Overview
 
@@ -101,7 +102,7 @@ flowchart TB
 - 📊 Integrated Prometheus metrics
 - 🐳 Docker-ready deployment
 - 🛡️ Rate limiting to prevent API abuse
-- 🔗 Symbolic link synchronization support
+- 🔗 Symbolic link synchronization support (preserves links as-is)
 - 📦 Per-bucket connection management for scalability
 - ⏩ Resumable uploads (offset-based, with `upload-status` checks)
 - 🪦 Deletion tombstones to prevent resurrecting files deleted on another peer
