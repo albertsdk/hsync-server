@@ -1,9 +1,9 @@
 # HSYNC Server — Documentation
 
-The HSYNC Server is the central hub for Server Mode synchronization. It is a
-FastAPI application that stores files in per-bucket directories, exposes a REST
-API for listing/uploading/downloading/deleting files, and pushes change events
-to connected clients over WebSocket.
+The HSYNC Server is the central hub for Server Mode real-time synchronization.
+It is a FastAPI application that stores files in per-bucket directories, exposes
+a REST API for listing/uploading/downloading/deleting files, and pushes change
+events to connected clients over WebSocket.
 
 ## System Requirements
 

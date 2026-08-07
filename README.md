@@ -4,9 +4,10 @@
 
 # HSYNC Server
 
-**HSYNC Server** is the central hub that keeps your files in sync across all your
-devices. It stores shared folders, accepts file changes from any device, and
-instantly notifies all other connected devices so they can pull the updates —
+**HSYNC Server** is the central hub that keeps your files in sync in real-time
+across all your devices. It stores shared folders, accepts file changes from
+any device, and instantly notifies all other connected devices so they can
+pull the updates —
 all over standard HTTP/HTTPS.
 
 > [!WARNING]
