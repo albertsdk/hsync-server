@@ -27,7 +27,7 @@ from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
-from hsync_common.format import format_duration
+from hsync_common.format import format_bytes, format_duration
 from hsync_common.hashing import compute_sha256_async, is_sha256_hex
 from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
@@ -465,7 +465,8 @@ async def upload_file(
         upload_successful = True
         log.info(
             f'{ActionLabel.UPLOAD} "{bucket}/{path}/{file.filename}" (CID: {cid}) '
-            f"in {format_duration(monotonic() - t0, subsecond=True)}"
+            f"{format_bytes(total_bytes)} "
+            f"{format_duration(monotonic() - t0, subsecond=True)}"
         )
         return JSONResponse(
             status_code=201,

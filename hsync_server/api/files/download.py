@@ -19,7 +19,7 @@ from time import monotonic
 from aiofiles.ospath import isfile
 from fastapi import BackgroundTasks, Request
 from fastapi.responses import FileResponse, StreamingResponse
-from hsync_common.format import format_duration
+from hsync_common.format import format_bytes, format_duration
 from hsync_common.hashing import compute_sha256_async
 from loguru import logger as log
 
@@ -122,9 +122,9 @@ async def download_file(
 
     def _log_download_duration() -> None:
         log.info(
-            f'{ActionLabel.DOWNLOAD} "{bucket}/{filename}" '
-            f"({file_size} bytes{zstd_suffix}){cid_suffix} "
-            f"in {format_duration(monotonic() - t0, subsecond=True)}"
+            f'{ActionLabel.DOWNLOAD} "{bucket}/{filename}"{cid_suffix} '
+            f"{format_bytes(file_size)}{zstd_suffix} "
+            f"{format_duration(monotonic() - t0, subsecond=True)}"
         )
 
     background_tasks.add_task(_log_download_duration)
