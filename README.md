@@ -10,14 +10,14 @@ any device, and instantly notifies all other connected devices so they can
 pull the updates —
 all over standard HTTP/HTTPS.
 
-> [!WARNING]
-> **HSYNC manipulates files and directories** — it creates, overwrites, moves, and deletes data.
-> Misconfiguration, software defects, or other unforeseen conditions may lead to **data loss or
-> corruption**. **Use at your own risk and always keep verified, independent backups.**
-> The software is provided "as is", without warranty of any kind — see the full
-> [Disclaimer](#disclaimer) and [License](#license) below.
+> [!NOTE]
+>  👉 **Remember:**  keep verified backups of your data when trying new synchronization tools. 😉
 
 ---
+
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/Docker-🐳-2496ED.svg)](https://www.docker.com/)
 
 **Quick navigation:**
 - **New to HSYNC?** Start with [Why HSYNC Server?](#why-hsync-server) and the [Getting Started guide](docs/getting-started.md)
@@ -25,18 +25,9 @@ all over standard HTTP/HTTPS.
 - **Want to contribute?** See [Contributing](CONTRIBUTING.md)
 - **Looking for detailed documentation?** Navigate to [docs/README.md](docs/README.md)
 
-## Table of Contents
+---
 
-- [Why HSYNC Server?](#why-hsync-server)
-- [Architecture Overview](#architecture-overview)
-- [Features](#features)
-- [Getting Started](#getting-started)
-- [Command Line Options](#command-line-options)
-- [Configuration](#configuration)
-- [Documentation](#documentation)
-- [Version](#version)
-- [License](#license)
-- [Disclaimer](#disclaimer)
+<!-- GitHub auto-generates the table of contents from the section headings above. -->
 
 ---
 
@@ -186,6 +177,11 @@ Key variables:
 > are still under active development and are not yet ready for production use.
 
 ## Disclaimer
+
+> [!WARNING]
+> **HSYNC manipulates files and directories** — it creates, overwrites, moves, and deletes data.
+> Misconfiguration, software defects, or other unforeseen conditions may lead to **data loss or
+> corruption**. **Use at your own risk and always keep verified, independent backups.**
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. Although the author has implemented reasonable safety measures, IN NO EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY — including, without limitation, any direct, indirect, incidental, special, exemplary, or consequential damages, loss of data, or business interruption — WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
