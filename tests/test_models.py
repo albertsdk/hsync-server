@@ -219,13 +219,13 @@ class TestSymlinkModel:
             "filepath": "/path/link",
             "name": "link",
             "target": "/path/target",
-            "ctime": 1000.0,
-            "mtime": 2000.0,
+            "ctime": 1000,
+            "mtime": 2000,
         }
-        s = Symlink.from_dict(data)
+        s = Symlink.from_dict(data, strip_dir_prefix=False)
         assert s.filepath == "/path/link"
         assert s.target == "/path/target"
-        assert s.ctime == 1000.0
+        assert s.ctime == 1000
 
     def test_get_existing_symlink(self, tmp_path):
         """Get Symlink from existing symlink file."""

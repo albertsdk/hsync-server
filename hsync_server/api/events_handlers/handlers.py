@@ -312,7 +312,7 @@ async def handle_symlink_event(
         return None
 
     if "type" in src and src.get("type") == "symlink":
-        link = Symlink.from_dict(src)
+        link = Symlink.from_dict(src, strip_dir_prefix=False)
         # Build the full path
         link.filepath = f"{bucket_dir}/{link.filepath.lstrip('/')}"
         target = link.target
