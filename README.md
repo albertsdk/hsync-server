@@ -5,10 +5,15 @@
 # HSYNC Server
 
 **HSYNC Server** is the central hub that keeps your files in sync in real-time
-across all your devices. It stores shared folders, accepts file changes from
-any device, and instantly notifies all other connected devices so they can
-pull the updates —
+across all your devices. It stores shared folders (called **buckets**), accepts
+file changes from any device via the [HSYNC Client](https://github.com/albertobasso/hsync-client),
+and instantly notifies all other connected devices so they can pull the updates —
 all over standard HTTP/HTTPS.
+
+> A **bucket** is a named directory on the server that holds a set of
+> synchronized files — think of it as a shared folder. You'll need the
+> [HSYNC Client](https://github.com/albertobasso/hsync-client) on each device
+> to actually sync files; the server is the storage and coordination hub.
 
 > [!NOTE]
 >  👉 **Remember:**  keep verified backups of your data when trying new synchronization tools. 😉
@@ -137,7 +142,7 @@ Key variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HSYNC_API_KEY` | API key for authentication **(required)** | — |
+| `HSYNC_API_KEY` | API key for authentication (auto-generated if not set) | — |
 | `HSYNC_PORT` | Server port | `9753` |
 | `HSYNC_LOG_LEVEL` | Log level | `info` |
 | `HSYNC_BUCKETS` | Directory for bucket data storage | `./buckets` |
