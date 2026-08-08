@@ -39,6 +39,34 @@ class TestAuthAndProtocol:
         assert r.status_code == 426
         assert r.headers.get("X-Protocol-Version") == PROTOCOL_VERSION_REST
 
+    @pytest.mark.parametrize(
+        "version",
+        [
+            "api/0",  # older than current
+            "api/2",  # newer than current
+            "api/v1",  # different format
+            "ws/1",  # wrong protocol channel
+            "api/1.0",  # sub-version
+            "api/1-rc1",  # pre-release marker
+            "API/1",  # case-variant
+        ],
+    )
+    def test_protocol_version_variants_rejected(
+        self, bb_http: httpx.Client, bb_bucket: str, version: str
+    ):
+        """Every variant that is not exactly ``api/1`` must be rejected with 426."""
+        r = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files",
+            headers={"X-Protocol-Version": version},
+        )
+        assert r.status_code == 426, f"expected 426 for version={version!r}, got {r.status_code}"
+
+    def test_protocol_header_absent_still_succeeds(self, bb_http: httpx.Client, bb_bucket: str):
+        """A client without a protocol header is accepted (health checks, docs, …)."""
+        r = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files")
+        # The server MUST NOT 426 when the header is absent — only on explicit mismatch.
+        assert r.status_code in (200, 404), f"unexpected status {r.status_code}"
+
     def test_health_without_auth(self, live_server: tuple[str, str]):
         # Given a client with no API key
         base, _ = live_server
