@@ -66,15 +66,18 @@ class TestFileUtilsEdgeCases:
 
     def test_ensure_sentinel_nonexistent_dir(self, tmp_path):
         """ensure_sentinel_in_dir is a no-op for a non-existent directory."""
-        ensure_sentinel_in_dir(str(tmp_path / "nope"))
-        # Must not raise
+        target = tmp_path / "nope"
+        ensure_sentinel_in_dir(str(target))
+        # Must not raise, and must not create the missing directory or any file
+        assert not target.exists()
 
     def test_ensure_sentinel_not_a_dir(self, tmp_path):
         """ensure_sentinel_in_dir is a no-op when path is a file, not a dir."""
         f = tmp_path / "afile"
         f.write_text("x")
         ensure_sentinel_in_dir(str(f))
-        # Must not raise
+        # Must not raise, and the file must be untouched
+        assert f.read_text() == "x"
 
     def test_ensure_sentinel_dir_has_syncable(self, tmp_path):
         """No sentinel created when dir already has a syncable file."""
@@ -95,14 +98,17 @@ class TestFileUtilsEdgeCases:
         assert len(list(tmp_path.iterdir())) == 1
 
     def test_cleanup_empty_dir_nonexistent(self, tmp_path):
-        cleanup_empty_dir(str(tmp_path / "nope"))
-        # Must not raise
+        target = tmp_path / "nope"
+        cleanup_empty_dir(str(target))
+        # Must not raise, and must not create the missing directory
+        assert not target.exists()
 
     def test_cleanup_empty_dir_not_a_dir(self, tmp_path):
         f = tmp_path / "afile"
         f.write_text("x")
         cleanup_empty_dir(str(f))
-        # Must not raise
+        # Must not raise, and the file must be untouched
+        assert f.read_text() == "x"
 
     def test_cleanup_empty_dir_with_entries(self, tmp_path):
         (tmp_path / "file.txt").write_text("data")
@@ -133,7 +139,8 @@ class TestFileUtilsEdgeCases:
         f = tmp_path / "f.txt"
         f.write_text("x")
         update_file_timestamp(str(f), mtime=None)
-        # Must not raise
+        # Must not raise, and file content must be unchanged
+        assert f.read_text() == "x"
 
     def test_update_file_timestamp_iso(self, tmp_path):
         """ISO-format mtime is applied correctly."""
@@ -482,7 +489,7 @@ class TestWebSocketCoverageGaps:
 
     @pytest.mark.asyncio
     async def test_pong_message_handled(self, mock_websocket):
-        """A pong message is handled without dispatching an event."""
+        """A pong message is handled without raising (coverage: pong branch)."""
         mock_websocket.receive_text.side_effect = [
             dumps(
                 {
@@ -500,7 +507,12 @@ class TestWebSocketCoverageGaps:
         with patch("hsync_server.api.events.PROTOCOL_VERSION_WS", None):
             await ws_events(mock_websocket, "testbucket", "client1")
 
-        # Should not raise
+        # The pong message must not crash the handler. send_json is called
+        # once for the auth reply with a dict, not for the pong.
+        assert mock_websocket.send_json.call_count == 1
+        auth_reply = mock_websocket.send_json.call_args[0][0]
+        assert isinstance(auth_reply, dict)
+        assert auth_reply.get("status") == "ok"
 
     @pytest.mark.asyncio
     async def test_rate_limit_exceeded_drops_event(self, mock_websocket):
