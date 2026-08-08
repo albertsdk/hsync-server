@@ -15,7 +15,6 @@ all over standard HTTP/HTTPS.
 > [HSYNC Client](https://github.com/albertobasso/hsync-client) on each device
 > to actually sync files; the server is the storage and coordination hub.
 
-> [!NOTE]
 >  👉 **Remember:** keep verified backups of your data before trying new
 > synchronization tools. 😉
 
