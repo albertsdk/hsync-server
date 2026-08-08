@@ -185,7 +185,7 @@ class TestUploadCoverageGaps:
             "/api/v1/buckets/compressupload/files",
             files={"file": ("c.txt", io.BytesIO(compressed), "application/octet-stream")},
             data={
-                "cid": "c1",
+                "cid": "TestClientXY1k4567890",
                 "path": "",
                 "permissions": "644",
                 "compressed": "true",
@@ -208,7 +208,7 @@ class TestUploadCoverageGaps:
             "/api/v1/buckets/sanitizebucket/files",
             files={"file": ("file with spaces.txt", io.BytesIO(b"data"), "text/plain")},
             data={
-                "cid": "c1",
+                "cid": "TestClientXY1k4567890",
                 "path": "",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(b"data").hexdigest(),
@@ -234,7 +234,7 @@ class TestUploadCoverageGaps:
             "/api/v1/buckets/overwritebucket/files",
             files={"file": ("ov.txt", io.BytesIO(b"new content"), "text/plain")},
             data={
-                "cid": "c1",
+                "cid": "TestClientXY1k4567890",
                 "path": "",
                 "permissions": "644",
                 "sha256sum": hashlib.sha256(b"new content").hexdigest(),
@@ -257,7 +257,7 @@ class TestUploadCoverageGaps:
                 "/api/v1/buckets/partialfail/files",
                 files={"file": ("p.txt", io.BytesIO(b"1234567890"), "text/plain")},
                 data={
-                    "cid": "c1",
+                    "cid": "TestClientXY1k4567890",
                     "path": "",
                     "permissions": "644",
                     "size": "10",
@@ -278,7 +278,7 @@ class TestUploadCoverageGaps:
             "/api/v1/buckets/tsbucket/files",
             files={"file": ("ts.txt", io.BytesIO(b"data"), "text/plain")},
             data={
-                "cid": "c1",
+                "cid": "TestClientXY1k4567890",
                 "path": "",
                 "permissions": "644",
                 "mtime": "1577836800",
@@ -309,7 +309,7 @@ class TestUploadCoverageGaps:
                 "/api/v1/buckets/oserrbucket/files",
                 files={"file": ("f.txt", io.BytesIO(b"data"), "text/plain")},
                 data={
-                    "cid": "c1",
+                    "cid": "TestClientXY1k4567890",
                     "path": "",
                     "permissions": "644",
                     "size": "4",
@@ -342,7 +342,7 @@ class TestDeleteCoverageGaps:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/delbackup/files",
-            data={"cid": "c1", "filename": "file.txt"},
+            data={"cid": "TestClientXY1k4567890", "filename": "file.txt"},
         )
         assert response.status_code == 200
         assert not os.path.exists(b)
@@ -364,7 +364,7 @@ class TestDeleteCoverageGaps:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/sentinelbucket/files",
-            data={"cid": "c1", "filename": f"emptydir/{HSYNCKEEP_FILENAME}"},
+            data={"cid": "TestClientXY1k4567890", "filename": f"emptydir/{HSYNCKEEP_FILENAME}"},
         )
         assert response.status_code == 200
         # The empty directory should have been removed
@@ -386,7 +386,7 @@ class TestDeleteCoverageGaps:
         response = await client.request(
             "DELETE",
             "/api/v1/buckets/rootbucket/files",
-            data={"cid": "c1", "filename": HSYNCKEEP_FILENAME},
+            data={"cid": "TestClientXY1k4567890", "filename": HSYNCKEEP_FILENAME},
         )
         assert response.status_code == 200
         # Bucket root must survive
