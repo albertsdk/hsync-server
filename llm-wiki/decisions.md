@@ -1,4 +1,4 @@
-# hsync-server — Decisions
+# HSYNC Server — Decisions
 
 Ecosystem-wide ADRs are recorded once under
 [`../../hsync-common/docs/internal/adr/`](../../hsync-common/docs/internal/adr/README.md). This page

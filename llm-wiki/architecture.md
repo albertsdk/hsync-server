@@ -1,4 +1,4 @@
-# hsync-server — Architecture (agent view)
+# HSYNC Server — Architecture (agent view)
 
 Single FastAPI process. REST for file transfer + bucket management; WebSocket for
 real-time event fan-out. No database — buckets are directories on disk.

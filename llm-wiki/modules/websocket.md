@@ -1,4 +1,4 @@
-# hsync-server — WebSocket (`api/events.py` + `api/events_handlers/`)
+# HSYNC Server — WebSocket (`api/events.py` + `api/events_handlers/`)
 
 Real-time event fan-out. One WS endpoint; events received from one client are
 applied to disk and broadcast to the other subscribers of the same bucket.

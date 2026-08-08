@@ -1,4 +1,4 @@
-# hsync-server — REST API (`api/`)
+# HSYNC Server — REST API (`api/`)
 
 All paths are prefixed `/api/v1` (`constants.py:38`). Endpoints attach to
 `auth_router` (Bearer key) unless noted; `public_router` for health/metrics/time.
