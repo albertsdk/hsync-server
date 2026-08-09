@@ -279,7 +279,7 @@ its `version` and `compression_enabled` capability.
 
 ```json
 {
-  "cid": "client123",
+  "cid": "TestClientX1234567890",
   "bucket": "mybucket",
   "name": "added",
   "src": {
