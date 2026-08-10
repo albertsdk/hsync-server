@@ -37,7 +37,10 @@ from hsync_common.protocol.handshake import (
 from hsync_common.text import escape_loguru_markup
 from loguru import logger as log
 
-from hsync_server.api.connection_manager import bucket_manager
+from hsync_server.api.connection_manager import (
+    ConnectionManager,
+    bucket_manager,
+)
 from hsync_server.api.event_handlers import (
     handle_added_event,
     handle_deleted_event,
@@ -57,11 +60,31 @@ from hsync_server.config import (
     get_ws_heartbeat_timeout,
 )
 from hsync_server.constants import HSYNC_VERSION, WS_MSG_TYPE_AUTH, ActionLabel
-from hsync_server.rate_limiter import create_ws_message_bucket
+from hsync_server.rate_limiter import TokenBucket, create_ws_message_bucket
 from hsync_server.routers import public_router
 
 # NOTE: WebSocket does not support Header Authentication
 #       and FastAPI auto-docs for WebSocket endpoints
+
+# ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
+
+# Pre-compute valid event names so the set is not rebuilt on every WS message.
+_VALID_EVENT_NAMES = frozenset(e.value for e in EventName)
+
+# Dispatch table: replace the 5-branch if/elif with a dictionary lookup.
+_EVENT_HANDLERS = {
+    EventName.added: handle_added_event,
+    EventName.modified: handle_modified_event,
+    EventName.deleted: handle_deleted_event,
+    EventName.renamed: handle_renamed_event,
+    EventName.symlink: handle_symlink_event,
+}
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _event_paths_safe(payload: object) -> bool:
@@ -81,6 +104,218 @@ def _event_paths_safe(payload: object) -> bool:
     if not rels:
         return False
     return all(validate_remote_relpath(rel) is not None for rel in rels)
+
+
+async def _send_heartbeat(
+    websocket: WebSocket,
+    interval: float,
+    cancel_event: asyncio.Event,
+) -> None:
+    """Send periodic ping messages to the client."""
+    while not cancel_event.is_set():
+        try:
+            await asyncio.sleep(interval)
+            if cancel_event.is_set():
+                break
+            await websocket.send_json({"type": "ping"})
+        except Exception:
+            break
+
+
+def _log_disconnect(cid: str, *, error: str | None = None) -> None:
+    """Log a WebSocket disconnection, swallowing ValueError from a closed stream."""
+    try:
+        msg = f"{ActionLabel.WS} Disconnected (CID: {cid})"
+        if error:
+            msg += f" ({error})"
+        log.warning(msg)
+    except ValueError:
+        pass
+
+
+async def _dispatching_authenticate(
+    websocket: WebSocket,
+    cid: str,
+    client_ip: str,
+) -> set[Capability] | None:
+    """Authenticate a WebSocket client via the shared handshake protocol.
+
+    Returns the server's capability set on success, or ``None`` on failure
+    (the connection is closed inside this function before returning).
+    """
+    try:
+        auth_data = await asyncio.wait_for(websocket.receive_text(), timeout=get_ws_auth_timeout())
+        auth_message = loads(auth_data)
+
+        if auth_message.get("type") != WS_MSG_TYPE_AUTH:
+            log.warning(f"{ActionLabel.WS} Invalid auth message type from {cid}")
+            await websocket.close(code=4001, reason="Invalid auth message")
+            return None
+
+        auth_token = auth_message.get("token", "")
+        if not hmac.compare_digest(auth_token, get_api_key()):
+            log.warning(f"{ActionLabel.WS} Invalid API key from {cid}")
+            await websocket.close(code=4003, reason="Invalid API key")
+            return None
+
+        client_protocol = auth_message.get("protocol_version", "")
+        if client_protocol != PROTOCOL_VERSION_WS:
+            log.warning(
+                f"{ActionLabel.WS} Rejecting client {cid} with incompatible "
+                f"protocol {client_protocol or 'missing'} (server: {PROTOCOL_VERSION_WS})"
+            )
+            await websocket.send_json(
+                build_ws_auth_error(
+                    error="protocol_incompatible",
+                    client_protocol_version=client_protocol,
+                )
+            )
+            await websocket.close(code=4002, reason="Protocol incompatible")
+            return None
+
+        client_caps = decode_capabilities(auth_message.get("capabilities"))
+        log.debug(
+            f"{ActionLabel.WS} Client {cid} authenticated "
+            f"(capabilities: {sorted(c.value for c in client_caps) or 'none'})"
+        )
+
+        server_caps: set[Capability] = set()
+        if get_compression_enabled():
+            server_caps.add(Capability.compression)
+        await websocket.send_json(
+            build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=server_caps)
+        )
+        return server_caps
+
+    except TimeoutError:
+        log.warning(f"{ActionLabel.WS} Auth timeout for {cid} from {client_ip}")
+        await websocket.close(code=4008, reason="Authentication timeout")
+        return None
+    except Exception as e:
+        log.warning(f"{ActionLabel.WS} Auth failed for {cid}: {e}")
+        await websocket.close(code=4003, reason="Authentication failed")
+        return None
+
+
+def _register_client(
+    manager: ConnectionManager,
+    bucket: str,
+    cid: str,
+    websocket: WebSocket,
+) -> None:
+    """Register *websocket* under *cid*, evicting a stale registration first."""
+    stale = manager.active_connections.get(cid)
+    if stale is not None:
+        log.warning(f"{ActionLabel.WS} cid {cid} reconnected: evicting stale registration")
+        try:
+            asyncio.ensure_future(stale.close(code=4000, reason="Replaced by a newer connection"))
+        except Exception:
+            pass
+        if manager.active_connections.get(cid) is stale:
+            manager.active_connections.pop(cid, None)
+    manager.active_connections[cid] = websocket
+    log.info(f"{ActionLabel.WS} Client connected: {cid} (bucket: {bucket})")
+
+
+async def _process_one_message(
+    data: str,
+    ws_bucket: TokenBucket,
+    cid: str,
+    bucket: str,
+    manager: ConnectionManager,
+) -> None:
+    """Parse and dispatch a single WebSocket text frame."""
+    log.debug(f"{ActionLabel.WS} Received message: {escape_loguru_markup(data)}")
+    try:
+        message = loads(data)
+
+        msg_type = message.get("type")
+        if msg_type == "pong":
+            log.debug(f"{ActionLabel.WS} Received pong from {cid}")
+            return
+
+        if not ws_bucket.acquire():
+            log.warning(f"{ActionLabel.WS} Rate limit exceeded for {cid}, dropping event")
+            return
+
+        if message.get("name") not in _VALID_EVENT_NAMES:
+            log.error(f"Invalid event name: {message.get('name')}")
+            return
+
+        src = message.get("src", None)
+        dst = message.get("dst", None)
+        bucket_dir = f"{get_buckets_path()}/{bucket}"
+        event_name = EventName(message.get("name"))
+
+        if not _event_paths_safe(src) or not _event_paths_safe(dst):
+            log.warning(
+                f"{ActionLabel.WS} Rejected unsafe {event_name.value} event path from {cid}"
+            )
+            return
+
+        handler = _EVENT_HANDLERS.get(event_name)
+        if handler is None:
+            return
+
+        if event_name == EventName.renamed:
+            event = await handler(src, dst, bucket_dir, bucket, cid)  # type: ignore[call-arg,operator]
+        else:
+            event = await handler(src, bucket_dir, bucket, cid)  # type: ignore[call-arg,operator]
+
+        if event:
+            await manager.send_message(event)
+
+    except JSONDecodeError:
+        log.error(f"{ActionLabel.WS} Invalid JSON received: {escape_loguru_markup(data)}")
+    except Exception as e:
+        log.error(f"{ActionLabel.WS} Exception data: {escape_loguru_markup(data)}")
+        log.error(f"{ActionLabel.WS} Exception: {e}", exc_info=True)
+
+
+async def _message_loop(
+    websocket: WebSocket,
+    cid: str,
+    bucket: str,
+    manager: ConnectionManager,
+    ws_bucket: TokenBucket,
+    heartbeat_interval: float,
+    heartbeat_timeout: float,
+    heartbeat_cancel: asyncio.Event,
+    heartbeat_task: asyncio.Task[None],
+) -> None:
+    """Main WebSocket message-processing loop with heartbeat supervision."""
+    try:
+        while True:
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=heartbeat_interval + heartbeat_timeout,
+                )
+            except TimeoutError:
+                log.warning(f"{ActionLabel.WS} Heartbeat timeout for {cid}")
+                await websocket.close(code=4004, reason="Heartbeat timeout")
+                break
+
+            await _process_one_message(data, ws_bucket, cid, bucket, manager)
+
+    except WebSocketDisconnect:
+        _log_disconnect(cid)
+    except Exception as e:
+        _log_disconnect(cid, error=str(e))
+        await websocket.close()
+    finally:
+        heartbeat_cancel.set()
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
+        manager.disconnect(cid, websocket)
+
+
+# ---------------------------------------------------------------------------
+# WebSocket endpoint
+# ---------------------------------------------------------------------------
 
 
 @public_router.websocket("/api/v1/buckets/{bucket}/events/{cid}")
@@ -111,18 +346,14 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
     slot_acquired = False
     client_ip = "unknown"
     try:
-        # Accept the connection first (required before receiving messages)
         await websocket.accept()
 
-        # The cid comes from the URL path: reject malformed IDs before they
-        # are trusted for echo suppression or logged.
+        # Validate connection parameters before any auth work.
         if not is_valid_cid(cid):
             log.warning(f"{ActionLabel.WS} Rejecting connection with invalid cid: {cid!r}")
             await websocket.close(code=4000, reason="Invalid client ID")
             return
 
-        # Reject cross-origin WS connections from untrusted origins when CORS
-        # is configured, preventing CSWSH from browser-hosted attackers.
         if get_cors_enabled():
             origin = websocket.headers.get("origin", "")
             allowed = get_cors_origins()
@@ -131,17 +362,11 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
                 await websocket.close(code=4000, reason="Origin not allowed")
                 return
 
-        # The bucket comes from the URL path too and is used to build
-        # filesystem paths (`bucket_dir`): a segment like `..` (reachable via
-        # `%2e%2e`) would escape the storage root and turn delete/rename/
-        # symlink events into arbitrary sibling-directory operations.
         if not is_valid_bucket(bucket):
             log.warning(f"{ActionLabel.WS} Rejecting connection with invalid bucket: {bucket!r}")
             await websocket.close(code=4000, reason="Invalid bucket name")
             return
 
-        # Enforce connection caps right after accept, before any auth work, so
-        # unauthenticated floods cannot exhaust file descriptors / memory.
         client_ip = websocket.client.host if websocket.client else "unknown"
         if not bucket_manager.try_acquire_slot(client_ip):
             log.warning(
@@ -151,225 +376,40 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             return
         slot_acquired = True
 
-        # Wait for authentication message, bounded by a timeout so a client that
-        # never sends the auth frame cannot hold the connection open indefinitely.
-        try:
-            auth_data = await asyncio.wait_for(
-                websocket.receive_text(), timeout=get_ws_auth_timeout()
-            )
-            auth_message = loads(auth_data)
-
-            if auth_message.get("type") != WS_MSG_TYPE_AUTH:
-                log.warning(f"{ActionLabel.WS} Invalid auth message type from {cid}")
-                await websocket.close(code=4001, reason="Invalid auth message")
-                return
-
-            auth_token = auth_message.get("token", "")
-            # Use constant-time comparison to prevent timing attacks
-            if not hmac.compare_digest(auth_token, get_api_key()):
-                log.warning(f"{ActionLabel.WS} Invalid API key from {cid}")
-                await websocket.close(code=4003, reason="Invalid API key")
-                return
-
-            # Enforce the wire-protocol version: a mismatch is a hard failure
-            # (capabilities are feature flags within a version, not a bridge to
-            # earlier protocols, which do not exist).
-            client_protocol = auth_message.get("protocol_version", "")
-            if client_protocol != PROTOCOL_VERSION_WS:
-                log.warning(
-                    f"{ActionLabel.WS} Rejecting client {cid} with incompatible "
-                    f"protocol {client_protocol or 'missing'} (server: {PROTOCOL_VERSION_WS})"
-                )
-                await websocket.send_json(
-                    build_ws_auth_error(
-                        error="protocol_incompatible",
-                        client_protocol_version=client_protocol,
-                    )
-                )
-                await websocket.close(code=4002, reason="Protocol incompatible")
-                return
-
-            # Client capabilities are advisory feature flags for this session.
-            client_caps = decode_capabilities(auth_message.get("capabilities"))
-            log.debug(
-                f"{ActionLabel.WS} Client {cid} authenticated "
-                f"(capabilities: {sorted(c.value for c in client_caps) or 'none'})"
-            )
-
-            # Advertise the capabilities the server supports for this session.
-            server_caps: set[Capability] = set()
-            if get_compression_enabled():
-                server_caps.add(Capability.compression)
-            await websocket.send_json(
-                build_ws_auth_ok(app_version=HSYNC_VERSION, capabilities=server_caps)
-            )
-
-        except TimeoutError:
-            log.warning(f"{ActionLabel.WS} Auth timeout for {cid} from {client_ip}")
-            await websocket.close(code=4008, reason="Authentication timeout")
-            return
-        except Exception as e:
-            log.warning(f"{ActionLabel.WS} Auth failed for {cid}: {e}")
-            await websocket.close(code=4003, reason="Authentication failed")
+        # Authenticate via the shared handshake protocol.
+        if await _dispatching_authenticate(websocket, cid, client_ip) is None:
             return
 
-        # Register the authenticated client with bucket-specific manager.
-        # A second connection reusing an existing cid must not silently hijack
-        # the first (the cid is not a secret): evict the stale registration
-        # explicitly instead of overwriting it.
+        # Register with per-bucket connection manager.
         manager = bucket_manager.get_manager(bucket)
-        stale = manager.active_connections.get(cid)
-        if stale is not None:
-            log.warning(f"{ActionLabel.WS} cid {cid} reconnected: evicting stale registration")
-            try:
-                await stale.close(code=4000, reason="Replaced by a newer connection")
-            except Exception:
-                pass
-            if manager.active_connections.get(cid) is stale:
-                manager.active_connections.pop(cid, None)
-        manager.active_connections[cid] = websocket
-        log.info(f"{ActionLabel.WS} Client connected: {cid} (bucket: {bucket})")
+        _register_client(manager, bucket, cid, websocket)
 
-        # Create per-connection rate limiter for event messages
+        # Per-connection rate limiter and heartbeat setup.
         ws_bucket = create_ws_message_bucket()
-
-        # Get heartbeat configuration
         heartbeat_interval = get_ws_heartbeat_interval()
         heartbeat_timeout = get_ws_heartbeat_timeout()
-
-        # Create a cancel event for heartbeat task
         heartbeat_cancel = asyncio.Event()
+        heartbeat_task = asyncio.create_task(
+            _send_heartbeat(websocket, heartbeat_interval, heartbeat_cancel)
+        )
 
-        async def send_heartbeat() -> None:
-            """Send periodic ping messages to the client."""
-            while not heartbeat_cancel.is_set():
-                try:
-                    await asyncio.sleep(heartbeat_interval)
-                    if heartbeat_cancel.is_set():
-                        break
-                    await websocket.send_json({"type": "ping"})
-                except Exception:
-                    break
+        # Run the message processing loop (handles its own cleanup).
+        await _message_loop(
+            websocket,
+            cid,
+            bucket,
+            manager,
+            ws_bucket,
+            heartbeat_interval,
+            heartbeat_timeout,
+            heartbeat_cancel,
+            heartbeat_task,
+        )
 
-        # Start heartbeat task
-        heartbeat_task = asyncio.create_task(send_heartbeat())
-
-        try:
-            # Main message processing loop
-            while True:
-                try:
-                    # Use wait_for to implement timeout
-                    data = await asyncio.wait_for(
-                        websocket.receive_text(),
-                        timeout=heartbeat_interval + heartbeat_timeout,
-                    )
-                except TimeoutError:
-                    log.warning(f"{ActionLabel.WS} Heartbeat timeout for {cid}")
-                    await websocket.close(code=4004, reason="Heartbeat timeout")
-                    break
-
-                log.debug(f"{ActionLabel.WS} Received message: {escape_loguru_markup(data)}")
-                try:
-                    message = loads(data)
-
-                    # Handle ping/pong messages
-                    msg_type = message.get("type")
-                    if msg_type == "pong":
-                        # Client responded to ping, connection is alive
-                        log.debug(f"{ActionLabel.WS} Received pong from {cid}")
-                        continue
-
-                    # Rate limit event messages (pong excluded to avoid heartbeat deadlock)
-                    if not ws_bucket.acquire():
-                        log.warning(
-                            f"{ActionLabel.WS} Rate limit exceeded for {cid}, dropping event"
-                        )
-                        continue
-
-                    # Validate event type
-                    if message.get("name") not in {
-                        EventName.added.value,
-                        EventName.modified.value,
-                        EventName.renamed.value,
-                        EventName.deleted.value,
-                        EventName.symlink.value,
-                    }:
-                        log.error(f"Invalid event name: {message.get('name')}")
-                        continue
-
-                    # Extract event data
-                    src = message.get("src", None)
-                    dst = message.get("dst", None)
-                    bucket_dir = f"{get_buckets_path()}/{bucket}"
-                    event_name = EventName(message.get("name"))
-
-                    # Event paths are untrusted wire input: reject traversal,
-                    # absolute paths, backslashes (Windows differential) and
-                    # internal engine artifacts before any filesystem
-                    # operation or relay to other clients is derived from them.
-                    if not _event_paths_safe(src) or not _event_paths_safe(dst):
-                        log.warning(
-                            f"{ActionLabel.WS} Rejected unsafe {event_name.value} event path from {cid}"
-                        )
-                        continue
-
-                    # Initialize event to None - will be set if valid event processed
-                    event = None
-
-                    # Dispatch to appropriate event handler
-                    if event_name == EventName.added:
-                        event = await handle_added_event(src, bucket_dir, bucket, cid)
-                    elif event_name == EventName.modified:
-                        event = await handle_modified_event(src, bucket_dir, bucket, cid)
-                    elif event_name == EventName.deleted:
-                        event = await handle_deleted_event(src, bucket_dir, bucket, cid)
-                    elif event_name == EventName.renamed:
-                        event = await handle_renamed_event(src, dst, bucket_dir, bucket, cid)
-                    elif event_name == EventName.symlink:
-                        event = await handle_symlink_event(src, bucket_dir, bucket, cid)
-
-                    # Broadcast the event to all other connected clients
-                    if event:
-                        await manager.send_message(event)
-
-                except JSONDecodeError:
-                    log.error(
-                        f"{ActionLabel.WS} Invalid JSON received: {escape_loguru_markup(data)}"
-                    )
-                except Exception as e:
-                    log.error(f"{ActionLabel.WS} Exception data: {escape_loguru_markup(data)}")
-                    log.error(f"{ActionLabel.WS} Exception: {e}", exc_info=True)
-
-        except WebSocketDisconnect:
-            # Client disconnected normally
-            try:
-                log.warning(f"{ActionLabel.WS} Disconnected (CID: {cid})")
-            except ValueError:
-                # Stream already closed during teardown — discard silently
-                pass
-        except Exception as e:
-            # Client disconnected with error
-            try:
-                log.warning(f"{ActionLabel.WS} Disconnected (CID: {cid}) ({e})")
-            except ValueError:
-                # Stream already closed during teardown — discard silently
-                pass
-            await websocket.close()
-        finally:
-            # Cancel heartbeat task and cleanup
-            heartbeat_cancel.set()
-            heartbeat_task.cancel()
-            try:
-                await heartbeat_task
-            except asyncio.CancelledError:
-                pass
-            manager.disconnect(cid, websocket)
     except Exception:
-        # Handle any outer exception (e.g., auth failure)
-        log.warning(f"{ActionLabel.WS} Disconnected (CID: {cid})")
+        _log_disconnect(cid)
         await websocket.close()
     finally:
-        # Always release the connection slot reserved right after accept().
         if slot_acquired:
             bucket_manager.release_slot(client_ip)
 

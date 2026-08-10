@@ -41,6 +41,75 @@ from hsync_server.constants import ActionLabel
 from hsync_server.hashes import del_sha256_hash
 from hsync_server.tombstones import clear_deletion, record_deletion
 
+# ---------------------------------------------------------------------------
+# Shared validation helpers (DRY: replaces 8 duplicated path-validation blocks)
+# ---------------------------------------------------------------------------
+
+
+def _validate_path(path: str | None, bucket_dir: str, *, allow_root: bool = True) -> bool:
+    """Return False when *path* is missing or escapes *bucket_dir*, logging the attempt."""
+    if path is None or not is_path_within_bucket(path, bucket_dir, allow_root=allow_root):
+        log.warning(f"{ActionLabel.SECURITY} Rejected path traversal attempt: {path!r}")
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Shared create-or-modify handler (DRY: added + modified were ~90% identical)
+# ---------------------------------------------------------------------------
+
+_CREATE = "create"
+_MODIFY = "modify"
+
+
+async def _handle_create_or_modify(
+    src: dict[str, Any] | None,
+    bucket_dir: str,
+    bucket: str,
+    cid: str,
+    event_name: EventName,
+    *,
+    create_dir: bool = False,
+) -> Event | None:
+    """Common logic for ``added`` and ``modified`` events."""
+    if not src:
+        return None
+
+    if "path" in src:
+        dir_obj = Dir().from_dict(src, bucket_dir)
+        if not _validate_path(dir_obj.path, bucket_dir):
+            return None
+        if dir_obj.path and dir_obj.permissions:
+            log.info(
+                f"{ActionLabel.CREATE if create_dir else ActionLabel.MODIFY} "
+                f'{"Added" if create_dir else "Modified"} dir "{dir_obj.path}" (CID: {cid})'
+            )
+            if create_dir:
+                Path(dir_obj.path).mkdir(parents=True, exist_ok=True)
+            await set_directory_permissions(dir_obj.path, dir_obj.permissions)
+            return Event(cid, bucket_dir, bucket, event_name, dir_obj)
+
+    elif "filepath" in src:
+        file_obj = File().from_dict(src, bucket_dir, False)
+        if not _validate_path(file_obj.filepath, bucket_dir):
+            return None
+        log.info(
+            f"{ActionLabel.CREATE if create_dir else ActionLabel.MODIFY} "
+            f'{"Added" if create_dir else "Modified"} file "{file_obj.filepath}" (CID: {cid})'
+        )
+        # A (re-)created file invalidates any prior deletion marker so peers
+        # do not delete the freshly added file on their next full sync.
+        if not is_sentinel_file(file_obj.filepath):
+            clear_deletion(bucket, bucket_dir, file_obj.filepath)
+        return Event(cid, bucket_dir, bucket, event_name, file_obj)
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Public event handlers
+# ---------------------------------------------------------------------------
+
 
 async def handle_added_event(
     src: dict[str, Any] | None,
@@ -48,51 +117,15 @@ async def handle_added_event(
     bucket: str,
     cid: str,
 ) -> Event | None:
-    """
-    Handle 'added' events - create new files/directories.
-
-    Args:
-        src: Source object data from the event.
-        bucket_dir: Full path to the bucket directory.
-        bucket: Bucket name.
-        cid: Client ID.
-
-    Returns:
-        Event object if successful, None otherwise.
-    """
-    if not src:
-        return None
-
-    # Handle directory creation
-    if "path" in src:
-        dir_obj = Dir().from_dict(src, bucket_dir)
-        # Validate path to prevent traversal attacks
-        if not dir_obj.path or not is_path_within_bucket(dir_obj.path, bucket_dir):
-            log.warning(f"{ActionLabel.SECURITY} Rejected path traversal attempt: {dir_obj.path!r}")
-            return None
-        if dir_obj.path and dir_obj.permissions:
-            log.info(f'{ActionLabel.CREATE} Added dir "{dir_obj.path}" (CID: {cid})')
-            Path(dir_obj.path).mkdir(parents=True, exist_ok=True)
-            await set_directory_permissions(dir_obj.path, dir_obj.permissions)
-            return Event(cid, bucket_dir, bucket, EventName.added, dir_obj)
-
-    # Handle file creation notification
-    elif "filepath" in src:
-        file_obj = File().from_dict(src, bucket_dir, False)
-        # Validate path to prevent traversal attacks
-        if file_obj.filepath is None or not is_path_within_bucket(file_obj.filepath, bucket_dir):
-            log.warning(
-                f"{ActionLabel.SECURITY} Rejected path traversal attempt: {file_obj.filepath!r}"
-            )
-            return None
-        log.info(f'{ActionLabel.CREATE} Added file "{file_obj.filepath}" (CID: {cid})')
-        # A (re-)created file invalidates any prior deletion marker so peers
-        # do not delete the freshly added file on their next full sync.
-        if not is_sentinel_file(file_obj.filepath):
-            clear_deletion(bucket, bucket_dir, file_obj.filepath)
-        return Event(cid, bucket_dir, bucket, EventName.added, file_obj)
-
-    return None
+    """Handle 'added' events — create new files/directories."""
+    return await _handle_create_or_modify(
+        src,
+        bucket_dir,
+        bucket,
+        cid,
+        EventName.added,
+        create_dir=True,
+    )
 
 
 async def handle_modified_event(
@@ -101,48 +134,15 @@ async def handle_modified_event(
     bucket: str,
     cid: str,
 ) -> Event | None:
-    """
-    Handle 'modified' events - update existing files/directories.
-
-    Args:
-        src: Source object data from the event.
-        bucket_dir: Full path to the bucket directory.
-        bucket: Bucket name.
-        cid: Client ID.
-
-    Returns:
-        Event object if successful, None otherwise.
-    """
-    if not src:
-        return None
-
-    # Handle directory modification (permissions)
-    if "path" in src:
-        dir_obj = Dir().from_dict(src, bucket_dir)
-        # Validate path to prevent traversal attacks
-        if dir_obj.path is None or not is_path_within_bucket(dir_obj.path, bucket_dir):
-            log.warning(f"{ActionLabel.SECURITY} Rejected path traversal attempt: {dir_obj.path!r}")
-            return None
-        if dir_obj.path and dir_obj.permissions:
-            log.info(f'{ActionLabel.MODIFY} Modified dir "{dir_obj.path}" (CID: {cid})')
-            await set_directory_permissions(dir_obj.path, dir_obj.permissions)
-            return Event(cid, bucket_dir, bucket, EventName.modified, dir_obj)
-
-    # Handle file modification notification
-    elif "filepath" in src:
-        file_obj = File().from_dict(src, bucket_dir, False)
-        # Validate path to prevent traversal attacks
-        if file_obj.filepath is None or not is_path_within_bucket(file_obj.filepath, bucket_dir):
-            log.warning(
-                f"{ActionLabel.SECURITY} Rejected path traversal attempt: {file_obj.filepath!r}"
-            )
-            return None
-        log.info(f'{ActionLabel.MODIFY} Modified file "{file_obj.filepath}" (CID: {cid})')
-        if not is_sentinel_file(file_obj.filepath):
-            clear_deletion(bucket, bucket_dir, file_obj.filepath)
-        return Event(cid, bucket_dir, bucket, EventName.modified, file_obj)
-
-    return None
+    """Handle 'modified' events — update existing files/directories."""
+    return await _handle_create_or_modify(
+        src,
+        bucket_dir,
+        bucket,
+        cid,
+        EventName.modified,
+        create_dir=False,
+    )
 
 
 async def handle_deleted_event(
@@ -169,13 +169,8 @@ async def handle_deleted_event(
     # Handle directory deletion
     if "path" in src:
         dir_obj = Dir().from_dict(src, bucket_dir)
-        # Validate path to prevent traversal attacks. allow_root=False
-        # also rejects an attempt to rmtree the bucket directory itself
-        # (a malicious or buggy client could issue a delete on the root).
-        if dir_obj.path is None or not is_path_within_bucket(
-            dir_obj.path, bucket_dir, allow_root=False
-        ):
-            log.warning(f"{ActionLabel.SECURITY} Rejected path traversal attempt: {dir_obj.path!r}")
+        # allow_root=False rejects an attempt to rmtree the bucket directory itself
+        if not _validate_path(dir_obj.path, bucket_dir, allow_root=False):
             return None
         if dir_obj.path:
             if not Path(dir_obj.path).exists():
@@ -188,11 +183,7 @@ async def handle_deleted_event(
     # Handle file deletion
     elif "filepath" in src:
         file_obj = File().from_dict(src, bucket_dir, False)
-        # Validate path to prevent traversal attacks
-        if file_obj.filepath is None or not is_path_within_bucket(file_obj.filepath, bucket_dir):
-            log.warning(
-                f"{ActionLabel.SECURITY} Rejected path traversal attempt: {file_obj.filepath!r}"
-            )
+        if not _validate_path(file_obj.filepath, bucket_dir):
             return None
         if file_obj.filepath:
             if not Path(file_obj.filepath).exists():
@@ -202,16 +193,10 @@ async def handle_deleted_event(
                 remove(file_obj.filepath)
                 parent = str(Path(file_obj.filepath).parent)
                 if is_sentinel_file(file_obj.filepath):
-                    # Sentinel removed — clean up the now-empty directory.
-                    # Never remove the bucket root itself.
                     cleanup_empty_dir(parent, bucket_root=bucket_dir)
                 else:
-                    # Regular file removed — preserve directory with sentinel
                     ensure_sentinel_in_dir(parent)
-            # Remove from hash cache
             del_sha256_hash(file_obj.filepath)
-            # Record a tombstone so peers offline at deletion time do not
-            # resurrect the file on their next full sync.
             if not is_sentinel_file(file_obj.filepath):
                 record_deletion(
                     bucket,
@@ -251,12 +236,9 @@ async def handle_renamed_event(
     if src.get("path"):
         src_dir = Dir().from_dict(src, bucket_dir)
         dst_dir = Dir().from_dict(dst, bucket_dir)
-        # Validate both paths to prevent traversal attacks
-        if src_dir.path is None or not is_path_within_bucket(src_dir.path, bucket_dir):
-            log.warning(f"{ActionLabel.SECURITY} Rejected path traversal attempt: {src_dir.path!r}")
+        if not _validate_path(src_dir.path, bucket_dir):
             return None
-        if dst_dir.path is None or not is_path_within_bucket(dst_dir.path, bucket_dir):
-            log.warning(f"{ActionLabel.SECURITY} Rejected path traversal attempt: {dst_dir.path!r}")
+        if not _validate_path(dst_dir.path, bucket_dir):
             return None
         if src_dir.path and dst_dir.path:
             log.info(
@@ -269,16 +251,9 @@ async def handle_renamed_event(
     elif src.get("filepath"):
         src_file = File().from_dict(src, bucket_dir, False)
         dst_file = File().from_dict(dst, bucket_dir, False)
-        # Validate both paths to prevent traversal attacks
-        if src_file.filepath is None or not is_path_within_bucket(src_file.filepath, bucket_dir):
-            log.warning(
-                f"{ActionLabel.SECURITY} Rejected path traversal attempt: {src_file.filepath!r}"
-            )
+        if not _validate_path(src_file.filepath, bucket_dir):
             return None
-        if dst_file.filepath is None or not is_path_within_bucket(dst_file.filepath, bucket_dir):
-            log.warning(
-                f"{ActionLabel.SECURITY} Rejected path traversal attempt: {dst_file.filepath!r}"
-            )
+        if not _validate_path(dst_file.filepath, bucket_dir):
             return None
         if src_file.filepath and dst_file.filepath:
             log.info(
@@ -313,19 +288,13 @@ async def handle_symlink_event(
 
     if "type" in src and src.get("type") == "symlink":
         link = Symlink.from_dict(src, strip_dir_prefix=False)
-        # Build the full path
         link.filepath = f"{bucket_dir}/{link.filepath.lstrip('/')}"
         target = link.target
 
         if link.filepath and target:
-            # Validate symlink path to prevent path traversal attacks
-            if not is_path_within_bucket(link.filepath, bucket_dir):
-                log.warning(
-                    f"{ActionLabel.SECURITY} Rejected path traversal attempt: {link.filepath!r}"
-                )
+            if not _validate_path(link.filepath, bucket_dir):
                 return None
 
-            # Validate symlink target to prevent path traversal attacks
             if not is_safe_symlink_target(link.filepath, target, bucket_dir):
                 log.warning(
                     f"{ActionLabel.SECURITY} Rejected unsafe symlink {link.filepath!r} -> {target!r} "
@@ -334,16 +303,13 @@ async def handle_symlink_event(
                 return None
 
             log.info(f'{ActionLabel.SYMLINK} Symlink "{link.filepath}" -> "{target}" (CID: {cid})')
-            # Ensure parent directory exists
             parent_dir = str(Path(link.filepath).parent)
             if not Path(parent_dir).exists():
                 Path(parent_dir).mkdir(parents=True, exist_ok=True)
 
-            # Remove existing symlink or file if present
             if Path(link.filepath).is_symlink() or Path(link.filepath).exists():
                 unlink(link.filepath)
 
-            # Create the symlink
             os_symlink(target, link.filepath)
             return Event(cid, bucket_dir, bucket, EventName.symlink, link)
 
