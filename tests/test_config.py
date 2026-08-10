@@ -32,10 +32,10 @@ class TestLoadEnvFile:
         with pytest.raises(FileNotFoundError):
             config.load_env_file(str(tmp_path / "nonexistent.env"))
 
-    def test_cli_variables_take_precedence(self, tmp_path):
+    def test_cli_variables_take_precedence(self, tmp_path, monkeypatch):
         """Test that existing environment variables are not overwritten."""
-        # Set environment variable before loading
-        os.environ["HSYNC_PORT"] = "1234"
+        # Set environment variable before loading (monkeypatch garantisce il cleanup)
+        monkeypatch.setenv("HSYNC_PORT", "1234")
 
         env_file = tmp_path / ".env"
         env_file.write_text("HSYNC_PORT=9999\n")
@@ -45,48 +45,38 @@ class TestLoadEnvFile:
         settings = config.get_settings()
         assert settings.port == 1234
 
-        # Cleanup
-        del os.environ["HSYNC_PORT"]
-
 
 class TestSettings:
     """Tests for Settings class."""
 
-    def test_default_values(self):
+    def test_default_values(self, monkeypatch):
         """Test that default values are applied."""
         # Clear cache to ensure fresh settings
         config.get_settings.cache_clear()
 
-        # Clear environment variable that might override default
-        env_backup = os.environ.get("HSYNC_LOG_LEVEL")
-        if "HSYNC_LOG_LEVEL" in os.environ:
-            del os.environ["HSYNC_LOG_LEVEL"]
+        # Clear environment variable that might override default (monkeypatch garantisce il cleanup)
+        monkeypatch.delenv("HSYNC_LOG_LEVEL", raising=False)
 
-        try:
-            settings = config.Settings()
+        settings = config.Settings()
 
-            assert settings.port == 9753
-            assert settings.workers == 1
-            assert settings.tz == "UTC"
-            assert settings.log_level == "info"
-            assert settings.log_format == "text"
-            assert settings.log_file == ""
-            assert settings.cors_enabled is False
-            assert settings.ssl_enabled is False
-            assert settings.compression_enabled is True
-            assert settings.max_upload_size == 10 * 1024 * 1024 * 1024  # 10GB
-            assert settings.buckets_path.endswith("/buckets")
-            assert settings.min_free_disk_space == 500 * 1024 * 1024
-            assert settings.rate_limit_default == "500/minute"
-            assert settings.rate_limit_upload == "200/minute"
-            assert settings.rate_limit_download == "1000/minute"
-            assert settings.rate_limit_websocket == "50/minute"
-            assert settings.rate_limit_ws_messages == "10/second"
-            assert settings.trusted_proxies_set == frozenset()
-        finally:
-            # Restore environment variable
-            if env_backup:
-                os.environ["HSYNC_LOG_LEVEL"] = env_backup
+        assert settings.port == 9753
+        assert settings.workers == 1
+        assert settings.tz == "UTC"
+        assert settings.log_level == "info"
+        assert settings.log_format == "text"
+        assert settings.log_file == ""
+        assert settings.cors_enabled is False
+        assert settings.ssl_enabled is False
+        assert settings.compression_enabled is True
+        assert settings.max_upload_size == 10 * 1024 * 1024 * 1024  # 10GB
+        assert settings.buckets_path.endswith("/buckets")
+        assert settings.min_free_disk_space == 500 * 1024 * 1024
+        assert settings.rate_limit_default == "500/minute"
+        assert settings.rate_limit_upload == "200/minute"
+        assert settings.rate_limit_download == "1000/minute"
+        assert settings.rate_limit_websocket == "50/minute"
+        assert settings.rate_limit_ws_messages == "10/second"
+        assert settings.trusted_proxies_set == frozenset()
 
     def test_custom_values(self):
         """Test that custom values are applied."""
