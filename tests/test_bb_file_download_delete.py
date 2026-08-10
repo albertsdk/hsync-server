@@ -18,7 +18,7 @@ import pytest
 
 pytestmark = pytest.mark.usefixtures("bb_http")
 
-_CID = "bbclient0001bbcltBB1"
+_CID = "bbclient0001bbcltBB10"
 
 
 def _delete(client: httpx.Client, bucket: str, filename: str, cid: str = _CID) -> httpx.Response:
@@ -118,16 +118,20 @@ class TestDeleteHappy:
         tombs = bb_http.get(f"/api/v1/buckets/{bb_bucket}/tombstones")
         assert tombs.status_code == 200
         payload = tombs.json()
-        assert len(payload) >= 1
-        entry = next(iter(payload.values()))
         expected_sha = hashlib.sha256(content).hexdigest()
+        # Exactly one tombstone for the deleted file
+        assert len(payload) == 1, f"expected 1 tombstone, got {len(payload)}: {payload}"
+        entry = next(iter(payload.values()))
+        assert "sha256" in entry
+        assert "ts" in entry
         assert entry["sha256"] == expected_sha
 
     def test_reupload_clears_tombstone(self, bb_upload, bb_http: httpx.Client, bb_bucket: str):
         # Given a deleted file (tombstone present)
         bb_upload(bb_http, bb_bucket, "reuse.bin", b"first")
         assert _delete(bb_http, bb_bucket, "reuse.bin").status_code == 200
-        assert len(bb_http.get(f"/api/v1/buckets/{bb_bucket}/tombstones").json()) >= 1
+        tombs_after = bb_http.get(f"/api/v1/buckets/{bb_bucket}/tombstones").json()
+        assert len(tombs_after) == 1
 
         # When re-uploading the same path
         bb_upload(bb_http, bb_bucket, "reuse.bin", b"second")

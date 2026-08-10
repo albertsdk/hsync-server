@@ -482,7 +482,7 @@ class TestWebSocketCoverageGaps:
             }
         )
 
-        await ws_events(mock_websocket, "testbucket", "client1")
+        await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.send_json.assert_called()
         mock_websocket.close.assert_called_with(code=4002, reason="Protocol incompatible")
@@ -505,7 +505,7 @@ class TestWebSocketCoverageGaps:
         ]
 
         with patch("hsync_server.api.events.PROTOCOL_VERSION_WS", None):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # The pong message must not crash the handler. send_json is called
         # once for the auth reply with a dict, not for the pong.
@@ -538,7 +538,7 @@ class TestWebSocketCoverageGaps:
             bucket = MagicMock()
             bucket.acquire.return_value = False
             create_bucket.return_value = bucket
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # The event was dropped (no broadcast, no crash)
         bucket.acquire.assert_called()
@@ -567,7 +567,7 @@ class TestWebSocketCoverageGaps:
             patch("hsync_server.api.events.get_ws_heartbeat_interval", return_value=0.01),
             patch("hsync_server.api.events.get_ws_heartbeat_timeout", return_value=0.01),
         ):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.close.assert_called_with(code=4004, reason="Heartbeat timeout")
 

@@ -15,6 +15,7 @@ from hsync_server.constants import (
     HSYNC_VERSION,
     PROTOCOL_VERSION_REST,
 )
+from hsync_server.error_handlers import global_exception_handler
 from hsync_server.logger import get_request_id
 from hsync_server.middleware import (
     RequestIdMiddleware,
@@ -121,6 +122,9 @@ class TestRequestIdMiddlewareWithErrors:
         """Test that response includes request ID even on 500 error."""
         app = FastAPI()
         app.add_middleware(RequestIdMiddleware)
+        # Register the global exception handler so the X-Request-ID is
+        # injected even when ServerErrorMiddleware bypasses the middleware.
+        app.add_exception_handler(Exception, global_exception_handler)
 
         @app.get("/error")
         async def error_endpoint():
@@ -129,9 +133,10 @@ class TestRequestIdMiddlewareWithErrors:
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/error", headers={"X-Request-ID": "error-test-id"})
 
-        # Note: Due to how exceptions are handled, the header might not be set
-        # This test documents the current behavior
         assert response.status_code == 500
+        # The X-Request-ID must be present even on error responses
+        assert "X-Request-ID" in response.headers
+        assert response.headers["X-Request-ID"] == "error-test-id"
 
 
 class TestRequestIdMiddlewareIntegration:

@@ -172,5 +172,16 @@ class TestLimiterInstance:
         assert limiter is not None
 
     def test_limiter_has_default_limits(self):
-        """Limiter has default limits configured."""
+        """Limiter has default limits configured — the underlying slowapi
+        LimitGroup/List collection must be present and non-empty."""
         assert limiter._default_limits is not None
+        limits = limiter._default_limits
+        assert len(limits) > 0, "expected at least one default-limit entry"
+        # Verify each entry is a slowapi Limit or LimitGroup (anything else
+        # indicates a wiring error in the rate-limiter setup).
+        from slowapi.wrappers import Limit, LimitGroup
+
+        for entry in limits:
+            assert isinstance(entry, (Limit, LimitGroup)), (
+                f"unexpected type in _default_limits: {type(entry)}"
+            )

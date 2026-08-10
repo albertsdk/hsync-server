@@ -34,7 +34,7 @@ class TestWebSocketPathParamValidation:
     async def test_invalid_bucket_rejected(self, mock_websocket):
         """A bucket segment like `..` (via %2e%2e) must never reach bucket_dir
         construction — it would escape the storage root."""
-        await ws_events(mock_websocket, "..", "client1")
+        await ws_events(mock_websocket, "..", "TestClientABCDEFGHIJK")
 
         mock_websocket.accept.assert_called_once()
         mock_websocket.close.assert_called_with(code=4000, reason="Invalid bucket name")
@@ -107,7 +107,7 @@ class TestWebSocketAuthentication:
         ]
 
         with patch("hsync_server.api.events.get_api_key", return_value="test-api-key"):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.accept.assert_called_once()
         expected_caps = {Capability.compression} if get_compression_enabled() else set()
@@ -121,7 +121,7 @@ class TestWebSocketAuthentication:
         mock_websocket.receive_text.return_value = _auth_frame("wrong-key")
 
         with patch("hsync_server.api.events.get_api_key", return_value="correct-key"):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.close.assert_called_with(code=4003, reason="Invalid API key")
 
@@ -137,7 +137,7 @@ class TestWebSocketAuthentication:
         mock_websocket.receive_text.side_effect = _never_returns
 
         with patch("hsync_server.api.events.get_ws_auth_timeout", return_value=0.01):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.accept.assert_called_once()
         mock_websocket.close.assert_called_with(code=4008, reason="Authentication timeout")
@@ -149,7 +149,7 @@ class TestWebSocketAuthentication:
             "hsync_server.api.events.bucket_manager.try_acquire_slot",
             return_value=False,
         ):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.accept.assert_called_once()
         mock_websocket.close.assert_called_with(code=1013, reason="Connection limit reached")
@@ -162,7 +162,7 @@ class TestWebSocketAuthentication:
         mock_websocket.receive_text.return_value = '{"type": "not-auth", "token": "key"}'
 
         with patch("hsync_server.api.events.get_api_key", return_value="key"):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.close.assert_called_with(code=4001, reason="Invalid auth message")
 
@@ -171,7 +171,7 @@ class TestWebSocketAuthentication:
         """Malformed JSON during auth closes connection."""
         mock_websocket.receive_text.return_value = "not valid json"
 
-        await ws_events(mock_websocket, "testbucket", "client1")
+        await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.close.assert_called()
 
@@ -212,7 +212,7 @@ class TestWebSocketEvents:
         ]
 
         with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Connection accepted and authenticated
         mock_websocket.accept.assert_called_once()
@@ -235,7 +235,7 @@ class TestWebSocketEvents:
         ]
 
         with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Connection accepted and authenticated
         mock_websocket.accept.assert_called_once()
@@ -257,11 +257,11 @@ class TestWebSocketEvents:
         ]
 
         with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Client should be removed from connections
         manager = bucket_manager.get_manager("testbucket")
-        assert "client1" not in manager.active_connections
+        assert "TestClientABCDEFGHIJK" not in manager.active_connections
 
     @pytest.mark.asyncio
     async def test_added_event_dispatched(self, mock_websocket, tmp_path):
@@ -286,7 +286,7 @@ class TestWebSocketEvents:
                 return_value=str(tmp_path / "buckets"),
             ),
         ):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Directory should be created
         assert os.path.exists(f"{bucket_dir}/newdir")
@@ -315,7 +315,7 @@ class TestWebSocketEvents:
                 return_value=str(tmp_path / "buckets"),
             ),
         ):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
     @pytest.mark.asyncio
     async def test_deleted_event_dispatched(self, mock_websocket, tmp_path):
@@ -341,7 +341,7 @@ class TestWebSocketEvents:
                 return_value=str(tmp_path / "buckets"),
             ),
         ):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Directory should be deleted
         assert not os.path.exists(target_dir)
@@ -370,7 +370,7 @@ class TestWebSocketEvents:
                 return_value=str(tmp_path / "buckets"),
             ),
         ):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Directory should be renamed
         assert not os.path.exists(src_dir)
@@ -402,7 +402,7 @@ class TestWebSocketEvents:
                 return_value=str(tmp_path / "buckets"),
             ),
         ):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Symlink should be created
         assert os.path.islink(f"{bucket_dir}/link")
@@ -419,7 +419,7 @@ class TestWebSocketEvents:
         ]
 
         with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         # Connection was accepted and authenticated before the event
         mock_websocket.accept.assert_called_once()
@@ -439,6 +439,6 @@ class TestWebSocketEvents:
         ]
 
         with patch("hsync_server.api.events.get_api_key", return_value="test-key"):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         mock_websocket.close.assert_called()

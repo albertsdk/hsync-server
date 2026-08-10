@@ -118,7 +118,7 @@ async def validation_exception_handler(
     )
 
 
-async def global_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     Handle all unhandled exceptions.
 
@@ -126,14 +126,28 @@ async def global_exception_handler(_request: Request, exc: Exception) -> JSONRes
     wasn't handled by more specific handlers. Logs the full traceback
     but returns a generic error message to avoid leaking internal details.
 
+    The ``X-Request-ID`` header is injected here because unhandled
+    exceptions bypass ``BaseHTTPMiddleware.dispatch`` (Starlette's
+    ``ServerErrorMiddleware`` swallows them first), so the regular
+    ``RequestIdMiddleware`` cannot add the header for these responses.
+    Instead the request ID is retrieved from ``request.state.request_id``,
+    which is set by ``RequestIdMiddleware`` before the exception occurs.
+
     Args:
-        _request: The incoming request (unused but required by FastAPI).
+        request: The incoming request (used to retrieve the request ID).
         exc: The unhandled exception.
 
     Returns:
-        JSONResponse with generic error message.
+        JSONResponse with generic error message and X-Request-ID header.
     """
-    log.error(f"Unhandled exception: {exc}", exc_info=True)
+    # Retrieve the request ID that RequestIdMiddleware stashed on request.state
+    request_id = getattr(request.state, "request_id", None)
+
+    log.error(f"Unhandled exception (request_id={request_id}): {exc}", exc_info=True)
+
+    headers = {}
+    if request_id:
+        headers["X-Request-ID"] = request_id
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -141,6 +155,7 @@ async def global_exception_handler(_request: Request, exc: Exception) -> JSONRes
             "error": "HSYNC-5000",
             "message": "An unexpected error occurred",
         },
+        headers=headers,
     )
 
 

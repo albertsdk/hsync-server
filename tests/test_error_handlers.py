@@ -166,10 +166,24 @@ class TestRegisterExceptionHandlers:
     """Tests for register_exception_handlers function."""
 
     def test_registers_all_handlers(self):
-        """Test that all handlers are registered."""
+        """Test that the three core handlers are registered on a fresh app."""
+        from fastapi.exceptions import RequestValidationError
+
+        from hsync_server.exceptions import HSyncError
+
         app = FastAPI()
 
         register_exception_handlers(app)
 
-        # Check handlers are registered
+        # Three core handlers: HSyncError, RequestValidationError, Exception
         assert len(app.exception_handlers) >= 3
+        handler_names = {h.__name__ for h in app.exception_handlers.values()}
+        assert "hsync_exception_handler" in handler_names, (
+            f"hsync_exception_handler not found in {handler_names}"
+        )
+        assert "validation_exception_handler" in handler_names, (
+            f"validation_exception_handler not found in {handler_names}"
+        )
+        assert "global_exception_handler" in handler_names, (
+            f"global_exception_handler not found in {handler_names}"
+        )
