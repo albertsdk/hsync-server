@@ -355,9 +355,9 @@ def _stop_proc(proc: subprocess.Popen) -> None:
         proc.wait(timeout=5)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def live_server() -> Generator[tuple[str, str]]:
-    """Session-scoped real loopback server: yields (base_url, api_key)."""
+    """Module-scoped real loopback server: yields (base_url, api_key)."""
     proc, port, buckets_dir, log_path = _start_live_server()
     try:
         yield f"http://127.0.0.1:{port}", BB_API_KEY
