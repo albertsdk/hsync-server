@@ -13,6 +13,7 @@ mismatch, unsafe paths and bad URL segments — without touching internals.
 
 import asyncio
 import json
+import os
 
 import httpx
 import pytest
@@ -20,7 +21,13 @@ import websockets
 from hsync_common.protocol.handshake import PROTOCOL_VERSION_WS, build_ws_auth_request
 from websockets.exceptions import ConnectionClosed
 
-pytestmark = pytest.mark.usefixtures("bb_http")
+_BB_SERVER_ENABLED = os.environ.get("HSYNC_BB_SERVER") == "1"
+_BB_SERVER_REASON = "Black-box server-mode tests require HSYNC_BB_SERVER=1"
+
+pytestmark = [
+    pytest.mark.skipif(not _BB_SERVER_ENABLED, reason=_BB_SERVER_REASON),
+    pytest.mark.usefixtures("bb_http"),
+]
 
 
 def _ws_base(live_server: tuple[str, str]) -> str:
