@@ -342,10 +342,18 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
 
         except WebSocketDisconnect:
             # Client disconnected normally
-            log.warning(f"{ActionLabel.WS} Disconnected (CID: {cid})")
+            try:
+                log.warning(f"{ActionLabel.WS} Disconnected (CID: {cid})")
+            except ValueError:
+                # Stream already closed during teardown — discard silently
+                pass
         except Exception as e:
             # Client disconnected with error
-            log.warning(f"{ActionLabel.WS} Disconnected (CID: {cid}) ({e})")
+            try:
+                log.warning(f"{ActionLabel.WS} Disconnected (CID: {cid}) ({e})")
+            except ValueError:
+                # Stream already closed during teardown — discard silently
+                pass
             await websocket.close()
         finally:
             # Cancel heartbeat task and cleanup
