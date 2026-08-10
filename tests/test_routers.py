@@ -83,7 +83,10 @@ class TestVerifyApiKey:
 
     def test_invalid_api_key_returns_401(self):
         """Test that invalid API key returns 401."""
+        from hsync_server.error_handlers import register_exception_handlers
+
         app = FastAPI()
+        register_exception_handlers(app)
 
         @app.get("/test")
         async def test_endpoint(api_key=Depends(verify_api_key)):
@@ -91,14 +94,10 @@ class TestVerifyApiKey:
 
         client = TestClient(app, raise_server_exceptions=False)
 
-        # Without exception handlers registered, we get 500
-        # But verify_api_key properly raises InvalidApiKeyError (401)
         with patch("hsync_server.routers.get_api_key", return_value="correct-key"):
             response = client.get("/test", headers={"Authorization": "Bearer wrong-key"})
 
-        # Without global exception handlers, we get 500
-        # The important thing is that authentication is rejected
-        assert response.status_code in [401, 500]
+        assert response.status_code == 401
 
     def test_empty_bearer_token_raises_error(self):
         """Test that empty bearer token raises MissingApiKeyError."""

@@ -127,7 +127,6 @@ async def upload_file(
     file_location = None
     is_resumable = offset > 0
     is_compressed = compressed.lower() == "true"
-    upload_successful = False
     t0 = monotonic()
     try:
         max_upload_size = get_max_upload_size()
@@ -245,7 +244,6 @@ async def upload_file(
             # Clean up partial file if exists
             if Path(partial_file_path).exists():
                 remove(partial_file_path)
-            upload_successful = True
             # Never leak absolute filesystem paths on the wire — the
             # client already knows the bucket-relative path it uploaded.
             return JSONResponse(
@@ -305,7 +303,6 @@ async def upload_file(
             # Check if upload is complete
             if size > 0 and total_bytes < size:
                 # Partial upload - more chunks expected
-                upload_successful = True
                 return JSONResponse(
                     status_code=202,
                     content={
@@ -406,7 +403,6 @@ async def upload_file(
                 # Move temp file to partial file location (same-filesystem rename)
                 replace(file_location_tmp, partial_file_path)
                 file_location_tmp = None
-                upload_successful = True
                 return JSONResponse(
                     status_code=202,
                     content={
@@ -416,15 +412,10 @@ async def upload_file(
                     },
                 )
 
-        # Set timestamps on file
-        update_file_timestamp(file_location_tmp, ctime, mtime)
-
-        # Set permissions on file
-        if permissions:
-            await set_permissions(file_location_tmp, permissions)
-
         # SHA-256 integrity is mandatory: the received bytes must hash to the
-        # declared checksum, otherwise the upload is rejected (400).
+        # declared checksum, otherwise the upload is rejected (400).  Verify
+        # *before* touching any file metadata so rejected uploads are as
+        # cheap as possible and never alter existing on-disk state.
         sha256sum_tmp = await compute_sha256_async(file_location_tmp)
         if not hmac.compare_digest(sha256sum, sha256sum_tmp):
             raise ChecksumMismatchError(
@@ -439,6 +430,14 @@ async def upload_file(
         # partially written file is never visible at the target path
         replace(file_location_tmp, file_location)
         file_location_tmp = None  # Don't clean up - it's been moved
+
+        # Set timestamps and permissions on the *final* file after the atomic
+        # rename — metadata is only applied to content that passed integrity
+        # verification.
+        update_file_timestamp(file_location, ctime, mtime)
+
+        if permissions:
+            await set_permissions(file_location, permissions)
 
         # Invalidate SHA-256 cache for this file (content has changed)
         invalidate_sha256_cache(file_location)
@@ -462,7 +461,6 @@ async def upload_file(
             manager = bucket_manager.get_manager(bucket)
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))
 
-        upload_successful = True
         log.info(
             f'{ActionLabel.UPLOAD} "{bucket}/{path}/{file.filename}" (CID: {cid}) '
             f"{format_bytes(total_bytes)} "
@@ -487,7 +485,7 @@ async def upload_file(
     ):
         # Re-raise custom exceptions - they'll be handled by global handler
         raise
-    except Exception as e:
+    except OSError as e:
         log.error(f"Upload failed for file {file.filename}: {e}", exc_info=True)
         # Restore from backup if it exists
         if backup_path and Path(backup_path).exists() and file_location:
@@ -501,19 +499,21 @@ async def upload_file(
             details={"filename": file.filename, "error": type(e).__name__},
         )
     finally:
-        if upload_successful:
-            # Success: clean up temp file, but preserve partial files
-            # for potential resumable upload continuation
-            if (
-                file_location_tmp
-                and Path(file_location_tmp).exists()
-                and not is_partial_file(file_location_tmp)
-            ):
-                remove(file_location_tmp)
-        else:
-            # Failure: clean up ALL leftover temp files, including .part files,
-            # to prevent accumulation of stale partial uploads on disk
-            for f in (file_location_tmp, partial_file_path, backup_path):
+        # Temp file that was never atomically renamed to its final location
+        # (only present on failure paths; success/partial-success set it to
+        # None before returning).
+        if (
+            file_location_tmp
+            and Path(file_location_tmp).exists()
+            and not is_partial_file(file_location_tmp)
+        ):
+            remove(file_location_tmp)
+        # On failure, also clean up partial and backup artifacts so they
+        # don't accumulate on disk.  On success/partial-success these are
+        # intentionally preserved (partial files for resume, backup already
+        # removed in the happy path).
+        if file_location_tmp is not None:
+            for f in (partial_file_path, backup_path):
                 if f and Path(f).exists():
                     remove(f)
                     if is_partial_file(f):

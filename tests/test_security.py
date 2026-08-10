@@ -17,7 +17,7 @@ import os
 import stat
 import time
 from json import dumps
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import zstandard
@@ -373,7 +373,7 @@ class TestWebSocketEventSecurity:
             patch("hsync_server.api.events.get_api_key", return_value="test-key"),
             patch("hsync_server.api.events.get_buckets_path", return_value=str(buckets_root)),
         ):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         assert outside.exists()
 
@@ -390,14 +390,20 @@ class TestWebSocketEventSecurity:
             WebSocketDisconnect(),
         ]
 
+        mock_bucket_mgr = MagicMock()
+
         with (
             patch("hsync_server.api.events.get_api_key", return_value="test-key"),
             patch("hsync_server.api.events.get_buckets_path", return_value=str(buckets_root)),
+            patch("hsync_server.api.events.bucket_manager", mock_bucket_mgr),
         ):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
-        # The point is: no crash, no deletion, no relay (loop continues cleanly).
+        # The bucket dir survives the malicious event, and the message was
+        # never relayed (get_manager is called for connection registration,
+        # but send_message must never be invoked for a rejected path).
         assert bucket_dir.exists()
+        mock_bucket_mgr.get_manager.return_value.send_message.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_internal_name_event_not_applied(self, mock_websocket, tmp_path):
@@ -418,7 +424,7 @@ class TestWebSocketEventSecurity:
             patch("hsync_server.api.events.get_api_key", return_value="test-key"),
             patch("hsync_server.api.events.get_buckets_path", return_value=str(buckets_root)),
         ):
-            await ws_events(mock_websocket, "testbucket", "client1")
+            await ws_events(mock_websocket, "testbucket", "TestClientABCDEFGHIJK")
 
         assert marker.exists()
         assert not (bucket_dir / ".hsyncignore").exists()

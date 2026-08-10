@@ -61,11 +61,11 @@ class TestAuthAndProtocol:
         )
         assert r.status_code == 426, f"expected 426 for version={version!r}, got {r.status_code}"
 
-    def test_protocol_header_absent_still_succeeds(self, bb_http: httpx.Client, bb_bucket: str):
+    def test_protocol_header_absent_still_succeeds(self, bb_http: httpx.Client):
         """A client without a protocol header is accepted (health checks, docs, …)."""
-        r = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files")
+        r = bb_http.get("/api/v1/time")
         # The server MUST NOT 426 when the header is absent — only on explicit mismatch.
-        assert r.status_code in (200, 404), f"unexpected status {r.status_code}"
+        assert r.status_code == 200
 
     def test_health_without_auth(self, live_server: tuple[str, str]):
         # Given a client with no API key
@@ -97,15 +97,22 @@ class TestRateLimits:
                 bucket = "bbrl"
                 assert c.post("/api/v1/buckets", params={"bucket": bucket}).status_code == 201
 
-                # When uploading more than the allowed number of times
+                # When uploading beyond the allowed rate (limit is 2/minute)
                 codes = []
-                for _ in range(4):
-                    r = bb_upload(c, bucket, "f.bin", b"x")
+                retry_after_seen = False
+                # Upload 5 times: 2 should succeed, >=1 should be throttled
+                for i in range(5):
+                    r = bb_upload(c, bucket, f"f{i}.bin", b"x")
                     codes.append(r.status_code)
+                    if r.status_code == 429:
+                        assert "Retry-After" in r.headers
+                        retry_after_seen = True
 
-                # Then at least one upload is throttled with 429
+                # Then the rate limiter kicks in with proper headers
+                accepted = sum(1 for c in codes if c == 201)
+                assert 1 <= accepted <= 3  # exactly 2 ideal, but allow clock-skew
                 assert 429 in codes
-                assert 201 in codes  # the first uploads succeeded
+                assert retry_after_seen, "429 responses must carry Retry-After"
 
     def test_download_rate_limit_returns_429(self, start_live_server, bb_upload):
         # Given a server with a tiny download rate limit and one uploaded file
@@ -116,14 +123,20 @@ class TestRateLimits:
                 assert c.post("/api/v1/buckets", params={"bucket": bucket}).status_code == 201
                 assert bb_upload(c, bucket, "f.bin", b"x").status_code == 201
 
-                # When downloading more than the allowed number of times
+                # When downloading beyond the allowed rate (limit is 2/minute)
                 codes = []
-                for _ in range(4):
+                retry_after_seen = False
+                for _i in range(5):
                     r = c.get(
                         f"/api/v1/buckets/{bucket}/files/download", params={"filename": "f.bin"}
                     )
                     codes.append(r.status_code)
+                    if r.status_code == 429:
+                        assert "Retry-After" in r.headers
+                        retry_after_seen = True
 
-                # Then at least one download is throttled with 429
+                # Then the rate limiter kicks in with proper headers
+                accepted = sum(1 for c in codes if c == 200)
+                assert 1 <= accepted <= 3
                 assert 429 in codes
-                assert 200 in codes  # the first downloads succeeded
+                assert retry_after_seen, "429 responses must carry Retry-After"
