@@ -53,41 +53,43 @@ tests, how to write new tests, and cross-project testing with `hsync-common`.
 ```
 tests/
 ├── __init__.py
-├── conftest.py                   # Shared fixtures and test configuration
-├── test_api_files.py                  # File CRUD: upload, download, list, delete
-├── test_api_integration.py            # End-to-end integration tests
-├── test_api_utils.py                  # API utility helpers
-├── test_bb_auth_protocol_limits.py    # Black-box: auth, protocol version and rate-limit use cases
-├── test_bb_bucket_lifecycle.py        # Black-box: bucket create/read/list/delete lifecycle
-├── test_bb_delta_transfer.py          # Black-box: delta transfer use case (signatures, tokens, apply)
-├── test_bb_file_download_delete.py    # Black-box: file download and delete use cases
-├── test_bb_file_upload.py             # Black-box: file upload use case (resume, compression, overwrite)
-├── test_bb_tombstones_status.py       # Black-box: tombstone listing and resumable upload-status
-├── test_bb_websocket_relay.py         # Black-box: WebSocket event-relay (handshake, fan-out, echo suppression)
-├── test_compression.py                # Zstandard compression unit tests
-├── test_config.py                     # Configuration loading and validation
-├── test_connection_manager.py         # WebSocket connection pool management
-├── test_coverage_gaps.py              # Coverage gap fillers
-├── test_delta_endpoints.py            # Delta transfer REST endpoints
-├── test_docker_script.py              # docker.sh script behavior
-├── test_error_handlers.py             # Global exception handler tests
-├── test_event_handlers.py             # WebSocket event business logic
-├── test_file_utils.py                 # File system operations and safety checks
-├── test_hashes.py                     # SHA-256 computation and cache
-├── test_health.py                     # Health check endpoint tests
-├── test_install_script.py             # install.sh script tests
-├── test_logger.py                     # Logging configuration
-├── test_main.py                       # Application lifecycle and startup
-├── test_middleware.py                 # Middleware chain behavior
-├── test_models.py                     # Data model validation
-├── test_models_sync_action.py         # SyncAction model tests
-├── test_openapi_contract.py           # OpenAPI schema contract tests
-├── test_rate_limiter.py               # Per-endpoint rate limiting
-├── test_routers.py                    # Router wiring and auth dependencies
-├── test_security.py                   # Authentication and security tests
-├── test_ssl_utils.py                  # Certificate generation and SSL context
-├── test_token_bucket.py               # Token bucket algorithm unit tests
-└── test_websocket.py                  # WebSocket endpoint and event flow
+├── conftest.py                         # Shared fixtures and test configuration
+├── test_api_files_advanced.py          # File operations: advanced scenarios
+├── test_api_files_crud.py              # File CRUD: upload, download, list, delete
+├── test_api_files_validation.py        # File operations: input validation
+├── test_api_integration.py             # End-to-end integration tests
+├── test_api_utils.py                   # API utility helpers
+├── test_bb_auth_protocol_limits.py     # Black-box: auth, protocol version and rate-limit use cases
+├── test_bb_bucket_lifecycle.py         # Black-box: bucket create/read/list/delete lifecycle
+├── test_bb_delta_transfer.py           # Black-box: delta transfer use case (signatures, tokens, apply)
+├── test_bb_file_download_delete.py     # Black-box: file download and delete use cases
+├── test_bb_file_upload.py              # Black-box: file upload use case (resume, compression, overwrite)
+├── test_bb_tombstones_status.py        # Black-box: tombstone listing and resumable upload-status
+├── test_bb_websocket_relay.py          # Black-box: WebSocket event-relay (handshake, fan-out, echo suppression)
+├── test_compression.py                 # Zstandard compression unit tests
+├── test_config.py                      # Configuration loading and validation
+├── test_connection_manager.py          # WebSocket connection pool management
+├── test_coverage_gaps.py               # Coverage gap fillers
+├── test_delta_endpoints.py             # Delta transfer REST endpoints
+├── test_docker_script.py               # docker.sh script behavior
+├── test_error_handlers.py              # Global exception handler tests
+├── test_event_handlers.py              # WebSocket event business logic
+├── test_file_utils.py                  # File system operations and safety checks
+├── test_hashes.py                      # SHA-256 computation and cache
+├── test_health.py                      # Health check endpoint tests
+├── test_install_script.py              # install.sh script tests
+├── test_logger.py                      # Logging configuration
+├── test_main.py                        # Application lifecycle and startup
+├── test_middleware.py                  # Middleware chain behavior
+├── test_models.py                      # Data model validation
+├── test_models_sync_action.py          # SyncAction model tests
+├── test_openapi_contract.py            # OpenAPI schema contract tests
+├── test_rate_limiter.py                # Per-endpoint rate limiting
+├── test_routers.py                     # Router wiring and auth dependencies
+├── test_security.py                    # Authentication and security tests
+├── test_ssl_utils.py                   # Certificate generation and SSL context
+├── test_token_bucket.py                # Token bucket algorithm unit tests
+└── test_websocket.py                   # WebSocket endpoint and event flow
 ```
 
 ## Fixtures
