@@ -183,7 +183,8 @@ class TestUploadOverwrite:
     def test_overwrite_with_correct_checksum_replaces_content(
         self, bb_upload, bb_http: httpx.Client, bb_bucket: str
     ):
-        """Uploading a new version of an existing file must replace its content."""
+        """Uploading a new version of an existing file replaces content and
+        preserves the previous version as a conflicted copy."""
         old = b"version one data"
         new = b"version two - updated content"
         bb_upload(bb_http, bb_bucket, "over.bin", old)
@@ -192,12 +193,26 @@ class TestUploadOverwrite:
         r = bb_upload(bb_http, bb_bucket, "over.bin", new)
         assert r.status_code == 201
 
+        # Main path has the new content
         dl = bb_http.get(
             f"/api/v1/buckets/{bb_bucket}/files/download", params={"filename": "over.bin"}
         )
         assert dl.status_code == 200
         assert dl.content == new
         assert dl.content != old
+
+        # A conflicted copy must exist preserving the old content
+        listed = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json()
+        conflict = [e for e in listed if "conflicted_copy" in e["name"] and "over" in e["name"]]
+        assert len(conflict) == 1, (
+            f"Expected 1 conflicted copy, found {len(conflict)}: {[e['name'] for e in conflict]}"
+        )
+        dl_old = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download",
+            params={"filename": conflict[0]["filepath"]},
+        )
+        assert dl_old.status_code == 200
+        assert dl_old.content == old
 
     def test_overwrite_with_wrong_checksum_preserves_original(
         self, bb_upload, bb_http: httpx.Client, bb_bucket: str
