@@ -8,7 +8,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.15"
 dependencies = [
     "aiofiles>=25.1.0,<26.0.0",
-    "cryptography>=48.0.1,<50.0.0",
+    "cryptography>=48.0.1,<51.0.0",
     # Capped <0.137: FastAPI 0.137 made `app.routes` a tree with `_IncludedRouter`
     # objects (no `.path`), which prometheus-fastapi-instrumentator 8.0.0 crashes on
     # at every request (AttributeError). Lift to ^0.137 once the instrumentator
