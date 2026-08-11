@@ -103,6 +103,14 @@ class TestUploadHappy:
         assert r.status_code == 409
         assert r.json()["info"] == "File already present"
 
+        # And the file must still be intact — a duplicate rejection must never
+        # corrupt the existing file content on disk
+        dl = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download", params={"filename": "dup.bin"}
+        )
+        assert dl.status_code == 200
+        assert dl.content == content
+
 
 class TestUploadResumable:
     def test_partial_then_status_then_resume_completes(

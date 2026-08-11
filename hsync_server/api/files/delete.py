@@ -92,21 +92,11 @@ async def delete_file(
         src = LocalFile().get(file)
         local_bucket = f"{get_buckets_path()}/{bucket}"
 
-        # Remove the file first, then broadcast the event. This ensures that
-        # a deletion failure never leaves peers believing the file is gone
-        # while it is still on disk.
-        remove(file)
-        invalidate_sha256_cache(file)
-        log.info(f'{ActionLabel.DELETE} File: "{file}" deleted successfully (CID: {cid})')
-
-        # Broadcast "deleted" event to other clients after successful removal
-        if src:
-            manager = bucket_manager.get_manager(bucket)
-            await manager.send_message(Event(cid, local_bucket, bucket, EventName.deleted, src))
-
-        # Record a tombstone so peers offline at deletion time do not
-        # resurrect the file on their next full sync. Sentinel files are
-        # per-peer and never exchanged, so they need no marker.
+        # Record a tombstone BEFORE removing the file so peers offline at
+        # deletion time do not resurrect the file on their next full sync.
+        # Writing the marker first guarantees that a server crash between
+        # deletion and tombstone persistence never causes a resurrection.
+        # Sentinel files are per-peer and never exchanged — no marker needed.
         if not is_sentinel_file(file):
             record_deletion(
                 bucket,
@@ -114,6 +104,20 @@ async def delete_file(
                 file,
                 sha256sum=src.sha256sum if src else None,
             )
+
+        # Remove the file after the tombstone is persisted. If the remove
+        # fails, the tombstone is harmless (the file path still exists,
+        # and a subsequent re-upload clears the marker via clear_deletion).
+        remove(file)
+        invalidate_sha256_cache(file)
+        log.info(f'{ActionLabel.DELETE} File: "{file}" deleted successfully (CID: {cid})')
+
+        # Broadcast "deleted" event to other clients after successful removal.
+        # This is best-effort: a crash here won't resurrect the file because
+        # the tombstone is already on disk (written above).
+        if src:
+            manager = bucket_manager.get_manager(bucket)
+            await manager.send_message(Event(cid, local_bucket, bucket, EventName.deleted, src))
 
         # Also remove any backup file associated with this file
         backup_file = f"{file}.backup"

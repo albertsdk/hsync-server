@@ -269,14 +269,16 @@ async def upload_file(
         # Handle resumable upload
         if is_resumable:
             # Validate partial file exists and has expected size
+            # Client-input errors (missing file, wrong offset) are 400,
+            # not 500 — the client must correct its request.
             if not Path(partial_file_path).exists():
-                raise UploadError(
+                raise ValidationError(
                     message="Cannot resume: partial file not found",
                     details={"offset": offset},
                 )
             current_size = Path(partial_file_path).stat().st_size
             if current_size != offset:
-                raise UploadError(
+                raise ValidationError(
                     message=f"Offset mismatch: expected {current_size}, got {offset}",
                     details={"expected_offset": current_size, "provided_offset": offset},
                 )

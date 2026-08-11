@@ -204,6 +204,12 @@ class TestFileDelete:
         assert response.status_code == 200
         assert not os.path.exists(file_path)
 
+        # Verify tombstone was recorded — a critical side-effect for sync consistency
+        tombs_resp = await client.get("/api/v1/buckets/deletebucket/tombstones")
+        assert tombs_resp.status_code == 200
+        tombs = tombs_resp.json()
+        assert len(tombs) == 1
+
     @pytest.mark.asyncio
     async def test_delete_nonexistent_file(self, client: AsyncClient, temp_buckets_dir: str):
         """Delete non-existent file returns 404."""
