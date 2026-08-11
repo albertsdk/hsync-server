@@ -17,6 +17,7 @@ This module provides the REST API endpoint for file upload with:
 
 import asyncio
 import hmac
+from datetime import UTC, datetime, timezone
 from os import fsync, remove, replace
 from pathlib import Path
 from shutil import copy2
@@ -448,9 +449,35 @@ async def upload_file(
         # so peers do not delete it on their next full sync.
         clear_deletion(bucket, f"{buckets_path}/{bucket}", file_location)
 
-        # Clean up backup file after successful upload
+        # When overwriting a file with different content (different SHA-256),
+        # preserve the previous version as a conflicted copy so no data is
+        # silently lost. The backup (created above at copy2) is repurposed:
+        # instead of being deleted, it is renamed to a Dropbox-style
+        # "filename_conflicted_copy_<ISO8601>_<cid>.ext" and left on disk.
+        # Identical-content overrides (duplicate uploads) are already gated
+        # above with a 409, so we only reach here on genuine overwrites.
         if backup_path and Path(backup_path).exists():
-            remove(backup_path)
+            # Compute the previous file's SHA-256 to confirm it truly differs
+            old_sha = get_sha256_hash(file_location)
+            if old_sha and not hmac.compare_digest(sha256sum_tmp, old_sha):
+                # Different content — preserve as conflicted copy
+                ts = datetime.now(UTC).strftime("%Y-%m-%dT%H%M%SZ")
+                safe_cid = "".join(c for c in cid if c.isalnum() or c in "-_.")[:32]
+                stem = Path(file_location).stem
+                suffix = Path(file_location).suffix
+                parent = str(Path(file_location).parent)
+                conflicted = f"{parent}/{stem}_conflicted_copy_{ts}_{safe_cid}{suffix}"
+                replace(backup_path, conflicted)
+                _prev_sha = old_sha[:12]
+                _new_sha = sha256sum_tmp[:12]
+                log.warning(
+                    f'{ActionLabel.UPLOAD} Conflict detected on "{bucket}/{path}/{file.filename}" '
+                    f"(prev SHA {_prev_sha}…, new SHA {_new_sha}…): "
+                    f'previous version preserved as "{conflicted}"'
+                )
+            else:
+                # Same content (hash match) — safe to delete the backup
+                remove(backup_path)
 
         # Broadcast "added" event to other connected clients. Hidden files
         # are excluded (as they are from the /files listing): peers syncing
