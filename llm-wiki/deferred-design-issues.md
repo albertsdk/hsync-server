@@ -48,16 +48,35 @@ multi-device sync systems.
 | C | **Conflicted Copy (Dropbox-style)** — server renames existing file to `file_conflicted_copy_<timestamp>.ext` and accepts new upload; both survive | Rename existing before overwrite; never delete backup on success | None required (transparent) | Medium |
 | D | **Vector Clocks / CRDT** — full distributed versioning; causal ordering | Major: new `version` model, merge logic, tombstone integration | Major: vector clock tracking, merge resolution | High |
 
+### Client-side impact (hsync-client audit — 2026-08-11)
+
+The client's reconciliation engine shares the same LWW vulnerability:
+
+- **`hsync_client/sync.py:916-929`** (`get_sync_actions`): uses `mtime` as the
+  primary tiebreaker to decide upload vs. download direction (2-second tolerance
+  for FAT32 precision). No version clock or causal ordering.
+- **`hsync_client/sync_state.py`**: persists merge-base hashes (three-way merge
+  state) but these are content-hash snapshots, not version vectors — they detect
+  *what* changed, not *when* relative to other peers.
+- **`hsync_client/tombstones.py`**: uses LWW merge via `TombstoneStore.merge()`
+  — identical to the server.
+
+**Implication:** Any conflict-resolution strategy chosen for the server MUST be
+implemented in the client simultaneously. The two sides negotiate sync direction
+together; a version-aware server with a version-unaware client would still
+silently lose data on concurrent modification.
+
 ### Decision needed
 
 1. Choose one strategy (A, B, C, D).
 2. If not A: write an ADR under `hsync-common/docs/internal/adr/`.
-3. Implement server-side changes.
-4. Update client (`hsync-client`) and Android (`hsync-android`) if the wire
-   contract changes.
-5. Add black-box tests for the new conflict behaviour.
-6. Update `docs/` (user-facing) and `llm-wiki/` (agent docs).
-
+3. Implement server-side changes **and** client-side changes atomically:
+   - Server: wire contract (new field/header), conflict detection/response.
+   - Client (`hsync-client`): send version metadata, handle conflict responses,
+     update `get_sync_actions()` to use version clocks instead of wall-clock mtime.
+   - Android (`hsync-android`): mirror client changes.
+4. Add black-box tests for the new conflict behaviour on both sides.
+5. Update `docs/` (user-facing) and `llm-wiki/` (agent docs).
 ---
 
 ## DI-02: Compressed Download Lacks `Content-Length`
