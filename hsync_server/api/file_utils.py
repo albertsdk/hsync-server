@@ -12,10 +12,10 @@ This module provides utility functions for file operations:
 - Timestamp updates
 """
 
-from datetime import UTC, datetime
 from os import listdir, rmdir, utime
 from pathlib import Path
 
+from hsync_common.time_utils import to_epoch, utc_now_epoch
 from loguru import logger as log
 
 # Wire-supplied mtimes may not exceed now + this skew: a peer asserting
@@ -128,14 +128,13 @@ def update_file_timestamp(
         return
 
     # Parse mtime (can be Unix timestamp or ISO format)
-    if mtime.isdigit():
-        _mtime = int(datetime.fromtimestamp(int(mtime), UTC).timestamp())
-    else:
-        _mtime = int(datetime.fromisoformat(mtime).timestamp())
+    _mtime = to_epoch(mtime)
+    if _mtime is None:
+        return
 
     # Clamp far-future peer-supplied timestamps (conflict engineering would
     # favour the newest mtime on every peer).
-    max_ts = int(datetime.now(UTC).timestamp()) + MTIME_MAX_FUTURE_SKEW_SECONDS
+    max_ts = utc_now_epoch() + MTIME_MAX_FUTURE_SKEW_SECONDS
     if _mtime > max_ts:
         log.warning(f"Clamping far-future mtime ({_mtime} -> {max_ts}): {file_location}")
         _mtime = max_ts

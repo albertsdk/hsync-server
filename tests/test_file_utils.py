@@ -2,6 +2,8 @@
 Tests for file utility functions.
 """
 
+from datetime import UTC
+
 from hsync_server.api import file_utils
 
 
@@ -151,8 +153,8 @@ class TestUpdateFileTimestamp:
         assert abs(stat.st_mtime - 1609459200) < 1
 
     def test_update_mtime_iso_format(self, tmp_path):
-        """Update mtime with ISO format timestamp (interpreted in local time)."""
-        from datetime import datetime
+        """Update mtime with ISO format timestamp (treated as UTC)."""
+        from datetime import datetime, timezone
 
         test_file = tmp_path / "test.txt"
         test_file.write_text("content")
@@ -160,9 +162,9 @@ class TestUpdateFileTimestamp:
         file_utils.update_file_timestamp(str(test_file), mtime="2021-01-01T00:00:00")
 
         stat = test_file.stat()
-        # ISO timestamps without timezone are interpreted as local time,
-        # matching the implementation's datetime.fromisoformat() behaviour.
-        expected = datetime.fromisoformat("2021-01-01T00:00:00").timestamp()
+        # Naive ISO timestamps are treated as UTC (consistent with
+        # hsync_common.time_utils.to_epoch and industry best practice).
+        expected = datetime.fromisoformat("2021-01-01T00:00:00").replace(tzinfo=UTC).timestamp()
         assert abs(stat.st_mtime - expected) < 1
 
     def test_ctime_not_written_into_atime(self, tmp_path):

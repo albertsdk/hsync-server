@@ -17,7 +17,6 @@ This module provides the REST API endpoint for file upload with:
 
 import asyncio
 import hmac
-from datetime import UTC, datetime, timezone
 from os import fsync, remove, replace
 from pathlib import Path
 from shutil import copy2
@@ -464,7 +463,9 @@ async def upload_file(
         if backup_path and Path(backup_path).exists():
             if old_sha and not hmac.compare_digest(sha256sum_tmp, old_sha):
                 # Different content — preserve as conflicted copy
-                ts = datetime.now(UTC).strftime("%Y-%m-%dT%H%M%SZ")
+                from hsync_common.time_utils import conflict_timestamp
+
+                ts = conflict_timestamp()
                 safe_cid = "".join(c for c in cid if c.isalnum() or c in "-_.")[:32]
                 stem = Path(file_location).stem
                 suffix = Path(file_location).suffix
