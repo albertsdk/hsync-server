@@ -288,3 +288,203 @@ class TestResumableUpload:
         body_str = str(body)
         assert temp_buckets_dir not in body_str
         assert "partial_file" not in body_str
+
+
+# ---------------------------------------------------------------------------
+# Conflicted copy tests (ADR-0021 — Dropbox-style conflict resolution)
+# ---------------------------------------------------------------------------
+
+
+class TestConflictedCopy:
+    """Tests for server-side conflicted copies on concurrent upload."""
+
+    @pytest.mark.asyncio
+    async def test_overwrite_different_content_creates_conflicted_copy(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """Overwriting with different content preserves the old version."""
+        import hashlib
+        import io
+        import os
+        import re
+
+        bucket_path = os.path.join(temp_buckets_dir, "conflictbucket")
+        os.makedirs(bucket_path)
+
+        original = b"version one -- original content"
+        replacement = b"version two -- completely different"
+
+        # Upload original
+        r1 = await client.post(
+            "/api/v1/buckets/conflictbucket/files",
+            files={"file": ("doc.txt", io.BytesIO(original), "text/plain")},
+            data={
+                "cid": "TestClientX1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(original).hexdigest(),
+            },
+        )
+        assert r1.status_code == 201
+
+        # Upload replacement (different content, different SHA-256)
+        r2 = await client.post(
+            "/api/v1/buckets/conflictbucket/files",
+            files={"file": ("doc.txt", io.BytesIO(replacement), "text/plain")},
+            data={
+                "cid": "TestClientX1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(replacement).hexdigest(),
+            },
+        )
+        assert r2.status_code == 201
+
+        # The original path now has the new content
+        final_path = os.path.join(bucket_path, "doc.txt")
+        assert os.path.exists(final_path)
+        with open(final_path, "rb") as f:
+            assert f.read() == replacement
+
+        # A conflicted copy exists with the original content
+        conflicted_files = [
+            f for f in os.listdir(bucket_path) if f.startswith("doc") and "conflicted_copy" in f
+        ]
+        assert len(conflicted_files) == 1, f"expected 1 conflicted copy, found {conflicted_files}"
+        match = re.match(
+            r"doc_conflicted_copy_\d{4}-\d{2}-\d{2}T\d{6}Z_TestClientX1234567890\.txt",
+            conflicted_files[0],
+        )
+        assert match is not None, (
+            f"conflicted copy name does not match expected pattern: {conflicted_files[0]}"
+        )
+
+        conflicted_path = os.path.join(bucket_path, conflicted_files[0])
+        with open(conflicted_path, "rb") as f:
+            assert f.read() == original
+
+    @pytest.mark.asyncio
+    async def test_overwrite_identical_content_no_conflicted_copy(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """Overwriting with identical SHA-256 returns 409, no copy created."""
+        import hashlib
+        import io
+        import os
+
+        bucket_path = os.path.join(temp_buckets_dir, "identicalbucket")
+        os.makedirs(bucket_path)
+
+        content = b"same content, same hash"
+
+        # Upload first time
+        r1 = await client.post(
+            "/api/v1/buckets/identicalbucket/files",
+            files={"file": ("note.txt", io.BytesIO(content), "text/plain")},
+            data={
+                "cid": "TestClientX1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(content).hexdigest(),
+            },
+        )
+        assert r1.status_code == 201
+
+        # Upload identical content again
+        r2 = await client.post(
+            "/api/v1/buckets/identicalbucket/files",
+            files={"file": ("note.txt", io.BytesIO(content), "text/plain")},
+            data={
+                "cid": "TestClientX1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(content).hexdigest(),
+            },
+        )
+        assert r2.status_code == 409
+
+        # No conflicted copy should exist
+        conflicted_files = [f for f in os.listdir(bucket_path) if "conflicted_copy" in f]
+        assert len(conflicted_files) == 0
+
+        # Original file intact
+        final_path = os.path.join(bucket_path, "note.txt")
+        with open(final_path, "rb") as f:
+            assert f.read() == content
+
+    @pytest.mark.asyncio
+    async def test_first_upload_no_conflicted_copy(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """First upload to a non-existent path does not create a conflicted copy."""
+        import hashlib
+        import io
+        import os
+
+        bucket_path = os.path.join(temp_buckets_dir, "firstbucket")
+        os.makedirs(bucket_path)
+
+        content = b"brand new file"
+
+        r = await client.post(
+            "/api/v1/buckets/firstbucket/files",
+            files={"file": ("new.txt", io.BytesIO(content), "text/plain")},
+            data={
+                "cid": "TestClientX1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(content).hexdigest(),
+            },
+        )
+        assert r.status_code == 201
+
+        # No conflicted copy should exist (first upload, nothing to conflict with)
+        conflicted_files = [f for f in os.listdir(bucket_path) if "conflicted_copy" in f]
+        assert len(conflicted_files) == 0
+
+    @pytest.mark.asyncio
+    async def test_conflicted_copy_appears_in_file_listing(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """The conflicted copy is listed as a regular file for sync to all peers."""
+        import hashlib
+        import io
+        import os
+
+        bucket_path = os.path.join(temp_buckets_dir, "listingbucket")
+        os.makedirs(bucket_path)
+
+        original = b"first version"
+        replacement = b"second version"
+
+        # Upload v1
+        await client.post(
+            "/api/v1/buckets/listingbucket/files",
+            files={"file": ("data.csv", io.BytesIO(original), "text/csv")},
+            data={
+                "cid": "TestClientX1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(original).hexdigest(),
+            },
+        )
+
+        # Upload v2
+        await client.post(
+            "/api/v1/buckets/listingbucket/files",
+            files={"file": ("data.csv", io.BytesIO(replacement), "text/csv")},
+            data={
+                "cid": "TestClientX1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(replacement).hexdigest(),
+            },
+        )
+
+        # Both files appear in the listing
+        listed = (await client.get("/api/v1/buckets/listingbucket/files")).json()
+        names = [e["name"] for e in listed]
+        assert "data.csv" in names
+        assert any("conflicted_copy" in n for n in names), (
+            f"conflicted copy not found in listing: {names}"
+        )
