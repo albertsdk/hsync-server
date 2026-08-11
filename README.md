@@ -41,7 +41,7 @@ corporate networks, cloud environments, and restricted infrastructures.
 
 | Tool | Protocol | HTTP | Real-Time | Architecture |
 |------|----------|:---:|:---:|------|
-| **HSYNC Server** | HTTP / HTTPS | ✅ | ✅ | Server + P2P |
+| **HSYNC Server** | HTTP / HTTPS | ✅ | ✅ | Client-Server + P2P |
 | rsync | SSH or rsync daemon | ❌ | ❌ | Client-Server |
 | Syncthing | BEP (custom) | ❌ | ✅ | P2P |
 | scp / sftp | SSH | ❌ | ❌ | Client-Server |
