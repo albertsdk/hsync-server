@@ -316,24 +316,28 @@ def _start_live_server(
     """
     buckets_dir = tempfile.mkdtemp(prefix="hsync_bb_buckets_")
     port = _free_port()
-    env = {
-        **os.environ,
-        "HSYNC_API_KEY": BB_API_KEY,
-        "HSYNC_BUCKETS": buckets_dir,
-        # Raise limits so the behavioural suite never trips a 429; individual
-        # rate-limit tests spawn a dedicated low-limit server instead.
-        "HSYNC_RATE_LIMIT_DEFAULT": "1000000/minute",
-        "HSYNC_RATE_LIMIT_UPLOAD": "1000000/minute",
-        "HSYNC_RATE_LIMIT_DOWNLOAD": "1000000/minute",
-        "HSYNC_RATE_LIMIT_DELTA": "1000000/minute",
-        "HSYNC_RATE_LIMIT_WEBSOCKET": "1000000/minute",
-        "HSYNC_RATE_LIMIT_WS_MESSAGES": "1000000/second",
-        "HSYNC_WS_AUTH_TIMEOUT": "5",
-        "HSYNC_WS_HEARTBEAT_INTERVAL": "5",
-        "HSYNC_WS_HEARTBEAT_TIMEOUT": "3",
-        "HSYNC_MIN_FREE_DISK_SPACE": "0",
-        "HSYNC_ENABLE_DOCS": "false",
-    }
+    # Scrub pre-existing HSYNC_* variables so the developer's own configuration
+    # can never leak into the test server, then apply the test overrides.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("HSYNC_")}
+    env.update(
+        {
+            "HSYNC_API_KEY": BB_API_KEY,
+            "HSYNC_BUCKETS": buckets_dir,
+            # Raise limits so the behavioural suite never trips a 429; individual
+            # rate-limit tests spawn a dedicated low-limit server instead.
+            "HSYNC_RATE_LIMIT_DEFAULT": "1000000/minute",
+            "HSYNC_RATE_LIMIT_UPLOAD": "1000000/minute",
+            "HSYNC_RATE_LIMIT_DOWNLOAD": "1000000/minute",
+            "HSYNC_RATE_LIMIT_DELTA": "1000000/minute",
+            "HSYNC_RATE_LIMIT_WEBSOCKET": "1000000/minute",
+            "HSYNC_RATE_LIMIT_WS_MESSAGES": "1000000/second",
+            "HSYNC_WS_AUTH_TIMEOUT": "5",
+            "HSYNC_WS_HEARTBEAT_INTERVAL": "5",
+            "HSYNC_WS_HEARTBEAT_TIMEOUT": "3",
+            "HSYNC_MIN_FREE_DISK_SPACE": "0",
+            "HSYNC_ENABLE_DOCS": "false",
+        }
+    )
     if env_overrides:
         env.update(env_overrides)
 
