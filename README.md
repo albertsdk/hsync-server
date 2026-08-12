@@ -30,8 +30,6 @@ all over standard HTTP/HTTPS.
 - **Want to contribute?** See [Contributing](CONTRIBUTING.md)
 - **Looking for detailed documentation?** Navigate to [docs/README.md](docs/README.md)
 
----
-
 ## Why HSYNC Server?
 
 HSYNC is designed to synchronize files using **only the HTTP/HTTPS protocol**.
@@ -39,18 +37,21 @@ This makes it the ideal choice in environments where HTTP is the only protocol
 allowed through firewalls, proxies, or network policies — a common constraint in
 corporate networks, cloud environments, and restricted infrastructures.
 
-| Tool | Protocol | HTTP | Real-Time | Architecture |
-|------|----------|:---:|:---:|------|
-| **HSYNC Server** | HTTP / HTTPS | ✅ | ✅ | Client-Server + P2P |
-| rsync | SSH or rsync daemon | ❌ | ❌ | Client-Server |
-| Syncthing | BEP (custom) | ❌ | ✅ | P2P |
-| Nextcloud | HTTP / HTTPS (WebDAV) | ✅ | ⚠️\* | Client-Server |
-| Seafile | HTTP / HTTPS | ✅ | ⚠️\* | Client-Server |
-| scp / sftp | SSH | ❌ | ❌ | Client-Server |
-| Unison | SSH or direct socket | ❌ | ❌ | P2P |
-| Rclone | S3, SFTP, etc. | ⚠️ Partial | ❌ | Client-Server |
+| Tool | Protocol | HTTP | Real-Time | Original Files | Architecture |
+|------|----------|:---:|:---:|:---:|------|
+| **HSYNC Server** | HTTP / HTTPS | ✅ | ✅ | ✅ | Client-Server + P2P |
+| rsync | SSH or rsync daemon | ❌ | ❌ | ✅ | Client-Server |
+| Syncthing | BEP (custom) | ❌ | ✅ | ✅ | P2P |
+| Nextcloud | HTTP / HTTPS (WebDAV) | ✅ | ⚠️\* | ✅ | Client-Server |
+| Seafile | HTTP / HTTPS | ✅ | ⚠️\* | ❌ ¹ | Client-Server |
+| scp / sftp | SSH | ❌ | ❌ | ✅ | Client-Server |
+| Unison | SSH or direct socket | ❌ | ❌ | ✅ | P2P |
+| Rclone | S3, SFTP, etc. | ⚠️ Partial | ❌ | ⚠️ ² | Client-Server |
 
 > \* Local filesystem monitoring via desktop client; no native push notifications (WebSocket) like HSYNC.
+>
+> ¹ Seafile uses a proprietary block-based internal storage format; files are not directly accessible from the filesystem without the Seafile server.
+> ² Rclone with the `crypt` backend stores files in an opaque encrypted format; with other backends (e.g., SFTP, local) files remain in their original format.
 
 **When to choose HSYNC Server:**
 - 🏢 **Corporate networks** — only ports 80/443 are open through the firewall
@@ -148,14 +149,17 @@ Key variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HSYNC_API_KEY` | API key for authentication (auto-generated if not set) | — |
+| `HSYNC_API_KEY` | API key for authentication (required, min 16 chars) | — |
 | `HSYNC_PORT` | Server port | `9753` |
 | `HSYNC_LOG_LEVEL` | Log level | `info` |
 | `HSYNC_BUCKETS` | Directory for bucket data storage | `./buckets` |
+| `HSYNC_WORKERS` | Number of uvicorn worker processes | `1` |
 | `HSYNC_MAX_UPLOAD_SIZE` | Maximum upload size in bytes | `10737418240` (10 GiB) |
 
 > ⚠️ **Warning**: Multi-worker mode (`HSYNC_WORKERS > 1`) is NOT recommended.
 > WebSocket connections and SHA-256 cache are not shared between workers.
+> The server uses asynchronous I/O (FastAPI + asyncio), so a single worker
+> can handle high concurrency efficiently without multiple processes.
 
 ## Documentation
 
@@ -182,6 +186,15 @@ Key variables:
 
 > **Note:** The desktop GUI (`HSYNC Desktop`) and the Android app (`HSYNC Android`)
 > are still under active development and are not yet ready for production use.
+
+## Security
+
+To report a vulnerability, please use GitHub's **Private Vulnerability Reporting**:
+
+👉 **[Report a vulnerability](https://github.com/albertobasso/hsync-server/security/advisories/new)**
+
+See our [Security Policy](SECURITY.md) for supported versions and hardening
+recommendations.
 
 ## Disclaimer
 
