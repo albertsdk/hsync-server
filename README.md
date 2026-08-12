@@ -42,16 +42,16 @@ corporate networks, cloud environments, and restricted infrastructures.
 | **HSYNC Server** | HTTP / HTTPS | ✅ | ✅ | ✅ | Client-Server + P2P |
 | rsync | SSH or rsync daemon | ❌ | ❌ | ✅ | Client-Server |
 | Syncthing | BEP (custom) | ❌ | ✅ | ✅ | P2P |
-| Nextcloud | HTTP / HTTPS (WebDAV) | ✅ | ⚠️\* | ✅ | Client-Server |
-| Seafile | HTTP / HTTPS | ✅ | ⚠️\* | ❌ ¹ | Client-Server |
+| Nextcloud | HTTP / HTTPS (WebDAV) | ✅ | ⚠️ ¹ | ✅ | Client-Server |
+| Seafile | HTTP / HTTPS | ✅ | ⚠️ ¹ | ❌ ² | Client-Server |
 | scp / sftp | SSH | ❌ | ❌ | ✅ | Client-Server |
 | Unison | SSH or direct socket | ❌ | ❌ | ✅ | P2P |
-| Rclone | S3, SFTP, etc. | ⚠️ Partial | ❌ | ⚠️ ² | Client-Server |
+| Rclone | S3, SFTP, etc. | ⚠️ Partial | ❌ | ⚠️ ³ | Client-Server |
 
-> \* Local filesystem monitoring via desktop client; no native push notifications (WebSocket) like HSYNC.
+> ¹ Local filesystem monitoring via desktop client; no native push notifications (WebSocket) like HSYNC.
 >
-> ¹ Seafile uses a proprietary block-based internal storage format; files are not directly accessible from the filesystem without the Seafile server.
-> ² Rclone with the `crypt` backend stores files in an opaque encrypted format; with other backends (e.g., SFTP, local) files remain in their original format.
+> ² Seafile uses a proprietary block-based internal storage format; files are not directly accessible from the filesystem without the Seafile server.
+> ³ Rclone with the `crypt` backend stores files in an opaque encrypted format; with other backends (e.g., SFTP, local) files remain in their original format.
 
 **When to choose HSYNC Server:**
 - 🏢 **Corporate networks** — only ports 80/443 are open through the firewall
