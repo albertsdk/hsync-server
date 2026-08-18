@@ -23,7 +23,7 @@ Download `compose.yaml` from the same release as the image and create a private
 `.env` beside it. The required values are:
 
 ```dotenv
-HSYNC_IMAGE=ghcr.io/albertobasso/hsync-server:v1.0.0
+HSYNC_IMAGE=ghcr.io/albertosdk/hsync-server:v1.0.0
 HSYNC_BIND_ADDRESS=192.168.1.20
 HSYNC_CERT_HOSTNAME=192.168.1.20
 HSYNC_PUBLIC_PORT=9753
@@ -62,7 +62,7 @@ installation:
 docker run --rm -d --name hsync-server-test \
   -p 127.0.0.1:9753:9753 \
   -e HSYNC_ADMIN_KEY=<temporary-random-key> \
-  ghcr.io/albertobasso/hsync-server:v1.0.0
+  ghcr.io/albertosdk/hsync-server:v1.0.0
 curl http://127.0.0.1:9753/health
 docker stop hsync-server-test
 ```

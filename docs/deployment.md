@@ -192,7 +192,7 @@ Docker Compose with a reverse proxy. Below is a complete example with Caddy.
 # docker-compose.yml
 services:
   hsync-server:
-    image: ghcr.io/albertobasso/hsync-server:v1.0.0
+    image: ghcr.io/albertosdk/hsync-server:v1.0.0
     container_name: hsync-server
     restart: unless-stopped
     expose:
@@ -325,8 +325,8 @@ via Poetry and manage it with systemd.
 # Create the service account and sibling checkout layout
 sudo useradd --system --home /opt/hsync --shell /usr/sbin/nologin hsync
 sudo install -d -o hsync -g hsync /opt/hsync
-sudo -u hsync git clone https://github.com/albertobasso/hsync-server.git /opt/hsync/hsync-server
-sudo -u hsync git clone https://github.com/albertobasso/hsync-common.git /opt/hsync/hsync-common
+sudo -u hsync git clone https://github.com/albertosdk/hsync-server.git /opt/hsync/hsync-server
+sudo -u hsync git clone https://github.com/albertosdk/hsync-common.git /opt/hsync/hsync-common
 
 # Install dependencies
 cd /opt/hsync/hsync-server
@@ -443,7 +443,7 @@ sudo ufw allow 9753/tcp
 **TLS certificate error:**
 - Ensure the reverse proxy is properly configured and the certificate is valid.
 - Clients connecting with self-signed certificates need `--ca-cert` or `--insecure`.
-  See the [Client Configuration — Server Mode → Server Connection Options](https://github.com/albertobasso/hsync-client/blob/main/docs/configuration-server.md#server-connection-options)
+  See the [Client Configuration — Server Mode → Server Connection Options](https://github.com/albertosdk/hsync-client/blob/main/docs/configuration-server.md#server-connection-options)
   guide.
 
 **Authentication failure (`401` / WS close `4003`):**
@@ -490,4 +490,4 @@ Or set `HSYNC_LOG_LEVEL=debug` in your environment file.
 - [Reverse Proxy Guide](reverse-proxy.md) — nginx and Traefik configuration.
 - [Sync Flow](sync-flow.md) — end-to-end synchronization behavior.
 - [FAQ](faq.md) — frequently asked questions.
-- [Client Examples](https://github.com/albertobasso/hsync-client/blob/main/docs/examples.md) — usage examples for the HSYNC client.
+- [Client Examples](https://github.com/albertosdk/hsync-client/blob/main/docs/examples.md) — usage examples for the HSYNC client.

@@ -270,10 +270,10 @@ sudo systemctl restart hsync-server
 Always pin a specific version tag in production instead of `latest`:
 
 ```bash
-docker pull ghcr.io/albertobasso/hsync-server:v1.0.0
+docker pull ghcr.io/albertosdk/hsync-server:v1.0.0
 ```
 
-Check the [releases page](https://github.com/albertobasso/hsync-server/releases)
+Check the [releases page](https://github.com/albertosdk/hsync-server/releases)
 for changelogs and migration notes before upgrading.
 
 ---

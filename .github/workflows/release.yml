@@ -38,7 +38,7 @@ jobs:
         with: { path: hsync-server }
       - uses: actions/checkout@v7
         with:
-          repository: albertobasso/hsync-common
+          repository: albertosdk/hsync-common
           ref: main
           path: hsync-common
           token: ${{ secrets.HSYNC_COMMON_PAT }}
@@ -53,9 +53,9 @@ jobs:
         id: tags
         run: |
           if [[ "${{ github.ref_name }}" == *-* ]]; then
-            echo "tags=ghcr.io/albertobasso/hsync-server:${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "tags=ghcr.io/albertosdk/hsync-server:${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           else
-            echo "tags=ghcr.io/albertobasso/hsync-server:${{ github.ref_name }},ghcr.io/albertobasso/hsync-server:latest" >> "$GITHUB_OUTPUT"
+            echo "tags=ghcr.io/albertosdk/hsync-server:${{ github.ref_name }},ghcr.io/albertosdk/hsync-server:latest" >> "$GITHUB_OUTPUT"
           fi
       - name: Build and push
         uses: docker/build-push-action@v7

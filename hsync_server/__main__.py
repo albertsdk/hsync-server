@@ -205,7 +205,7 @@ def main(
 
     [bold]Project:[/bold]
 
-        https://github.com/albertobasso/hsync-server
+        https://github.com/albertosdk/hsync-server
 
     [bold]Authors:[/bold]
 

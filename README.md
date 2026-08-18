@@ -6,13 +6,13 @@
 
 **HSYNC Server** is the central hub that keeps your files in sync in real-time
 across all your devices. It stores shared folders (called **buckets**), accepts
-file changes from any device via the [HSYNC Client](https://github.com/albertobasso/hsync-client),
+file changes from any device via the [HSYNC Client](https://github.com/albertosdk/hsync-client),
 and instantly notifies all other connected devices so they can pull the updates —
 all over standard HTTP/HTTPS.
 
 > A **bucket** is a named directory on the server that holds a set of
 > synchronized files — think of it as a shared folder. You'll need the
-> [HSYNC Client](https://github.com/albertobasso/hsync-client) on each device
+> [HSYNC Client](https://github.com/albertosdk/hsync-client) on each device
 > to actually sync files; the server is the storage and coordination hub.
 
 > 👉 **Operational Advisory:** As with any automated filesystem mutation utility, administrators are strongly advised to maintain validated, independent backups prior to initial deployment in production environments.
@@ -20,10 +20,10 @@ all over standard HTTP/HTTPS.
 ---
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](LICENSE)
-[![CI](https://github.com/albertobasso/hsync-server/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/albertobasso/hsync-server/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/albertobasso/hsync-server)](https://github.com/albertobasso/hsync-server/releases/latest)
+[![CI](https://github.com/albertosdk/hsync-server/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/albertosdk/hsync-server/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/albertosdk/hsync-server)](https://github.com/albertosdk/hsync-server/releases/latest)
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
-[![Docker](https://img.shields.io/badge/Docker-🐳-2496ED.svg)](https://github.com/albertobasso/hsync-server/pkgs/container/hsync-server)
+[![Docker](https://img.shields.io/badge/Docker-🐳-2496ED.svg)](https://github.com/albertosdk/hsync-server/pkgs/container/hsync-server)
 
 **Quick navigation:**
 - **New to HSYNC?** Start with [Why HSYNC Server?](#why-hsync-server) and the [Getting Started guide](docs/getting-started.md)
@@ -190,10 +190,10 @@ Key variables:
 
 ### Associated Ecosystem Components
 
-- [HSYNC Common](https://github.com/albertobasso/hsync-common/blob/main/README.md) - Shared models, constants, and utilities used by the client
-- [HSYNC Client](https://github.com/albertobasso/hsync-client/blob/main/README.md) - Sync client (Server Mode and LAN/P2P Mode)
-- [HSYNC Desktop](https://github.com/albertobasso/hsync-desktop/blob/main/docs/README.md) — Desktop client GUI front-end *(in development)*.
-- [HSYNC Android](https://github.com/albertobasso/hsync-android/blob/main/docs/README.md) — Android client app *(in development)*.
+- [HSYNC Common](https://github.com/albertosdk/hsync-common/blob/main/README.md) - Shared models, constants, and utilities used by the client
+- [HSYNC Client](https://github.com/albertosdk/hsync-client/blob/main/README.md) - Sync client (Server Mode and LAN/P2P Mode)
+- [HSYNC Desktop](https://github.com/albertosdk/hsync-desktop/blob/main/docs/README.md) — Desktop client GUI front-end *(in development)*.
+- [HSYNC Android](https://github.com/albertosdk/hsync-android/blob/main/docs/README.md) — Android client app *(in development)*.
 
 > **Note:** The desktop GUI (`HSYNC Desktop`) and the Android app (`HSYNC Android`)
 > are still under active development and are not yet ready for production use.
@@ -202,7 +202,7 @@ Key variables:
 
 To report a vulnerability, please use GitHub's **Private Vulnerability Reporting**:
 
-👉 **[Report a vulnerability](https://github.com/albertobasso/hsync-server/security/advisories/new)**
+👉 **[Report a vulnerability](https://github.com/albertosdk/hsync-server/security/advisories/new)**
 
 See our [Security Policy](SECURITY.md) for supported versions and hardening
 recommendations.

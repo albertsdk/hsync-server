@@ -25,7 +25,7 @@ changes firewall rules, or installs system packages.
 ### Quick install (one command, latest stable release)
 
 ```bash
-curl -fsSL https://github.com/albertobasso/hsync-server/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/albertosdk/hsync-server/releases/latest/download/install.sh | bash
 ```
 
 This downloads and runs the installer in one step. The default installation
@@ -37,8 +37,8 @@ concrete LAN address.
 If you prefer to verify the download before running it:
 
 ```bash
-curl -fLO "https://github.com/albertobasso/hsync-server/releases/latest/download/install.sh"
-curl -fLO "https://github.com/albertobasso/hsync-server/releases/latest/download/SHA256SUMS"
+curl -fLO "https://github.com/albertosdk/hsync-server/releases/latest/download/install.sh"
+curl -fLO "https://github.com/albertosdk/hsync-server/releases/latest/download/SHA256SUMS"
 sha256sum --ignore-missing -c SHA256SUMS
 chmod 700 install.sh
 ./install.sh
@@ -50,7 +50,7 @@ with the matching line in `SHA256SUMS`.
 The default installation:
 
 - stores configuration in `~/.local/share/hsync-server`;
-- runs the latest stable `ghcr.io/albertobasso/hsync-server:vX.Y.Z` image;
+- runs the latest stable `ghcr.io/albertosdk/hsync-server:vX.Y.Z` image;
 - listens on port `9753` on localhost only;
 - enables built-in HTTPS with a persistent self-signed certificate;
 - stores files, causal state and certificates in the plain host directory
@@ -67,7 +67,7 @@ Subject Alternative Name:
 
 ```bash
 # Quick install with a LAN bind address
-curl -fsSL https://github.com/albertobasso/hsync-server/releases/latest/download/install.sh | bash -s -- --bind-address 192.168.1.20
+curl -fsSL https://github.com/albertosdk/hsync-server/releases/latest/download/install.sh | bash -s -- --bind-address 192.168.1.20
 
 # Or, with the verified download:
 ./install.sh --bind-address 192.168.1.20
@@ -160,7 +160,7 @@ hsync server server.example.com -b photos -p /path/to/dir --ca-cert /trusted/pat
 - `--ca-cert` — the exported certificate.
 
 > For all client options, see the
-> [client Getting Started guide](https://github.com/albertobasso/hsync-client/blob/main/docs/getting-started.md).
+> [client Getting Started guide](https://github.com/albertosdk/hsync-client/blob/main/docs/getting-started.md).
 
 ## Manage the server
 

@@ -221,4 +221,4 @@ resolution (`rate_limiter.py`), not as a separate middleware.
 - [Sync Flow](../sync-flow.md) — server-side sync flow.
 - [API Reference](../api.md) — complete REST + WebSocket contract.
 - [Contributing](../../CONTRIBUTING.md) — development setup and guidelines.
-- [HSYNC Common docs](https://github.com/albertobasso/hsync-common/blob/main/docs/README.md) — shared models and protocol.
+- [HSYNC Common docs](https://github.com/albertosdk/hsync-common/blob/main/docs/README.md) — shared models and protocol.
