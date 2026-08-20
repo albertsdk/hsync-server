@@ -20,7 +20,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from loguru import logger as log
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
@@ -40,7 +39,7 @@ from .config import get_buckets_path, get_cors_enabled, get_cors_origins, get_se
 from .constants import HEADER_CLIENT_NAME, HEADER_CLIENT_VERSION, HSYNC_VERSION
 from .error_handlers import register_exception_handlers
 from .hashes import set_sha256_hashes
-from .middleware import RequestIdMiddleware, VersionMiddleware
+from .middleware import RequestIdMiddleware, TransferAwareGZipMiddleware, VersionMiddleware
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .routers import auth_router, public_router
 from .state_maintenance import (
@@ -130,8 +129,10 @@ app.include_router(auth_router)
 # Admin router: endpoints that require admin role
 app.include_router(admin_api.admin_router)
 
-# Add GZip compression middleware for responses larger than 1000 bytes
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+# Add GZip compression middleware for responses larger than 1000 bytes.
+# Transfer payloads (file bytes and delta literals) are excluded: their coding
+# is the sync protocol's own (identity | zstd) and clients reject anything else.
+app.add_middleware(TransferAwareGZipMiddleware, minimum_size=1000)
 
 # Add CORS middleware if enabled (for web frontend compatibility)
 if get_cors_enabled():

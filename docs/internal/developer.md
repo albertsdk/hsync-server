@@ -205,7 +205,7 @@ The server applies middleware in this order:
 | 1 | Version | Enforce wire-protocol version (hard-fail 426 on mismatch); stamp `X-Server-Version`/`X-Protocol-Version` |
 | 2 | Request ID | Assign a unique `X-Request-ID` to every request for log correlation |
 | 3 | CORS | Cross-Origin Resource Sharing headers (when `HSYNC_CORS_ENABLED=true`) |
-| 4 | GZip | Compress responses larger than 1000 bytes |
+| 4 | GZip (`TransferAwareGZipMiddleware`) | Compress API responses larger than 1000 bytes; the transfer payload endpoints (`…/files/download`, `…/files/delta/data/{token}`) are excluded, because their `Content-Encoding` is the sync protocol's own (identity or zstd) and a client rejects anything else |
 | 5 | Rate limiter | Apply per-endpoint rate limits (slowapi) |
 
 Middleware is registered in `main.py` during application startup. The order

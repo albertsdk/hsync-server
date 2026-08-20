@@ -21,7 +21,7 @@ Added in `main.py` (order matters — last added runs first):
 | 1 | `VersionMiddleware` | `middleware.py:78` | hard-fail 426 on REST protocol mismatch; rejects a malformed `X-Client-Name` with 400 (shared `is_valid_client_name` SSOT); stamps `X-Server-Version`/`X-Protocol-Version` (`middleware.py:155`) |
 | 2 | `RequestIdMiddleware` | `middleware.py:31` | per-request id for tracing (`logger.py:63` context) |
 | 3 | `CORSMiddleware` (optional) | `main.py:107` | gated by `get_cors_enabled()` (`config.py:402`) |
-| 4 | `GZipMiddleware` | `main.py:101` | compress responses > 1000 B |
+| 4 | `TransferAwareGZipMiddleware` | `middleware.py:175` | gzip on responses > 1000 B, **except** the transfer payload paths (`…/files/download`, `…/files/delta/data/{token}`), whose coding is the sync protocol's own (identity \| zstd) and must reach clients byte-identical |
 | 5 | `SlowAPIMiddleware` | `main.py:88` | global rate limiting (`rate_limiter.py`) |
 
 Prometheus metrics exposed at `/metrics` via `Instrumentator` (`main.py:125`).

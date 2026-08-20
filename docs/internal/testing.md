@@ -265,7 +265,7 @@ than unit tests.
 | `test_bb_bucket_lifecycle.py` | Bucket create / read / list / delete lifecycle, cross‑bucket isolation, presence. |
 | `test_bb_client_interop.py` | Real hsync‑client CLI driven from the server repo over TLS (capabilities, upload, two‑client convergence). |
 | `test_bb_delta_transfer.py` | Delta transfer use case (signatures, tokens, apply, negatives). |
-| `test_bb_download_compression.py` | Download-side zstd compression for large files (`Content-Encoding: zstd`). |
+| `test_bb_download_compression.py` | Download-side compression contract: large files stream zstd (`Content-Encoding: zstd`), below-threshold files are never re-encoded by the gzip layer, metadata responses stay gzipped. |
 | `test_bb_file_download_delete.py` | File download and delete use cases. |
 | `test_bb_file_upload.py` | File upload use case (resume, compression, overwrite, validation). |
 | `test_bb_members_presence.py` | Bucket membership (grant/list/revoke) and presence counters with a connected member. |

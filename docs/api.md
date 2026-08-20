@@ -105,6 +105,11 @@ lifecycle.
 | `GET` | `/api/v1/buckets/{bucket}/dirs` | List directory permissions in the bucket | 500/min |
 | `DELETE` | `/api/v1/buckets/{bucket}/files` | Delete a file | 500/min |
 
+> A download is always served with the file's exact bytes: either as-is, or
+> zstd-compressed (`Content-Encoding: zstd`) when the file is eligible. The body
+> is never gzip-compressed, so a client that advertises gzip still receives the
+> original bytes and length, and byte-range resume stays exact.
+
 ### Presence
 
 | Method | Endpoint | Description | Rate Limit |

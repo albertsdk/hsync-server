@@ -7,6 +7,7 @@ import uuid
 
 import pytest
 from fastapi import FastAPI
+from starlette.responses import JSONResponse, StreamingResponse
 from starlette.testclient import TestClient
 
 from hsync_server.constants import (
@@ -20,6 +21,7 @@ from hsync_server.error_handlers import global_exception_handler
 from hsync_server.logger import get_request_id
 from hsync_server.middleware import (
     RequestIdMiddleware,
+    TransferAwareGZipMiddleware,
     VersionMiddleware,
 )
 
@@ -347,3 +349,101 @@ class TestVersionMiddlewareIntegration:
         assert response.status_code == 426
         # Request ID should not be set since the protocol check failed early
         assert "X-Request-ID" not in response.headers
+
+
+# =============================================================================
+# TransferAwareGZipMiddleware
+# =============================================================================
+
+# Body served by the transfer routes in the tests below. Deliberately smaller
+# than ``minimum_size``: Starlette's GZipMiddleware compresses the *first chunk*
+# of a streamed response regardless of size, so a small transfer payload is the
+# case that exposes the regression.
+_TRANSFER_PAYLOAD = b"payload bytes that must arrive untouched\n"
+
+
+def _gzip_app() -> FastAPI:
+    """Build an app with the transfer-aware gzip middleware and its routes.
+
+    Registers the two hsync endpoints that stream payload bytes (full-file
+    download and delta literal download), a JSON listing above the gzip
+    threshold, and a small JSON response, so one app exercises both sides of
+    the boundary. The transfer routes stream their body, which is what the real
+    endpoints do once an inner middleware has turned the ``FileResponse`` into a
+    chunked stream — exactly the shape a plain ``GZipMiddleware`` compresses
+    regardless of size.
+    """
+
+    async def _payload_stream():
+        yield _TRANSFER_PAYLOAD
+
+    app = FastAPI()
+    app.add_middleware(TransferAwareGZipMiddleware, minimum_size=1000)
+
+    @app.get("/api/v1/buckets/{bucket}/files/download")
+    async def download_file():
+        return StreamingResponse(_payload_stream())
+
+    @app.get("/api/v1/buckets/{bucket}/files/delta/data/{token}")
+    async def delta_data():
+        return StreamingResponse(_payload_stream())
+
+    @app.get("/api/v1/buckets/{bucket}/files")
+    async def list_files():
+        return JSONResponse({"entries": [f"entry-{i:04d}" for i in range(200)]})
+
+    @app.get("/small")
+    async def small():
+        return JSONResponse({"ok": True})
+
+    return app
+
+
+class TestTransferAwareGZipMiddleware:
+    """Gzip applies to API metadata, never to hsync transfer payloads."""
+
+    def test_download_path_is_not_gzipped(self):
+        """An advertised-gzip download still arrives as identity bytes."""
+        client = TestClient(_gzip_app())
+
+        response = client.get(
+            "/api/v1/buckets/b/files/download",
+            params={"filename": "payload.txt"},
+            headers={"Accept-Encoding": "gzip"},
+        )
+
+        assert response.status_code == 200
+        assert "Content-Encoding" not in response.headers
+        assert response.content == _TRANSFER_PAYLOAD
+
+    def test_delta_data_path_is_not_gzipped(self):
+        """The delta literal payload is a transfer payload too."""
+        client = TestClient(_gzip_app())
+
+        response = client.get(
+            "/api/v1/buckets/b/files/delta/data/tok-123",
+            headers={"Accept-Encoding": "gzip"},
+        )
+
+        assert response.status_code == 200
+        assert "Content-Encoding" not in response.headers
+        assert response.content == _TRANSFER_PAYLOAD
+
+    def test_api_listing_above_threshold_is_gzipped(self):
+        """Metadata responses keep the size-based gzip behaviour."""
+        client = TestClient(_gzip_app())
+
+        response = client.get("/api/v1/buckets/b/files", headers={"Accept-Encoding": "gzip"})
+
+        assert response.status_code == 200
+        assert response.headers.get("Content-Encoding") == "gzip"
+        assert len(response.json()["entries"]) == 200
+
+    def test_small_api_response_is_not_gzipped(self):
+        """Responses below ``minimum_size`` stay uncompressed."""
+        client = TestClient(_gzip_app())
+
+        response = client.get("/small", headers={"Accept-Encoding": "gzip"})
+
+        assert response.status_code == 200
+        assert "Content-Encoding" not in response.headers

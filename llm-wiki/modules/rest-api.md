@@ -146,6 +146,15 @@ target escapes the bucket fails the confinement and is rejected (400).
 Symlinks are *replicated* structurally via the WS `symlink` event and
 `POST /symlinks`, never through this content endpoint. Missing file →
 `FileNotFoundError` (`exceptions.py:118`).
+
+> **Coding contract**: the response body carries no HTTP content coding other
+> than `identity` or `Content-Encoding: zstd` (ADR 0010). The route is excluded
+> from `TransferAwareGZipMiddleware` (`middleware.py:175`), so a client that
+> advertises gzip still receives the exact bytes with an ordinary
+> `Content-Length` — clients abort a transfer on any other coding, and chunked
+> gzip would invalidate the `Range`/resume offsets. The same exclusion applies
+> to the delta literal payload (`files/delta/data/{token}`).
+
 Accepts an optional `cid` query parameter (sent by the client) that is included
 in the `[DOWNLOAD]` log line for request attribution. The log is deferred to a
 `BackgroundTasks` callback so it can include the actual transfer duration
