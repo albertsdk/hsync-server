@@ -232,7 +232,11 @@ class TestWsNegative:
         # (4000 would mean the cid was rejected instead — a different gate)
         with pytest.raises(ConnectionClosed) as exc_info:
             await asyncio.wait_for(ws.recv(), timeout=5)
-        assert exc_info.value.code == 4003
+        # ``rcvd`` is the close frame the server sent (``ConnectionClosed.code``
+        # is deprecated since websockets 13.1).
+        closed = exc_info.value
+        assert closed.rcvd is not None
+        assert closed.rcvd.code == 4003
         await ws.close()
 
     async def test_protocol_mismatch_rejected(self, live_server: tuple[str, str], bb_bucket: str):
