@@ -1,6 +1,6 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If received, this code can be found at the source:
-# https://github.com/albertosdk/hsync
+# https://github.com/albertsdk/hsync
 
 """Tests for bucket presence counters and the GET /presence endpoint."""
 

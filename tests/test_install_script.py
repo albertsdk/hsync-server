@@ -29,7 +29,7 @@ def _write_fake_commands(tmp_path: Path) -> Path:
     curl.write_text(
         "#!/usr/bin/env bash\n"
         '[[ -z "${HSYNC_FAKE_CURL_FAIL:-}" ]] || exit 22\n'
-        "printf 'https://github.com/albertosdk/hsync-server/releases/tag/%s\\n' "
+        "printf 'https://github.com/albertsdk/hsync-server/releases/tag/%s\\n' "
         '"${HSYNC_FAKE_LATEST_TAG:-v9.9.9}"\n'
     )
     curl.chmod(0o755)
@@ -98,7 +98,7 @@ def test_no_start_generates_canonical_compose_and_private_secrets(tmp_path: Path
     assert (install_dir / "compose.yaml").read_text() == COMPOSE_FILE.read_text()
     env_file = install_dir / ".env"
     env_contents = env_file.read_text()
-    assert "HSYNC_IMAGE=ghcr.io/albertosdk/hsync-server:v1.2.3" in env_contents
+    assert "HSYNC_IMAGE=ghcr.io/albertsdk/hsync-server:v1.2.3" in env_contents
     assert "HSYNC_BIND_ADDRESS=192.168.1.10" in env_contents
     assert "HSYNC_CERT_HOSTNAME=192.168.1.10" in env_contents
     assert "HSYNC_PUBLIC_PORT=9443" in env_contents
@@ -134,7 +134,7 @@ def test_rerun_preserves_secrets_and_updates_selected_version(tmp_path: Path):
     )
     assert api_key in updated
     assert password in updated
-    assert "HSYNC_IMAGE=ghcr.io/albertosdk/hsync-server:v2.0.0" in updated
+    assert "HSYNC_IMAGE=ghcr.io/albertsdk/hsync-server:v2.0.0" in updated
     assert "HSYNC_BIND_ADDRESS=192.168.1.20" in updated
     assert "HSYNC_CERT_HOSTNAME=192.168.1.20" in updated
     assert "HSYNC_PUBLIC_PORT=9443" in updated
@@ -195,9 +195,9 @@ def test_latest_resolves_to_the_stable_release_tag(tmp_path: Path):
     result, install_dir, _ = _run_installer(tmp_path, "--version", "latest", "--no-start")
 
     assert result.returncode == 0, result.stderr
-    assert "Image: ghcr.io/albertosdk/hsync-server:v9.9.9" in result.stdout
+    assert "Image: ghcr.io/albertsdk/hsync-server:v9.9.9" in result.stdout
     env_contents = (install_dir / ".env").read_text()
-    assert "HSYNC_IMAGE=ghcr.io/albertosdk/hsync-server:v9.9.9" in env_contents
+    assert "HSYNC_IMAGE=ghcr.io/albertsdk/hsync-server:v9.9.9" in env_contents
 
 
 def test_latest_rerun_updates_existing_installation_to_the_resolved_tag(tmp_path: Path):
@@ -213,7 +213,7 @@ def test_latest_rerun_updates_existing_installation_to_the_resolved_tag(tmp_path
 
     assert second.returncode == 0, second.stderr
     env_contents = (install_dir / ".env").read_text()
-    assert "HSYNC_IMAGE=ghcr.io/albertosdk/hsync-server:v9.9.9" in env_contents
+    assert "HSYNC_IMAGE=ghcr.io/albertsdk/hsync-server:v9.9.9" in env_contents
 
 
 def test_latest_resolution_failure_writes_nothing(tmp_path: Path):

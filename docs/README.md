@@ -150,7 +150,7 @@ all defaults.
 > development and LAN testing only.
 
 For the ecosystem-wide decision records, see the
-[ADRs in hsync-common](https://github.com/albertosdk/hsync-common/blob/main/docs/internal/adr/README.md).
+[ADRs in hsync-common](https://github.com/albertsdk/hsync-common/blob/main/docs/internal/adr/README.md).
 
 ## Upgrade
 
@@ -161,14 +161,14 @@ For upgrade instructions (Docker, Docker Compose, and systemd/Poetry), see the
 
 For practical usage examples of the HSYNC client — including first-time setup,
 file exclusion, conflict resolution, restore from tombstones, and migration —
-see the [client examples](https://github.com/albertosdk/hsync-client/blob/main/docs/examples.md).
+see the [client examples](https://github.com/albertsdk/hsync-client/blob/main/docs/examples.md).
 
 ## Associated Ecosystem Components
 
-- [HSYNC Common](https://github.com/albertosdk/hsync-common/blob/main/README.md) - Shared models, constants, and utilities used by the client
-- [HSYNC Client](https://github.com/albertosdk/hsync-client/blob/main/README.md) - Sync client (Server Mode and LAN/P2P Mode)
-- [HSYNC Desktop](https://github.com/albertosdk/hsync-desktop/blob/main/docs/README.md) — Desktop client GUI front-end *(in development)*.
-- [HSYNC Android](https://github.com/albertosdk/hsync-android/blob/main/docs/README.md) — Android client app *(in development)*.
+- [HSYNC Common](https://github.com/albertsdk/hsync-common/blob/main/README.md) - Shared models, constants, and utilities used by the client
+- [HSYNC Client](https://github.com/albertsdk/hsync-client/blob/main/README.md) - Sync client (Server Mode and LAN/P2P Mode)
+- [HSYNC Desktop](https://github.com/albertsdk/hsync-desktop/blob/main/docs/README.md) — Desktop client GUI front-end *(in development)*.
+- [HSYNC Android](https://github.com/albertsdk/hsync-android/blob/main/docs/README.md) — Android client app *(in development)*.
 
 > **Note:** The desktop GUI (`HSYNC Desktop`) and the Android app (`HSYNC Android`)
 > are still under active development and are not yet ready for production use.

@@ -149,11 +149,11 @@ testing:
    ```
 
 4. The `release.yml` workflow runs automatically: it builds and pushes the
-   Docker image to `ghcr.io/albertosdk/hsync-server:vX.Y.Z` and
+   Docker image to `ghcr.io/albertsdk/hsync-server:vX.Y.Z` and
    `:latest`, then creates the GitHub Release with auto-generated release
    notes.
 5. Verify the release on the
-   [Releases page](https://github.com/albertosdk/hsync-server/releases).
+   [Releases page](https://github.com/albertsdk/hsync-server/releases).
 
 ### Post-release checklist
 

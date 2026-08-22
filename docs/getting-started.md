@@ -43,4 +43,4 @@ self-signed certificate; the difference is only the toolchain:
   [Operations Guide](operations.md).
 
 > The client side of this flow is covered by the
-> [client Getting Started](https://github.com/albertosdk/hsync-client/blob/main/docs/getting-started.md).
+> [client Getting Started](https://github.com/albertsdk/hsync-client/blob/main/docs/getting-started.md).

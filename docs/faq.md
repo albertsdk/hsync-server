@@ -35,7 +35,7 @@ links to the relevant guide.
 
 Only for remote / cross-network sync. Devices on the same network can use the
 client's serverless **LAN Mode** instead. See
-[client LAN Mode](https://github.com/albertosdk/hsync-client/blob/main/docs/lan-mode.md).
+[client LAN Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/lan-mode.md).
 
 ## Deployment & Configuration
 
@@ -66,7 +66,7 @@ When clients sync with `--ignore-delete` (pure backup mode), the bucket
 accumulates append-only history: files removed on the client stay on the
 server, and copying the buckets directory captures all of it — no special
 server configuration is needed. See the
-[client backup examples](https://github.com/albertosdk/hsync-client/blob/main/docs/examples-server.md#13-push-only-backup-to-a-remote-server).
+[client backup examples](https://github.com/albertsdk/hsync-client/blob/main/docs/examples-server.md#13-push-only-backup-to-a-remote-server).
 
 ## Security
 
@@ -137,7 +137,7 @@ The server-side defences are:
   [Operations → Backup and Restore](operations.md#backup-and-restore).
 
 See the
-[client mass-deletion safety guard](https://github.com/albertosdk/hsync-client/blob/main/docs/configuration.md#mass-deletion-guard)
+[client mass-deletion safety guard](https://github.com/albertsdk/hsync-client/blob/main/docs/configuration.md#mass-deletion-guard)
 for the client-side protection.
 
 ### What happens if a client disconnects mid-upload?
@@ -170,7 +170,7 @@ for the full syntax and per-installation invocation).
 ### How do I pin a specific server version?
 
 Use a version tag instead of `latest`, e.g.
-`ghcr.io/albertosdk/hsync-server:v1.0.0`. See
+`ghcr.io/albertsdk/hsync-server:v1.0.0`. See
 [Getting Started](getting-started.md).
 
 ## Troubleshooting
@@ -223,7 +223,7 @@ sudo ufw allow 9753/tcp
   valid.
 - If using self-signed certificates, clients need `--ca-cert <file>` or
   `--insecure`. See the
-  [Client Configuration — Server Mode → Server Connection Options](https://github.com/albertosdk/hsync-client/blob/main/docs/configuration-server.md#server-connection-options)
+  [Client Configuration — Server Mode → Server Connection Options](https://github.com/albertsdk/hsync-client/blob/main/docs/configuration-server.md#server-connection-options)
   guide.
 - Clients always connect with `https://` / `wss://` and refuse to send API keys
   over plain HTTP.

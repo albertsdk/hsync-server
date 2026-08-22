@@ -108,7 +108,7 @@ hsync server server.example.com -b photos -p /path/to/dir --ca-cert certs/server
 - `--ca-cert` — the exported certificate from `certs/server.crt`.
 
 > For all client options, see the
-> [client Getting Started guide](https://github.com/albertosdk/hsync-client/blob/main/docs/getting-started.md).
+> [client Getting Started guide](https://github.com/albertsdk/hsync-client/blob/main/docs/getting-started.md).
 
 ## Use systemd for an always-on service
 

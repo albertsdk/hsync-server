@@ -6,7 +6,7 @@ every label that can appear in the server logs.
 
 > The complete, cross-project catalog (descriptions, color categories, and which
 > project emits each label) lives in
-> [`hsync-common/docs/log-labels.md`](https://github.com/albertosdk/hsync-common/blob/main/docs/log-labels.md).
+> [`hsync-common/docs/log-labels.md`](https://github.com/albertsdk/hsync-common/blob/main/docs/log-labels.md).
 > This page is the server-specific view: only the labels this server emits.
 
 Labels are colored by **semantic category** (transfer=cyan, upload/create=green,
@@ -52,4 +52,4 @@ a client to the other connected clients in the bucket.
 
 - [REST API](api.md)
 - [Operations](operations.md)
-- [Canonical label catalog](https://github.com/albertosdk/hsync-common/blob/main/docs/log-labels.md)
+- [Canonical label catalog](https://github.com/albertsdk/hsync-common/blob/main/docs/log-labels.md)

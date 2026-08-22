@@ -3,7 +3,7 @@
 This document describes how the **HSYNC Server** authenticates clients in
 **Server Mode** using per-account tokens. For the shared contracts (CID format,
 message schema, protocol versioning), see
-[`hsync-common/docs/authentication.md`](https://github.com/albertosdk/hsync-common/blob/main/docs/authentication.md).
+[`hsync-common/docs/authentication.md`](https://github.com/albertsdk/hsync-common/blob/main/docs/authentication.md).
 
 ## Overview
 

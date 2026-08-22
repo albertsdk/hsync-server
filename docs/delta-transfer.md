@@ -238,9 +238,9 @@ rate(hsync_delta_transfer_total{status="conflict"}[5m])
 - [API Reference](api.md#delta-transfer) — REST endpoint details
 - [Operations Guide](operations.md) — Prometheus metrics and monitoring
 - [Sync Flow](sync-flow.md) — server-side synchronization flow
-- [ADR 0016: Delta Transfer](https://github.com/albertosdk/hsync-common/blob/main/docs/internal/adr/0016-delta-transfer.md)
+- [ADR 0016: Delta Transfer](https://github.com/albertsdk/hsync-common/blob/main/docs/internal/adr/0016-delta-transfer.md)
   — architecture decision record with rationale and alternatives
-- [Client Sync Flow — Server Mode](https://github.com/albertosdk/hsync-client/blob/main/docs/sync-flow-server.md)
+- [Client Sync Flow — Server Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/sync-flow-server.md)
   — client-side delta transfer documentation
-- [Client Configuration → Delta Transfer](https://github.com/albertosdk/hsync-client/blob/main/docs/configuration.md#delta-transfer-rsync-style-block-sync)
+- [Client Configuration → Delta Transfer](https://github.com/albertsdk/hsync-client/blob/main/docs/configuration.md#delta-transfer-rsync-style-block-sync)
   — client-side delta transfer configuration

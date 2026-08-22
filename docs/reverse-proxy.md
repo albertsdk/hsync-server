@@ -73,7 +73,7 @@ services:
       - hsync-net
 
   hsync-server:
-    image: ghcr.io/albertosdk/hsync-server:v1.0.0
+    image: ghcr.io/albertsdk/hsync-server:v1.0.0
     container_name: hsync-server
     restart: unless-stopped
     expose:

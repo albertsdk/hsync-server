@@ -35,7 +35,7 @@ the server-local choices not big enough for an ADR.
   on flaky NAS links.
 - **Tag-driven GHCR release** (`.github/workflows/release.yml`): pushing a
   `vX.Y.Z` tag builds and pushes a multi-arch (`linux/amd64`, `linux/arm64`)
-  image to `ghcr.io/albertosdk/hsync-server`, tagged with the version and
+  image to `ghcr.io/albertsdk/hsync-server`, tagged with the version and
   `latest`, then publishes the version-stamped `install.sh`, `compose.yaml`, and
   `SHA256SUMS` as GitHub release assets. Build context is the repo root with
   `../hsync-common` checked out alongside, matching `docker.sh`/`Dockerfile`.

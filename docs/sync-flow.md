@@ -6,7 +6,7 @@ broadcasts events, and lets clients decide what to do.
 
 > For the client-side flow (initial sync, conflict resolution, event queue,
 > retry logic, connection recovery) see the
-> [client Sync Flow](https://github.com/albertosdk/hsync-client/blob/main/docs/sync-flow.md).
+> [client Sync Flow](https://github.com/albertsdk/hsync-client/blob/main/docs/sync-flow.md).
 
 ## Overview
 
