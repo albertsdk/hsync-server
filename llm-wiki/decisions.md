@@ -49,12 +49,12 @@ the server-local choices not big enough for an ADR.
   to `.env`, so a plain `docker compose pull` never upgrades implicitly
   (`install.sh`, `resolve_latest_version`).
 
-## House rules (from `CLAUDE.md`)
+## House rules (from `AGENTS.md`)
 
 - **Zero backward compatibility**: a protocol-version mismatch is a hard fail, not
   a negotiation. No legacy endpoints.
 - **SSOT reuse**: models, protocol, validation, permissions come from
   `hsync_common`; the server never forks them.
 - Changes to `HSYNC_*` flags / behaviors require the synchronized WD My Cloud OS5
-  packaging update (see `CLAUDE.md` domain-critical rules) and a docs update in
+  packaging update (see `AGENTS.md` domain-critical rules) and a docs update in
   both `llm-wiki/` and `docs/`.

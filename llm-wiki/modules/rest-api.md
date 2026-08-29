@@ -264,4 +264,4 @@ includes the wall-clock duration via `format_duration(..., subsecond=True)`.
   timestamp updates with far-future clamp (`:110`).
 
 > Validation primitives are reused from `hsync_common` (path_validation,
-> permissions); do not reimplement them here (DRY rule, `CLAUDE.md`).
+> permissions); do not reimplement them here (DRY rule, `AGENTS.md`).
