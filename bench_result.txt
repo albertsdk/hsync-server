@@ -1,0 +1,82 @@
+hsync-server L1 benchmark suite — count=2000
+python 3.14.4 — linux
+generated 2026-09-16 12:29:54 by bench/run_all.py
+comparative figures (this machine, warm page cache), not SLAs
+
+=== bench_auth (exit=0, 0.3s) ===
+auth micro-benchmark (ops=2000, pure CPU, no I/O)
+operation                          ops/s   mean_ms    p50_ms    p99_ms  stdev_ms    min_ms    max_ms       n
+------------------------------------------------------------------------------------------------------------
+parse_token(valid)              912575.3    0.0011    0.0011    0.0014    0.0002    0.0010    0.0056    2000
+parse_token(bad_prefix)       11428442.9    0.0001    0.0001    0.0001    0.0000    0.0001    0.0014    2000
+parse_token(bad_id)            2478628.0    0.0004    0.0004    0.0005    0.0001    0.0004    0.0047    2000
+parse_token(bad_secret)        1049209.5    0.0010    0.0009    0.0011    0.0006    0.0009    0.0249    2000
+auth_cache_key(sha256)         2028457.3    0.0005    0.0005    0.0006    0.0002    0.0005    0.0058    2000
+
+=== bench_rate_limiter (exit=0, 0.3s) ===
+rate-limiter micro-benchmark (ops=2000, pure CPU, no I/O)
+operation                          ops/s   mean_ms    p50_ms    p99_ms  stdev_ms    min_ms    max_ms       n
+------------------------------------------------------------------------------------------------------------
+get_client_ip(trusted+xff)     3986081.0    0.0003    0.0002    0.0004    0.0002    0.0002    0.0057    2000
+get_client_ip(direct)          7071460.7    0.0001    0.0001    0.0002    0.0000    0.0001    0.0014    2000
+parse_ws_rate(10/second)       2071165.2    0.0005    0.0005    0.0005    0.0001    0.0005    0.0039    2000
+token_bucket.acquire(hit)      5071059.0    0.0002    0.0002    0.0002    0.0000    0.0002    0.0004    2000
+token_bucket.acquire(drained)   5324898.8    0.0002    0.0002    0.0002    0.0000    0.0002    0.0019    2000
+
+=== bench_hashes (exit=0, 0.1s) ===
+hash-cache micro-benchmark (ops=2000, temp file + seeded cache)
+operation                          ops/s   mean_ms    p50_ms    p99_ms  stdev_ms    min_ms    max_ms       n
+------------------------------------------------------------------------------------------------------------
+set_sha256_hash                 574408.1    0.0017    0.0017    0.0020    0.0004    0.0017    0.0188    2000
+get_sha256_hash(hit)            568863.8    0.0018    0.0017    0.0018    0.0001    0.0017    0.0058    2000
+get_sha256_hash(miss)          2051103.1    0.0005    0.0005    0.0005    0.0001    0.0005    0.0028    2000
+del_sha256_hash(hit)            454212.4    0.0022    0.0022    0.0023    0.0001    0.0021    0.0053    2000
+del_sha256_hash(miss)          2099869.8    0.0005    0.0005    0.0005    0.0000    0.0005    0.0023    2000
+
+=== bench_utils (exit=0, 0.3s) ===
+api-utils micro-benchmark (ops=2000, confinement + validation)
+operation                          ops/s   mean_ms    p50_ms    p99_ms  stdev_ms    min_ms    max_ms       n
+------------------------------------------------------------------------------------------------------------
+resolve_within_bucket(hit)       26911.7    0.0372    0.0370    0.0408    0.0016    0.0346    0.0894    2000
+resolve_within_bucket(escape)   1732605.4    0.0006    0.0006    0.0007    0.0001    0.0005    0.0023    2000
+resolve_within_bucket(no-deref)     24119.2    0.0415    0.0413    0.0465    0.0014    0.0383    0.0523    2000
+is_valid_bucket                3474707.8    0.0003    0.0003    0.0003    0.0000    0.0003    0.0005    2000
+
+=== bench_file_utils (exit=0, 0.2s) ===
+file-utils micro-benchmark (ops=2000, temp file, real utime)
+operation                          ops/s   mean_ms    p50_ms    p99_ms  stdev_ms    min_ms    max_ms       n
+------------------------------------------------------------------------------------------------------------
+is_sentinel_file(hit)           251351.2    0.0040    0.0039    0.0051    0.0003    0.0037    0.0100    2000
+is_sentinel_file(miss)          737866.1    0.0014    0.0013    0.0016    0.0001    0.0013    0.0045    2000
+update_file_timestamp(normal)    729225.5    0.0014    0.0014    0.0015    0.0001    0.0013    0.0048    2000
+update_file_timestamp(clamp)    591617.6    0.0017    0.0017    0.0018    0.0002    0.0016    0.0106    2000
+update_file_timestamp(missing)  10052774.2    0.0001    0.0001    0.0001    0.0001    0.0001    0.0046    2000
+
+=== bench_arbitration (exit=0, 0.2s) ===
+arbitration micro-benchmark (ops=2000, temp state dir)
+operation                          ops/s   mean_ms    p50_ms    p99_ms  stdev_ms    min_ms    max_ms       n
+------------------------------------------------------------------------------------------------------------
+arbitrate_upload(first)         208427.0    0.0048    0.0048    0.0058    0.0004    0.0042    0.0106    2000
+arbitrate_upload(dominant)      202650.9    0.0049    0.0049    0.0056    0.0003    0.0045    0.0103    2000
+arbitrate_upload(superseded)    217102.6    0.0046    0.0046    0.0052    0.0007    0.0041    0.0322    2000
+arbitrate_upload(conflict_won)    192473.9    0.0052    0.0051    0.0058    0.0003    0.0047    0.0106    2000
+arbitrate_upload(conflict_lost)    214810.7    0.0047    0.0046    0.0053    0.0003    0.0042    0.0098    2000
+conflicted_copy_name            341172.1    0.0029    0.0029    0.0035    0.0002    0.0026    0.0055    2000
+
+=== bench_versions (exit=0, 0.2s) ===
+version-store micro-benchmark (ops=2000, temp bucket + state dir)
+operation                          ops/s   mean_ms    p50_ms    p99_ms  stdev_ms    min_ms    max_ms       n
+------------------------------------------------------------------------------------------------------------
+server_version_info(recorded)    343593.9    0.0029    0.0029    0.0038    0.0003    0.0027    0.0092    2000
+server_version_info(missing)    410055.6    0.0024    0.0024    0.0028    0.0002    0.0023    0.0101    2000
+record_version(persist)          10294.3    0.0971    0.0963    0.1124    0.0045    0.0909    0.1124      50
+
+=== bench_connection_manager (exit=0, 0.5s) ===
+connection-slot micro-benchmark (ops=2000, pure accounting)
+operation                          ops/s   mean_ms    p50_ms    p99_ms  stdev_ms    min_ms    max_ms       n
+------------------------------------------------------------------------------------------------------------
+try_acquire_slot(under)        5369978.9    0.0002    0.0002    0.0004    0.0002    0.0002    0.0068    2000
+try_acquire_slot(global_cap)   3421148.7    0.0003    0.0003    0.0003    0.0002    0.0003    0.0050    2000
+try_acquire_slot(per_ip_cap)   3598099.5    0.0003    0.0003    0.0003    0.0001    0.0003    0.0048    2000
+release_slot                   4772563.4    0.0002    0.0002    0.0003    0.0001    0.0002    0.0026    2000
+

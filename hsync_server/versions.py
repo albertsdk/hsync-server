@@ -27,6 +27,7 @@ cid** — a stable 21-char id minted once and persisted next to the DB.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from hsync_common.models.event import is_valid_cid
@@ -52,6 +53,12 @@ __all__ = [
 _registry: PerBucketStores[SyncStateStore] = PerBucketStores()
 
 _SERVER_CID_FILENAME = ".hsyncnodeid"
+
+# Memoized server node cid: minted once and persisted, so it is cached after the
+# first read instead of re-reading the sidecar file on every upload arbitration
+# (get_server_cid runs on the per-upload hot path). Invalidated by reset_cache().
+_server_cid: str | None = None
+_server_cid_lock = threading.Lock()
 
 
 def get_version_store(bucket: str) -> SyncStateStore:
@@ -168,18 +175,32 @@ def get_server_cid() -> str:
     The cid is a 21-char alphanumeric string (``is_valid_cid``-compliant) used
     solely as the author of out-of-band edits detected at arbitration time.
     Persisted next to ``syncstate.db`` (outside any served bucket).
+
+    The value is memoized in-process after the first read: it is minted once
+    and never changes, so the per-upload arbitration path must not re-read the
+    sidecar file (and re-validate it) on every call.
     """
-    cid_path = Path(get_state_dir()) / _SERVER_CID_FILENAME
-    if cid_path.exists():
-        cid = cid_path.read_text(encoding="utf-8").strip()
-        if is_valid_cid(cid):
-            return cid
-    cid = mint_alnum_id()
-    cid_path.parent.mkdir(parents=True, exist_ok=True)
-    cid_path.write_text(cid, encoding="utf-8")
-    return cid
+    global _server_cid
+    if _server_cid is not None:
+        return _server_cid
+    with _server_cid_lock:
+        if _server_cid is not None:
+            return _server_cid
+        cid_path = Path(get_state_dir()) / _SERVER_CID_FILENAME
+        if cid_path.exists():
+            cid = cid_path.read_text(encoding="utf-8").strip()
+            if is_valid_cid(cid):
+                _server_cid = cid
+                return cid
+        cid = mint_alnum_id()
+        cid_path.parent.mkdir(parents=True, exist_ok=True)
+        cid_path.write_text(cid, encoding="utf-8")
+        _server_cid = cid
+        return cid
 
 
 def reset_cache() -> None:
     """Clear the in-memory store cache (primarily for tests)."""
+    global _server_cid
     _registry.clear()
+    _server_cid = None

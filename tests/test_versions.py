@@ -52,6 +52,27 @@ class TestVersionStorePersistence:
         assert (state / ".hsyncnodeid").is_file()
         assert get_server_cid() == first
 
+    def test_server_cid_memoization_resets(self, tmp_path, monkeypatch):
+        """Regression: the memoized server cid is invalidated by ``reset_cache``.
+
+        ``get_server_cid`` caches the minted id in-process; a state-dir change
+        (tests, tear-down) must re-read/re-mint from the new directory instead
+        of serving the stale cached value.
+        """
+        from hsync_server import versions
+
+        state_a = tmp_path / "state_a"
+        state_b = tmp_path / "state_b"
+        monkeypatch.setattr(versions, "get_state_dir", lambda: str(state_a))
+        first = get_server_cid()
+        assert get_server_cid() == first  # memoized within one state dir
+
+        reset_cache()
+        monkeypatch.setattr(versions, "get_state_dir", lambda: str(state_b))
+        second = get_server_cid()
+        assert (state_b / ".hsyncnodeid").read_text(encoding="utf-8").strip() == second
+        assert get_server_cid() == second  # memoized again in the new dir
+
     def test_rebind_after_fork_drops_cache(self, tmp_path):
         bucket = tmp_path / "photos"
         bucket.mkdir()
