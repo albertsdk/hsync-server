@@ -1,4 +1,4 @@
-# HSYNC Server — Benchmarks (L1)
+# HSYNC Server — Benchmarks (L1 + startup)
 
 Internal micro-benchmark suite for the server-specific hot paths. Developer
 tooling: plain scripts under `bench/`, never collected by pytest, never run in
@@ -39,6 +39,7 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 | `bench/bench_arbitration.py` | `arbitration.arbitrate_upload` / `conflicted_copy_name` scenarios |
 | `bench/bench_versions.py` | `versions.server_version_info` / `record_version` scenarios |
 | `bench/bench_connection_manager.py` | `api/connection_manager` slot-accounting scenarios |
+| `bench/bench_startup.py` | **Startup** — cold `import hsync_server.main` + live uvicorn spawn → `GET /health` 200 (`--files N` isolates the hash preload) |
 | `bench/run_all.py` | Chained runner → `bench_result.txt` (committed baseline); `--json-out-dir` |
 | `bench/compare.py` | A/B comparator over two `--json-out` runs; flags median regressions above a noise floor, `exit 1` on regression |
 
@@ -87,6 +88,26 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 * **Hash cache freshness check** — `get_sha256_hash(hit)` ~0.0018 ms (SHA-256 of
   the path + one `os.stat` + compare); the miss is ~0.0005 ms (no stat).
 
+## Startup findings (`bench/bench_startup.py`, this machine)
+
+* **Module import dominates** — cold `import hsync_server.main` ≈ 750–880 ms
+  (FastAPI + `prometheus_fastapi_instrumentator` + `slowapi` + middleware +
+  `hsync_common`). This is the irreducible floor without dropping those
+  dependencies.
+* **Lifespan is small on top** — spawn → `GET /health` 200 ≈ 1.1 s with empty
+  buckets; the bootstrap + empty preload + synchronous VACUUM add ~200–300 ms.
+* **Hash preload scales with data** — with `--files 5000` readiness rises to
+  ≈ 1.3 s, i.e. `set_sha256_hashes` adds ~200 ms for 5000 files (linear).
+* **Decision: preload is NOT removed.** The preload is a pure freshness-checked
+  cache, but several request paths read it **directly** without the
+  recompute-on-miss fallback: `list.py:96` (listing `sha256sum` + HMAC),
+  `download.py:109` (download header), `upload.py:272/:523` (dedup/disk hash),
+  `apply.py:302` (delta base hash). Dropping the eager preload would return
+  empty/`None` hashes on those paths until recomputed — a correctness change,
+  not a timing one. Converting all of them to `get_or_compute_sha256` is a broad
+  async refactor across the file API. Per the robustness-over-speed rule, the
+  preload stays and the startup cost is reported as-is.
+
 ## Running
 
 ```bash
@@ -99,6 +120,10 @@ cd hsync-server
 .venv/bin/python bench/run_all.py --count 2000 --json-out-dir /tmp/before
 .venv/bin/python bench/run_all.py --count 2000 --json-out-dir /tmp/after
 .venv/bin/python bench/compare.py /tmp/before /tmp/after --threshold 1.10
+
+# startup benchmark (standalone, not in run_all.py)
+.venv/bin/python bench/bench_startup.py --count 10
+.venv/bin/python bench/bench_startup.py --count 10 --files 5000 --json-out /tmp/startup.json
 ```
 
 Lint: `cd hsync-server && .venv/bin/python -m ruff check bench` — the directory

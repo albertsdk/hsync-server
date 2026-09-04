@@ -7,6 +7,7 @@ delta, models, path validation, stores) are already covered by
 
 | Tier | Status here | Why |
 |---|---|---|
+| Startup — process spawn cost | **implemented** (`bench_startup.py`) | Cold `import hsync_server.main` + live uvicorn spawn to `/health` readiness (with optional bucket pre-population to isolate the hash preload) |
 | L1 — in-process micro-benchmark | **implemented** (this directory) | Measures the auth/rate-limit/version/arbitration/validation wrappers every REST+WS request or upload runs |
 | L2/L3 — transport load + soak | deferred | Spawning a live uvicorn server over loopback (wire-only) is a follow-on; decided after this L1 baseline |
 | L4 — profiling diagnostic | n/a (yet) | Added only when a specific anomaly needs a cost breakdown |
@@ -30,6 +31,7 @@ read or written — mirroring the test suite's `no_tests_touch_real_repo_state`.
 
 | Script | Measures |
 |---|---|
+| `bench_startup.py` | **Startup** — cold `import hsync_server.main` and live uvicorn spawn → `GET /health` 200, with optional `--files N` bucket pre-population to isolate the `set_sha256_hashes` lifespan preload |
 | `bench_auth.py` | `parse_token` (valid / bad-prefix / bad-id / bad-secret), `_cache_key` (SHA-256 of token) — the per-request auth gate (scrypt itself is the rare KDF-cache miss, not measured) |
 | `bench_rate_limiter.py` | `get_client_ip` (trusted-proxy + XFF / direct / no-client), `_parse_ws_rate`, `TokenBucket.acquire` (hit / drained) |
 | `bench_hashes.py` | `set_sha256_hash` / `get_sha256_hash(hit/miss)` / `del_sha256_hash(hit/miss)` — the per-file hash cache |
@@ -62,6 +64,10 @@ cd hsync-server
 
 # machine-readable results (one JSON array per run)
 .venv/bin/python bench/bench_auth.py --count 2000 --json-out /tmp/auth.json
+
+# startup benchmark (standalone: spawns processes, not in run_all.py)
+.venv/bin/python bench/bench_startup.py --count 10
+.venv/bin/python bench/bench_startup.py --count 10 --files 5000 --json-out /tmp/startup.json
 
 # A/B comparison over two full runs
 .venv/bin/python bench/run_all.py --count 2000 --json-out-dir /tmp/before
