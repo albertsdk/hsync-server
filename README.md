@@ -15,6 +15,10 @@ all over standard HTTP/HTTPS.
 > [HSYNC Client](https://github.com/albertsdk/hsync-client) on each device
 > to actually sync files; the server is the storage and coordination hub.
 
+> **The server is optional:** devices that share a network segment can sync
+> directly, peer-to-peer, with the client’s
+> [LAN P2P Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/lan-mode.md).
+
 > 👉 **Operational Advisory:** As with any automated filesystem mutation utility, administrators are strongly advised to maintain validated, independent backups prior to initial deployment in production environments.
 
 ---
@@ -64,6 +68,7 @@ opaque internal formats.
 - 🔒 **Restricted infrastructures** — SSH is disabled, VPNs unavailable
 - 🌐 **Web-friendly setups** — route traffic through CDNs, WAFs, or API gateways
 - ⚡ **Real-time reactivity** — unlike traditional HTTP-based tools that rely on periodic polling, HSYNC reacts instantly to file changes using local watchdogs and event-driven WebSockets.
+- 🏠 **Self-hosted by design** — you operate the hub, the storage and the credentials: buckets are plain directories on your own filesystem and access is per-account with roles, with no third-party service in the data path.
 
 ## Architecture Overview
 
