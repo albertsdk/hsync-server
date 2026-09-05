@@ -31,7 +31,6 @@ from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.utils import (
     get_permissions,
-    is_valid_bucket,
     resolve_within_bucket,
     set_permissions,
 )
@@ -39,7 +38,6 @@ from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
 from hsync_server.constants import ActionLabel
 from hsync_server.exceptions import (
-    InvalidBucketNameError,
     InvalidFilenameError,
     InvalidPathError,
     InvalidPermissionFormatError,
@@ -137,9 +135,6 @@ async def patch_file_permissions(
         ValidationError: If the declared CID is malformed.
     """
     check_bucket_access(bucket, ctx)
-
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
 
     safe_name = sanitize_filename(Path(filename).name or "")
     if not is_valid_filename(safe_name) or is_internal_name(safe_name):

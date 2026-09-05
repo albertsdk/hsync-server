@@ -24,6 +24,11 @@ from fastapi.responses import JSONResponse
 from loguru import logger as log
 from pydantic import BaseModel, Field
 
+from hsync_server.api.responses import (
+    account_not_found_response,
+    conflict_response,
+    not_found_response,
+)
 from hsync_server.api.utils import is_valid_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.auth_store import (
@@ -111,10 +116,7 @@ async def grant_member(
     try:
         target = store.resolve_target(req.client_id, req.name)
     except TargetNotFoundError:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={"error": "HSYNC-2000", "message": "Account not found."},
-        )
+        return account_not_found_response()
     except ValueError as e:
         raise ValidationError(str(e)) from None
 
@@ -123,10 +125,7 @@ async def grant_member(
     except ForbiddenError:
         raise
     except ConflictError as e:
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"error": "HSYNC-3004", "message": str(e)},
-        )
+        return conflict_response(str(e))
 
     log.info(f"Granted membership on '{bucket}' to {target.name} (by {ctx.name})")
     return JSONResponse(
@@ -153,15 +152,9 @@ async def revoke_member(
     try:
         store.revoke_member(bucket, client_id, ctx.id, caller_is_admin=(ctx.role == "admin"))
     except TargetNotFoundError:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={"error": "HSYNC-2000", "message": "Account is not a member of this bucket."},
-        )
+        return not_found_response("Account is not a member of this bucket.")
     except ConflictError as e:
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"error": "HSYNC-3004", "message": str(e)},
-        )
+        return conflict_response(str(e))
 
     # Close WS for that account on this bucket only.
     from hsync_server.api.connection_manager import bucket_manager
@@ -195,10 +188,7 @@ async def transfer_or_reclaim_owner(
     try:
         target = store.resolve_target(req.client_id, req.name)
     except TargetNotFoundError:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={"error": "HSYNC-2000", "message": "Account not found."},
-        )
+        return account_not_found_response()
     except ValueError as e:
         raise ValidationError(str(e)) from None
 
@@ -217,10 +207,7 @@ async def transfer_or_reclaim_owner(
     except ForbiddenError:
         raise
     except ConflictError as e:
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"error": "HSYNC-3004", "message": str(e)},
-        )
+        return conflict_response(str(e))
 
     log.info(f"Ownership of '{bucket}' {action} to {target.name} (by {ctx.name})")
     return JSONResponse(

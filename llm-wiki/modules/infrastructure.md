@@ -172,7 +172,11 @@ uploads for the same file are ordered (ADR-0022).
 - `versions.py` wraps `hsync_common.models.version.SyncStateStore` per bucket
   in `get_state_dir()/syncstate.db` (folder UUID via the `buckets` table,
   ADR-0025). Lazy connection (fork-safe); per-bucket `RLock`.
-  `record_version`/`clear_version`/`move_version` maintain the store;
+  `record_version`/`clear_version` maintain the store; `move_version` and
+  `move_version_prefix` carry entries across a rename (single file, or every
+  file under a renamed directory via a destination-tree walk — the store keys
+  are `sha256(relpath)`, so a prefix remap cannot be derived from the store
+  itself); `handle_renamed_event` calls them after the on-disk rename.
   `server_version_info` produces the wire `VersionInfo` for listings.
   `get_server_cid` mints and persists a reserved 21-char server node id next
   to the DB for out-of-band edits (ADR-0022 §3.4.7); minting is shared with

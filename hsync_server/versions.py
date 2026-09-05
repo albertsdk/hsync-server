@@ -28,11 +28,13 @@ cid** — a stable 21-char id minted once and persisted next to the DB.
 from __future__ import annotations
 
 import threading
+from os import walk
+from os.path import relpath
 from pathlib import Path
 
 from hsync_common.models.event import is_valid_cid
 from hsync_common.models.sqlstore import get_state_db
-from hsync_common.models.version import SyncStateStore, relpath_in_bucket
+from hsync_common.models.version import FileVersion, SyncStateStore, relpath_in_bucket
 
 from hsync_server.config import get_state_db_path, get_state_dir
 from hsync_server.constants import mint_alnum_id
@@ -43,6 +45,7 @@ __all__ = [
     "get_server_cid",
     "get_version_store",
     "move_version",
+    "move_version_prefix",
     "record_version",
     "reset_cache",
     "server_version_info",
@@ -121,6 +124,24 @@ def clear_version(bucket: str, bucket_dir: str, abs_path: str) -> None:
             store.save()
 
 
+def _carry_entry(store: SyncStateStore, dst_rel: str, entry: FileVersion) -> None:
+    """Re-record a stored entry at a new relative path, carried over unchanged.
+
+    Single definition of the field mapping shared by :func:`move_version` and
+    :func:`move_version_prefix`: a rename is not a content edit, so the hash,
+    clock and identity are preserved (no tick).
+    """
+    store.record(
+        dst_rel,
+        base_hash=entry["base_hash"],
+        vclock=entry["vclock"],
+        version_id=entry["version_id"],
+        origin_cid=entry["origin_cid"],
+        timestamp=entry["ts"],
+        corrected_mtime=entry.get("corrected_mtime", 0),
+    )
+
+
 def move_version(bucket: str, bucket_dir: str, src_abs: str, dst_abs: str) -> None:
     """Move the version entry from src to dst (rename) and persist.
 
@@ -137,16 +158,44 @@ def move_version(bucket: str, bucket_dir: str, src_abs: str, dst_abs: str) -> No
         if entry is None:
             return
         store.clear(src_rel)
-        store.record(
-            dst_rel,
-            base_hash=entry["base_hash"],
-            vclock=entry["vclock"],
-            version_id=entry["version_id"],
-            origin_cid=entry["origin_cid"],
-            timestamp=entry["ts"],
-            corrected_mtime=entry.get("corrected_mtime", 0),
-        )
+        _carry_entry(store, dst_rel, entry)
         store.save()
+
+
+def move_version_prefix(bucket: str, bucket_dir: str, src_abs_dir: str, dst_abs_dir: str) -> None:
+    """Move the version entries of every file under a renamed directory.
+
+    The store is keyed by ``sha256(relpath)`` (privacy), so a prefix remap
+    cannot be derived from the stored keys; the destination tree is walked
+    instead (the source no longer exists after the rename) and each file's
+    entry is carried over with the same semantics as :func:`move_version`.
+    Entries whose destination file no longer exists are left at the old prefix
+    (they are stale and pruned like any unrecorded path).
+    """
+    moves: list[tuple[str, str]] = []
+    for root, _dirs, files in walk(dst_abs_dir):
+        for name in files:
+            dst_abs = str(Path(root) / name)
+            src_abs = str(Path(src_abs_dir) / relpath(dst_abs, dst_abs_dir))
+            src_rel = relpath_in_bucket(src_abs, bucket_dir)
+            dst_rel = relpath_in_bucket(dst_abs, bucket_dir)
+            if src_rel and dst_rel:
+                moves.append((src_rel, dst_rel))
+    if not moves:
+        return
+    with _registry.lock(bucket):
+        store = get_version_store(bucket)
+        carried: list[tuple[str, FileVersion]] = []
+        for src_rel, dst_rel in moves:
+            entry = store.get(src_rel)
+            if entry is None:
+                continue
+            store.clear(src_rel)
+            carried.append((dst_rel, entry))
+        for dst_rel, entry in carried:
+            _carry_entry(store, dst_rel, entry)
+        if carried:
+            store.save()
 
 
 def server_version_info(bucket: str, bucket_dir: str, abs_path: str):

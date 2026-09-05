@@ -16,16 +16,24 @@ deletion time avoid resurrecting the file during a full reconciliation.
 
 from __future__ import annotations
 
+from os import walk
+from pathlib import Path
+
+from hsync_common.models.event import is_valid_cid
 from hsync_common.models.sqlstore import get_state_db
 from hsync_common.models.tombstone import TombstoneStore, relpath_in_bucket
 
+from hsync_server.api.file_utils import is_sentinel_file
 from hsync_server.config import get_state_db_path, get_tombstone_ttl_days
 from hsync_server.store_registry import PerBucketStores
+from hsync_server.versions import get_version_store
 
 __all__ = [
     "clear_deletion",
+    "clear_deletion_tree",
     "get_tombstone_store",
     "record_deletion",
+    "record_path_deletion",
     "reset_cache",
 ]
 
@@ -99,6 +107,60 @@ def clear_deletion(bucket: str, bucket_dir: str, abs_path: str) -> None:
             store.save()
 
 
+def clear_deletion_tree(bucket: str, bucket_dir: str, abs_dir: str) -> None:
+    """Drop deletion markers for a directory and every file beneath it.
+
+    Used after a rename repopulates a destination tree: an earlier delete may
+    have left markers for the same relative paths, which would otherwise make
+    peers treat the restored content as deleted.
+    """
+    clear_deletion(bucket, bucket_dir, abs_dir)
+    for root, _dirs, files in walk(abs_dir):
+        for name in files:
+            clear_deletion(bucket, bucket_dir, str(Path(root) / name))
+
+
 def reset_cache() -> None:
     """Clear the in-memory store cache (primarily for tests)."""
     _registry.clear()
+
+
+def record_path_deletion(
+    bucket: str,
+    bucket_dir: str,
+    abs_path: str,
+    *,
+    sha256sum: str | None = None,
+    cid: str | None = None,
+) -> bool:
+    """Record (or clear) the causal deletion marker for one path.
+
+    Single definition of the delete bookkeeping shared by the REST delete
+    endpoint and the ``deleted`` event handlers:
+
+    - a *sentinel* helper is per-peer and never exchanged, so any stale marker
+      is dropped (:func:`clear_deletion`) and no tombstone is minted;
+    - for a real path the stored version clock is inherited and ticked by the
+      deleting peer, so delete-vs-recreate and delete-vs-delete resolve
+      causally (ADR-0003).
+
+    Returns True when a tombstone was recorded. Callers that must drop the
+    causal version entry do so themselves: its ordering relative to the
+    filesystem unlink differs between the REST delete path and the handlers.
+    """
+    if is_sentinel_file(abs_path):
+        clear_deletion(bucket, bucket_dir, abs_path)
+        return False
+    relpath = relpath_in_bucket(abs_path, bucket_dir)
+    if not relpath:
+        return False
+    stored = get_version_store(bucket).get(relpath)
+    record_deletion(
+        bucket,
+        bucket_dir,
+        abs_path,
+        sha256sum=sha256sum,
+        origin_cid=cid if cid and is_valid_cid(cid) else None,
+        prev_vclock=stored["vclock"] if stored else None,
+    )
+    return True

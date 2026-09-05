@@ -17,10 +17,9 @@ from typing import Annotated
 
 from fastapi import Depends, Form
 from fastapi.responses import JSONResponse
-from hsync_common.models.event import Event, EventName, is_valid_cid
+from hsync_common.models.event import Event, EventName
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import invalidate_sha256_cache
-from hsync_common.models.tombstone import relpath_in_bucket
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
@@ -40,8 +39,8 @@ from hsync_server.exceptions import (
 )
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
 from hsync_server.routers import auth_router
-from hsync_server.tombstones import clear_deletion, record_deletion
-from hsync_server.versions import clear_version, get_version_store
+from hsync_server.tombstones import record_path_deletion
+from hsync_server.versions import clear_version
 
 
 @auth_router.delete("/api/v1/buckets/{bucket}/files")
@@ -102,24 +101,14 @@ async def delete_file(
         # delete-vs-delete resolve causally (ADR-0003). Writing the marker
         # first guarantees that a server crash between deletion and tombstone
         # persistence never causes a resurrection. Sentinel files are per-peer
-        # and never exchanged — no marker needed.
-        if not is_sentinel_file(file):
-            rel = relpath_in_bucket(file, local_bucket)
-            stored = get_version_store(bucket).get(rel) if rel is not None else None
-            record_deletion(
-                bucket,
-                local_bucket,
-                file,
-                sha256sum=src.sha256sum if src else None,
-                origin_cid=cid if is_valid_cid(cid) else None,
-                prev_vclock=stored["vclock"] if stored else None,
-            )
-        else:
-            # Sentinel files are per-peer helper artifacts: when one is removed
-            # the path is only expected to carry directory-state sentinels, not
-            # user content; a deletion marker would outlive the sentinel and
-            # block its future re-creation. Drop any stale marker instead.
-            clear_deletion(bucket, local_bucket, file)
+        # and never exchanged — the helper drops any stale marker instead.
+        record_path_deletion(
+            bucket,
+            local_bucket,
+            file,
+            sha256sum=src.sha256sum if src else None,
+            cid=cid,
+        )
 
         # Remove the file after the tombstone is persisted. If the remove
         # fails, the tombstone is harmless (the file path still exists,

@@ -18,7 +18,6 @@ from pathlib import Path
 from hsync_common.path_validation import (
     is_valid_bucket_name,
     resolve_within,
-    validate_remote_relpath,
 )
 from hsync_common.permissions import (
     OWNER_DIRECTORY_ACCESS,
@@ -79,20 +78,7 @@ def resolve_within_bucket(bucket: str, rel: str, *, resolve_final: bool = True) 
     base = f"{get_buckets_path()}/{bucket}"
     if rel in ("", "."):
         return str(Path(base).resolve())
-    if resolve_final:
-        return resolve_within(base, rel)
-
-    clean = validate_remote_relpath(rel)
-    if clean is None:
-        return None
-    root = Path(base).resolve()
-    try:
-        parent = (root / Path(clean).parent).resolve()
-        target = parent / Path(clean).name
-        target.relative_to(root)
-    except (OSError, ValueError):
-        return None
-    return str(target)
+    return resolve_within(base, rel, resolve_final=resolve_final)
 
 
 async def get_permissions(obj_path: str) -> str:

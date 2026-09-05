@@ -32,6 +32,20 @@ def _isolate_tombstones(tmp_path):
     tombstones.reset_cache()
 
 
+@pytest.fixture()
+def _isolated_versions(tmp_path):
+    """Keep version-store state inside the test tmp dir and reset the cache."""
+    from hsync_common.constants import SYNCSTATE_DB_FILENAME
+
+    from hsync_server import versions
+
+    versions.reset_cache()
+    db_path = str(tmp_path / SYNCSTATE_DB_FILENAME)
+    with patch.object(versions, "get_state_db_path", return_value=db_path):
+        yield
+    versions.reset_cache()
+
+
 class TestIsPathWithinBucket:
     """Tests for is_path_within_bucket function."""
 
@@ -459,6 +473,100 @@ class TestHandleRenamedEvent:
         bucket_dir = str(tmp_path / "bucket")
         result = await handle_renamed_event({}, {"path": "dst"}, bucket_dir, "bucket", "cid")
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_rename_file_moves_version_entry(self, tmp_path, _isolated_versions):
+        """A file rename carries the version entry to the destination path."""
+        from hsync_server.versions import record_version, server_version_info
+
+        bucket_dir = str(tmp_path / "bucket")
+        os.makedirs(bucket_dir)
+        src_file = f"{bucket_dir}/old.txt"
+        Path(src_file).write_text("content")
+        record_version(
+            "bucket", bucket_dir, src_file, "ab" * 32, vclock={"Cid123456789012345678": 1}
+        )
+
+        src = {"filepath": "old.txt", "sha256sum": "ab" * 32, "permissions": "644"}
+        dst = {"filepath": "new.txt", "sha256sum": "ab" * 32, "permissions": "644"}
+        assert await handle_renamed_event(src, dst, bucket_dir, "bucket", "cid") is not None
+
+        moved = server_version_info("bucket", bucket_dir, f"{bucket_dir}/new.txt")
+        assert moved is not None
+        assert moved["vclock"] == {"Cid123456789012345678": 1}
+        assert server_version_info("bucket", bucket_dir, src_file) is None
+
+    @pytest.mark.asyncio
+    async def test_rename_directory_moves_version_entries(self, tmp_path, _isolated_versions):
+        """A directory rename carries the version entries of every child file."""
+        from hsync_server.versions import record_version, server_version_info
+
+        bucket_dir = str(tmp_path / "bucket")
+        src_dir = f"{bucket_dir}/olddir"
+        os.makedirs(src_dir)
+        for name in ("a.txt", "b.txt"):
+            child = f"{src_dir}/{name}"
+            Path(child).write_text(name)
+            record_version(
+                "bucket", bucket_dir, child, "ab" * 32, vclock={"Cid123456789012345678": 1}
+            )
+
+        src = {"path": "olddir", "permissions": "755"}
+        dst = {"path": "newdir", "permissions": "755"}
+        assert await handle_renamed_event(src, dst, bucket_dir, "bucket", "cid") is not None
+
+        for name in ("a.txt", "b.txt"):
+            moved = server_version_info("bucket", bucket_dir, f"{bucket_dir}/newdir/{name}")
+            assert moved is not None, name
+            assert moved["vclock"] == {"Cid123456789012345678": 1}
+            assert server_version_info("bucket", bucket_dir, f"{src_dir}/{name}") is None
+
+    @pytest.mark.asyncio
+    async def test_rename_file_clears_destination_tombstone(self, tmp_path, _isolated_versions):
+        """Renaming onto a previously deleted path drops the stale marker."""
+        from hsync_common.models.tombstone import relpath_in_bucket
+
+        from hsync_server.tombstones import get_tombstone_store, record_deletion
+
+        bucket_dir = str(tmp_path / "bucket")
+        os.makedirs(bucket_dir)
+        Path(f"{bucket_dir}/old.txt").write_text("content")
+        dst_file = f"{bucket_dir}/new.txt"
+        record_deletion("bucket", bucket_dir, dst_file)
+
+        store = get_tombstone_store("bucket")
+        assert store.get(relpath_in_bucket(dst_file, bucket_dir)) is not None
+
+        src = {"filepath": "old.txt", "sha256sum": "ab" * 32, "permissions": "644"}
+        dst = {"filepath": "new.txt", "sha256sum": "ab" * 32, "permissions": "644"}
+        assert await handle_renamed_event(src, dst, bucket_dir, "bucket", "cid") is not None
+
+        assert get_tombstone_store("bucket").get(relpath_in_bucket(dst_file, bucket_dir)) is None
+
+    @pytest.mark.asyncio
+    async def test_rename_directory_clears_destination_tombstones(
+        self, tmp_path, _isolated_versions
+    ):
+        """Renaming a tree onto a deleted tree drops the children's stale markers."""
+        from hsync_common.models.tombstone import relpath_in_bucket
+
+        from hsync_server.tombstones import get_tombstone_store, record_deletion
+
+        bucket_dir = str(tmp_path / "bucket")
+        src_dir = f"{bucket_dir}/olddir"
+        os.makedirs(src_dir)
+        Path(f"{src_dir}/a.txt").write_text("a")
+        dst_child = f"{bucket_dir}/newdir/a.txt"
+        record_deletion("bucket", bucket_dir, dst_child)
+
+        store = get_tombstone_store("bucket")
+        assert store.get(relpath_in_bucket(dst_child, bucket_dir)) is not None
+
+        src = {"path": "olddir", "permissions": "755"}
+        dst = {"path": "newdir", "permissions": "755"}
+        assert await handle_renamed_event(src, dst, bucket_dir, "bucket", "cid") is not None
+
+        assert get_tombstone_store("bucket").get(relpath_in_bucket(dst_child, bucket_dir)) is None
 
 
 class TestHandleSymlinkEvent:

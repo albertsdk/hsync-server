@@ -31,13 +31,12 @@ from hsync_common.path_validation import is_safe_symlink_target
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
-from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
+from hsync_server.api.utils import resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
 from hsync_server.constants import BACKUP_SUFFIX, ActionLabel
 from hsync_server.exceptions import (
     BucketNotFoundError,
-    InvalidBucketNameError,
     InvalidPathError,
 )
 from hsync_server.hashes import get_sha256_hash
@@ -80,8 +79,6 @@ async def get_upload_status(
         InvalidPathError: If path is invalid.
     """
     check_bucket_access(bucket, ctx)
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
     file_path = resolve_within_bucket(bucket, filename)
     if file_path is None:
         raise InvalidPathError(details={"path": filename})
@@ -186,8 +183,6 @@ async def get_dirs(
         BucketNotFoundError: If bucket does not exist.
     """
     check_bucket_access(bucket, ctx)
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
 
     buckets_path = get_buckets_path()
     bucket_root = str(Path(f"{buckets_path}/{bucket}").resolve())
@@ -244,10 +239,6 @@ async def get_files(
         BucketNotFoundError: If bucket does not exist.
     """
     check_bucket_access(bucket, ctx)
-    # Validate inputs
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-
     # Confine to *this* bucket: the filter path is untrusted input and must
     # never escape into a sibling bucket or outside the storage root.
     dir = resolve_within_bucket(bucket, path or "")

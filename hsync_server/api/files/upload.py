@@ -49,7 +49,6 @@ from hsync_server.api.file_utils import (
     update_file_timestamp,
 )
 from hsync_server.api.utils import (
-    is_valid_bucket,
     resolve_within_bucket,
     set_permissions,
 )
@@ -94,6 +93,42 @@ async def _flush_to_disk(handle) -> None:
     """Flush an open aiofiles handle's buffers to physical storage (fsync)."""
     await handle.flush()
     await asyncio.to_thread(fsync, handle.fileno())
+
+
+def _wire_relpath(bucket: str, path: str, filename: str | None) -> str:
+    """Bucket-relative path for wire responses and logs.
+
+    Never leaks the absolute filesystem path (the client already knows the
+    bucket-relative path it uploaded) and avoids a double slash when ``path``
+    is empty (root upload). ``filename`` may be ``None`` for a malformed
+    multipart part and is rendered as-is, matching the previous f-string.
+    """
+    return f"{bucket}/{path}/{filename}" if path else f"{bucket}/{filename}"
+
+
+def _enforce_size_cap(total_bytes: int, max_upload_size: int) -> None:
+    """Raise :class:`FileTooLargeError` when an upload exceeds the configured cap.
+
+    A non-positive cap means "unlimited". Shared by the resume-append and the
+    standard upload loops so the anti-DoS check cannot drift between them.
+    """
+    if max_upload_size > 0 and total_bytes > max_upload_size:
+        raise FileTooLargeError(
+            message=f"File exceeds maximum size of {max_upload_size} bytes",
+            details={"max_size": max_upload_size, "received_bytes": total_bytes},
+        )
+
+
+def _partial_upload_response(total_bytes: int, size: int) -> JSONResponse:
+    """202 response for a chunked upload that still expects more chunks."""
+    return JSONResponse(
+        status_code=202,
+        content={
+            "info": "Partial upload received",
+            "offset": total_bytes,
+            "remaining": size - total_bytes,
+        },
+    )
 
 
 @auth_router.post("/api/v1/buckets/{bucket}/files")
@@ -200,8 +235,6 @@ async def upload_file(
                 log.warning("Could not check disk space")
 
         # Validate and sanitize inputs
-        if not is_valid_bucket(bucket):
-            raise InvalidBucketNameError(details={"bucket": bucket})
         if not is_valid_cid(cid):
             raise ValidationError(
                 message="Invalid client ID format",
@@ -298,18 +331,14 @@ async def upload_file(
                     status_code=200,
                     content={
                         "info": "Permissions updated",
-                        "file": f"{bucket}/{path}/{file.filename}"
-                        if path
-                        else f"{bucket}/{file.filename}",
+                        "file": _wire_relpath(bucket, path, file.filename),
                     },
                 )
             return JSONResponse(
                 status_code=409,
                 content={
                     "info": "File already present",
-                    "file": f"{bucket}/{path}/{file.filename}"
-                    if path
-                    else f"{bucket}/{file.filename}",
+                    "file": _wire_relpath(bucket, path, file.filename),
                 },
             )
 
@@ -360,14 +389,7 @@ async def upload_file(
             async with aiofiles.open(partial_file_path, "ab") as f:
                 while chunk := await file.read(_UPLOAD_COPY_CHUNK):
                     total_bytes += len(chunk)
-                    if max_upload_size > 0 and total_bytes > max_upload_size:
-                        raise FileTooLargeError(
-                            message=f"File exceeds maximum size of {max_upload_size} bytes",
-                            details={
-                                "max_size": max_upload_size,
-                                "received_bytes": total_bytes,
-                            },
-                        )
+                    _enforce_size_cap(total_bytes, max_upload_size)
                     await f.write(chunk)
                     fused_sha.update(chunk)
                 # Ensure appended data reaches physical storage
@@ -376,14 +398,7 @@ async def upload_file(
             # Check if upload is complete
             if size > 0 and total_bytes < size:
                 # Partial upload - more chunks expected
-                return JSONResponse(
-                    status_code=202,
-                    content={
-                        "info": "Partial upload received",
-                        "offset": total_bytes,
-                        "remaining": size - total_bytes,
-                    },
-                )
+                return _partial_upload_response(total_bytes, size)
 
             # Upload complete - verify and finalize
             file_location_tmp = partial_file_path
@@ -407,14 +422,7 @@ async def upload_file(
                 file_location_tmp = str(temp_file.name)
                 while chunk := await file.read(_UPLOAD_COPY_CHUNK):
                     total_bytes += len(chunk)
-                    if max_upload_size > 0 and total_bytes > max_upload_size:
-                        raise FileTooLargeError(
-                            message=f"File exceeds maximum size of {max_upload_size} bytes",
-                            details={
-                                "max_size": max_upload_size,
-                                "received_bytes": total_bytes,
-                            },
-                        )
+                    _enforce_size_cap(total_bytes, max_upload_size)
                     await temp_file.write(chunk)
                     if fused_sha is not None:
                         fused_sha.update(chunk)
@@ -478,14 +486,7 @@ async def upload_file(
                 # Move temp file to partial file location (same-filesystem rename)
                 replace(file_location_tmp, partial_file_path)
                 file_location_tmp = None
-                return JSONResponse(
-                    status_code=202,
-                    content={
-                        "info": "Partial upload received",
-                        "offset": total_bytes,
-                        "remaining": size - total_bytes,
-                    },
-                )
+                return _partial_upload_response(total_bytes, size)
 
         # SHA-256 integrity is mandatory: the received bytes must hash to the
         # declared checksum, otherwise the upload is rejected (400).  Verify
@@ -652,7 +653,7 @@ async def upload_file(
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))
 
         log.info(
-            f'{ActionLabel.UPLOAD} "{bucket}/{path}/{file.filename}" (CID: {cid}) '
+            f'{ActionLabel.UPLOAD} "{_wire_relpath(bucket, path, file.filename)}" (CID: {cid}) '
             f"{format_bytes(total_bytes)} "
             f"{format_duration(monotonic() - t0, subsecond=True)}"
         )
@@ -660,7 +661,7 @@ async def upload_file(
             status_code=201,
             content={
                 "info": "File uploaded successfully",
-                "file": f"{bucket}/{path}/{file.filename}",
+                "file": _wire_relpath(bucket, path, file.filename),
                 "resolution": resolution,
                 # ADR-0023: the recorded causal version (merged clock + corrected
                 # mtime) so the uploader can mirror the agreed base exactly.

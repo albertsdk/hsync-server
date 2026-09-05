@@ -158,3 +158,61 @@ class TestPresenceWithMember:
         finally:
             bb_http.delete(f"/api/v1/buckets/{bb_bucket}/members/{client_id}")
             bb_http.delete(f"/api/v1/admin/clients/{client_id}")
+
+
+class TestAdminCreateBucketOnBehalf:
+    """Public contract of ``POST /api/v1/admin/buckets`` (create-on-behalf)."""
+
+    @staticmethod
+    def _admin_id(bb_http: httpx.Client) -> str:
+        r = bb_http.get("/api/v1/admin/clients")
+        assert r.status_code == 200, r.text
+        return next(a["id"] for a in r.json()["clients"] if a["role"] == "admin")
+
+    def test_create_on_behalf_and_duplicate_conflict(self, bb_http: httpx.Client):
+        # Given the admin account id and a fresh bucket name
+        admin_id = self._admin_id(bb_http)
+        bucket = f"bb-onbehalf-{uuid.uuid4().hex[:8]}"
+        try:
+            # When creating the bucket on behalf of the admin
+            created = bb_http.post(
+                "/api/v1/admin/buckets", json={"bucket": bucket, "owner": admin_id}
+            )
+
+            # Then it is created and visible in the bucket inventory
+            assert created.status_code == 201, created.text
+            listed = bb_http.get("/api/v1/admin/buckets")
+            assert listed.status_code == 200, listed.text
+            assert bucket in {b["name"] for b in listed.json()["buckets"]}
+
+            # When creating the same bucket again
+            duplicate = bb_http.post(
+                "/api/v1/admin/buckets", json={"bucket": bucket, "owner": admin_id}
+            )
+
+            # Then the server reports the conflict with the documented code
+            assert duplicate.status_code == 409
+            assert duplicate.json()["error"] == "HSYNC-3004"
+        finally:
+            bb_http.delete(f"/api/v1/buckets/{bucket}")
+
+    def test_create_on_behalf_invalid_name_rejected(self, bb_http: httpx.Client):
+        # Given an invalid bucket name and the admin account id
+        admin_id = self._admin_id(bb_http)
+
+        # When creating it on behalf
+        r = bb_http.post("/api/v1/admin/buckets", json={"bucket": "../escape", "owner": admin_id})
+
+        # Then it is rejected as a bad name
+        assert r.status_code == 400
+
+    def test_create_on_behalf_unknown_owner_returns_404(self, bb_http: httpx.Client):
+        # Given an unknown owner account
+        # When creating a bucket on its behalf
+        r = bb_http.post(
+            "/api/v1/admin/buckets",
+            json={"bucket": f"bb-ghost-{uuid.uuid4().hex[:8]}", "owner": "no-such-account"},
+        )
+
+        # Then the owner is reported as not found
+        assert r.status_code == 404

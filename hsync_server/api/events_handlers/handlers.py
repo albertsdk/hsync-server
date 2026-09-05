@@ -22,10 +22,9 @@ from shutil import rmtree
 from typing import Any
 
 from hsync_common.models.dir import Dir
-from hsync_common.models.event import Event, EventName, is_valid_cid
+from hsync_common.models.event import Event, EventName
 from hsync_common.models.file import File
 from hsync_common.models.symlink import Symlink
-from hsync_common.models.tombstone import relpath_in_bucket
 from hsync_common.path_validation import is_safe_symlink_target
 from loguru import logger as log
 
@@ -40,8 +39,8 @@ from hsync_server.api.file_utils import (
 from hsync_server.api.utils import set_directory_permissions
 from hsync_server.constants import ActionLabel
 from hsync_server.hashes import del_sha256_hash
-from hsync_server.tombstones import clear_deletion, record_deletion
-from hsync_server.versions import clear_version, get_version_store
+from hsync_server.tombstones import clear_deletion, clear_deletion_tree, record_path_deletion
+from hsync_server.versions import clear_version, move_version, move_version_prefix
 
 # ---------------------------------------------------------------------------
 # Shared validation helpers (DRY: replaces 8 duplicated path-validation blocks)
@@ -157,7 +156,6 @@ def _record_tombstones_for_tree(dir_path: str, bucket_dir: str, bucket: str, cid
     record a marker must never abort the ``rmtree``.
     """
     recorded = 0
-    version_store = get_version_store(bucket)
     for root, _dirs, files in walk(dir_path):
         for name in files:
             child = str(Path(root) / name)
@@ -166,24 +164,10 @@ def _record_tombstones_for_tree(dir_path: str, bucket_dir: str, bucket: str, cid
                 sha256sum = child_obj.sha256sum if child_obj else None
             except OSError:
                 sha256sum = None
-            if is_sentinel_file(child):
-                clear_deletion(bucket, bucket_dir, child)
-                continue
-            rel = relpath_in_bucket(child, bucket_dir)
-            if rel is None:
-                continue
             try:
-                stored = version_store.get(rel)
-                record_deletion(
-                    bucket,
-                    bucket_dir,
-                    child,
-                    sha256sum=sha256sum,
-                    origin_cid=cid if is_valid_cid(cid) else None,
-                    prev_vclock=stored["vclock"] if stored else None,
-                )
-                clear_version(bucket, bucket_dir, child)
-                recorded += 1
+                if record_path_deletion(bucket, bucket_dir, child, sha256sum=sha256sum, cid=cid):
+                    clear_version(bucket, bucket_dir, child)
+                    recorded += 1
             except Exception as e:  # pragma: no cover - best-effort bookkeeping
                 log.debug(f"Could not record tombstone for {child}: {e}")
     return recorded
@@ -251,26 +235,18 @@ async def handle_deleted_event(
                 else:
                     ensure_sentinel_in_dir(parent)
             del_sha256_hash(file_obj.filepath)
-            if not is_sentinel:
-                # Causal tombstone (ADR-0003): inherit the stored version clock
-                # for the path and tick it by the deleting peer, so
-                # delete-vs-recreate and delete-vs-delete resolve causally.
-                rel = relpath_in_bucket(file_obj.filepath, bucket_dir)
-                stored = get_version_store(bucket).get(rel) if rel is not None else None
-                record_deletion(
-                    bucket,
-                    bucket_dir,
-                    file_obj.filepath,
-                    sha256sum=file_obj.sha256sum,
-                    origin_cid=cid if is_valid_cid(cid) else None,
-                    prev_vclock=stored["vclock"] if stored else None,
-                )
+            # Causal tombstone (ADR-0003): inherit the stored version clock for
+            # the path and tick it by the deleting peer; sentinel helpers drop
+            # any stale marker instead (never exchanged, never tombstoned).
+            if record_path_deletion(
+                bucket,
+                bucket_dir,
+                file_obj.filepath,
+                sha256sum=file_obj.sha256sum,
+                cid=cid,
+            ):
                 # Drop the causal version entry so a re-created file starts fresh.
                 clear_version(bucket, bucket_dir, file_obj.filepath)
-            else:
-                # Sentinel helpers are per-peer and never exchanged; drop any
-                # stale marker so a future sentinel re-creation is never blocked.
-                clear_deletion(bucket, bucket_dir, file_obj.filepath)
             return Event(cid, bucket_dir, bucket, EventName.deleted, file_obj)
 
     return None
@@ -312,6 +288,17 @@ async def handle_renamed_event(
                 f'{ActionLabel.RENAME} Renamed "{src_dir.path}" -> "{dst_dir.path}" (CID: {cid})'
             )
             rename(src_dir.path, dst_dir.path)
+            # Causal bookkeeping is best-effort: the on-disk rename already
+            # happened, so a failure here must not abort the event broadcast
+            # (peers would never learn of the rename).
+            try:
+                move_version_prefix(bucket, bucket_dir, src_dir.path, dst_dir.path)
+                # The destination may carry deletion markers from an earlier
+                # delete; the rename repopulates it, so they must be dropped or
+                # peers could treat the renamed tree as deleted.
+                clear_deletion_tree(bucket, bucket_dir, dst_dir.path)
+            except Exception as e:  # pragma: no cover - best-effort bookkeeping
+                log.warning(f"Could not update causal state for {dst_dir.path}: {e}")
             return Event(cid, bucket_dir, bucket, EventName.renamed, src_dir, dst_dir)
 
     # Handle file rename
@@ -327,6 +314,17 @@ async def handle_renamed_event(
                 f'{ActionLabel.RENAME} Renamed "{src_file.filepath}" -> "{dst_file.filepath}" (CID: {cid})'
             )
             rename(src_file.filepath, dst_file.filepath)
+            # Causal bookkeeping is best-effort: the on-disk rename already
+            # happened, so a failure here must not abort the event broadcast
+            # (peers would never learn of the rename).
+            try:
+                move_version(bucket, bucket_dir, src_file.filepath, dst_file.filepath)
+                # The destination may carry a stale deletion marker from an
+                # earlier delete; creating content there (as in upload/add) must
+                # drop it.
+                clear_deletion(bucket, bucket_dir, dst_file.filepath)
+            except Exception as e:  # pragma: no cover - best-effort bookkeeping
+                log.warning(f"Could not update causal state for {dst_file.filepath}: {e}")
             return Event(cid, bucket_dir, bucket, EventName.renamed, src_file, dst_file)
 
     return None

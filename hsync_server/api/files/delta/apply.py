@@ -58,7 +58,7 @@ from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import update_file_timestamp
 from hsync_server.api.files.delta._util import delta_disabled_response
 from hsync_server.api.files.upload import _flush_to_disk
-from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket, set_permissions
+from hsync_server.api.utils import resolve_within_bucket, set_permissions
 from hsync_server.arbitration import (
     ArbitrationOutcome,
     arbitrate_upload,
@@ -181,8 +181,6 @@ async def delta_apply(
     decompressed_tmp: str | None = None
     part_path: str | None = None
     try:
-        if not is_valid_bucket(bucket):
-            raise InvalidBucketNameError(details={"bucket": bucket})
         # The final component is NOT dereferenced: the base file is read and
         # then replaced atomically. A symlink at the endpoint is a structural
         # entry that delta transfer cannot patch (no analogue does — rsync/git

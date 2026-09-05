@@ -14,7 +14,6 @@ Consumers: ``hsync_server.main`` (router inclusion).
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
@@ -22,6 +21,11 @@ from fastapi.responses import JSONResponse
 from loguru import logger as log
 from pydantic import BaseModel, Field
 
+from hsync_server.api.responses import (
+    account_not_found_response,
+    conflict_response,
+    not_found_response,
+)
 from hsync_server.api.utils import is_valid_bucket
 from hsync_server.auth import AuthContext, require_admin
 from hsync_server.auth_store import (
@@ -31,7 +35,7 @@ from hsync_server.auth_store import (
     parse_expiry,
     validate_name,
 )
-from hsync_server.config import get_buckets_path
+from hsync_server.bucket_provisioning import create_bucket
 from hsync_server.exceptions import InvalidBucketNameError, ValidationError
 from hsync_server.rate_limiter import RATE_LIMIT_ADMIN, limiter
 
@@ -138,9 +142,7 @@ async def create_client(request: Request, req: CreateClientRequest) -> JSONRespo
     try:
         account_id, token = store.create_account(req.name, req.role, expires_at)
     except ConflictError as e:
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT, content={"error": "HSYNC-3004", "message": str(e)}
-        )
+        return conflict_response(str(e))
     except ValueError as e:
         raise ValidationError(str(e)) from None
 
@@ -167,10 +169,7 @@ async def rotate_key(request: Request, client_id: str, req: RotateKeyRequest) ->
     try:
         token = store.rotate_key(client_id, grace_seconds=req.grace_seconds, expires_at=expires_at)
     except TargetNotFoundError:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={"error": "HSYNC-2000", "message": "Account not found."},
-        )
+        return account_not_found_response()
 
     log.info(f"Rotated key for account {client_id}")
     return JSONResponse(
@@ -197,10 +196,7 @@ async def set_expiry(request: Request, client_id: str, req: SetExpiryRequest) ->
     try:
         store.set_expiry(client_id, expires_at)
     except TargetNotFoundError:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={"error": "HSYNC-2000", "message": "Account not found."},
-        )
+        return account_not_found_response()
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -217,23 +213,14 @@ async def disable_client(
 ) -> JSONResponse:
     """Disable an account (blocks auth, closes WS). Self-disable → 409."""
     if client_id == ctx.id:
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"error": "HSYNC-3004", "message": "Cannot disable your own account."},
-        )
+        return conflict_response("Cannot disable your own account.")
     store = get_auth_store()
     try:
         store.disable(client_id)
     except TargetNotFoundError:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={"error": "HSYNC-2000", "message": "Account not found."},
-        )
+        return account_not_found_response()
     except ConflictError as e:
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"error": "HSYNC-3004", "message": str(e)},
-        )
+        return conflict_response(str(e))
 
     # Close WS connections for this account.
     _close_ws_by_account(client_id)
@@ -252,10 +239,7 @@ async def enable_client(request: Request, client_id: str) -> JSONResponse:
     try:
         store.enable(client_id)
     except TargetNotFoundError:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={"error": "HSYNC-2000", "message": "Account not found."},
-        )
+        return account_not_found_response()
 
     log.info(f"Enabled account {client_id}")
     return JSONResponse(
@@ -275,15 +259,9 @@ async def delete_client(
     try:
         store.delete_account(client_id, cascade=cascade)
     except TargetNotFoundError:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={"error": "HSYNC-2000", "message": "Account not found."},
-        )
+        return account_not_found_response()
     except ConflictError as e:
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"error": "HSYNC-3004", "message": str(e)},
-        )
+        return conflict_response(str(e))
 
     # Close WS connections for this account.
     _close_ws_by_account(client_id)
@@ -320,29 +298,19 @@ async def create_bucket_on_behalf(request: Request, req: CreateBucketRequest) ->
     # Resolve owner by id or name.
     target = store.get_account_by_name(req.owner) or store.get_account(req.owner)
     if target is None:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content={"error": "HSYNC-2000", "message": "Owner account not found."},
-        )
+        return not_found_response("Owner account not found.")
     if target.status != "active":
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"error": "HSYNC-3004", "message": "Owner account is disabled."},
-        )
-
-    bucket_dir = Path(get_buckets_path()) / req.bucket
-    try:
-        bucket_dir.mkdir(parents=True, exist_ok=False)
-    except FileExistsError:
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"error": "HSYNC-3004", "message": "Bucket already exists."},
-        )
+        return conflict_response("Owner account is disabled.")
 
     try:
-        store.set_owner_on_create(req.bucket, target.id)
-    except Exception:
-        log.error(f"Failed to record ownership for bucket '{req.bucket}'", exc_info=True)
+        create_bucket(req.bucket, owner_account_id=target.id, owner_name=target.name)
+    except InvalidBucketNameError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": e.error_code, "message": e.message},
+        )
+    except ConflictError:
+        return conflict_response("Bucket already exists.")
 
     log.info(f"Admin created bucket '{req.bucket}' on behalf of {target.name}")
     return JSONResponse(

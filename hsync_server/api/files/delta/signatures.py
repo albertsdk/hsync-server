@@ -55,7 +55,7 @@ from pydantic import BaseModel, Field
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.files.delta._util import delta_disabled_response
 from hsync_server.api.files.delta.tokens import delta_token_store
-from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
+from hsync_server.api.utils import resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import _ZSTD_COMPRESSOR, should_compress
 from hsync_server.config import get_compression_enabled, get_delta_enabled
@@ -63,7 +63,6 @@ from hsync_server.exceptions import (
     FileNotFoundError as HSyncFileNotFoundError,
 )
 from hsync_server.exceptions import (
-    InvalidBucketNameError,
     InvalidPathError,
     ValidationError,
 )
@@ -158,8 +157,6 @@ async def get_delta_signatures(
 
     if not get_delta_enabled():
         return delta_disabled_response()
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
     file = resolve_within_bucket(bucket, path)
     if file is None:
         raise InvalidPathError(details={"path": path})
@@ -222,8 +219,6 @@ async def post_delta_signatures(
 
     if not get_delta_enabled():
         return delta_disabled_response()
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
     file = resolve_within_bucket(bucket, body.path)
     if file is None:
         raise InvalidPathError(details={"path": body.path})

@@ -66,15 +66,20 @@ in `events_handlers/handlers.py`:
 
 | Event (`EventName`) | Handler | Line |
 | ------------------- | ------- | ---- |
-| `added` | `handle_added_event` | `handlers.py:44` |
-| `modified` | `handle_modified_event` | `handlers.py:95` |
-| `deleted` | `handle_deleted_event` | `handlers.py:143` |
-| `renamed` | `handle_renamed_event` | `handlers.py:220` |
-| `symlink` | `handle_symlink_event` | `handlers.py:278` |
+| `added` | `handle_added_event` | `handlers.py:113` |
+| `modified` | `handle_modified_event` | `handlers.py:130` |
+| `deleted` | `handle_deleted_event` | `handlers.py:176` |
+| `renamed` | `handle_renamed_event` | `handlers.py:255` |
+| `symlink` | `handle_symlink_event` | `handlers.py:313` |
 
 `EventName` comes from `hsync_common.models.event` (`events.py:27`). Each handler
 mutates the bucket on disk, keeps the hash cache / tombstones consistent, then the
-event is rebroadcast.
+event is rebroadcast. `renamed` additionally carries the causal version entries
+across the rename (`move_version` / `move_version_prefix`), drops any stale
+deletion markers at the destination (`clear_deletion` / `clear_deletion_tree`)
+and treats this bookkeeping as best-effort so it never aborts the broadcast;
+`deleted` records the causal tombstone through the shared
+`tombstones.record_path_deletion`.
 
 ## Path safety (`api/events_handlers/validation.py`)
 

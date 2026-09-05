@@ -41,7 +41,9 @@ Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–
   - `create_bucket` (`bucket_provisioning.py:34`) mkdir under
     `get_buckets_path()` + `AuthStore.set_owner_on_create`; on ownership
     failure the orphan directory is removed before raising `DeleteError`.
-    Existing name → `ConflictError` (REST maps it to 409).
+    Existing name → `ConflictError` (REST maps it to 409). The admin
+    create-on-behalf endpoint (`api/admin.py`) delegates here too, so it
+    inherits the same name validation and orphan rollback.
   - `delete_bucket` (`bucket_provisioning.py:88`) validates the name, then
     delegates to `AuthStore.delete_bucket` (DB rows + `shutil.rmtree`). With
     `delete_files=False` it calls `AuthStore.delete_bucket_db` only — the CLI

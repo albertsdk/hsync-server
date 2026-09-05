@@ -282,13 +282,6 @@ def validate_name(name: str) -> str:
     return name
 
 
-def validate_secret_hex(secret: str) -> str:
-    """Validate a 64-char lowercase hex secret (for ``HSYNC_ADMIN_KEY``)."""
-    if not _SECRET_HEX_RE.fullmatch(secret):
-        raise ValueError("HSYNC_ADMIN_KEY must be exactly 64 lowercase hex characters.")
-    return secret
-
-
 def parse_expiry(expires_at: str | None, valid_days: int | None) -> int | None:
     """Convert ``expires_at`` (RFC3339 UTC) or ``valid_days`` to a Unix UTC timestamp.
 
@@ -442,7 +435,6 @@ class AuthStore:
                 return None
 
             if env_secret:
-                validate_secret_hex(env_secret)
                 secret = env_secret
                 generated = False
             else:
@@ -460,16 +452,14 @@ class AuthStore:
                     self._rollback()
                     return None
 
-                self.conn.execute(
-                    """
-                    INSERT INTO clients
-                      (id, name, role, status, key_hash, key_prefix,
-                       key_generation, key_expires_at,
-                       prior_key_hash, prior_expires_at,
-                       created_at, last_used_at)
-                    VALUES (?, ?, 'admin', 'active', ?, ?, 1, NULL, NULL, NULL, ?, NULL)
-                    """,
-                    (BOOTSTRAP_ADMIN_ID, BOOTSTRAP_ADMIN_NAME, key_hash, _key_prefix(secret), now),
+                self._insert_client(
+                    account_id=BOOTSTRAP_ADMIN_ID,
+                    name=BOOTSTRAP_ADMIN_NAME,
+                    role="admin",
+                    key_hash=key_hash,
+                    key_prefix=_key_prefix(secret),
+                    key_expires_at=None,
+                    created_at=now,
                 )
 
                 # Adopt orphan bucket directories (bootstrap-only).
@@ -541,16 +531,14 @@ class AuthStore:
         with self._lock:
             try:
                 self._begin()
-                self.conn.execute(
-                    """
-                    INSERT INTO clients
-                      (id, name, role, status, key_hash, key_prefix,
-                       key_generation, key_expires_at,
-                       prior_key_hash, prior_expires_at,
-                       created_at, last_used_at)
-                    VALUES (?, ?, ?, 'active', ?, ?, 1, ?, NULL, NULL, ?, NULL)
-                    """,
-                    (account_id, name, role, key_hash, _key_prefix(secret), expires_at, now),
+                self._insert_client(
+                    account_id=account_id,
+                    name=name,
+                    role=role,
+                    key_hash=key_hash,
+                    key_prefix=_key_prefix(secret),
+                    key_expires_at=expires_at,
+                    created_at=now,
                 )
                 self._commit()
             except sqlite3.IntegrityError:
@@ -559,6 +547,44 @@ class AuthStore:
 
         token = f"{TOKEN_PREFIX}{account_id}_{secret}"
         return account_id, token
+
+    def _insert_client(
+        self,
+        *,
+        account_id: str,
+        name: str,
+        role: str,
+        key_hash: str,
+        key_prefix: str,
+        key_expires_at: int | None,
+        created_at: int,
+    ) -> None:
+        """Insert one active account row.
+
+        Single definition of the ``clients`` column list shared by
+        :meth:`bootstrap_admin` and :meth:`create_account` (both create an
+        active account with a fresh generation-1 key); ``prior_*`` and
+        ``last_used_at`` start NULL.
+        """
+        self.conn.execute(
+            """
+            INSERT INTO clients
+              (id, name, role, status, key_hash, key_prefix,
+               key_generation, key_expires_at,
+               prior_key_hash, prior_expires_at,
+               created_at, last_used_at)
+            VALUES (?, ?, ?, 'active', ?, ?, 1, ?, NULL, NULL, ?, NULL)
+            """,
+            (
+                account_id,
+                name,
+                role,
+                key_hash,
+                key_prefix,
+                key_expires_at,
+                created_at,
+            ),
+        )
 
     def list_accounts(self) -> list[AccountRow]:
         """Return all accounts (never includes secrets)."""
