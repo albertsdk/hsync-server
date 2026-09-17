@@ -59,7 +59,7 @@ Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–
   the developer's real DB).
 - Missing bucket → `BucketNotFoundError` (`exceptions.py:111`).
 
-## Upload (`api/files/upload.py:70`)
+## Upload (`api/files/upload.py:152`)
 
 Multipart form fields: `cid, file, path, ctime, mtime, sha256sum, permissions`
 (default `664`), resumable fields `offset, size, compressed, compressed_size`,
@@ -86,8 +86,14 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
 - Subdir path and filename confined to the bucket via `resolve_within_bucket`
   (`api/utils.py:46`) — rejects cross-bucket escapes (`../other-bucket/x`).
 - Resumable: `offset > 0` appends to a `.part` file; full write flushed via
-  `_flush_to_disk` → `fsync` (`upload.py:62`). In-flight temp files are
+  `_flush_to_disk` → `fsync` (`upload.py:92`). In-flight temp files are
   dot-prefixed (`.hsync-upload-*`), so they never appear in `/files` listings.
+- **Overwrite backup**: when the target already exists, its previous content is
+  snapshotted to `<path>.backup` by `_backup_existing_file` (`upload.py`) — a
+  hard link (O(1), same inode) with a `copy2` fallback when the filesystem has
+  no link support or a stale backup blocks the link. The publish uses an atomic
+  `replace` onto a new inode, so the snapshot never aliases the new content:
+  readers keep the complete previous version while the upload is in flight.
 - Optional zstd payload expanded with `decompress_file_to_file`
   (`compression.py`, capped via `decompress_stream`) in a worker thread
   (`asyncio.to_thread`): the compressed temp file is decompressed
@@ -98,25 +104,32 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
 - On success cache updated `set_sha256_hash` (`hashes.py:28`) and any tombstone
   cleared `clear_deletion` (`tombstones.py:66`).
 - Size guard `get_max_upload_size()` (`config.py:397`) → `FileTooLargeError`.
-- **Same-SHA permission-only branch** (`upload.py`): when the uploaded content
+- **Same-SHA metadata branch** (`upload.py`): when the uploaded content
   hash equals the on-disk hash, the server does NOT reject the upload — it
-  compares the incoming permissions against the stored file and, on a
-  divergence, applies the new mode (`set_permissions`, sanitized) and
-  re-broadcasts a `modified` event to the other connected clients, responding
+  updates the file timestamp from the incoming `ctime`/`mtime`, then compares
+  the incoming permissions against the stored file and, on a divergence,
+  applies the new mode (`set_permissions`, sanitized) and re-broadcasts a
+  `modified` event to the other connected clients, responding
   `200 {"info": "Permissions updated"}` (no byte rewrite, no version bump).
-  Identical content+p perms keep the legacy `409 File already present`.
-  The permission apply + `modified` re-broadcast is the shared
-  `apply_permissions_to_existing_file` helper (`api/files/permissions.py`),
-  also used by the dedicated `PATCH` endpoint below.
+  Identical content with no metadata change keeps the legacy
+  `409 File already present`. The metadata apply + `modified` re-broadcast is
+  the shared `apply_metadata_to_existing_file` helper
+  (`api/files/permissions.py`), also used by the dedicated `PATCH` endpoint.
 - **`PATCH …/files/permissions`** (`api/files/permissions.py`,
-  `patch_file_permissions`): metadata-only chmod. Query params
-  `filename` (bucket-relative), `permissions` (octal, sanitized), optional
-  `cid`. Applies the mode WITHOUT any file payload and re-broadcasts a causal
-  `modified` event; `200 {"info": "Permissions updated"}` on change (or
-  `"info": "Permissions already current"` when identical), `404` when the
-  file does not exist, `400` on invalid permissions/path/name. Used by the
-  client as the first-choice path for `permissions_only` uploads so a chmod
-  on a large file never re-sends its bytes.
+  `patch_file_permissions`): metadata-only convergence (chmod and/or touch).
+  Query params `filename` (bucket-relative), `permissions` (octal, sanitized),
+  optional `mtime` (ADR-0023 corrected Unix timestamp), `vclock` (JSON-encoded
+  effective vector clock) and `version_id`. Applies whatever diverges WITHOUT
+  any file payload, records the change as a real causal version
+  (`record_version`, so listings and future events advertise the new metadata
+  instead of the peer re-detecting the divergence every sync) and re-broadcasts
+  a causal `modified` event; `200 {"info": "Metadata updated"}` on change (or
+  `"info": "Metadata already current"` when identical), `404` when the file
+  does not exist, `400` on invalid permissions/path/name/vclock. Used by the
+  client as the first-choice path for content-unchanged metadata uploads so a
+  chmod or a plain `touch` on a large file never re-sends its bytes. Applying
+  an mtime preserves the cached content digest so the next same-SHA upload
+  still hits the dedup skip.
 - **`GET …/dirs`** (`api/files/list.py`, `get_dirs`): directory metadata
   listing `[{"path": <bucket-relative>, "permissions": <octal>}, …]`, sorted
   by path; skips hidden dirs and dir-symlinks. Directories carry no content

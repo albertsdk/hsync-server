@@ -7,19 +7,21 @@
 """
 Metadata-only permission endpoint for HSYNC Server.
 
-The full-post upload endpoint and this module share the permission-only
-logic through :func:`apply_permissions_to_existing_file`: both apply a
-remote ``chmod`` when the content hash already matches and re-broadcast a
-causal ``modified`` event, but only this endpoint does it WITHOUT any file
-payload crossing the wire. Clients use it for pure metadata convergence
-(no bytes are re-read or re-sent).
+The full-post upload endpoint and this module share the metadata-only
+logic through :func:`apply_metadata_to_existing_file`: both apply a remote
+``chmod`` and/or ``touch`` when the content hash already matches and
+re-broadcast a causal ``modified`` event, but only this endpoint does it
+WITHOUT any file payload crossing the wire. Clients use it for pure metadata
+convergence (no bytes are re-read or re-sent).
 """
 
+import json
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
+from hsync_common.constants import MTIME_PROPAGATION_TOLERANCE_SECONDS
 from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
@@ -29,6 +31,7 @@ from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.connection_manager import bucket_manager
+from hsync_server.api.file_utils import update_file_timestamp
 from hsync_server.api.utils import (
     get_permissions,
     resolve_within_bucket,
@@ -43,44 +46,80 @@ from hsync_server.exceptions import (
     InvalidPermissionFormatError,
     ValidationError,
 )
+from hsync_server.hashes import get_sha256_hash, set_sha256_hash
 from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
-from hsync_server.versions import server_version_info
+from hsync_server.versions import record_version, server_version_info
 
 
-async def apply_permissions_to_existing_file(
+async def apply_metadata_to_existing_file(
     *,
     bucket: str,
     file_location: str,
     cid: str,
     permissions: str,
+    mtime: int = 0,
+    vclock: dict[str, int] | None = None,
+    version_id: str | None = None,
 ) -> bool:
-    """Apply a permission-only change to an existing file and notify peers.
+    """Apply a content-unchanged metadata change (mode and/or mtime) to a file.
 
     Contracts:
     - *permissions* comes from a remote peer, so it is sanitized (special
       setuid/setgid/sticky bits are stripped) and validated. The comparison
       is against the stored file's *canonical* octal mode.
-    - When the modes diverge, the new mode is applied and a causal
-      ``modified`` event carrying the stored file metadata (STILL with its
-      unchanged content hash, joined version store clock) is re-broadcast
-      to the other connected clients. Returns ``True``.
-    - When identical content already has identical permissions, nothing is
-      touched and ``False`` is returned (the caller keeps its legacy 409).
+    - *mtime* is a peer-supplied corrected Unix timestamp, applied only when it
+      diverges from the stored mtime by more than
+      :data:`MTIME_PROPAGATION_TOLERANCE_SECONDS` (a plain ``touch``). The
+      far-future clamp inside :func:`update_file_timestamp` guards abuse.
+    - When either diverges, the change is applied and a causal ``modified``
+      event carrying the stored file metadata (STILL with its unchanged content
+      hash, joined version store clock) is re-broadcast to the other connected
+      clients. Returns ``True``.
+    - When identical content already has identical metadata, nothing is touched
+      and ``False`` is returned (the caller keeps its legacy 409).
     """
-    permissions_only = False
+    changed = False
     if permissions and is_valid_octal_permissions(permissions):
         current_permissions = await get_permissions(file_location)
         if current_permissions != sanitize_remote_permissions(permissions):
             await set_permissions(file_location, permissions)
-            permissions_only = True
-    # A permission-only change must reach the other connected clients:
+            changed = True
+    if mtime > 0:
+        try:
+            current_mtime = int(Path(file_location).stat().st_mtime)
+        except OSError:
+            current_mtime = 0
+        if abs(current_mtime - mtime) > MTIME_PROPAGATION_TOLERANCE_SECONDS:
+            # The utime pass changes the mtime_ns the hash cache keys on:
+            # preserve the (unchanged) digest so the next same-SHA upload still
+            # hits the dup-skip instead of re-hashing.
+            cached_hash = get_sha256_hash(file_location)
+            update_file_timestamp(file_location, mtime=str(mtime))
+            if cached_hash:
+                set_sha256_hash(file_location, cached_hash)
+            changed = True
+    # A metadata-only change must reach the other connected clients:
     # re-emit the (unchanged) file as a `modified` event so they apply
-    # just the permissions (their content dedup sees the same hash).
-    if permissions_only:
+    # just the metadata (their content dedup sees the same hash).
+    if changed:
+        # Record the metadata change as a real causal version. Without this the
+        # version store keeps the old corrected mtime and clock, so every later
+        # sync re-detects the divergence and re-sends the metadata (churn) and
+        # the listing advertises stale metadata. The content hash is unchanged.
+        record_version(
+            bucket,
+            _bucket_dir(bucket),
+            file_location,
+            base_hash=get_sha256_hash(file_location) or "",
+            vclock=vclock,
+            version_id=version_id,
+            origin_cid=cid or None,
+            corrected_mtime=mtime,
+        )
         # Kept synchronous ON PURPOSE: offloading File.get would let a
         # same-path upload interleave and broadcast its generation under this
-        # request's CID. The permission-only convergence path is rare, so the
+        # request's CID. The metadata-only convergence path is rare, so the
         # pre-existing loop hold is the safer trade-off.
         src = None if is_hidden_file(file_location) else LocalFile.get(file_location)
         if src is not None:
@@ -90,7 +129,7 @@ async def apply_permissions_to_existing_file(
             await manager.send_message(
                 Event(cid, _bucket_dir(bucket), bucket, EventName.modified, src)
             )
-    return permissions_only
+    return changed
 
 
 def _bucket_dir(bucket: str) -> str:
@@ -107,14 +146,19 @@ async def patch_file_permissions(
     filename: str,
     permissions: str,
     cid: str = "",
+    mtime: int = 0,
+    vclock: str = "",
+    version_id: str = "",
 ) -> JSONResponse:
     """
-    Apply a permission-only change to an existing file (no payload upload).
+    Apply a content-unchanged metadata change to an existing file (no payload).
 
     Optimized branch of the upload same-SHA path: the client declares the
-    filename (bucket-relative), the expected permissions and its CID; the
-    server sanitizes/applies the new mode and re-broadcasts a ``modified``
-    event to the other connected clients. No file bytes cross the wire.
+    filename (bucket-relative), the expected permissions, an optional corrected
+    ``mtime`` and its CID; the server sanitizes/applies what diverges and
+    re-broadcasts a ``modified`` event to the other connected clients. No file
+    bytes cross the wire. Both a chmod and a plain ``touch`` (same content,
+    newer mtime) converge through this route.
 
     Args:
         bucket: Target bucket name.
@@ -122,9 +166,12 @@ async def patch_file_permissions(
         permissions: Octal permission string (e.g., '644'). Special bits
             (setuid/setgid/sticky) are stripped (remote-supplied).
         cid: Client ID for event attribution (validated, optional).
+        mtime: Corrected Unix mtime to propagate (0 = leave unchanged).
+        vclock: JSON-encoded effective vector clock of the sender ("" = none).
+        version_id: Effective version id of the sender ("" = none).
 
     Returns:
-        JSON response: 200 on permissions updated, 404 when the file does
+        JSON response: 200 on metadata updated, 404 when the file does
         not exist.
 
     Raises:
@@ -150,6 +197,20 @@ async def patch_file_permissions(
     if permissions and not is_valid_octal_permissions(permissions):
         raise InvalidPermissionFormatError(details={"permissions": permissions})
 
+    parsed_vclock: dict[str, int] | None = None
+    if vclock:
+        try:
+            raw_vclock = json.loads(vclock)
+        except (ValueError, TypeError):
+            raise ValidationError(message="Invalid vclock JSON", details={"vclock": vclock})
+        if not isinstance(raw_vclock, dict):
+            raise ValidationError(message="Invalid vclock JSON", details={"vclock": vclock})
+        parsed_vclock = {
+            str(k): int(v)
+            for k, v in raw_vclock.items()
+            if isinstance(v, int) and not isinstance(v, bool)
+        }
+
     if not Path(file_location).exists():
         return JSONResponse(
             status_code=404,
@@ -159,28 +220,31 @@ async def patch_file_permissions(
             },
         )
 
-    permissions_only = await apply_permissions_to_existing_file(
+    changed = await apply_metadata_to_existing_file(
         bucket=bucket,
         file_location=file_location,
         cid=cid,
         permissions=permissions,
+        mtime=max(0, int(mtime)),
+        vclock=parsed_vclock,
+        version_id=version_id or None,
     )
-    if permissions_only:
+    if changed:
         log.info(
-            f'{ActionLabel.PERMISSION} Permissions updated: "{bucket}/{filename}" '
-            f"({sanitize_remote_permissions(permissions)})"
+            f'{ActionLabel.PERMISSION} Metadata updated: "{bucket}/{filename}" '
+            f"({sanitize_remote_permissions(permissions)}, mtime={max(0, int(mtime))})"
         )
         return JSONResponse(
             status_code=200,
             content={
-                "info": "Permissions updated",
+                "info": "Metadata updated",
                 "file": f"{bucket}/{filename}",
             },
         )
     return JSONResponse(
         status_code=200,
         content={
-            "info": "Permissions already current",
+            "info": "Metadata already current",
             "file": f"{bucket}/{filename}",
         },
     )

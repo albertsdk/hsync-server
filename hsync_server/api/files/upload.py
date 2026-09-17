@@ -19,7 +19,8 @@ import asyncio
 import hashlib
 import hmac
 import json
-from os import fsync, remove, replace
+from os import fsync, link, remove, replace
+from os.path import samefile
 from pathlib import Path
 from shutil import copy2
 from time import monotonic
@@ -81,7 +82,7 @@ from hsync_server.routers import auth_router
 from hsync_server.tombstones import clear_deletion
 from hsync_server.versions import record_version, server_version_info
 
-from .permissions import apply_permissions_to_existing_file
+from .permissions import apply_metadata_to_existing_file
 
 # Chunk size for copying the spooled upload body to its destination file.
 # 8 KiB made the copy loop event-loop-bound on large files (one await per
@@ -93,6 +94,38 @@ async def _flush_to_disk(handle) -> None:
     """Flush an open aiofiles handle's buffers to physical storage (fsync)."""
     await handle.flush()
     await asyncio.to_thread(fsync, handle.fileno())
+
+
+def _backup_existing_file(file_location: str, backup_path: str) -> None:
+    """Snapshot an existing file to *backup_path* before it is overwritten.
+
+    Prefers a hard link (O(1), same inode) so a large overwrite no longer pays a
+    full byte-for-byte copy: the publish step uses an atomic ``replace`` onto a
+    new temp inode, so the snapshot keeps the previous content and the two never
+    alias. A crash between the link and the publish can leave *backup_path*
+    pointing at the same inode as the target; that stale link is reused as the
+    snapshot (removing it would delete the target's last other name, and copying
+    a file onto itself raises ``SameFileError``). Falls back to :func:`copy2`
+    when the filesystem does not support links.
+    """
+    try:
+        link(file_location, backup_path)
+        return
+    except FileExistsError:
+        try:
+            if samefile(file_location, backup_path):
+                return  # already a snapshot of the current inode
+        except OSError:
+            pass
+        try:
+            remove(backup_path)
+            link(file_location, backup_path)
+            return
+        except OSError:
+            pass
+    except OSError:
+        pass
+    copy2(file_location, backup_path)
 
 
 def _wire_relpath(bucket: str, path: str, filename: str | None) -> str:
@@ -315,10 +348,10 @@ async def upload_file(
             # Clean up partial file if exists
             if Path(partial_file_path).exists():
                 remove(partial_file_path)
-            # Shared permission-only branch (same logic as the dedicated
-            # PATCH /files/permissions endpoint): applies the new mode when it
-            # diverges and re-broadcasts a causal `modified` event.
-            permissions_only = await apply_permissions_to_existing_file(
+            # Shared metadata-only branch (same logic as the dedicated
+            # PATCH /files/permissions endpoint): applies the new mode and/or
+            # mtime when it diverges and re-broadcasts a causal `modified` event.
+            permissions_only = await apply_metadata_to_existing_file(
                 bucket=bucket,
                 file_location=file_location,
                 cid=cid,
@@ -350,7 +383,7 @@ async def upload_file(
         # while the new version is being uploaded
         backup_path = f"{file_location}{BACKUP_SUFFIX}"
         if Path(file_location).exists():
-            copy2(file_location, backup_path)
+            _backup_existing_file(file_location, backup_path)
 
         # Fused checksum: updated while the body is copied so a complete
         # upload needs no second full read of the temp file (the previous

@@ -58,7 +58,7 @@ class TestPatchFilePermissions:
 
         # Then the endpoint reports success and applies the mode on disk
         assert response.status_code == 200, response.text
-        assert response.json()["info"] == "Permissions updated"
+        assert response.json()["info"] == "Metadata updated"
         mode = oct(Path(bucket_path, "perm.bin").stat().st_mode & 0o777)
         assert mode == "0o600"
 
@@ -76,7 +76,93 @@ class TestPatchFilePermissions:
         )
 
         assert response.status_code == 200
-        assert response.json()["info"] == "Permissions already current"
+        assert response.json()["info"] == "Metadata already current"
+
+    @pytest.mark.asyncio
+    async def test_patch_updates_mtime_without_payload(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        # Content-identical metadata propagation: a plain touch must converge.
+        bucket_path = os.path.join(temp_buckets_dir, "permbucket_mtime")
+        os.makedirs(bucket_path)
+        await _upload(client, "permbucket_mtime", "touched.bin", b"same bytes")
+        target = Path(bucket_path, "touched.bin")
+        new_mtime = 1_700_000_000
+        assert int(target.stat().st_mtime) != new_mtime
+
+        response = await client.patch(
+            "/api/v1/buckets/permbucket_mtime/files/permissions",
+            params={
+                "filename": "touched.bin",
+                "permissions": "644",  # unchanged: only the mtime diverges
+                "mtime": str(new_mtime),
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["info"] == "Metadata updated"
+        assert int(target.stat().st_mtime) == new_mtime
+        # Content (and therefore the dedup hash) must be untouched.
+        assert target.read_bytes() == b"same bytes"
+
+    @pytest.mark.asyncio
+    async def test_patch_same_mtime_is_idempotent(self, client: AsyncClient, temp_buckets_dir: str):
+        bucket_path = os.path.join(temp_buckets_dir, "permbucket_mtime2")
+        os.makedirs(bucket_path)
+        await _upload(client, "permbucket_mtime2", "steady.bin", b"steady")
+        target = Path(bucket_path, "steady.bin")
+        current = int(target.stat().st_mtime)
+
+        response = await client.patch(
+            "/api/v1/buckets/permbucket_mtime2/files/permissions",
+            params={"filename": "steady.bin", "permissions": "644", "mtime": str(current)},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["info"] == "Metadata already current"
+        assert int(target.stat().st_mtime) == current
+
+    @pytest.mark.asyncio
+    async def test_patch_records_causal_version(self, client: AsyncClient, temp_buckets_dir: str):
+        # A metadata-only change must be recorded as a real causal version, or
+        # listings keep advertising the old mtime and every sync re-sends it.
+        bucket_path = os.path.join(temp_buckets_dir, "permbucket_ver")
+        os.makedirs(bucket_path)
+        await _upload(client, "permbucket_ver", "v.bin", b"bytes")
+        new_mtime = 1_700_000_000
+
+        response = await client.patch(
+            "/api/v1/buckets/permbucket_ver/files/permissions",
+            params={
+                "filename": "v.bin",
+                "permissions": "644",
+                "mtime": str(new_mtime),
+                "vclock": '{"ClientX1234567890": 2}',
+                "version_id": "ver-1",
+                "cid": "TestClientX1234567890",
+            },
+        )
+        assert response.status_code == 200, response.text
+
+        listing = await client.get("/api/v1/buckets/permbucket_ver/files")
+        assert listing.status_code == 200, listing.text
+        entry = next(f for f in listing.json() if f["filepath"] == "v.bin")
+        assert entry["version"]["corrected_mtime"] == new_mtime
+        assert entry["version"]["vclock"] == {"ClientX1234567890": 2}
+        assert entry["version"]["version_id"] == "ver-1"
+
+    @pytest.mark.asyncio
+    async def test_patch_rejects_invalid_vclock(self, client: AsyncClient, temp_buckets_dir: str):
+        bucket_path = os.path.join(temp_buckets_dir, "permbucket_badvc")
+        os.makedirs(bucket_path)
+        await _upload(client, "permbucket_badvc", "bad.bin", b"x")
+
+        response = await client.patch(
+            "/api/v1/buckets/permbucket_badvc/files/permissions",
+            params={"filename": "bad.bin", "permissions": "644", "vclock": "not-json"},
+        )
+
+        assert response.status_code == 400
 
     @pytest.mark.asyncio
     async def test_patch_strips_special_bits(self, client: AsyncClient, temp_buckets_dir: str):

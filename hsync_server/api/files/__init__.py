@@ -30,7 +30,7 @@ from hsync_server.api.files.list import (
     post_tombstones,
 )
 from hsync_server.api.files.permissions import (
-    apply_permissions_to_existing_file,
+    apply_metadata_to_existing_file,
     patch_file_permissions,
 )
 from hsync_server.api.files.symlinks import create_symlink
@@ -47,7 +47,7 @@ __all__ = [
     "delete_file",
     "create_symlink",
     "patch_file_permissions",
-    "apply_permissions_to_existing_file",
+    "apply_metadata_to_existing_file",
     "delta_apply",
     "get_delta_data",
     "get_delta_signatures",
