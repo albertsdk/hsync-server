@@ -27,7 +27,7 @@ from hsync_common.hashing import compute_sha256_async
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
-from hsync_server.api.utils import resolve_within_bucket
+from hsync_server.api.utils import build_content_disposition, resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import (
     CONTENT_ENCODING_ZSTD,
@@ -147,7 +147,7 @@ async def download_file(
             media_type=CONTENT_TYPE_OCTET_STREAM,
             headers={
                 "Content-Encoding": CONTENT_ENCODING_ZSTD,
-                "Content-Disposition": f'attachment; filename="{filename.split("/")[-1]}"',
+                "Content-Disposition": build_content_disposition(filename.split("/")[-1]),
                 **checksum_header,
             },
         )

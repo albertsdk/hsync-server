@@ -13,6 +13,7 @@ from hsync_server.api.file_utils import (
     update_file_timestamp,
 )
 from hsync_server.api.utils import (
+    build_content_disposition,
     get_permissions,
     is_valid_bucket,
     resolve_within_bucket,
@@ -492,3 +493,38 @@ class TestSanitizeFilename:
         result = sanitize_filename(long_name)
         assert len(result) <= 255
         assert result.endswith(".txt")
+
+
+class TestBuildContentDisposition:
+    """Tests for the RFC 6266 download Content-Disposition builder."""
+
+    def test_ascii_name_uses_quoted_form(self):
+        """A plain ASCII basename keeps the simple quoted filename form."""
+        assert build_content_disposition("report.txt") == 'attachment; filename="report.txt"'
+
+    def test_latin1_accented_name_is_percent_encoded(self):
+        """Any non-ASCII name takes the percent-encoded form.
+
+        ``quote()`` passes ASCII through untouched and percent-encodes every
+        non-ASCII code point, so this matches Starlette's ``FileResponse``
+        (which compares ``quote(filename) != filename``): the two download
+        branches advertise names identically.
+        """
+        assert (
+            build_content_disposition("dati-\u00f1") == "attachment; filename*=utf-8''dati-%C3%B1"
+        )
+
+    def test_non_latin1_name_is_percent_encoded(self):
+        """A character outside latin-1 must be emitted as filename*=utf-8''.
+
+        Header values are serialized as latin-1, so the former quoted form
+        raised UnicodeEncodeError and turned the download into a 500.
+        """
+        value = build_content_disposition("dati-\u010d-large")
+        assert value == "attachment; filename*=utf-8''dati-%C4%8D-large"
+        value.encode("latin-1")  # must be header-serializable
+
+    def test_non_latin1_name_is_header_serializable(self):
+        """Every produced value survives the latin-1 header encoding."""
+        for name in ("plain", "dati-\u010d", "\u0142", "\u6d4b\u8bd5.txt", "emoji-\U0001f600"):
+            build_content_disposition(name).encode("latin-1")

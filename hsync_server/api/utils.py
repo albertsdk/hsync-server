@@ -14,6 +14,7 @@ including path validation, SHA-256 computation, and file permission handling.
 from asyncio import to_thread
 from os import chmod
 from pathlib import Path
+from urllib.parse import quote
 
 from hsync_common.path_validation import (
     is_valid_bucket_name,
@@ -28,6 +29,33 @@ from hsync_common.permissions import get_permissions as _read_permissions
 from loguru import logger as log
 
 from hsync_server.config import get_buckets_path
+
+
+def build_content_disposition(filename: str) -> str:
+    """
+    Build an RFC 6266 ``Content-Disposition`` value for a download *filename*.
+
+    HTTP header values are encoded as latin-1, so a filename containing any
+    character outside that repertoire (e.g. ``č``, ``ł``, CJK) cannot be placed
+    verbatim in a quoted ``filename=`` parameter: doing so raises
+    ``UnicodeEncodeError`` while the response headers are serialized and turns
+    the download into a 500. Non-ASCII names are therefore emitted with the
+    ``filename*=utf-8''<pct-encoded>`` form, which is exactly what Starlette's
+    :class:`~starlette.responses.FileResponse` does for the identity branch —
+    keeping both download branches consistent. Pure-ASCII names keep the plain
+    quoted form.
+
+    Args:
+        filename: Filename to advertise (a bare basename, not a path).
+
+    Returns:
+        The header value, e.g. ``attachment; filename="report.txt"`` or
+        ``attachment; filename*=utf-8''dati-%C4%8D``.
+    """
+    quoted = quote(filename)
+    if quoted != filename:
+        return f"attachment; filename*=utf-8''{quoted}"
+    return f'attachment; filename="{filename}"'
 
 
 def is_valid_bucket(value: str) -> bool:

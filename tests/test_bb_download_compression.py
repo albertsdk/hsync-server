@@ -53,6 +53,31 @@ class TestDownloadCompressed:
         assert "X-Checksum-SHA256" in r.headers
         assert r.content == original
 
+    def test_compressed_download_of_non_latin1_name(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        # Given an uploaded file that crosses the compression threshold and
+        # whose name contains a character outside the latin-1 header repertoire
+        # ('č' U+010D) — the compressed branch builds Content-Disposition itself
+        original = b"compressible payload " * 4000  # ~76 KB
+        filename = "dati-\u010d-large.bin"
+        bb_upload(bb_http, bb_bucket, filename, original)
+
+        # When downloading it
+        r = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download", params={"filename": filename}
+        )
+
+        # Then the non-ASCII name is advertised with the RFC 5987 form instead
+        # of raising UnicodeEncodeError while serializing the headers (a 500),
+        # and the payload still round-trips exactly.
+        assert r.status_code == 200
+        assert r.headers.get("Content-Encoding") == "zstd"
+        assert r.headers.get("Content-Disposition") == (
+            "attachment; filename*=utf-8''dati-%C4%8D-large.bin"
+        )
+        assert r.content == original
+
 
 class TestTransferPayloadNotReEncoded:
     """The transfer endpoints must never be re-encoded by the HTTP gzip layer.
