@@ -650,7 +650,7 @@ async def upload_file(
             # so peers do not delete it on their next full sync.
             clear_deletion(bucket, local_bucket, file_location)
 
-            # Record the agreed version (merge of incoming + stored clocks, D11,
+            # Record the agreed version (merge of incoming + stored clocks, ADR-0022 §5,
             # plus the ADR-0023 corrected mtime).
             record_version(
                 bucket,
