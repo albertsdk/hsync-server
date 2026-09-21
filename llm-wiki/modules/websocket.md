@@ -30,14 +30,14 @@ Uses `hsync_common.protocol.handshake` (imported `events.py:28`):
 
 | Object | Location | Role |
 | ------ | -------- | ---- |
-| `ConnectionManager` | `connection_manager.py:45` | per-bucket `{cid: WebSocket}`; `disconnect`/`send_message`/`send_presence` |
-| `BucketConnectionManager` | `connection_manager.py:112` | per-bucket pools + global slot accounting for DoS protection + `presence_counts` |
-| `bucket_manager` (global) | `connection_manager.py:187` | the singleton used by REST and WS to broadcast |
+| `ConnectionManager` | `connection_manager.py:61` | per-bucket `{cid: WebSocket}`; `disconnect`/`send_message`/`send_presence` |
+| `BucketConnectionManager` | `connection_manager.py:143` | per-bucket pools + global slot accounting for DoS protection + `presence_counts` |
+| `bucket_manager` (global) | `connection_manager.py:253` | the singleton used by REST and WS to broadcast |
 
-`_send_to_all` (`connection_manager.py:57`) is the shared broadcast path: it
+`_send_to_all` (`connection_manager.py:96`) is the shared broadcast path: it
 re-checks each recipient's authz (account active + bucket access) and evicts
-dead sockets per-connection. `send_message` (`:118`) skips the originating
-`cid` so senders don't echo; `send_presence` (`:126`) has no sender filter.
+dead sockets per-connection. `send_message` (`:124`) skips the originating
+`cid` so senders don't echo; `send_presence` (`:133`) has no sender filter.
 `presence_counts` (`:143`) computes the display-ready `(connected, total)` pair:
 `total` = non-admin bucket members (`AuthStore.get_share_member_ids`), `connected`
 = those members with a live socket on this worker. `ws_events` broadcasts a

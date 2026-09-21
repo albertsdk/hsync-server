@@ -26,13 +26,13 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from .api import admin as admin_api  # noqa: F401
+from .api import admin as admin_api
 from .api import (  # noqa: F401
     buckets,
     events,
     files,
     health,
-    members,  # noqa: F401
+    members,
     presence,
 )
 from .auth_store import get_auth_store

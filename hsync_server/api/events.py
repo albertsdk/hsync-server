@@ -49,6 +49,7 @@ from hsync_server.api.connection_manager import (
     BucketConnectionManager,
     ConnectionManager,
     bucket_manager,
+    fire_and_forget,
 )
 from hsync_server.api.events_handlers.handlers import (
     handle_added_event,
@@ -222,7 +223,7 @@ def _register_client(
     if stale is not None:
         log.warning(f"{ActionLabel.WS} cid {cid} reconnected: evicting stale registration")
         try:
-            asyncio.ensure_future(
+            fire_and_forget(
                 stale.websocket.close(code=4000, reason="Replaced by a newer connection")
             )
         except Exception:
@@ -374,7 +375,7 @@ async def _message_loop(
                     timeout=heartbeat_interval + heartbeat_timeout,
                 )
             )
-            done, pending = await asyncio.wait(
+            done, _ = await asyncio.wait(
                 {receive_task, heartbeat_task},
                 return_when=asyncio.FIRST_COMPLETED,
             )

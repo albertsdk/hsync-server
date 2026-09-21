@@ -97,9 +97,11 @@ _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _SECRET_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 
 # last_used_at throttle window (seconds)
-LAST_USED_THROTTLE = 300  # 5 minutes
+LAST_USED_THROTTLE = 300  # seconds (5 minutes)
+# Number of `$`-separated fields in a PHC scrypt hash: scrypt$<params>$<salt>$<hash>.
+_SCRYPT_PHC_PARTS = 5
 
-# Schema (server-only, NOT in sqlstore._SCHEMA_SQL)
+# Schema owned by the server (not shared with the sync engine store)
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS clients (
   id               TEXT PRIMARY KEY,
@@ -243,7 +245,7 @@ def _verify_secret(secret: str, phc_hash: str) -> bool:
     """Verify *secret* against a PHC-style scrypt hash (constant-time)."""
     try:
         parts = phc_hash.split("$")
-        if len(parts) != 5 or parts[1] != "scrypt":
+        if len(parts) != _SCRYPT_PHC_PARTS or parts[1] != "scrypt":
             return False
         params = dict(p.split("=") for p in parts[2].split(","))
         n = 1 << int(params["ln"])

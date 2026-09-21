@@ -61,7 +61,7 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 | `conflicted_copy_name` | `arbitration.conflicted_copy_name` (`:193`) |
 | `server_version_info(recorded\|missing)` | `versions.server_version_info` (`hsync_server/versions.py:145`) — per-listing version |
 | `record_version(persist)` | `versions.record_version` (`:74`) — per-upload record + SQLite save |
-| `try_acquire_slot(under\|global_cap\|per_ip_cap)` / `release_slot` | `api.connection_manager.BucketConnectionManager` (`hsync_server/api/connection_manager.py:139,:151`) — per-WS-join DoS gate |
+| `try_acquire_slot(under\|global_cap\|per_ip_cap)` / `release_slot` | `api.connection_manager.BucketConnectionManager` (`hsync_server/api/connection_manager.py:151,:163`) — per-WS-join DoS gate |
 
 ## Initial findings (baseline `bench_result.txt`, count=2000, this machine)
 

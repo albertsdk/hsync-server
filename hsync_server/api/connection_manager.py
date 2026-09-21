@@ -24,6 +24,7 @@ multi-worker deployment would under-count ``connected``.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,6 +35,17 @@ from loguru import logger as log
 from hsync_server.auth_store import get_auth_store
 from hsync_server.config import get_ws_max_connections, get_ws_max_connections_per_ip
 from hsync_server.constants import ActionLabel
+
+# Strong references to fire-and-forget close tasks: without this the event loop
+# may garbage-collect a task before it runs (and the close would be lost).
+_CLOSE_TASKS: set[asyncio.Task[None]] = set()
+
+
+def fire_and_forget(coro: Coroutine[Any, Any, None]) -> None:
+    """Schedule *coro* on the loop and retain it until it completes."""
+    task = asyncio.ensure_future(coro)
+    _CLOSE_TASKS.add(task)
+    task.add_done_callback(_CLOSE_TASKS.discard)
 
 
 @dataclass
@@ -206,7 +218,7 @@ class BucketConnectionManager:
         for cid, entry in list(manager.active_connections.items()):
             if entry.account_id == account_id:
                 try:
-                    asyncio.ensure_future(entry.websocket.close(code=code, reason=reason))
+                    fire_and_forget(entry.websocket.close(code=code, reason=reason))
                 except Exception:
                     pass
                 manager.active_connections.pop(cid, None)

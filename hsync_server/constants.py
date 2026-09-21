@@ -17,7 +17,7 @@ import secrets
 # Application Info
 # =============================================================================
 # Re-export shared constants from hsync-common
-from hsync_common.constants import (  # noqa: E402, F401
+from hsync_common.constants import (  # noqa: F401
     CONTENT_TYPE_OCTET_STREAM,
     HEADER_CLIENT_NAME,
     HEADER_CLIENT_VERSION,
@@ -27,8 +27,8 @@ from hsync_common.constants import (  # noqa: E402, F401
     HSYNCKEEP_FILENAME,
     is_valid_client_name,
 )
-from hsync_common.labels import ActionLabel  # noqa: E402, F401
-from hsync_common.protocol.handshake import PROTOCOL_VERSION_REST  # noqa: E402, F401
+from hsync_common.labels import ActionLabel  # noqa: F401
+from hsync_common.protocol.handshake import PROTOCOL_VERSION_REST  # noqa: F401
 
 # =============================================================================
 # File Defaults

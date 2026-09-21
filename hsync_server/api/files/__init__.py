@@ -37,19 +37,19 @@ from hsync_server.api.files.symlinks import create_symlink
 from hsync_server.api.files.upload import upload_file
 
 __all__ = [
-    "upload_file",
+    "apply_metadata_to_existing_file",
+    "create_symlink",
+    "delete_file",
+    "delta_apply",
     "download_file",
+    "get_delta_data",
+    "get_delta_signatures",
     "get_dirs",
     "get_files",
     "get_tombstones",
-    "post_tombstones",
     "get_upload_status",
-    "delete_file",
-    "create_symlink",
     "patch_file_permissions",
-    "apply_metadata_to_existing_file",
-    "delta_apply",
-    "get_delta_data",
-    "get_delta_signatures",
     "post_delta_signatures",
+    "post_tombstones",
+    "upload_file",
 ]

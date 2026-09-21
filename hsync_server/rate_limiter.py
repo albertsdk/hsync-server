@@ -152,7 +152,7 @@ log.info(
 # -----------------------------------------------------------------------------
 
 # Rate limit for WebSocket event messages per connection
-# Format: "<number>/<period>" (second, minute, hour, day)
+# Accepted periods: second, minute, hour, day.
 WS_MESSAGES_DEFAULT: str = get_rate_limit_ws_messages()
 
 _WS_RATE_PATTERN = re.compile(r"^(\d+)/(second|minute|hour|day)$")

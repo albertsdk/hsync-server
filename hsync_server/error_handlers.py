@@ -87,9 +87,9 @@ async def hsync_exception_handler(_request: Request, exc: HSyncError) -> JSONRes
     status_code = get_status_code_for_exception(exc)
 
     # Log based on severity
-    if status_code >= 500:
+    if status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
         log.error(f"{exc.error_code}: {exc.message}", exc_info=True)
-    elif status_code >= 400:
+    elif status_code >= status.HTTP_400_BAD_REQUEST:
         log.warning(f"{exc.error_code}: {exc.message}")
 
     return JSONResponse(

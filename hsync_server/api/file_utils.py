@@ -63,7 +63,7 @@ def ensure_sentinel_in_dir(dir_path: str) -> None:
     sentinel = str(Path(dir_path) / HSYNCKEEP_FILENAME)
     if not Path(sentinel).exists():
         try:
-            open(sentinel, "w").close()  # noqa: SIM115
+            open(sentinel, "w").close()
             log.debug(f'Created sentinel "{sentinel}"')
         except OSError as exc:
             log.warning(f'Cannot create sentinel "{sentinel}": {exc}')

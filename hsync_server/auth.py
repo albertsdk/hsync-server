@@ -67,6 +67,7 @@ class AuthContext:
 # KDF cache (in-process, keyed by SHA-256(token))
 # =============================================================================
 
+_CACHE_MAX_ENTRIES = 10000
 _cache: dict[str, tuple[str, int, str]] = {}
 _cache_lock = threading.Lock()
 
@@ -83,7 +84,7 @@ def _cache_get(token: str) -> tuple[str, int, str] | None:
 def _cache_put(token: str, account_id: str, generation: int, key_kind: str) -> None:
     with _cache_lock:
         # Bound the cache to avoid unbounded growth.
-        if len(_cache) > 10000:
+        if len(_cache) > _CACHE_MAX_ENTRIES:
             _cache.clear()
         _cache[_cache_key(token)] = (account_id, generation, key_kind)
 
@@ -168,10 +169,9 @@ def _check_account(account: AccountRow, gen_at_verify: int, key_kind: str) -> Au
     if key_kind == "prior":
         if not account.prior_expires_at or now >= account.prior_expires_at:
             return None
-    else:
-        # Active key: generation must match.
-        if gen_at_verify != account.key_generation:
-            return None
+    # Active key: generation must match.
+    elif gen_at_verify != account.key_generation:
+        return None
 
     if account.status != "active":
         log.warning(f"[SECURITY] Account {account.id} (name={account.name}) is disabled")

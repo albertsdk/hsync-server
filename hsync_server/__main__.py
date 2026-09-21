@@ -28,7 +28,7 @@ from hsync_server.config import (
     get_workers,
     load_env_file,
 )
-from hsync_server.constants import HSYNC_VERSION
+from hsync_server.constants import ACCOUNT_ID_LEN, HSYNC_VERSION
 from hsync_server.logger import VALID_LOG_LEVELS, setup_logging
 from hsync_server.ssl_utils import get_ssl_config
 
@@ -88,7 +88,7 @@ def main(
             "--log-level",
             help="Log level: debug, info, warning, error (default: info).",
             metavar="LEVEL",
-            callback=lambda v: _validate_log_level(v),
+            callback=_validate_log_level,
             rich_help_panel="Server",
         ),
     ] = None,
@@ -333,7 +333,7 @@ def _resolve_client_target(client: str):
     from hsync_server.auth_store import TargetNotFoundError, get_auth_store
 
     store = get_auth_store()
-    is_id = len(client) == 21 and client.isalnum()
+    is_id = len(client) == ACCOUNT_ID_LEN and client.isalnum()
     try:
         return store.resolve_target(client if is_id else None, None if is_id else client)
     except TargetNotFoundError:
