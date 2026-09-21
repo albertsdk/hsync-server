@@ -102,7 +102,7 @@ export HSYNC_API_KEY="hs_<id>_<secret>"
 hsync server server.example.com -b photos -p /path/to/dir --ca-cert certs/server.crt
 ```
 
-- `-s` — server URL;
+- `server.example.com` — the server hostname (positional argument; `https://` is implied);
 - `-b` — the bucket created above;
 - `-p` — local directory to sync;
 - `--ca-cert` — the exported certificate from `certs/server.crt`.
