@@ -5,6 +5,13 @@ All paths are prefixed `/api/v1` (`constants.py:38`). Endpoints attach to
 Human-oriented flow diagrams: `../docs/architecture.md`; the machine-readable REST
 contract is the generated OpenAPI snapshot in `hsync-common` (`protocol/rest/openapi.json`).
 
+The route decorators do not hard-code literals: they use the shared path names in
+`hsync_common.protocol.rest` (`REST_*` constants, `rest_bucket_template`,
+`rest_delta_data_path`, `REST_BUCKET_EVENTS_PATH_TEMPLATE`). `REST_PATH_TEMPLATES`
+is asserted **byte-for-byte** against the committed snapshot by
+`hsync-common/tests/test_protocol_rest.py`, so the server, the snapshot and the
+client mirrors cannot drift.
+
 ## Endpoint map
 
 | Method + path | Handler | Auth | Rate limit |

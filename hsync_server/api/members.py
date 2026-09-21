@@ -21,6 +21,12 @@ from typing import Annotated
 
 from fastapi import Depends, status
 from fastapi.responses import JSONResponse
+from hsync_common.protocol.rest import (
+    REST_MEMBERS_CLIENT_PATH_TEMPLATE,
+    REST_MEMBERS_SUFFIX,
+    REST_OWNER_SUFFIX,
+    rest_bucket_template,
+)
 from loguru import logger as log
 from pydantic import BaseModel, Field
 
@@ -74,7 +80,7 @@ def _check_owner_or_admin(bucket: str, ctx: AuthContext) -> None:
     raise BucketNotFoundError(details={"bucket": bucket})
 
 
-@auth_router.get("/api/v1/buckets/{bucket}/members")
+@auth_router.get(rest_bucket_template(REST_MEMBERS_SUFFIX))
 async def list_members(
     bucket: str,
     ctx: Annotated[AuthContext, Depends(verify_api_key)],
@@ -100,7 +106,7 @@ async def list_members(
     )
 
 
-@auth_router.post("/api/v1/buckets/{bucket}/members")
+@auth_router.post(rest_bucket_template(REST_MEMBERS_SUFFIX))
 async def grant_member(
     bucket: str,
     req: GrantMemberRequest,
@@ -139,7 +145,7 @@ async def grant_member(
     )
 
 
-@auth_router.delete("/api/v1/buckets/{bucket}/members/{client_id}")
+@auth_router.delete(REST_MEMBERS_CLIENT_PATH_TEMPLATE)
 async def revoke_member(
     bucket: str,
     client_id: str,
@@ -168,7 +174,7 @@ async def revoke_member(
     )
 
 
-@auth_router.post("/api/v1/buckets/{bucket}/owner")
+@auth_router.post(rest_bucket_template(REST_OWNER_SUFFIX))
 async def transfer_or_reclaim_owner(
     bucket: str,
     req: TransferOwnerRequest,

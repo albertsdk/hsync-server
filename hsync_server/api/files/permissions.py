@@ -27,6 +27,7 @@ from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
 from hsync_common.path_validation import is_internal_name, is_valid_filename, sanitize_filename
 from hsync_common.permissions import is_valid_octal_permissions, sanitize_remote_permissions
+from hsync_common.protocol.rest import REST_FILES_PERMISSIONS_SUFFIX, rest_bucket_template
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
@@ -137,7 +138,7 @@ def _bucket_dir(bucket: str) -> str:
     return f"{get_buckets_path()}/{bucket}"
 
 
-@auth_router.patch("/api/v1/buckets/{bucket}/files/permissions")
+@auth_router.patch(rest_bucket_template(REST_FILES_PERMISSIONS_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def patch_file_permissions(
     request: Request,  # Required by rate limiter

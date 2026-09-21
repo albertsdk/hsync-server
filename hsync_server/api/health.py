@@ -15,6 +15,7 @@ This module provides:
 import time
 
 from fastapi.responses import JSONResponse, PlainTextResponse
+from hsync_common.protocol.rest import REST_HEALTH_PATH, REST_TIME_PATH
 from loguru import logger as log
 
 from hsync_server.routers import public_router
@@ -25,7 +26,7 @@ HEALTH_MAX_PROBE_BYTES = 1024 * 1024  # 1 MB
 
 
 @public_router.get(
-    "/health",
+    REST_HEALTH_PATH,
     name="Monitoring - Health check endpoint",
     response_class=PlainTextResponse,
 )
@@ -51,7 +52,7 @@ async def root(size: int = 0) -> str:
 
 
 @public_router.get(
-    "/api/v1/time",
+    REST_TIME_PATH,
     name="Clock synchronization endpoint",
 )
 async def get_time() -> JSONResponse:

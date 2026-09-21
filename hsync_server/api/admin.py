@@ -18,6 +18,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
+from hsync_common.protocol.rest import (
+    REST_ADMIN_BUCKETS_PATH,
+    REST_ADMIN_CLIENT_DISABLE_PATH,
+    REST_ADMIN_CLIENT_ENABLE_PATH,
+    REST_ADMIN_CLIENT_EXPIRY_PATH,
+    REST_ADMIN_CLIENT_PATH,
+    REST_ADMIN_CLIENT_ROTATE_KEY_PATH,
+    REST_ADMIN_CLIENTS_PATH,
+)
 from loguru import logger as log
 from pydantic import BaseModel, Field
 
@@ -39,10 +48,9 @@ from hsync_server.bucket_provisioning import create_bucket
 from hsync_server.exceptions import InvalidBucketNameError, ValidationError
 from hsync_server.rate_limiter import RATE_LIMIT_ADMIN, limiter
 
-# Sub-router under /api/v1/admin — all endpoints inherit auth_router's
-# verify_api_key dependency, plus require_admin.
+# Admin sub-router — all endpoints inherit auth_router's verify_api_key
+# dependency, plus require_admin. Paths come from the shared REST SSOT.
 admin_router = APIRouter(
-    prefix="/api/v1/admin",
     tags=["Admin"],
     dependencies=[Depends(require_admin)],
 )
@@ -112,7 +120,7 @@ def _account_to_dict(a) -> dict:
 # =============================================================================
 
 
-@admin_router.get("/clients")
+@admin_router.get(REST_ADMIN_CLIENTS_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
 async def list_clients(request: Request) -> JSONResponse:
     """List all accounts (never includes hashes or secrets)."""
@@ -124,7 +132,7 @@ async def list_clients(request: Request) -> JSONResponse:
     )
 
 
-@admin_router.post("/clients", status_code=status.HTTP_201_CREATED)
+@admin_router.post(REST_ADMIN_CLIENTS_PATH, status_code=status.HTTP_201_CREATED)
 @limiter.limit(RATE_LIMIT_ADMIN)
 async def create_client(request: Request, req: CreateClientRequest) -> JSONResponse:
     """Create a new account. Returns the token once."""
@@ -159,7 +167,7 @@ async def create_client(request: Request, req: CreateClientRequest) -> JSONRespo
     )
 
 
-@admin_router.post("/clients/{client_id}/rotate-key")
+@admin_router.post(REST_ADMIN_CLIENT_ROTATE_KEY_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
 async def rotate_key(request: Request, client_id: str, req: RotateKeyRequest) -> JSONResponse:
     """Rotate the account's key. Returns the new token once."""
@@ -181,7 +189,7 @@ async def rotate_key(request: Request, client_id: str, req: RotateKeyRequest) ->
     )
 
 
-@admin_router.patch("/clients/{client_id}/expiry")
+@admin_router.patch(REST_ADMIN_CLIENT_EXPIRY_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
 async def set_expiry(request: Request, client_id: str, req: SetExpiryRequest) -> JSONResponse:
     """Set, extend, or remove the key expiry."""
@@ -204,7 +212,7 @@ async def set_expiry(request: Request, client_id: str, req: SetExpiryRequest) ->
     )
 
 
-@admin_router.post("/clients/{client_id}/disable")
+@admin_router.post(REST_ADMIN_CLIENT_DISABLE_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
 async def disable_client(
     request: Request,
@@ -231,7 +239,7 @@ async def disable_client(
     )
 
 
-@admin_router.post("/clients/{client_id}/enable")
+@admin_router.post(REST_ADMIN_CLIENT_ENABLE_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
 async def enable_client(request: Request, client_id: str) -> JSONResponse:
     """Enable a previously disabled account."""
@@ -247,7 +255,7 @@ async def enable_client(request: Request, client_id: str) -> JSONResponse:
     )
 
 
-@admin_router.delete("/clients/{client_id}")
+@admin_router.delete(REST_ADMIN_CLIENT_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
 async def delete_client(
     request: Request,
@@ -275,7 +283,7 @@ async def delete_client(
 # =============================================================================
 
 
-@admin_router.get("/buckets")
+@admin_router.get(REST_ADMIN_BUCKETS_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
 async def list_all_buckets(request: Request) -> JSONResponse:
     """List all buckets (FS ∪ membership), including orphans and ghosts."""
@@ -287,7 +295,7 @@ async def list_all_buckets(request: Request) -> JSONResponse:
     )
 
 
-@admin_router.post("/buckets", status_code=status.HTTP_201_CREATED)
+@admin_router.post(REST_ADMIN_BUCKETS_PATH, status_code=status.HTTP_201_CREATED)
 @limiter.limit(RATE_LIMIT_ADMIN)
 async def create_bucket_on_behalf(request: Request, req: CreateBucketRequest) -> JSONResponse:
     """Create a bucket on behalf of a specified owner (admin only)."""

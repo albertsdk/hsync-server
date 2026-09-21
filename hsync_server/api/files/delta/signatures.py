@@ -49,6 +49,11 @@ from hsync_common.models.delta import (
     BlockSignatureDict,
     sanitize_signature_list,
 )
+from hsync_common.protocol.rest import (
+    REST_DELTA_SIGNATURES_SUFFIX,
+    rest_bucket_template,
+    rest_delta_data_path,
+)
 from loguru import logger as log
 from pydantic import BaseModel, Field
 
@@ -139,7 +144,7 @@ class DeltaSignaturesRequest(BaseModel):
     signatures: list[BlockSignatureDict]
 
 
-@auth_router.get("/api/v1/buckets/{bucket}/files/delta/signatures")
+@auth_router.get(rest_bucket_template(REST_DELTA_SIGNATURES_SUFFIX))
 @limiter.limit(RATE_LIMIT_DELTA)
 async def get_delta_signatures(
     request: Request,
@@ -186,7 +191,7 @@ async def get_delta_signatures(
     )
 
 
-@auth_router.post("/api/v1/buckets/{bucket}/files/delta/signatures")
+@auth_router.post(rest_bucket_template(REST_DELTA_SIGNATURES_SUFFIX))
 @limiter.limit(RATE_LIMIT_DELTA)
 async def post_delta_signatures(
     request: Request,
@@ -310,7 +315,7 @@ async def post_delta_signatures(
                 "new_size": new_size,
                 "ops": [op.to_dict() for op in ops],
             },
-            "data_url": f"/api/v1/buckets/{bucket}/files/delta/data/{token}",
+            "data_url": rest_delta_data_path(bucket, token),
             "data_size": len(literals),
             "compressed": compressed,
         },

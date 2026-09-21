@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from hsync_common.protocol.rest import REST_HEALTH_PATH, REST_METRICS_PATH
 from loguru import logger as log
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
@@ -157,5 +158,5 @@ app.add_middleware(VersionMiddleware)
 # Configure Prometheus metrics instrumentation
 # Excludes documentation and monitoring endpoints from metrics collection
 Instrumentator(
-    excluded_handlers=["/docs", "/metrics", "/health"],
-).instrument(app).expose(app, tags=["Public"], endpoint="/metrics")
+    excluded_handlers=["/docs", REST_METRICS_PATH, REST_HEALTH_PATH],
+).instrument(app).expose(app, tags=["Public"], endpoint=REST_METRICS_PATH)

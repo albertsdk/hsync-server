@@ -19,6 +19,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from hsync_common.path_validation import is_safe_symlink_target
+from hsync_common.protocol.rest import REST_SYMLINKS_SUFFIX, rest_bucket_template
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
@@ -30,7 +31,7 @@ from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
 
 
-@auth_router.post("/api/v1/buckets/{bucket}/symlinks")
+@auth_router.post(rest_bucket_template(REST_SYMLINKS_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def create_symlink(
     request: Request,  # Required by rate limiter

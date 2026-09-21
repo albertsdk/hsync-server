@@ -50,6 +50,7 @@ from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import invalidate_sha256_cache, is_hidden_file
 from hsync_common.models.version import relpath_in_bucket
 from hsync_common.permissions import is_valid_octal_permissions
+from hsync_common.protocol.rest import REST_DELTA_APPLY_SUFFIX, rest_bucket_template
 from hsync_common.time_utils import conflict_timestamp
 from loguru import logger as log
 
@@ -160,7 +161,7 @@ def _check_ops_bounds(
     return None
 
 
-@auth_router.post("/api/v1/buckets/{bucket}/files/delta/apply")
+@auth_router.post(rest_bucket_template(REST_DELTA_APPLY_SUFFIX))
 @limiter.limit(RATE_LIMIT_DELTA)
 async def delta_apply(
     request: Request,  # Required by rate limiter

@@ -16,6 +16,7 @@ from typing import Annotated
 
 from fastapi import Depends, status
 from fastapi.responses import JSONResponse
+from hsync_common.protocol.rest import REST_BUCKET_PATH_TEMPLATE, REST_BUCKETS_PREFIX
 from hsync_common.time_utils import to_iso
 from loguru import logger as log
 
@@ -34,7 +35,7 @@ def _bucket_path(bucket: str) -> str:
 
 
 @auth_router.get(
-    "/api/v1/buckets/{bucket}",
+    REST_BUCKET_PATH_TEMPLATE,
     name="Get bucket information",
     summary="Get bucket information",
     description="Get bucket information including timestamps in ISO 8601 UTC with Z suffix.",
@@ -58,7 +59,7 @@ async def get_bucket(
     return JSONResponse(status_code=status.HTTP_200_OK, content={"name": bucket, **formatted_times})
 
 
-@auth_router.post("/api/v1/buckets")
+@auth_router.post(REST_BUCKETS_PREFIX)
 async def create_bucket(
     bucket: str,
     ctx: Annotated[AuthContext, Depends(verify_api_key)],
@@ -87,7 +88,7 @@ async def create_bucket(
     )
 
 
-@auth_router.delete("/api/v1/buckets/{bucket}")
+@auth_router.delete(REST_BUCKET_PATH_TEMPLATE)
 async def delete_bucket(
     bucket: str,
     ctx: Annotated[AuthContext, Depends(require_admin)],

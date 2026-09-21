@@ -24,6 +24,7 @@ from fastapi import BackgroundTasks, Depends, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from hsync_common.format import format_bytes, format_duration
 from hsync_common.hashing import compute_sha256_async
+from hsync_common.protocol.rest import REST_FILES_DOWNLOAD_SUFFIX, rest_bucket_template
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
@@ -43,7 +44,7 @@ from hsync_server.rate_limiter import RATE_LIMIT_DOWNLOAD, limiter
 from hsync_server.routers import auth_router
 
 
-@auth_router.get("/api/v1/buckets/{bucket}/files/download")
+@auth_router.get(rest_bucket_template(REST_FILES_DOWNLOAD_SUFFIX))
 @limiter.limit(RATE_LIMIT_DOWNLOAD)
 async def download_file(
     request: Request,  # Required by rate limiter

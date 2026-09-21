@@ -20,6 +20,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
+from hsync_common.protocol.rest import REST_PRESENCE_SUFFIX, rest_bucket_template
 
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.connection_manager import bucket_manager
@@ -28,7 +29,7 @@ from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
 
 
-@auth_router.get("/api/v1/buckets/{bucket}/presence")
+@auth_router.get(rest_bucket_template(REST_PRESENCE_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def get_presence(
     request: Request,  # Required by rate limiter

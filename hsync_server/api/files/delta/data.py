@@ -22,6 +22,7 @@ from typing import Annotated
 
 from fastapi import BackgroundTasks, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse
+from hsync_common.protocol.rest import REST_DELTA_DATA_PATH_TEMPLATE
 
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.files.delta._util import delta_disabled_response
@@ -35,7 +36,7 @@ from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
 from hsync_server.routers import auth_router
 
 
-@auth_router.get("/api/v1/buckets/{bucket}/files/delta/data/{token}")
+@auth_router.get(REST_DELTA_DATA_PATH_TEMPLATE)
 @limiter.limit(RATE_LIMIT_DELTA)
 async def get_delta_data(
     request: Request,

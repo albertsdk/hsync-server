@@ -28,6 +28,13 @@ from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
 from hsync_common.models.symlink import Symlink
 from hsync_common.path_validation import is_safe_symlink_target
+from hsync_common.protocol.rest import (
+    REST_DIRS_SUFFIX,
+    REST_FILES_SUFFIX,
+    REST_FILES_UPLOAD_STATUS_SUFFIX,
+    REST_TOMBSTONES_SUFFIX,
+    rest_bucket_template,
+)
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
@@ -46,7 +53,7 @@ from hsync_server.tombstones import get_tombstone_store
 from hsync_server.versions import server_version_info
 
 
-@auth_router.get("/api/v1/buckets/{bucket}/files/upload-status")
+@auth_router.get(rest_bucket_template(REST_FILES_UPLOAD_STATUS_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def get_upload_status(
     request: Request,  # Required by rate limiter
@@ -155,7 +162,7 @@ def _emit_symlink(file_path: str, bucket_root: str) -> dict | None:
     return entry
 
 
-@auth_router.get("/api/v1/buckets/{bucket}/dirs")
+@auth_router.get(rest_bucket_template(REST_DIRS_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def get_dirs(
     request: Request,  # Required by rate limiter
@@ -211,7 +218,7 @@ async def get_dirs(
     return JSONResponse(status_code=200, content=entries)
 
 
-@auth_router.get("/api/v1/buckets/{bucket}/files")
+@auth_router.get(rest_bucket_template(REST_FILES_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def get_files(
     request: Request,  # Required by rate limiter
@@ -312,7 +319,7 @@ async def get_files(
     )
 
 
-@auth_router.get("/api/v1/buckets/{bucket}/tombstones")
+@auth_router.get(rest_bucket_template(REST_TOMBSTONES_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def get_tombstones(
     request: Request,  # Required by rate limiter
@@ -348,7 +355,7 @@ async def get_tombstones(
     )
 
 
-@auth_router.post("/api/v1/buckets/{bucket}/tombstones")
+@auth_router.post(rest_bucket_template(REST_TOMBSTONES_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def post_tombstones(
     request: Request,  # Required by rate limiter

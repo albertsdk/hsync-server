@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from hsync_common.models.event import Event, EventName
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import invalidate_sha256_cache
+from hsync_common.protocol.rest import REST_FILES_SUFFIX, rest_bucket_template
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
@@ -43,7 +44,7 @@ from hsync_server.tombstones import record_path_deletion
 from hsync_server.versions import clear_version
 
 
-@auth_router.delete("/api/v1/buckets/{bucket}/files")
+@auth_router.delete(rest_bucket_template(REST_FILES_SUFFIX))
 async def delete_file(
     bucket: str,
     ctx: Annotated[AuthContext, Depends(verify_api_key)],

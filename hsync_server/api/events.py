@@ -41,6 +41,7 @@ from hsync_common.protocol.handshake import (
     build_ws_presence,
     decode_capabilities,
 )
+from hsync_common.protocol.rest import REST_BUCKET_EVENTS_PATH_TEMPLATE
 from hsync_common.text import escape_loguru_markup
 from loguru import logger as log
 
@@ -418,7 +419,7 @@ async def _message_loop(
         manager.disconnect(cid, websocket)
 
 
-@public_router.websocket("/api/v1/buckets/{bucket}/events/{cid}")
+@public_router.websocket(REST_BUCKET_EVENTS_PATH_TEMPLATE)
 async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
     """WebSocket endpoint for real-time file system event synchronization."""
     slot_acquired = False
