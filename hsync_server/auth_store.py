@@ -70,10 +70,11 @@ TOKEN_PREFIX = "hs_"
 SECRET_HEX_LEN = 64  # secrets.token_hex(32)
 KEY_PREFIX_LEN = 8  # first 8 hex chars of the active secret
 
-# O(1) membership set for account-id character validation: parse_token runs on
-# the per-request auth hot path, where `c in <str>` would be a linear substring
-# scan instead of a hash lookup.
-_ACCOUNT_ID_SET: frozenset[str] = frozenset(ACCOUNT_ID_ALPHABET)
+# Precompiled account-id pattern derived from the SSOT alphabet: one C-level
+# fullmatch replaces the 21-iteration Python generator that parse_token ran on
+# the per-request auth hot path. The id length is already pinned by
+# ACCOUNT_ID_LEN (the separator check above), so the pattern is equivalent.
+_ACCOUNT_ID_RE = re.compile(f"^[{re.escape(ACCOUNT_ID_ALPHABET)}]{{{ACCOUNT_ID_LEN}}}$")
 
 # scrypt parameters (named, not magic numbers; overridable for tests via env).
 # Production: N=2**17, r=8, p=1 (~128 MB, sub-second verify).
@@ -204,7 +205,7 @@ def parse_token(token: str) -> tuple[str, str] | None:
     secret = rest[sep + 1 :]
     if len(secret) != SECRET_HEX_LEN:
         return None
-    if not all(c in _ACCOUNT_ID_SET for c in account_id):
+    if not _ACCOUNT_ID_RE.fullmatch(account_id):
         return None
     # Length is already validated above (== SECRET_HEX_LEN), so the precompiled
     # {64} pattern is equivalent to the ad-hoc `[0-9a-f]+` fullmatch compiled

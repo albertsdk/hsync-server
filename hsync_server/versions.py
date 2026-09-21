@@ -34,7 +34,7 @@ from pathlib import Path
 
 from hsync_common.models.event import is_valid_cid
 from hsync_common.models.sqlstore import get_state_db
-from hsync_common.models.version import FileVersion, SyncStateStore, relpath_in_bucket
+from hsync_common.models.version import FileVersion, SyncStateStore, VersionInfo, relpath_in_bucket
 
 from hsync_server.config import get_state_db_path, get_state_dir
 from hsync_server.constants import mint_alnum_id
@@ -200,8 +200,6 @@ def move_version_prefix(bucket: str, bucket_dir: str, src_abs_dir: str, dst_abs_
 
 def server_version_info(bucket: str, bucket_dir: str, abs_path: str):
     """Return the :class:`VersionInfo` for a path, or None if unrecorded."""
-    from hsync_common.models.version import VersionInfo
-
     relpath = relpath_in_bucket(abs_path, bucket_dir)
     if not relpath:
         return None
