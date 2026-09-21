@@ -65,10 +65,19 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 
 ## Initial findings (baseline `bench_result.txt`, count=2000, this machine)
 
-* **The per-request gates are sub-microsecond** — `parse_token(valid)` ~0.0011 ms,
+* **The per-request gates are sub-microsecond** — `parse_token(valid)` ~0.0006 ms
+  (after `be50fbf`, was ~0.0011 ms: one precompiled fullmatch
+  `auth_store.py:191` instead of a 21-iteration generator, **~1.8x**;
+  `parse_token(bad_secret)` ~0.0009→0.0005 ms),
   `auth_cache_key` ~0.0005 ms, `get_client_ip` ~0.0002 ms, `is_valid_bucket`
   ~0.0003 ms, the slot accounts ~0.0002 ms. None of them is a request-lifecycle
-  bottleneck; slowapi/scrypt dominate the real thing.
+  bottleneck; slowapi/scrypt dominate the real thing. `server_version_info`
+  hoists the `VersionInfo` import (`versions.py`): `recorded` ~0.0029→0.0024 ms,
+  `missing` ~0.0024→0.0019 ms; `arbitrate_upload` ~0.0048→~0.0037 ms on every
+  branch and `record_version(persist)` ~0.096→0.020 ms (**~4.8x**) ride the
+  shared `hsync-common` store opts. Committed baseline `bench_result.txt`
+  2026-09-23; A/B re-run isolated: **0 regressions** over 37 ops (threshold
+  1.10, floor 0.001 ms).
 * **Bucket confinement resolves on disk** — `resolve_within_bucket(hit)` ~0.037 ms
   is the per-request floor: `Path(...).resolve()` (a realpath syscall) dominates
   the hit path, while the escaping `../` reject is ~0.0006 ms (lexical guard
