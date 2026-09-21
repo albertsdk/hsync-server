@@ -40,6 +40,4 @@ def is_path_within_bucket(path: str, bucket_dir: str, allow_root: bool = True) -
         target_path.relative_to(bucket_path)
     except ValueError:
         return False
-    if not allow_root and target_path == bucket_path:
-        return False
-    return True
+    return allow_root or target_path != bucket_path

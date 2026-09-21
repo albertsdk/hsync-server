@@ -128,9 +128,7 @@ def _check_ws_access(ctx: AuthContext, bucket: str) -> bool:
     now = int(time.time())
     if account.key_expires_at is not None and now >= account.key_expires_at:
         return False
-    if not store.has_access(ctx.id, bucket, is_admin=(ctx.role == "admin")):
-        return False
-    return True
+    return store.has_access(ctx.id, bucket, is_admin=(ctx.role == "admin"))
 
 
 async def _dispatching_authenticate(

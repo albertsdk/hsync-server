@@ -29,6 +29,7 @@ import sqlite3
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from hsync_common.models.sqlstore import get_state_db, reset_state_db_cache
@@ -197,7 +198,7 @@ def parse_token(token: str) -> tuple[str, str] | None:
     """
     if not token.startswith(TOKEN_PREFIX):
         return None
-    rest = token[len(TOKEN_PREFIX) :]
+    rest = token.removeprefix(TOKEN_PREFIX)
     sep = rest.find("_")
     if sep != ACCOUNT_ID_LEN:
         return None
@@ -294,10 +295,8 @@ def parse_expiry(expires_at: str | None, valid_days: int | None) -> int | None:
     if expires_at is not None and valid_days is not None:
         raise ValueError("Provide at most one of 'expires_at' or 'valid_days'.")
     if expires_at is not None:
-        from datetime import datetime
-
         try:
-            dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(expires_at)
         except (ValueError, TypeError) as e:
             raise ValueError(f"Invalid expires_at: {e}") from None
         if dt.tzinfo is None:
