@@ -17,7 +17,7 @@ all over standard HTTP/HTTPS.
 
 > **The server is optional:** devices that share a network segment can sync
 > directly, peer-to-peer, with the client’s
-> [LAN P2P Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/lan-mode.md).
+> [p2p Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/p2p-mode.md).
 
 > 👉 **Operational Advisory:** As with any automated filesystem mutation utility, administrators are strongly advised to maintain validated, independent backups prior to initial deployment in production environments.
 

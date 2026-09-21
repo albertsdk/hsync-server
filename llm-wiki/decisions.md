@@ -9,7 +9,7 @@ the server-local choices not big enough for an ADR.
 
 | ADR | Server code that implements it |
 | --- | ------------------------------ |
-| [0001 server-vs-lan-modes](../../hsync-common/docs/internal/adr/0001-server-vs-lan-modes.md) | this whole process is the REST/WS server half; LAN is client-only |
+| [0001 server-vs-p2p-modes](../../hsync-common/docs/internal/adr/0001-server-vs-p2p-modes.md) | this whole process is the REST/WS server half; p2p is client-only |
 | [0003 tombstone-gossip](../../hsync-common/docs/internal/adr/0003-tombstone-gossip.md) | `tombstones.py`; `GET/POST .../tombstones` (`api/files/list.py:194`) |
 | [0005 protocol-versioning](../../hsync-common/docs/internal/adr/0005-protocol-versioning.md) | REST `VersionMiddleware` hard-fail 426 + malformed `X-Client-Name` 400 (`middleware.py:130`); WS handshake mismatch (`api/events.py`) |
 | [0022 causal-vector-clock-conflict-model](../../hsync-common/docs/internal/adr/0022-causal-vector-clock-conflict-model.md) | per-bucket version stores (`versions.py`) + causal upload arbitration (`arbitration.py`, shared by upload and delta-apply, `FileLockManager` critical section); SHA-256 dedup (`hashes.py`) + checksum verify on upload |

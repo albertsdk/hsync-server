@@ -184,7 +184,7 @@ pair for a bucket: `total` counts the non-admin bucket members
 (`AuthStore.get_share_member_ids`), `connected` counts those members with a
 live WebSocket on this worker (`BucketConnectionManager.presence_counts`). The
 same pair is broadcast as a `presence` WebSocket frame on every join/leave
-(see [websocket.md](websocket.md)) and, in LAN mode, advertised by the master
+(see [websocket.md](websocket.md)) and, in p2p mode, advertised by the master
 through the `connected` TXT value. Access follows `check_bucket_access` (404
 when the bucket does not exist or the caller is not a member).
 
@@ -214,10 +214,10 @@ correctness over loop-freedom.
   listing), attaches cached hashes (`get_sha256_hash`, `hashes.py:42`),
   returns `File` dicts.
 - `get_upload_status` (`list.py:40`) reports existing `.part` size for resume.
-  **LAN parity**: the same endpoint is now served by LAN masters — Python
-  (`hsync_client/lan_server.py:_handle_upload_status`) and Android
-  (`LanServer.kt:handleUploadStatus`) — so the client resume logic works
-  uniformly in both server mode and LAN P2P mode.
+  **p2p parity**: the same endpoint is now served by p2p masters — Python
+  (`hsync_client/p2p_server.py:_handle_upload_status`) and Android
+  (`P2PServer.kt:handleUploadStatus`) — so the client resume logic works
+  uniformly in both server mode and P2P mode.
 - `get_tombstones` (`list.py:194`) returns the bucket's tombstone entries from
   `get_tombstone_store` (`tombstones.py:38`); the `POST` counterpart records
   client-side deletions into the same store.

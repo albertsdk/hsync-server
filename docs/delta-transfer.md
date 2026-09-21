@@ -27,7 +27,7 @@ transfer size by 90%+ for files with small changes.
 
 Delta transfer is attempted automatically when **all** of these conditions are met:
 
-1. **File size threshold**: file is ≥ 256 KB (server mode) or ≥ 1 MB (LAN mode)
+1. **File size threshold**: file is ≥ 256 KB (server mode) or ≥ 1 MB (p2p mode)
 2. **Base hash exists**: a previously synced version of the file is recorded in
    the installation `syncstate.db` (three-way merge state)
 3. **Direction check**:

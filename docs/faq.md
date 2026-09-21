@@ -34,8 +34,8 @@ links to the relevant guide.
 ### Do I need to run a server at all?
 
 Only for remote / cross-network sync. Devices on the same network can use the
-client's serverless **LAN Mode** instead. See
-[client LAN Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/lan-mode.md).
+client's serverless **p2p Mode** instead. See
+[client p2p Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/p2p-mode.md).
 
 ## Deployment & Configuration
 

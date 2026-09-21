@@ -117,7 +117,7 @@ lifecycle.
 | `GET` | `/api/v1/buckets/{bucket}/presence` | Group presence: `{connected, total}` clients (non-admin members, self included) | 500/min |
 
 The same pair is pushed to connected clients as a WebSocket `presence` frame
-on every join/leave; in LAN mode the master advertises its `connected` count
+on every join/leave; in p2p mode the master advertises its `connected` count
 via the mDNS TXT record.
 
 ### Tombstones

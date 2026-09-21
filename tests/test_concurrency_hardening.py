@@ -198,8 +198,10 @@ class TestSha256CacheHardening:
         def stale_injector() -> None:
             for _ in range(_ROUNDS * 4):
                 # Inject through the locked writer so the test itself honors
-                # the synchronization contract it verifies.
-                file_models._set_cached_sha256(str(target), "stale", 1, 1)
+                # the synchronization contract it verifies. The identity
+                # (mtime_ns, ctime_ns, size) is deliberately wrong so the entry
+                # is stale against the real file and must be dropped on lookup.
+                file_models._set_cached_sha256(str(target), "stale", 1, 1, 1)
                 file_models.invalidate_sha256_cache(str(target))
 
         with ThreadPoolExecutor(max_workers=_THREADS) as pool:
