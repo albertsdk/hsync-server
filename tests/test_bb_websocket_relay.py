@@ -21,6 +21,22 @@ import websockets
 from hsync_common.protocol.handshake import PROTOCOL_VERSION_WS, build_ws_auth_request
 from websockets.exceptions import ConnectionClosed
 
+from tests.ws_helpers import (
+    connect_ws_auth as _connect_auth,
+)
+from tests.ws_helpers import (
+    make_cid as _cid,
+)
+from tests.ws_helpers import (
+    open_ws as _open,
+)
+from tests.ws_helpers import (
+    recv_event as _recv_event,
+)
+from tests.ws_helpers import (
+    ws_base as _ws_base,
+)
+
 _BB_SERVER_ENABLED = os.environ.get("HSYNC_BB_SERVER") == "1"
 _BB_SERVER_REASON = "Black-box server-mode tests require HSYNC_BB_SERVER=1"
 
@@ -28,79 +44,6 @@ pytestmark = [
     pytest.mark.skipif(not _BB_SERVER_ENABLED, reason=_BB_SERVER_REASON),
     pytest.mark.usefixtures("bb_http"),
 ]
-
-
-def _ws_base(live_server: tuple[str, str]) -> str:
-    base, _ = live_server
-    return base.replace("http://", "ws://")
-
-
-def _cid(tag: str) -> str:
-    """Build a wire-valid cid (exactly 21 alphanumeric chars) from a short tag.
-
-    The server rejects any other shape at accept time (``is_valid_cid``), so
-    short readable tags like "subA" would be refused with 4000 before any
-    token/protocol check ever runs.
-    """
-    base = f"bb{tag}"
-    return base + "0" * (21 - len(base))
-
-
-async def _open(
-    ws_base: str,
-    bucket: str,
-    cid: str,
-    api_key: str,
-    *,
-    protocol_version: str = PROTOCOL_VERSION_WS,
-    token: str | None = None,
-):
-    """Open a WS to the events endpoint and send the auth frame (no recv).
-
-    A close during/before send is tolerated: callers expecting rejection read
-    with ``recv()`` and assert a :class:`ConnectionClosed`.
-    """
-    uri = f"{ws_base}/api/v1/buckets/{bucket}/events/{cid}"
-    ws = await websockets.connect(uri, max_size=None)
-    frame = build_ws_auth_request(
-        token=token if token is not None else api_key,
-        app_version="bb-test",
-        capabilities=[],
-    )
-    frame["protocol_version"] = protocol_version
-    try:
-        await ws.send(json.dumps(frame))
-    except ConnectionClosed:
-        pass
-    return ws
-
-
-async def _connect_auth(
-    ws_base: str,
-    bucket: str,
-    cid: str,
-    api_key: str,
-    *,
-    protocol_version: str = PROTOCOL_VERSION_WS,
-    token: str | None = None,
-):
-    """Open a WS, send auth, return (websocket, auth_reply_dict)."""
-    ws = await _open(ws_base, bucket, cid, api_key, protocol_version=protocol_version, token=token)
-    reply = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
-    return ws, reply
-
-
-async def _recv_event(ws, timeout: float = 5.0) -> dict:
-    """Receive the next file event, skipping ``presence``/``ping`` frames.
-
-    Presence frames arrive whenever another client joins/leaves the bucket;
-    heartbeat ``ping`` frames arrive every ``HSYNC_WS_HEARTBEAT_INTERVAL``.
-    Black-box event assertions are only interested in file events.
-    """
-    while True:
-        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
-        if msg.get("type") not in ("presence", "ping"):
-            return msg
 
 
 class TestWsHandshake:

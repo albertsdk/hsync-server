@@ -126,9 +126,11 @@ class TestUploadHappy:
             params={"filename": "patch.bin", "permissions": "600"},
         )
 
-        # Then the server applies the new mode (200, no file payload sent)
+        # Then the server applies the new mode (200, no file payload sent);
+        # the PATCH endpoint reports its metadata-only update message (the
+        # permission-only *upload* path above uses "Permissions updated").
         assert r2.status_code == 200
-        assert r2.json()["info"] == "Permissions updated"
+        assert r2.json()["info"] == "Metadata updated"
 
         # And the listing reflects the new permissions
         listed = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json()
@@ -537,3 +539,60 @@ class TestUploadNegative:
 
         # Then the upload is rejected with a validation error
         assert r.status_code == 400
+
+
+class TestUploadFilesystemPathLimits:
+    """Filesystem byte limits: 255-byte path components, overlong names."""
+
+    def test_round_trip_at_component_limit(self, bb_upload, bb_http: httpx.Client, bb_bucket: str):
+        # Given a directory and a filename both exactly at the 255-byte limit
+        dirname = "d" * 255
+        filename = "f" * 255
+        content = b"stored at the component limit"
+
+        # When uploading a file at that path
+        r = bb_upload(bb_http, bb_bucket, filename, content, path=dirname)
+
+        # Then it is listed under the full path and round-trips byte-for-byte
+        assert r.status_code == 201, r.text
+        rel = f"{dirname}/{filename}"
+        listed = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json()
+        entries = [entry for entry in listed if entry["filepath"] == rel]
+        assert len(entries) == 1
+        assert entries[0]["size"] == len(content)
+        assert entries[0]["sha256sum"] == _sha(content)
+        dl = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download",
+            params={"filename": rel},
+            headers={"Accept-Encoding": "identity"},
+        )
+        assert dl.status_code == 200, dl.text
+        assert dl.content == content
+
+    def test_overlong_filename_sanitized_to_component_limit(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        # Given a 300-byte ASCII filename (past the 255-byte component limit)
+        content = b"name truncated"
+
+        # When uploading it
+        r = bb_upload(bb_http, bb_bucket, "a" * 300, content)
+
+        # Then the stored name is the 255-byte sanitized form and the content
+        # is intact (truncation must never drop or corrupt the payload)
+        assert r.status_code == 201, r.text
+        listed = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json()
+        assert len(listed) == 1
+        assert listed[0]["filepath"] == "a" * 255
+        assert listed[0]["sha256sum"] == _sha(content)
+
+    def test_overlong_path_component_rejected(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        # Given a directory component one byte over the 255-byte limit
+        # When uploading into it
+        r = bb_upload(bb_http, bb_bucket, "x.bin", b"rejected", path="p" * 256)
+
+        # Then the request is rejected as an invalid path and nothing is stored
+        assert r.status_code == 400
+        assert bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json() == []

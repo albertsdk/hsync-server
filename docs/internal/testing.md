@@ -67,6 +67,7 @@ tests/
 ├── test_bb_file_download_delete.py     # Black-box: file download and delete use cases
 ├── test_bb_file_upload.py              # Black-box: file upload use case (resume, compression, overwrite)
 ├── test_bb_members_presence.py         # Black-box: bucket membership (grant/list/revoke) and presence counters
+├── test_bb_server_concurrency.py       # Black-box: parallel REST + WebSocket concurrency stress
 ├── test_bb_tombstones_status.py        # Black-box: tombstone listing, merge, and resumable upload-status
 ├── test_bb_websocket_relay.py          # Black-box: WebSocket event-relay (handshake, fan-out, echo suppression)
 ├── test_compression.py                 # Zstandard compression unit tests
@@ -91,6 +92,7 @@ tests/
 ├── test_routers.py                     # Router wiring and auth dependencies
 ├── test_security.py                    # Authentication and security tests
 ├── test_ssl_utils.py                   # Certificate generation and SSL context
+├── test_store_registry_concurrency.py  # Per-bucket store registry: memoization + lock under threads
 ├── test_token_bucket.py                # Token bucket algorithm unit tests
 └── test_websocket.py                   # WebSocket endpoint and event flow
 ```
@@ -142,8 +144,8 @@ async def test_upload_file(client):
 The server's settings default to the repository layout (absolute, resolved
 `<repo>/buckets` and `<repo>/state`, `config.py:_HSYNC_PATH`), so a test that
 forgets to isolate its state would silently pollute the developer's real
-`syncstate.db` and `buckets/` with test rows and directories (the historical
-cause of "ghost" test buckets such as `bb-*` shown by `admin bucket list`).
+`syncstate.db` and `buckets/` with test rows and directories, leaving
+`bb-*` "ghost" test buckets behind in `admin bucket list`.
 The suite enforces isolation at **three independent levels**:
 
 1. **`fast_scrypt` (autouse)** — every in-process test runs against temporary
@@ -265,17 +267,37 @@ than unit tests.
 | `test_bb_bucket_lifecycle.py` | Bucket create / read / list / delete lifecycle, cross‑bucket isolation, presence. |
 | `test_bb_client_interop.py` | Real hsync‑client CLI driven from the server repo over TLS (capabilities, upload, two‑client convergence). |
 | `test_bb_delta_transfer.py` | Delta transfer use case (signatures, tokens, apply, negatives). |
-| `test_bb_download_compression.py` | Download-side compression contract: large files stream zstd (`Content-Encoding: zstd`), below-threshold files are never re-encoded by the gzip layer, metadata responses stay gzipped. |
+| `test_bb_download_compression.py` | Download-side compression contract: large files stream zstd (`Content-Encoding: zstd`), below-threshold files are never re-encoded by the gzip layer, metadata responses stay gzipped, and parallel compressed downloads round-trip. |
 | `test_bb_file_download_delete.py` | File download and delete use cases. |
 | `test_bb_file_upload.py` | File upload use case (resume, compression, overwrite, validation). |
 | `test_bb_members_presence.py` | Bucket membership (grant/list/revoke) and presence counters with a connected member. |
+| `test_bb_server_concurrency.py` | Parallel REST load (upload/list/download/delete from several clients) and WebSocket relay fan-out from concurrent publishers. WS helpers shared via `tests/ws_helpers.py`. |
 | `test_bb_tombstones_status.py` | Tombstone listing, causal merge, and resumable upload‑status. |
 | `test_bb_websocket_relay.py` | WebSocket event‑relay (handshake, fan‑out, echo suppression, rejection). |
+
+The concurrency module is deliberately bounded (6 threads, 8 KiB payloads) so it
+fits the CI budget; the long-running load/RSS measurement is `bench/soak.py`.
 
 To opt in:
 ```bash
 HSYNC_BB_SERVER=1 .venv/bin/python -m pytest tests/test_bb_*.py
 ```
+
+## Concurrency tests
+
+Shared state is hammered under real parallelism by:
+
+- `test_concurrency_hardening.py` — signature cache, delta token store and
+  SHA-256 cache races (see the module docstring for the invariants);
+- `test_store_registry_concurrency.py` — `PerBucketStores` memoization and the
+  per-bucket lock under 12 threads, plus concurrent `record_version` /
+  `record_deletion`: every row must survive in `syncstate.db`;
+- `test_bb_server_concurrency.py` — parallel clients over the public REST and
+  WebSocket surfaces (see the BB table above);
+- `test_compression.py::TestConcurrentStreamedCompression` — concurrent
+  `async_compress_stream` calls must own independent compressors;
+- `test_concurrency_hardening.py::TestDeltaLiteralCompressionHardening` —
+  concurrent delta-literal compression must round-trip every payload.
 
 ## Cross-project testing
 
