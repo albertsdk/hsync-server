@@ -4,10 +4,10 @@
 #
 # Copyright (C) 2025 Alberto Basso
 
-"""Regression tests for the concurrency hardening of shared server state.
+"""Concurrency regression tests for shared server state.
 
-Covers the three race fixes that keep blocking work off the event loop
-without introducing cross-thread corruption:
+Pin the synchronization that keeps blocking work off the event loop without
+introducing cross-thread corruption:
 
 1. ``_signature_cache`` (``delta/signatures.py``) — mutated by several
    ``asyncio.to_thread`` workers; an unguarded FIFO eviction could pop the
@@ -16,14 +16,17 @@ without introducing cross-thread corruption:
    (``issue``), the event loop (``lookup``/``consume``/``discard``) and the
    post-response background cleanup; the token-cap and storage checks are
    check-then-act and must be atomic.
-3. ``hsync_common.models.file._sha256_cache`` — now read from server worker
-   threads (listing/broadcast ``File.get`` offloads) and already from the
-   client's scan/transfer pools; the stale-entry drop was a raw ``del`` that
-   could KeyError when two threads invalidated the same path.
+3. ``hsync_common.models.file._sha256_cache`` — read from server worker
+   threads (listing/broadcast ``File.get`` offloads) and from the client's
+   scan/transfer pools: the stale-entry drop must use the locked removal so
+   two threads invalidating the same path never raise KeyError.
+4. Delta literal compression (``delta/signatures.py``) — runs on
+   ``asyncio.to_thread`` workers and never shares a zstd compressor
+   instance across concurrent requests.
 
-The tests are deliberate load hammers: the pre-fix code fails them
-probabilistically (crash assertion) while the hardened code must never
-raise and must preserve the documented invariants exactly.
+The tests are deliberate load hammers: an unguarded check-then-act fails
+them probabilistically (crash assertion) while the synchronized code must
+never raise and must preserve the documented invariants exactly.
 """
 
 from __future__ import annotations
@@ -135,7 +138,7 @@ class TestDeltaTokenStoreHardening:
                 except RuntimeError as exc:
                     # Saturation is the DoS guard firing: expected once the
                     # registry is full. Overshoot would mean the check-then-act
-                    # interleaved (the pre-fix behavior this test guards).
+                    # interleaved (the unguarded behavior this test guards).
                     assert "Too many active delta tokens" in str(exc)
 
         # The serialised critical section admits exactly cap issuers.
@@ -169,9 +172,9 @@ class TestSha256CacheHardening:
     def test_concurrent_stale_drops_never_raise(self, tmp_path: Path):
         """Two threads seeing the same stale entry must not double-delete.
 
-        The pre-fix code used a raw ``del`` after the metadata mismatch: two
-        concurrent readers of one stale entry made the second delete raise
-        KeyError inside ``File.get`` (outside its OSError handler).
+        A raw ``del`` after the metadata mismatch lets two concurrent readers
+        of one stale entry make the second delete raise KeyError inside
+        ``File.get`` (outside its OSError handler).
         """
         # The SHA-256 cache is process-global: start from a known-clean state
         # so the final size assertion is exact (clean start / clean exit).
@@ -242,3 +245,29 @@ class TestSha256CacheHardening:
 
         with file_models._sha256_cache_lock:
             assert len(file_models._sha256_cache) <= file_models.SHA256_CACHE_MAX_SIZE
+
+
+class TestDeltaLiteralCompressionHardening:
+    """Delta literal compression must never go through a shared zstd instance.
+
+    The endpoint compresses literals with ``compress_data`` on an
+    ``asyncio.to_thread`` worker, whose instances are thread-local: two
+    concurrent signature requests can never call ``compress()`` on one
+    instance at the same time (which corrupts the payload and can segfault
+    the interpreter). The production helper is hammered here so a shared
+    instance fails loudly instead of poisoning streams.
+    """
+
+    def test_concurrent_literal_compression_roundtrips(self):
+        from hsync_common.compression import decompress_data
+
+        from hsync_server.api.files.delta import signatures as signatures_module
+
+        payloads = [bytes([(i * 37) % 256]) * 200_000 for i in range(_THREADS)]
+
+        with ThreadPoolExecutor(max_workers=_THREADS) as pool:
+            futures = [pool.submit(signatures_module._compress_literals, p) for p in payloads]
+            compressed = [f.result() for f in futures]
+
+        for payload, frame in zip(payloads, compressed, strict=True):
+            assert decompress_data(frame, max_output_size=len(payload) + 1) == payload

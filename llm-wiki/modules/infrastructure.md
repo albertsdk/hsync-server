@@ -99,7 +99,15 @@ available). Helper functions: `record_delta_transfer`, `record_bytes_saved`,
 ## Compression (`compression.py`)
 
 Streaming zstd: `async_compress_stream` (`:54`, 64 KB chunks) for downloads;
-`_StreamSink` (`:33`) adapts the zstd writer to an async iterator.
+`_StreamSink` (`:33`) adapts the zstd writer to an async iterator. The helper
+builds **one `ZstdCompressor` per call** — python-zstandard instances are not
+safe to share across concurrent/interleaved operations, and stream writes run
+on the event-loop thread, so only per-call ownership is correct — a
+module-level compressor is forbidden. Construction costs
+~1.1 us at level 3 (`bench/bench_compression.py`), negligible against the
+>= 10 KB streams this path serves. The one-shot delta-literal path
+(`api/files/delta/signatures.py` `_compress_literals`) uses
+`hsync_common.compression.compress_data`, whose instances are thread-local.
 Decompression: `decompress_file_to_file` (`:95`, capped streaming
 file→file, fsync'd — run it via `asyncio.to_thread`, used by uploads so
 neither the payload nor the event loop is blocked) plus the

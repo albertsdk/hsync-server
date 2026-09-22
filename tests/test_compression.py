@@ -240,3 +240,56 @@ class TestConstants:
     def test_min_size_for_compression(self):
         """Minimum compression (download) size should be 10KB."""
         assert MIN_SIZE_FOR_COMPRESSION == 10 * 1024
+
+
+class TestConcurrentStreamedCompression:
+    """Concurrent compressed downloads must never share a zstd compressor.
+
+    ``python-zstandard`` instances are not safe for concurrent or interleaved
+    operations: one shared ``ZstdCompressor`` corrupts frames (``ZstdError:
+    Src size is incorrect``) and can segfault the process. ``async_compress_stream``
+    runs its ``stream_writer.write`` calls on the event-loop thread, so a
+    thread-local pool cannot isolate concurrent streams either — each call must
+    own its compressor.
+    """
+
+    STREAMS = 6
+
+    def test_concurrent_streams_produce_valid_frames(self, tmp_path):
+        import asyncio
+
+        contents: dict[str, bytes] = {}
+        for i in range(self.STREAMS):
+            data = bytes([(i * 40) % 256]) * 300_000  # ~300 KB, distinct per stream
+            path = tmp_path / f"stream_{i}.bin"
+            path.write_bytes(data)
+            contents[str(path)] = data
+
+        async def run() -> list[bytes]:
+            # Small chunks maximize the interleaving window between streams.
+            return await asyncio.gather(
+                *(_compress_whole(path, chunk_size=4096) for path in contents)
+            )
+
+        frames = asyncio.run(run())
+        for (path, data), frame in zip(contents.items(), frames, strict=True):
+            assert decompress_data(frame, max_output_size=len(data) + 1) == data, path
+
+    def test_concurrent_stream_frames_match_serial_frames(self, tmp_path):
+        """A stream compressed under concurrency is byte-identical to the
+        serial one: no cross-stream frames, no duplicated or missing bytes."""
+        import asyncio
+
+        contents: dict[str, bytes] = {}
+        for i in range(self.STREAMS):
+            data = b"identical frame check " * 20_000  # same shape, same size
+            path = tmp_path / f"match_{i}.bin"
+            path.write_bytes(data)
+            contents[str(path)] = data
+
+        async def run() -> list[bytes]:
+            return await asyncio.gather(*(_compress_whole(path) for path in contents))
+
+        concurrent = asyncio.run(run())
+        serial = [asyncio.run(_compress_whole(path)) for path in contents]
+        assert concurrent == serial

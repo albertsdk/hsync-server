@@ -21,14 +21,16 @@ from hsync_common.compression import (  # noqa: F401  # CONTENT_ENCODING_ZSTD, s
 )
 from loguru import logger as log
 
-# Process-wide zstd compressor. ZstdCompressor one-shot/streaming operations
-# are stateless with respect to the instance (every stream_writer/compress
-# creates its own frame state), so a single instance is shared safely across
-# concurrent requests. Construction is the expensive part (tables + context),
-# and the previous per-request construction on every compressed download
-# wasted that cost on each request. Consumed by `async_compress_stream` and by
-# the delta signatures endpoint (`api/files/delta/signatures.py`).
-_ZSTD_COMPRESSOR = zstd.ZstdCompressor(level=COMPRESSION_LEVEL)
+# A zstd compressor instance is never shared: concurrent or interleaved
+# operations on one instance (``stream_writer`` included) corrupt frames and
+# can segfault the process (python-zstandard 0.25.0). This path runs its
+# ``stream_writer.write`` calls on the event-loop thread, so concurrent
+# downloads interleave on that same thread and a thread-local pool cannot
+# isolate them: each call owns its compressor. Construction is cheap —
+# measured 1.1 us median / 1.4 us p99 at level 3 (bench/bench_compression.py)
+# against a >= 10 KB compressed stream. One-shot callers on worker threads
+# use hsync-common's thread-local ``compress_data``
+# (api/files/delta/signatures.py).
 
 
 class _StreamSink:
@@ -76,7 +78,10 @@ async def async_compress_stream(filepath: str, chunk_size: int = 64 * 1024) -> A
 
     file_size = Path(filepath).stat().st_size
     sink = _StreamSink()
-    with _ZSTD_COMPRESSOR.stream_writer(sink, size=file_size, closefd=False) as writer:  # type: ignore[arg-type]
+    # One compressor per call: instances must never be shared across
+    # concurrent/interleaved operations (see the module note above).
+    compressor = zstd.ZstdCompressor(level=COMPRESSION_LEVEL)
+    with compressor.stream_writer(sink, size=file_size, closefd=False) as writer:  # type: ignore[arg-type]
         async with aiofiles.open(filepath, "rb") as f:
             while True:
                 chunk = await f.read(chunk_size)

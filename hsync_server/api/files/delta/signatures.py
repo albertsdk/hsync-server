@@ -30,6 +30,7 @@ from typing import Annotated
 from aiofiles.ospath import isfile
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
+from hsync_common.compression import compress_data
 from hsync_common.constants import (
     DELTA_BLOCK_SIZE_LARGE,
     DELTA_BLOCK_SIZE_MEDIUM,
@@ -62,7 +63,7 @@ from hsync_server.api.files.delta._util import delta_disabled_response
 from hsync_server.api.files.delta.tokens import delta_token_store
 from hsync_server.api.utils import resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
-from hsync_server.compression import _ZSTD_COMPRESSOR, should_compress
+from hsync_server.compression import COMPRESSION_LEVEL, should_compress
 from hsync_server.config import get_compression_enabled, get_delta_enabled
 from hsync_server.exceptions import (
     FileNotFoundError as HSyncFileNotFoundError,
@@ -191,6 +192,19 @@ async def get_delta_signatures(
     )
 
 
+def _compress_literals(literals: bytes) -> bytes:
+    """Compress the delta literal payload for the response body.
+
+    Runs on an ``asyncio.to_thread`` worker: ``compress_data`` keeps one
+    compressor per worker thread (hsync-common), so concurrent signature
+    requests never touch the same instance. A module-level
+    ``ZstdCompressor`` is forbidden here — concurrent ``compress()`` on a
+    shared instance corrupts the payload and segfaults the interpreter
+    (python-zstandard 0.25.0).
+    """
+    return compress_data(literals, level=COMPRESSION_LEVEL)
+
+
 @auth_router.post(rest_bucket_template(REST_DELTA_SIGNATURES_SUFFIX))
 @limiter.limit(RATE_LIMIT_DELTA)
 async def post_delta_signatures(
@@ -283,7 +297,7 @@ async def post_delta_signatures(
     compressed = False
     payload = literals
     if literals and get_compression_enabled() and should_compress(body.path, len(literals)):
-        payload = await asyncio.to_thread(_ZSTD_COMPRESSOR.compress, literals)
+        payload = await asyncio.to_thread(_compress_literals, literals)
         compressed = True
 
     token = await asyncio.to_thread(

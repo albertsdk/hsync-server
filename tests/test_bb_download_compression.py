@@ -17,6 +17,7 @@ Requires HSYNC_BB_SERVER=1 to run.
 """
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import pytest
@@ -129,3 +130,47 @@ class TestTransferPayloadNotReEncoded:
         assert r.status_code == 200
         assert r.headers.get("Content-Encoding") == "gzip"
         assert len(r.json()) == 12
+
+
+class TestConcurrentCompressedDownloads:
+    """Parallel compressed streams must never share a zstd compressor.
+
+    Each compressed download owns its compressor (python-zstandard instances
+    are not safe for concurrent or interleaved use), so every parallel
+    download advertises ``Content-Encoding: zstd`` and its body decodes to
+    the exact file bytes.
+    """
+
+    STREAMS = 6
+
+    def test_parallel_compressed_downloads_round_trip(
+        self, live_server, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        # Given several large, distinct, compressible files
+        expected: dict[str, bytes] = {}
+        for i in range(self.STREAMS):
+            data = (f"parallel stream payload {i:02d} ".encode()) * 30_000
+            name = f"parallel-{i:02d}.txt"
+            expected[name] = data
+            r = bb_upload(bb_http, bb_bucket, name, data)
+            assert r.status_code == 201, r.text
+
+        base_url, api_key = live_server
+
+        def worker(name: str) -> None:
+            with httpx.Client(
+                base_url=base_url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=120.0,
+            ) as client:
+                r = client.get(
+                    f"/api/v1/buckets/{bb_bucket}/files/download", params={"filename": name}
+                )
+                assert r.status_code == 200, r.text
+                assert r.headers.get("Content-Encoding") == "zstd"
+                assert r.content == expected[name]
+
+        # When all of them are downloaded at the same time
+        with ThreadPoolExecutor(max_workers=self.STREAMS) as pool:
+            for future in [pool.submit(worker, name) for name in expected]:
+                future.result()
