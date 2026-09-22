@@ -245,10 +245,15 @@ When adding a new endpoint:
 
 ## Performance testing
 
-Performance benchmarks are not currently configured. If you need to measure
-performance-sensitive changes (hashing, compression, file I/O), consider using
-`pytest-benchmark` or dedicated profiling tools. The test suite focuses on
-correctness and contract validation rather than microbenchmarks.
+The `bench/` directory holds the performance suite: L1 in-process
+micro-benchmarks of the per-request wrappers (chained by `bench/run_all.py`,
+which writes the committed `bench_result.txt` baseline; `bench/compare.py`
+flags A/B regressions), a startup benchmark (`bench/bench_startup.py`), a
+compression-path benchmark (`bench/bench_compression.py`) and the
+long-running L3 soak (`bench/soak.py`). They are plain scripts: never
+collected by pytest, never run in CI. See `bench/README.md` for scope,
+isolation rules and run commands. The test suite stays on correctness and
+contract validation.
 
 ## Black‑box tests (`test_bb_*.py`)
 
