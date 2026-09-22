@@ -36,6 +36,7 @@ _SCRIPTS = (
     "bench_file_utils",
     "bench_arbitration",
     "bench_versions",
+    "bench_compression",
     "bench_connection_manager",
 )
 _DEFAULT_OUT = _BENCH_DIR.parent / "bench_result.txt"

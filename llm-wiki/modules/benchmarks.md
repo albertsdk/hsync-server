@@ -1,4 +1,4 @@
-# HSYNC Server — Benchmarks (L1 + startup)
+# HSYNC Server — Benchmarks (L1 + startup + soak)
 
 Internal micro-benchmark suite for the server-specific hot paths. Developer
 tooling: plain scripts under `bench/`, never collected by pytest, never run in
@@ -12,9 +12,10 @@ hash cache freshness, bucket confinement, upload arbitration, version-store
 bindings, connection slot accounting). The shared primitives are already
 covered by `hsync-common/bench`; here we measure only the server's own wrapper.
 
-L2/L3 (spawn a live uvicorn server over loopback, wire-only) is deferred until
-this baseline is reviewed. L4/L5 are added only when a concrete anomaly needs a
-cost breakdown / a CPU-saturation sweep.
+The L3 soak (`bench/soak.py`) is implemented: it spawns the live server over
+loopback and measures sustained mixed traffic plus server RSS/CPU from `/proc`.
+A per-operation L2 wire-latency tier remains deferred; L4/L5 are added only when
+a concrete anomaly needs a cost breakdown / a CPU-saturation sweep.
 
 ## Isolation (critical)
 
@@ -38,8 +39,10 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 | `bench/bench_file_utils.py` | `api/file_utils.is_sentinel_file` / `update_file_timestamp` scenarios |
 | `bench/bench_arbitration.py` | `arbitration.arbitrate_upload` / `conflicted_copy_name` scenarios |
 | `bench/bench_versions.py` | `versions.server_version_info` / `record_version` scenarios |
+| `bench/bench_compression.py` | `new_compressor` construction + `compress_data` one-shot + `async_compress_stream` (256 KiB/1 MiB) — the per-call compression isolation cost |
 | `bench/bench_connection_manager.py` | `api/connection_manager` slot-accounting scenarios |
 | `bench/bench_startup.py` | **Startup** — cold `import hsync_server.main` + live uvicorn spawn → `GET /health` 200 (`--files N` isolates the hash preload) |
+| `bench/soak.py` | **L3 soak (manual)** — sustained mixed REST traffic against a real server subprocess + RSS/CPU sampling; final manifest integrity check; `--no-compression` isolates harness/RSS checks from the compression path (diagnostic) |
 | `bench/run_all.py` | Chained runner → `bench_result.txt` (committed baseline); `--json-out-dir` |
 | `bench/compare.py` | A/B comparator over two `--json-out` runs; flags median regressions above a noise floor, `exit 1` on regression |
 
@@ -63,39 +66,47 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 | `record_version(persist)` | `versions.record_version` (`:74`) — per-upload record + SQLite save |
 | `try_acquire_slot(under\|global_cap\|per_ip_cap)` / `release_slot` | `api.connection_manager.BucketConnectionManager` (`hsync_server/api/connection_manager.py:151,:163`) — per-WS-join DoS gate |
 
-## Initial findings (baseline `bench_result.txt`, count=2000, this machine)
+## Findings (baseline `bench_result.txt`, count=2000, this machine)
 
 * **The per-request gates are sub-microsecond** — `parse_token(valid)` ~0.0006 ms
-  (after `be50fbf`, was ~0.0011 ms: one precompiled fullmatch
-  `auth_store.py:191` instead of a 21-iteration generator, **~1.8x**;
-  `parse_token(bad_secret)` ~0.0009→0.0005 ms),
-  `auth_cache_key` ~0.0005 ms, `get_client_ip` ~0.0002 ms, `is_valid_bucket`
-  ~0.0003 ms, the slot accounts ~0.0002 ms. None of them is a request-lifecycle
-  bottleneck; slowapi/scrypt dominate the real thing. `server_version_info`
-  hoists the `VersionInfo` import (`versions.py`): `recorded` ~0.0029→0.0024 ms,
-  `missing` ~0.0024→0.0019 ms; `arbitrate_upload` ~0.0048→~0.0037 ms on every
-  branch and `record_version(persist)` ~0.096→0.020 ms (**~4.8x**) ride the
-  shared `hsync-common` store opts. Committed baseline `bench_result.txt`
-  2026-09-23; A/B re-run isolated: **0 regressions** over 37 ops (threshold
-  1.10, floor 0.001 ms).
-* **Bucket confinement resolves on disk** — `resolve_within_bucket(hit)` ~0.037 ms
+  (one precompiled fullmatch `auth_store.py:191` instead of a 21-iteration
+  generator), `parse_token(bad_secret)` ~0.0005 ms, `auth_cache_key`
+  ~0.0005 ms, `get_client_ip` ~0.0002 ms, `is_valid_bucket` ~0.0003 ms, the
+  slot accounts ~0.0002 ms. None of them is a request-lifecycle bottleneck;
+  slowapi/scrypt dominate the real thing. `server_version_info` hoists the
+  `VersionInfo` import (`versions.py`): `recorded` ~0.0024 ms, `missing`
+  ~0.0019 ms; `arbitrate_upload` ~0.0037–0.0043 ms on every branch and
+  `record_version(persist)` ~0.020 ms ride the shared `hsync-common` store
+  opts. Committed baseline `bench_result.txt` 2026-09-26 (count=2000, this
+  machine); check A/B drift with `compare.py` (threshold 1.10, floor
+  0.001 ms).
+* **Bucket confinement resolves on disk** — `resolve_within_bucket(hit)` ~0.036 ms
   is the per-request floor: `Path(...).resolve()` (a realpath syscall) dominates
   the hit path, while the escaping `../` reject is ~0.0006 ms (lexical guard
   fires before any syscall). Same structure as `hsync-common`'s `resolve_within`.
-* **The upload gate is branch-insensitive** — `arbitrate_upload` ~0.0046 ms (~3.4x
-  cheaper than the first baseline's ~0.0156 ms): the dominant cost was the
-  `.hsyncnodeid` sidecar re-read (``get_server_cid`` re-opened and re-validated
-  the file on every upload); memoizing it in-process (``versions.py`` →
-  ``get_server_cid``, invalidated by ``reset_cache``) removed the per-upload file
-  read. What remains is the version-store read + wire-version parse; the verdict
-  (accept/supersede/conflict) adds nothing measurable. `conflicted_copy_name`
-  ~0.0029 ms.
+* **The upload gate is branch-insensitive** — `arbitrate_upload` sits at
+  ~0.0037–0.0043 ms on every branch: the version-store read + wire-version
+  parse dominate, while the `.hsyncnodeid` sidecar is memoized in-process
+  (``versions.py`` → ``get_server_cid``, invalidated by ``reset_cache``) so no
+  per-upload file read happens. The verdict (accept/supersede/conflict) adds
+  nothing measurable; `conflicted_copy_name` ~0.0029 ms.
 * **Per-listing version is cheap, per-upload persist is not** —
-  `server_version_info(recorded)` ~0.0030 ms (relpath + store read) vs
-  `record_version(persist)` ~0.097 ms (a SQLite WAL write) — the upload path's
-  persistence cost is ~30x the read path.
-* **Hash cache freshness check** — `get_sha256_hash(hit)` ~0.0018 ms (SHA-256 of
+  `server_version_info(recorded)` ~0.0025 ms (relpath + store read) vs
+  `record_version(persist)` ~0.020 ms (a SQLite WAL write) — the upload path's
+  persistence cost is ~8x the read path.
+* **Hash cache freshness check** — `get_sha256_hash(hit)` ~0.0017 ms (SHA-256 of
   the path + one `os.stat` + compare); the miss is ~0.0005 ms (no stat).
+
+* **Compression context isolation (measured).** Every compressed download and
+  every delta-literal compression owns its zstd context — python-zstandard
+  instances are not safe for concurrent or interleaved use (one shared
+  `ZstdCompressor` corrupts frames and can segfault the interpreter).
+  `bench/bench_compression.py` prices the isolation: `new_compressor`
+  ~0.0012 ms against `async_compress_stream(256KiB)` ~0.78 ms / `(1MiB)`
+  ~2.88 ms in the full-suite baseline, so per-call ownership costs nothing
+  measurable. The soak runs with compression ON and reaches `SOAK-PASS`
+  (3403 ops, 0 errors, ΔRSS 29 MB); parallel-download and concurrent-literal
+  regressions live in `tests/`.
 
 ## Startup findings (`bench/bench_startup.py`, this machine)
 
