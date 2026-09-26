@@ -310,28 +310,28 @@ avoid write-lock contention.
 
 ```bash
 # Create an account (the token is printed once)
-hsync-server admin client add --name <client-name> --role client
+hsync-server admin client add --name CLIENT_NAME --role client
 hsync-server admin client add --name ops --role admin --valid-days 90
 
 # List accounts (id, name, role, status, generation, prefix, expiry)
 hsync-server admin client list
 
 # Rotate a key (the new token is printed once)
-hsync-server admin client rotate-key --name <client-name>
-hsync-server admin client rotate-key --id <account_id> --grace 3600
+hsync-server admin client rotate-key --name CLIENT_NAME
+hsync-server admin client rotate-key --id ACCOUNT_ID --grace 3600
 
 # Set/extend/remove expiry
-hsync-server admin client set-expiry --name <client-name> --valid-days 30
-hsync-server admin client set-expiry --name <client-name> --expires-at 2026-12-31T00:00:00Z
-hsync-server admin client set-expiry --name <client-name> --none
+hsync-server admin client set-expiry --name CLIENT_NAME --valid-days 30
+hsync-server admin client set-expiry --name CLIENT_NAME --expires-at 2026-12-31T00:00:00Z
+hsync-server admin client set-expiry --name CLIENT_NAME --none
 
 # Disable / re-enable an account
-hsync-server admin client disable --name <client-name>
-hsync-server admin client enable --name <client-name>
+hsync-server admin client disable --name CLIENT_NAME
+hsync-server admin client enable --name CLIENT_NAME
 
 # Delete an account (--cascade deletes owned buckets)
-hsync-server admin client remove --name <client-name>
-hsync-server admin client remove --name <client-name> --cascade
+hsync-server admin client remove --name CLIENT_NAME
+hsync-server admin client remove --name CLIENT_NAME --cascade
 
 # Force deletion of the last admin (recovery)
 hsync-server admin client remove --name admin --force
@@ -341,25 +341,25 @@ hsync-server admin client remove --name admin --force
 
 ```bash
 # Create a bucket (the bootstrap admin becomes its owner)
-hsync-server admin bucket create --bucket <bucket>
+hsync-server admin bucket create --bucket BUCKET
 
 # Delete a bucket and all its contents
-hsync-server admin bucket delete --bucket <bucket>
+hsync-server admin bucket delete --bucket BUCKET
 
 # Cleanup only the DB rows of a ghost bucket (directory no longer on disk)
-hsync-server admin bucket delete --bucket <bucket> --db-only
+hsync-server admin bucket delete --bucket BUCKET --db-only
 
 # List all buckets (FS ∪ membership), including orphans and ghosts
 hsync-server admin bucket list
 
 # Grant membership (member role only)
-hsync-server admin bucket grant --bucket <bucket> --client <client-name>
+hsync-server admin bucket grant --bucket BUCKET --client CLIENT_NAME
 
 # Revoke membership
-hsync-server admin bucket revoke --bucket <bucket> --client <client-name>
+hsync-server admin bucket revoke --bucket BUCKET --client CLIENT_NAME
 
 # Set/transfer ownership (also reclaims orphans)
-hsync-server admin bucket set-owner --bucket <bucket> --client laptop
+hsync-server admin bucket set-owner --bucket BUCKET --client laptop
 ```
 
 ### Recovery

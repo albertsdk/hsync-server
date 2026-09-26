@@ -80,13 +80,15 @@ these commands with the server **stopped**, then restart it:
 cd /path/to/hsync-server
 
 # 1. Create an account for this client (the token is printed once)
-poetry run hsync-server admin client add --name <client-name> --role client
+poetry run hsync-server admin client add \
+  --name CLIENT_NAME --role client
 
 # 2. Create the bucket the client will sync
-poetry run hsync-server admin bucket create --bucket <bucket>
+poetry run hsync-server admin bucket create --bucket BUCKET
 
 # 3. Give the client account access to the bucket
-poetry run hsync-server admin bucket grant --bucket <bucket> --client <client-name>
+poetry run hsync-server admin bucket grant \
+  --bucket BUCKET --client CLIENT_NAME
 
 # 4. Restart the server
 poetry run hsync-server

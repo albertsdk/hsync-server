@@ -265,9 +265,9 @@ Caddy automatically provisions and renews Let's Encrypt certificates. Replace
 
 ### Environment file (`prod.env`)
 
-```bash
-# prod.env
-HSYNC_ADMIN_KEY=<generate-a-strong-random-key>
+```dotenv
+# prod.env — generate the admin secret with: openssl rand -hex 32
+HSYNC_ADMIN_KEY=ADMIN_SECRET_64_HEX
 HSYNC_LOG_LEVEL=info
 HSYNC_LOG_FORMAT=json
 HSYNC_LOG_FILE=/project/logs/hsync-server.log
@@ -340,7 +340,8 @@ Create `/opt/hsync/prod.env` with at least a strong `HSYNC_ADMIN_KEY` and these
 host paths. If a reverse proxy terminates TLS, keep built-in SSL disabled:
 
 ```dotenv
-HSYNC_ADMIN_KEY=<generate-a-strong-random-key>
+# Generate the admin secret with: openssl rand -hex 32
+HSYNC_ADMIN_KEY=ADMIN_SECRET_64_HEX
 HSYNC_BUCKETS=/opt/hsync/buckets
 HSYNC_STATE_DIR=/opt/hsync/state
 HSYNC_SSL_CERT_DIR=/opt/hsync/certs

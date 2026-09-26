@@ -133,13 +133,18 @@ full syntax in [Roles and Permissions](roles-and-permissions.md)):
 INSTALL_DIR="$HOME/.local/share/hsync-server"
 
 # 1. Create an account for this client (the token is printed once)
-cd "$INSTALL_DIR" && docker compose exec server python -m hsync_server admin client add --name <client-name> --role client
+cd "$INSTALL_DIR" && docker compose exec server \
+  python -m hsync_server admin client add \
+  --name CLIENT_NAME --role client
 
 # 2. Create the bucket the client will sync
-cd "$INSTALL_DIR" && docker compose exec server python -m hsync_server admin bucket create --bucket <bucket>
+cd "$INSTALL_DIR" && docker compose exec server \
+  python -m hsync_server admin bucket create --bucket BUCKET
 
 # 3. Give the client account access to the bucket
-cd "$INSTALL_DIR" && docker compose exec server python -m hsync_server admin bucket grant --bucket <bucket> --client <client-name>
+cd "$INSTALL_DIR" && docker compose exec server \
+  python -m hsync_server admin bucket grant \
+  --bucket BUCKET --client CLIENT_NAME
 ```
 
 > The bootstrap admin token (`hs_HsyncAdminBootstrap01_<secret>`) from step

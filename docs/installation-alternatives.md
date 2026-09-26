@@ -27,9 +27,10 @@ HSYNC_IMAGE=ghcr.io/albertsdk/hsync-server:v1.0.0
 HSYNC_BIND_ADDRESS=192.168.1.20
 HSYNC_CERT_HOSTNAME=192.168.1.20
 HSYNC_PUBLIC_PORT=9753
-HSYNC_ADMIN_KEY=<strong-random-secret>
+# Generate both secrets with: openssl rand -hex 32
+HSYNC_ADMIN_KEY=ADMIN_SECRET_64_HEX
 HSYNC_SSL_ENABLED=true
-HSYNC_SSL_KEYFILE_PASSWORD=<different-strong-random-secret>
+HSYNC_SSL_KEYFILE_PASSWORD=CERT_KEY_PASSWORD
 # Host data directory bind-mounted at /project/{buckets,state,certs}.
 HSYNC_DATA_DIR=./hsync-data
 HSYNC_UID=1000
@@ -61,7 +62,7 @@ installation:
 ```bash
 docker run --rm -d --name hsync-server-test \
   -p 127.0.0.1:9753:9753 \
-  -e HSYNC_ADMIN_KEY=<temporary-random-key> \
+  -e HSYNC_ADMIN_KEY="$(openssl rand -hex 32)" \
   ghcr.io/albertsdk/hsync-server:v1.0.0
 curl http://127.0.0.1:9753/health
 docker stop hsync-server-test
