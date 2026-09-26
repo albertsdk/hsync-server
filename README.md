@@ -10,6 +10,8 @@ file changes from any device via the [HSYNC Client](https://github.com/albertsdk
 and instantly notifies all other connected devices so they can pull the updates —
 all over standard HTTP/HTTPS.
 
+It scales with your setup — from a laptop or NAS on a small LAN to a VPS serving several offices — and stays entirely self-hosted: the hub, the storage and the credentials remain yours, with your files stored in their original format.
+
 > A **bucket** is a named directory on the server that holds a set of
 > synchronized files — think of it as a shared folder. You'll need the
 > [HSYNC Client](https://github.com/albertsdk/hsync-client) on each device
@@ -30,10 +32,42 @@ all over standard HTTP/HTTPS.
 [![Docker](https://img.shields.io/badge/Docker-🐳-2496ED.svg)](https://github.com/albertsdk/hsync-server/pkgs/container/hsync-server)
 
 **Quick navigation:**
-- **New to HSYNC?** Start with [Why HSYNC Server?](#why-hsync-server) and the [Getting Started guide](docs/getting-started.md)
+- **New to HSYNC Server?** Start with [What you can do](#what-you-can-do-with-hsync-server) and the [Getting Started guide](docs/getting-started.md)
+- **Do you need the server?** See [Do you need the server?](#do-you-need-the-server) — and the client's [p2p Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/p2p-mode.md) alternative
 - **Need another installation method?** See [Installation Alternatives](docs/installation-alternatives.md)
 - **Want to contribute?** See [Contributing](CONTRIBUTING.md)
 - **Looking for detailed documentation?** Navigate to [docs/README.md](docs/README.md)
+
+## What you can do with HSYNC Server
+
+* **Keep every device in sync through one hub** — office desktops, laptops and servers meet on the server, each with its own local folder.
+* **Keep a central, always-available copy** — the current state of every bucket lives on your disk as plain directories, ready for your usual backup tools.
+* **Share folders with a team** — accounts with per-bucket roles (`admin`, `owner`, `member`) let different people access different folders on the same server.
+* **Serve devices across networks** — everything rides HTTP/HTTPS, so clients reach the hub through firewalls and reverse proxies.
+* **Publish read-only data** — deliver updates to branch or kiosk devices that only download.
+* **Operate it your way** — Docker Compose for a private LAN, the deployment guide for Internet-facing setups, Prometheus metrics and structured logs for monitoring.
+
+## Do you need the server?
+
+A server is not always necessary. **You need it when** your devices are on different networks, you want a central copy on hardware you own, or you manage many devices and accounts. **You don't when** all your devices share one network: the client's [p2p Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/p2p-mode.md) syncs them directly, with no server at all. Either way the client is what performs the sync — the server is the meeting point and the storage hub.
+
+## Getting started
+
+On a machine with Docker (Linux or macOS), install the latest stable release — the installer sets up Docker Compose, generates the secrets and a self-signed certificate, and serves `https://localhost:9753`:
+
+```bash
+curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh | bash
+```
+
+Verify it is healthy:
+
+```bash
+curl --insecure https://localhost:9753/health && echo "SERVER OK!"
+```
+
+To reach the server from other devices on a private LAN, pass its LAN address on the **first** install (`curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh | bash -s -- --bind-address LAN_IP`): the persistent certificate is generated for that address. Prefer no containers? Use [Getting Started — Native](docs/getting-started-native.md).
+
+Then create the accounts and the buckets and connect the clients — the [Getting Started guide](docs/getting-started.md) shows the exact commands for each path, and [Roles and Permissions](docs/roles-and-permissions.md) covers accounts, roles and keys. For an Internet-facing server, continue with the [Production Deployment Guide](docs/deployment.md).
 
 ## Why HSYNC Server?
 
@@ -118,18 +152,6 @@ flowchart TB
 - ⏱️ Clock-synchronization endpoint for NTP-like client offset correction
 - 🧩 Delta transfer (rsync-style block sync for large files)
 - 🗜️ Zstandard (zstd) transfer compression
-
-## Getting Started
-
-For a private LAN installation, use the single
-[Getting Started guide](docs/getting-started.md). It downloads a pinned release,
-generates secrets locally, starts the server with Docker Compose, and verifies
-its health.
-
-For an Internet-facing server, go directly to the
-[Production Deployment Guide](docs/deployment.md). Source builds, direct Docker
-commands, and Poetry are documented separately under
-[Installation Alternatives](docs/installation-alternatives.md).
 
 ## Command Line Options
 
