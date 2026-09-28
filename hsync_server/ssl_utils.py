@@ -194,7 +194,7 @@ def get_ssl_config(
     Returns:
         Dictionary with ``ssl_certfile`` and ``ssl_keyfile`` keys (or empty if
         SSL is disabled). The private key is stored unencrypted (ADR-0037), so
-        no ``ssl_keyfile_password`` is required.
+        no key password is configured.
     """
     if not ssl_enabled:
         return {}

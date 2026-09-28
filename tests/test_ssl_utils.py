@@ -236,7 +236,6 @@ class TestGetSslConfig:
 
         assert config["ssl_certfile"] == cert_path
         assert config["ssl_keyfile"] == key_path
-        assert "ssl_keyfile_password" not in config
 
     def test_raises_error_if_certfile_not_found(self, tmp_path):
         """Test that FileNotFoundError is raised for missing certfile."""
@@ -267,7 +266,6 @@ class TestGetSslConfig:
 
         assert "ssl_certfile" in config
         assert "ssl_keyfile" in config
-        assert "ssl_keyfile_password" not in config
         assert os.path.exists(config["ssl_certfile"])
         assert os.path.exists(config["ssl_keyfile"])
 

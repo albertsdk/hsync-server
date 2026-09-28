@@ -52,7 +52,7 @@ Wired as a router-level dependency on `auth_router`; `require_admin` gates
   and a **20-year** validity (`DEFAULT_CERT_VALIDITY_DAYS =
   SERVICE_CERT_VALIDITY_DAYS`). `generate_self_signed_cert` builds on
   `hsync_common.ssl_utils`; the certificate is authenticated by fingerprint
-  pinning, not a passphrase, so there is no `HSYNC_SSL_KEYFILE_PASSWORD`.
+  pinning, not a passphrase, so no key password is configured.
 - `ensure_certificates` persists a cert/key pair under `get_ssl_cert_dir()` so the
   fingerprint is stable across restarts (pinning by clients); `get_ssl_config`
   returns the uvicorn SSL kwargs gated by `get_ssl_enabled()`.
