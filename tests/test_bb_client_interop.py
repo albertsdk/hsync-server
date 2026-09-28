@@ -150,11 +150,11 @@ class TestClientCliCapabilities:
 
         doc = json.loads(result.stdout)
         assert "subcommands" in doc, doc
-        assert doc["subcommands"] == ["p2p", "server"], doc["subcommands"]
+        assert doc["subcommands"] == ["p2p", "server", "trust"], doc["subcommands"]
         assert "cli_options" in doc, doc
         cli_options = doc["cli_options"]
         assert isinstance(cli_options, dict), cli_options
-        assert set(cli_options) == {"p2p", "server"}, cli_options
+        assert set(cli_options) == {"p2p", "server", "trust"}, cli_options
         # Every supported CLI surface is advertised; the conflict model is part
         # of the protocol capability set shared with the server (SSOT in
         # hsync-common). Sanity-check a few stable well-known flags.
