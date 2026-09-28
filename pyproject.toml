@@ -32,6 +32,9 @@ packages = [{include = "hsync_server"}]
 hsync-common = {path = "../hsync-common", develop = true}
 
 
+[tool.poetry.group.build.dependencies]
+pyinstaller = "^6.22.3"
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.1.1"
 pytest-asyncio = "^1.4.0"

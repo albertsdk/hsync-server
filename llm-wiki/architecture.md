@@ -92,6 +92,27 @@ tombstones (`tombstones.py`). Causal versions/tombstones live in
 the same file via the server-only `clients`/`bucket_members` tables
 (`auth_store.py`). The SHA-256 cache is an in-memory unbounded dict, rebuilt at startup (not LRU).
 
+## Build & packaging
+
+`compile.sh` freezes the server into a standalone executable with PyInstaller.
+Two targets:
+
+| Target | Output | Toolchain |
+| ------ | ------ | --------- |
+| `native` (default) | `dist/<os>-<arch>/hsync-server` | host `.venv` + Poetry `build` group (`pyinstaller`) |
+| `rpi` | `dist/rpi/{armhf,arm64}/hsync-server` | Docker cross-build from `packaging/rpi/Dockerfile.builder` (Debian bookworm, Python 3.12, Poetry, Rust) under `qemu-user` binfmt |
+
+Both targets share `_onefile_pyi_flags` (`compile.sh`), a onefile flag set that
+collects the `hsync_server`/`hsync_common` submodules and pins the uvicorn and
+websockets dynamic import points the ASGI app needs at runtime. `ENTRY_POINT` is
+`hsync_server/__main__.py`; the console entry point is `run()`
+(`hsync_server/__main__.py:290`). The frozen app exposes the same CLI as
+`python -m hsync_server`.
+
+The `rpi` target needs Docker with `qemu-user-static` binfmt handlers; the
+`native` target does not touch Docker. The server still ships primarily as the
+multi-arch container image built by `.github/workflows/release.yml`.
+
 > Human-oriented diagrams (system overview, upload/WS sequences):
 > `../docs/internal/architecture.md`.
 > Decision rationale: [decisions.md](decisions.md) →

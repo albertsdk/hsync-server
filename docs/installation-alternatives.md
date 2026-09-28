@@ -14,6 +14,7 @@ normal install.
 | Public Internet server | [Production Deployment Guide](deployment.md) |
 | Existing Compose automation | [Manual Compose](#manual-compose) |
 | Temporary image diagnostic | [Direct Docker run](#direct-docker-run) |
+| Standalone executable, no Docker | [Standalone binary](#standalone-binary) |
 | Modify or contribute code | [Build from source](#build-from-source) |
 | Host where Docker is unavailable | [Path B — Native](getting-started-native.md) |
 
@@ -71,6 +72,37 @@ docker stop hsync-server-test
 The diagnostic endpoint is plaintext and bound to localhost. HSYNC clients
 refuse to send API keys over HTTP, so do not use this as a client deployment or
 expose it to a network.
+
+## Standalone binary
+
+`compile.sh` freezes the server into a self-contained executable that runs
+without a Python installation. From the `hsync-server` checkout, install the
+build group once and build for the host:
+
+```bash
+poetry install --with build
+./compile.sh
+# output: dist/<os>-<arch>/hsync-server
+./dist/linux-amd64/hsync-server --version
+```
+
+The executable reads the same `HSYNC_*` environment variables and CLI options
+as the native install (`./compile.sh --help` lists the options, including
+`--clean`). It is a good fit for a host where Docker is unavailable and no
+managed Python environment is desired.
+
+### Raspberry Pi OS executables
+
+Executables for Raspberry Pi OS 32-bit (`armhf`) and 64-bit (`arm64`) are
+cross-built inside Docker, so no host Python is needed:
+
+```bash
+./compile.sh --target rpi
+```
+
+Output: `dist/rpi/armhf/hsync-server` and `dist/rpi/arm64/hsync-server`. The
+host needs Docker with `qemu-user-static` binfmt handlers configured for
+cross-architecture emulation.
 
 ## Build from source
 

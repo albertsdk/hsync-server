@@ -39,8 +39,9 @@ the server-local choices not big enough for an ADR.
   `latest`, then publishes the version-stamped `install.sh`, `compose.yaml`, and
   `SHA256SUMS` as GitHub release assets. Build context is the repo root with
   `../hsync-common` checked out alongside, matching `docker.sh`/`Dockerfile`.
-  `install.sh` generates local secrets and deploys that pinned image; the server
-  still ships only as an image, not as a standalone binary.
+  `install.sh` generates local secrets and deploys that pinned image; the
+  container image remains the primary distribution (a standalone executable is
+  also available — see below).
 - **`install.sh --version latest`**: the installer resolves the latest stable
   GitHub Release by following the `github.com/<repo>/releases/latest` redirect
   with `curl -fsSIL -w %{url_effective}` (no GitHub API, no rate limit; drafts
@@ -48,6 +49,19 @@ the server-local choices not big enough for an ADR.
   tag in `.env` — the floating GHCR `:latest` tag is deliberately not written
   to `.env`, so a plain `docker compose pull` never upgrades implicitly
   (`install.sh`, `resolve_latest_version`).
+- **Standalone binary build** (`compile.sh`, targets `native`/`rpi`): a PyInstaller
+  onefile freeze mirroring the client/bootnode build scripts. `native` uses the
+  host virtualenv's Poetry `build` group; `rpi` cross-builds armhf/arm64 in
+  Docker from `packaging/rpi/Dockerfile.builder` (Python 3.12, Poetry, and the
+  Rust toolchain needed for the armhf `cryptography` source build) under
+  `qemu-user` binfmt. The frozen binary speaks the same CLI/protocol as
+  `python -m hsync_server`; the container image stays the primary distribution.
+  The cross-build image pins its build inputs: the privileged `qemu-user-static`
+  binfmt image is pulled by digest and Rust is installed from a SHA256-verified,
+  version-pinned `rustup-init` rather than piping a remote script to a shell.
+  The builder base is the official multi-arch `python:3.12-bookworm` image
+  (prebuilt CPython), so the arm64 build no longer compiles CPython under
+  qemu-user (where host qemu-aarch64 7.2.0 segfaults).
 
 ## House rules (from `AGENTS.md`)
 

@@ -137,6 +137,28 @@ testing:
 ./docker.sh build --multi-arch
 ```
 
+### Build binaries (local / manual)
+
+The release workflow builds and pushes the Docker image automatically. To
+produce a standalone executable straight from the local source tree:
+
+```bash
+./compile.sh                    # host OS/arch → dist/<os>-<arch>/hsync-server
+./compile.sh --clean            # clean artifacts and rebuild
+./compile.sh --target rpi       # Raspberry Pi OS armhf + arm64 (Docker + qemu)
+./compile.sh --help             # all options
+```
+
+- The `native` target (default) builds one platform-aware onefile binary with
+  PyInstaller. It requires the PyInstaller build group in the committed
+  virtualenv; install it once with `poetry install --with build`.
+- The `rpi` target builds Raspberry Pi OS 32-bit (`armhf`) and 64-bit (`arm64`)
+  executables into `dist/rpi/<arch>/hsync-server`. It runs PyInstaller inside
+  Docker cross-build containers built from
+  `packaging/rpi/Dockerfile.builder`, so it needs Docker with
+  `qemu-user-static` binfmt handlers configured for cross-architecture
+  emulation (not required by the `native` target).
+
 ### Create a release
 
 1. Ensure the working tree is clean and on `main`.

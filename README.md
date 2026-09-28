@@ -171,6 +171,24 @@ hsync-server [options]
 | `--ssl-cert-dir DIR` | Directory for auto-generated certificates | `{project_dir}/certs` |
 | `-V, --version` | Show version | - |
 
+## Building a Standalone Binary
+
+`./compile.sh` freezes the server into a self-contained executable with
+[PyInstaller](https://pyinstaller.org/) — no Python installation is required to
+run the result.
+
+```bash
+./compile.sh                    # host OS/arch → dist/<os>-<arch>/hsync-server
+./compile.sh --clean            # clean artifacts and rebuild
+./compile.sh --target rpi       # Raspberry Pi OS armhf + arm64 (Docker + qemu)
+```
+
+The `native` target uses the project virtualenv; install the PyInstaller build
+group once with `poetry install --with build`. The `rpi` target builds
+Raspberry Pi OS 32-bit (`armhf`) and 64-bit (`arm64`) executables into
+`dist/rpi/<arch>/hsync-server` inside Docker (cross-architecture emulation via
+`qemu-user-static`). See [Contributing](CONTRIBUTING.md) for the full details.
+
 ## Configuration
 
 The server is configured entirely through `HSYNC_*` environment variables.
