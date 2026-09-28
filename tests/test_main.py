@@ -55,6 +55,39 @@ class TestStartupOptions:
         _, kwargs = mock_run.call_args
         assert kwargs["port"] == 9123
 
+    def test_default_host_is_all_interfaces(self):
+        run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+        with run_p as mock_run, log_p, ssl_p, reload_p, workers_p:
+            result = runner.invoke(cli.app, [])
+        assert result.exit_code == 0
+        _, kwargs = mock_run.call_args
+        assert kwargs["host"] == "0.0.0.0"
+
+    def test_custom_host_passed_to_uvicorn(self):
+        run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+        with run_p as mock_run, log_p, ssl_p, reload_p, workers_p:
+            result = runner.invoke(cli.app, ["--host", "127.0.0.1"])
+        assert result.exit_code == 0
+        _, kwargs = mock_run.call_args
+        assert kwargs["host"] == "127.0.0.1"
+
+    def test_host_port_shorthand_sets_host_and_port(self):
+        run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+        with run_p as mock_run, log_p, ssl_p, reload_p, workers_p:
+            result = runner.invoke(cli.app, ["--host", "127.0.0.1:9124"])
+        assert result.exit_code == 0
+        _, kwargs = mock_run.call_args
+        assert kwargs["host"] == "127.0.0.1"
+        assert kwargs["port"] == 9124
+
+    def test_host_port_and_port_flag_are_mutually_exclusive(self):
+        run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+        with run_p as mock_run, log_p, ssl_p, reload_p, workers_p:
+            result = runner.invoke(cli.app, ["--host", "127.0.0.1:9124", "--port", "9124"])
+        assert result.exit_code != 0
+        assert "not both" in result.output
+        mock_run.assert_not_called()
+
     def test_ssl_enabled_branch(self):
         run_p, log_p, _, reload_p, workers_p = _patches(reload=False, workers=1)
         with (

@@ -1,4 +1,4 @@
-.TH HSYNC-SERVER 1 "2026-09-29" "hsync-server 1.0.0" "User Commands"
+.TH HSYNC-SERVER 1 "2026-09-30" "hsync-server 1.0.0" "User Commands"
 .SH NAME
 hsync-server \- HSYNC file synchronization server
 .SH SYNOPSIS
@@ -21,8 +21,12 @@ by the packaged systemd unit.
 .BR \-\-version
 Print the version and exit.
 .TP
+.BR \-\-host " " HOST
+Bind address, optionally with a port (HOST[:PORT]). Default: 0.0.0.0.
+.TP
 .BR \-\-port " " PORT
-Listen on PORT (default 9753).
+Listen on PORT (default 9753). Mutually exclusive with a port in
+.BR \-\-host .
 .TP
 .BR \-\-ssl
 Enable HTTPS/WSS.
@@ -44,25 +48,61 @@ Log level: debug, info, warning, error, critical (default info).
 Bootstrap admin secret (64 hex characters, optional).
 .TP
 .B HSYNC_BUCKETS
-Path to the buckets directory.
+Path to the buckets directory (default:
+.IR <app>/buckets ).
 .TP
 .B HSYNC_STATE_DIR
-Path to the per-bucket state DB directory.
+Path to the per-bucket state DB directory
+.RI ( <state-dir>/server/<bucket>.db
+per bucket plus the global
+.IR <state-dir>/server/auth.db ;
+default:
+.IR <app>/state ).
+When
+.B HSYNC_STATE_DB
+is set, that single file is used for every bucket instead.
+.TP
+.B HSYNC_STATE_DB
+Explicit single sync-state database path. When set, every bucket shares this
+one SQLite file instead of the per-bucket layout above. Useful for tests and
+manual isolation.
 .TP
 .B HSYNC_SSL_CERT_DIR
-Path to the TLS identity directory.
+Directory for auto-generated TLS certificates (default:
+.IR <app>/certs ).
+Explicit
+.B HSYNC_SSL_CERTFILE
+/
+.B HSYNC_SSL_KEYFILE
+paths take precedence when set.
 .TP
 .B HSYNC_LOG_FILE
-Path to the optional log file.
+Path to the optional log file (unset by default: log to the service journal /
+stderr).
 .SH FILES
 .TP
 .I /etc/hsync-server/hsync-server.conf
 Package configuration (EnvironmentFile), owned root:root (0600).
 .TP
-.I /var/lib/hsync-server
-Buckets, state and TLS identity.
+.I /var/lib/hsync-server/buckets
+Bucket data (see
+.BR HSYNC_BUCKETS ).
 .TP
-.I /var/log/hsync-server
-Service logs.
+.I /var/lib/hsync-server/state/server/<bucket>.db
+Per-bucket sync-state database, plus the global
+.I /var/lib/hsync-server/state/server/auth.db
+(see
+.BR HSYNC_STATE_DIR ).
+.TP
+.I /var/lib/hsync-server/state/.hsyncnodeid
+Server node identity (author of out-of-band edits).
+.TP
+.I /var/lib/hsync-server/certs
+Auto-generated TLS identity (see
+.BR HSYNC_SSL_CERT_DIR ).
+.TP
+.I /var/log/hsync-server/hsync-server.log
+Service logs (see
+.BR HSYNC_LOG_FILE ).
 .SH SEE ALSO
-.BR systemd.unit (5)
+.BR systemd.exec (5)

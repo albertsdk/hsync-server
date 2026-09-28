@@ -12,6 +12,7 @@ from typing import Annotated
 
 import typer
 import uvicorn
+from hsync_common.endpoint import parse_host_port
 from hsync_common.runtime import runtime_summary
 from pydantic import ValidationError
 
@@ -66,18 +67,56 @@ def _exit_account_not_found() -> None:
     raise typer.Exit(1) from None
 
 
+def _resolve_bind_host_port(host: str | None, port: int | None) -> tuple[str, int | None]:
+    """Resolve the bind address/port from ``--host``/``--port``.
+
+    ``--host`` may carry a port (``HOST[:PORT]``); that port and ``--port`` are
+    mutually exclusive. ``port`` may be ``None`` so the env/default fallback is
+    applied later by the caller.
+    """
+    bind_host = "0.0.0.0"
+    bind_port = port
+    if host is not None:
+        try:
+            hp = parse_host_port(host)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        bind_host = hp.host
+        if hp.port is not None:
+            if port is not None:
+                raise typer.BadParameter(
+                    "specify the port either in --host HOST:PORT or with --port, not both"
+                )
+            bind_port = hp.port
+    return bind_host, bind_port
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
     # -------------------------------------------------------------------------
     # Server options
     # -------------------------------------------------------------------------
+    host: Annotated[
+        str | None,
+        typer.Option(
+            "--host",
+            help=(
+                "Bind address, optionally with a port (HOST[:PORT], e.g. "
+                "0.0.0.0:9753 or [::1]:9753). Default: 0.0.0.0."
+            ),
+            metavar="HOST[:PORT]",
+            rich_help_panel="Server",
+        ),
+    ] = None,
     port: Annotated[
         int | None,
         typer.Option(
             "-p",
             "--port",
-            help="Server port (default: 9753).",
+            help=(
+                "Server port (default: 9753). Mutually exclusive with a port in --host HOST:PORT."
+            ),
             metavar="PORT",
             rich_help_panel="Server",
         ),
@@ -228,7 +267,8 @@ def main(
     # a user-friendly message before the logger is even configured.
     try:
         effective_log_level = log_level if log_level else get_log_level()
-        effective_port = port if port else get_port()
+        effective_host, port_candidate = _resolve_bind_host_port(host, port)
+        effective_port = port_candidate if port_candidate else get_port()
         effective_ssl_enabled = ssl_enabled or get_ssl_enabled()
         effective_ssl_certfile = ssl_certfile if ssl_certfile else get_ssl_certfile()
         effective_ssl_keyfile = ssl_keyfile if ssl_keyfile else get_ssl_keyfile()
@@ -278,7 +318,7 @@ def main(
 
     uvicorn.run(
         "hsync_server.main:app",
-        host="0.0.0.0",
+        host=effective_host,
         port=effective_port,
         log_level=effective_log_level,
         reload=reload_enabled,
