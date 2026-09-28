@@ -95,9 +95,8 @@ the minimum to launch for development:
 ```bash
 poetry install --only main
 HSYNC_ADMIN_KEY="$(openssl rand -hex 32)" \
-HSYNC_SSL_ENABLED=true \
 HSYNC_SSL_KEYFILE_PASSWORD="$(openssl rand -hex 32)" \
-HSYNC_SSL_CERT_DIR=./certs poetry run hsync-server
+poetry run hsync-server --ssl --ssl-cert-dir ./certs
 ```
 
 Python 3.12 or newer and the sibling `hsync-common` dependency are required. For
