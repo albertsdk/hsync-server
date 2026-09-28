@@ -72,6 +72,12 @@ the server-local choices not big enough for an ADR.
   The builder base is the official multi-arch `python:3.12-bookworm` image
   (prebuilt CPython), so the arm64 build no longer compiles CPython under
   qemu-user (where host qemu-aarch64 7.2.0 segfaults).
+- **Container builds install the `build` group explicitly** (`rpi`/`deb-all`):
+  `poetry install --only main,build`. Under Poetry 2.x (2.3.2, pinned in the
+  builder image) a co-present `--with` is ignored inside `--only`, so the
+  previous `--only main --with build` silently installed no PyInstaller (exit
+  code 0, `pyinstaller` absent on PATH) and the cross-build targets aborted;
+  guarded by `tests/test_compile_script.py`.
 
 ## House rules (from `AGENTS.md`)
 

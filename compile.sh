@@ -549,7 +549,7 @@ build_rpi() {
             "${builder_tag}" \
             bash -c "
                 set -euo pipefail
-                poetry install --only main --with build
+                poetry install --only main,build
                 HSYNC_PREFER_PATH_PYINSTALLER=1 poetry run pyinstaller --strip \
                     $(_onefile_pyi_flags) \
                     --distpath /out \
@@ -854,7 +854,7 @@ build_deb_all() {
                 poetry config installer.max-workers 4
                 install_ok=0
                 for attempt in 1 2 3; do
-                    if poetry install --only main --with build; then install_ok=1; break; fi
+                    if poetry install --only main,build; then install_ok=1; break; fi
                     echo \"poetry install attempt \${attempt}/3 failed, retrying in 10s...\" >&2
                     sleep 10
                 done
