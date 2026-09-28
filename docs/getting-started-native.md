@@ -63,11 +63,12 @@ Check the self-signed certificate fingerprint and copy the certificate to each
 client over a trusted channel:
 
 ```bash
-openssl x509 -in certs/server.crt -noout -fingerprint -sha256
+hsync-server admin tls fingerprint
 ```
 
-Verify the displayed fingerprint out of band before trusting it. Do not use
-`--insecure` for authenticated synchronization: disabling certificate
+The command prints the fingerprint as `sha256:<hex>`, the same form clients pin
+with `hsync trust server add`. Verify it out of band before trusting it. Do not
+use `--insecure` for authenticated synchronization: disabling certificate
 verification would expose the bearer token to a network attacker.
 
 ## Connect your clients

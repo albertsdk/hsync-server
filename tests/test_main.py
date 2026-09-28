@@ -260,3 +260,51 @@ class TestFastApiApplication:
         finally:
             reset_auth_cache()
             reset_state_db_cache()
+
+
+class TestTlsFingerprint:
+    """`hsync-server admin tls fingerprint` prints the persisted server pin."""
+
+    def test_prints_the_certificate_fingerprint(self, tmp_path, monkeypatch):
+        from hsync_common.ssl_utils import fingerprint_from_der
+
+        from hsync_server import config as server_config
+        from hsync_server.ssl_utils import ensure_certificates
+
+        cert_path, _ = ensure_certificates(str(tmp_path), key_password=b"test-password")
+        monkeypatch.setattr(server_config, "get_ssl_enabled", lambda: True)
+        monkeypatch.setattr(server_config, "get_ssl_certfile", lambda: "")
+        monkeypatch.setattr(server_config, "get_ssl_cert_dir", lambda: str(tmp_path))
+
+        result = runner.invoke(cli.app, ["admin", "tls", "fingerprint"])
+        assert result.exit_code == 0, result.output
+        import ssl as ssl_module
+
+        with open(cert_path, encoding="ascii") as cert_file:
+            expected = fingerprint_from_der(ssl_module.PEM_cert_to_DER_cert(cert_file.read()))
+        assert result.output.strip() == f"sha256:{expected}"
+
+    def test_json_output(self, tmp_path, monkeypatch):
+        import json as json_module
+
+        from hsync_server import config as server_config
+        from hsync_server.ssl_utils import ensure_certificates
+
+        ensure_certificates(str(tmp_path), key_password=b"test-password")
+        monkeypatch.setattr(server_config, "get_ssl_enabled", lambda: True)
+        monkeypatch.setattr(server_config, "get_ssl_certfile", lambda: "")
+        monkeypatch.setattr(server_config, "get_ssl_cert_dir", lambda: str(tmp_path))
+
+        result = runner.invoke(cli.app, ["admin", "tls", "fingerprint", "--json"])
+        assert result.exit_code == 0, result.output
+        payload = json_module.loads(result.output)
+        assert payload["fingerprint"].startswith("sha256:")
+        assert payload["certificate"].endswith("server.crt")
+
+    def test_tls_disabled_exits_with_error(self, monkeypatch):
+        from hsync_server import config as server_config
+
+        monkeypatch.setattr(server_config, "get_ssl_enabled", lambda: False)
+        result = runner.invoke(cli.app, ["admin", "tls", "fingerprint"])
+        assert result.exit_code == 1
+        assert "TLS is disabled" in result.output

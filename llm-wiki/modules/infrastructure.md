@@ -60,6 +60,12 @@ Wired as a router-level dependency on `auth_router`; `require_admin` gates
   is `true` and uvicorn terminates HTTPS/WSS with the persisted self-signed cert.
   Clients always use `https://`/`wss://` in both cases. User-facing description:
   `../docs/architecture.md` (Transport and TLS).
+- `hsync-server admin tls fingerprint` (`__main__.py`, `tls_app`) prints the
+  persisted certificate's `sha256:<hex>` (`fingerprint_from_der`,
+  `hsync_common.ssl_utils`) for the out-of-band step clients use with
+  `hsync trust server add`; `--json` emits `{fingerprint, certificate}`. It reads
+  `get_ssl_certfile()` (explicit) or `get_ssl_cert_dir()/server.crt`, and exits
+  non-zero when TLS is disabled or the certificate is missing.
 
 ## Hash cache (`hashes.py`)
 

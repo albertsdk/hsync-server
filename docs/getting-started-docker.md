@@ -114,12 +114,13 @@ channel:
 ```bash
 INSTALL_DIR="$HOME/.local/share/hsync-server"
 cd "$INSTALL_DIR"
+docker compose exec server hsync-server admin tls fingerprint
 docker compose cp server:/project/certs/server.crt ./server.crt
-openssl x509 -in server.crt -noout -fingerprint -sha256
 ```
 
-Verify the displayed fingerprint out of band before trusting it. Do not use
-`--insecure` for authenticated synchronization: disabling certificate
+The command prints the fingerprint as `sha256:<hex>`, the same form clients pin
+with `hsync trust server add`. Verify it out of band before trusting it. Do not
+use `--insecure` for authenticated synchronization: disabling certificate
 verification would expose the bearer token to a network attacker.
 
 ## Connect your clients

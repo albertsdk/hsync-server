@@ -7,7 +7,10 @@ Usage:
 This module allows the package to be run directly using Python's -m flag.
 """
 
+import json
+import ssl
 import sys
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -348,6 +351,59 @@ client_app = typer.Typer(name="client", help="Account management.")
 bucket_cli_app = typer.Typer(name="bucket", help="Bucket and membership management.")
 admin_app.add_typer(client_app, name="client")
 admin_app.add_typer(bucket_cli_app, name="bucket")
+
+tls_app = typer.Typer(name="tls", help="Inspect the server TLS certificate.")
+admin_app.add_typer(tls_app, name="tls")
+
+
+def _server_certificate_path() -> Path | None:
+    """Resolve the certificate the server serves TLS with, or None.
+
+    Prefers an explicit ``--ssl-certfile``/``HSYNC_SSL_CERTFILE``; otherwise the
+    auto-generated ``server.crt`` inside ``HSYNC_SSL_CERT_DIR``.
+    """
+    from hsync_server.config import get_ssl_cert_dir, get_ssl_certfile
+
+    explicit = get_ssl_certfile()
+    if explicit:
+        return Path(explicit)
+    return Path(get_ssl_cert_dir()) / "server.crt"
+
+
+@tls_app.command("fingerprint")
+def tls_fingerprint(
+    as_json: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
+) -> None:
+    """Print the server certificate's SHA-256 fingerprint for out-of-band verification.
+
+    Clients pin this value (``hsync trust server add``) when they use a self-signed
+    server certificate. The fingerprint is stable across restarts (the certificate
+    is persisted), so it is safe to distribute out of band.
+    """
+    from hsync_common.ssl_utils import fingerprint_from_der
+
+    from hsync_server.config import get_ssl_enabled
+
+    if not get_ssl_enabled():
+        typer.echo("Error: server TLS is disabled; there is no certificate to inspect.", err=True)
+        raise typer.Exit(1)
+    cert_path = _server_certificate_path()
+    if cert_path is None or not cert_path.is_file():
+        typer.echo(
+            f"Error: certificate not found at {cert_path}; start the server once to generate it.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    try:
+        der = ssl.PEM_cert_to_DER_cert(cert_path.read_text(encoding="ascii"))
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Error: cannot read certificate {cert_path}: {exc}", err=True)
+        raise typer.Exit(1) from None
+    fingerprint = f"sha256:{fingerprint_from_der(der)}"
+    if as_json:
+        typer.echo(json.dumps({"fingerprint": fingerprint, "certificate": str(cert_path)}))
+    else:
+        typer.echo(fingerprint)
 
 
 def _resolve_account_id(name: str | None, account_id: str | None) -> str:
