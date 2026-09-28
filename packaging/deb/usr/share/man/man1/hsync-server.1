@@ -1,0 +1,68 @@
+.TH HSYNC-SERVER 1 "2026-09-29" "hsync-server 1.0.0" "User Commands"
+.SH NAME
+hsync-server \- HSYNC file synchronization server
+.SH SYNOPSIS
+.B hsync-server
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B hsync-server
+is the central HTTP/WebSocket server of the HSYNC sync network. It manages
+buckets (shared directories), member accounts and per-account tokens, serves
+file upload/download with delta transfer, and pushes live events to connected
+clients over WebSocket.
+.PP
+Configuration is read from environment variables (prefix
+.BR HSYNC_ ),
+typically supplied through
+.BR /etc/hsync-server/hsync-server.conf
+by the packaged systemd unit.
+.SH OPTIONS
+.TP
+.BR \-\-version
+Print the version and exit.
+.TP
+.BR \-\-port " " PORT
+Listen on PORT (default 9753).
+.TP
+.BR \-\-ssl
+Enable HTTPS/WSS.
+.TP
+.BR \-\-ssl-cert " " PATH
+Path to the TLS certificate file.
+.TP
+.BR \-\-ssl-key " " PATH
+Path to the TLS private key file.
+.TP
+.BR \-\-env-file " " PATH
+Load environment variables from PATH (one KEY=VALUE per line).
+.TP
+.BR \-\-log-level " " LEVEL
+Log level: debug, info, warning, error, critical (default info).
+.SH ENVIRONMENT
+.TP
+.B HSYNC_ADMIN_KEY
+Bootstrap admin secret (64 hex characters, optional).
+.TP
+.B HSYNC_BUCKETS
+Path to the buckets directory.
+.TP
+.B HSYNC_STATE_DIR
+Path to the syncstate.db directory.
+.TP
+.B HSYNC_SSL_CERT_DIR
+Path to the TLS identity directory.
+.TP
+.B HSYNC_LOG_FILE
+Path to the optional log file.
+.SH FILES
+.TP
+.I /etc/hsync-server/hsync-server.conf
+Package configuration (EnvironmentFile), owned root:root (0600).
+.TP
+.I /var/lib/hsync-server
+Buckets, state and TLS identity.
+.TP
+.I /var/log/hsync-server
+Service logs.
+.SH SEE ALSO
+.BR systemd.unit (5)

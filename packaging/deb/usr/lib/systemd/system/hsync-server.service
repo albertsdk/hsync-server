@@ -1,0 +1,49 @@
+[Unit]
+Description=HSYNC file synchronization server
+Documentation=https://github.com/albertsdk/hsync-server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Dedicated system user (no /home, no login shell), created by the package.
+User=_hsync-server
+Group=_hsync-server
+# The conffile is owned root:root (0600) and read by systemd before the
+# daemon drops privileges; HSYNC_ADMIN_KEY is loaded from there.
+EnvironmentFile=-/etc/hsync-server/hsync-server.conf
+ExecStart=/usr/lib/hsync-server/hsync-server
+Restart=on-failure
+RestartSec=5s
+
+# Writable state: buckets, syncstate.db (ADR-0025) and TLS identity live in
+# /var/lib/hsync-server; logs go to /var/log/hsync-server.
+ReadWritePaths=/var/lib/hsync-server /var/log/hsync-server
+
+# ---- Hardening ---------------------------------------------------------------
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+UMask=077
+
+[Install]
+WantedBy=multi-user.target

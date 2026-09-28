@@ -1,0 +1,32 @@
+#!/bin/sh
+#
+# postrm — Debian maintainer script, runs after package removal.
+#
+# On purge, removes the system user and the data directories. On plain
+# ``remove`` the data (buckets, state, certs, logs) is preserved so a
+# reinstall can pick it up; a purge is the explicit "delete everything".
+
+set -e
+
+case "$1" in
+    purge)
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl daemon-reload 2>/dev/null || true
+        fi
+        # Data directories are deliberately left for remove, removed on purge.
+        rm -rf /var/lib/hsync-server /var/log/hsync-server 2>/dev/null || true
+        if id "_hsync-server" >/dev/null 2>&1; then
+            userdel "_hsync-server" 2>/dev/null || true
+        fi
+        if getent group "_hsync-server" >/dev/null 2>&1; then
+            groupdel "_hsync-server" 2>/dev/null || true
+        fi
+        ;;
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+    *)
+        exit 1
+        ;;
+esac
+
+exit 0

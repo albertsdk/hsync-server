@@ -1,0 +1,67 @@
+#!/bin/sh
+#
+# postinst — Debian maintainer script, runs after package installation.
+#
+# Creates the system user for the daemon, ensures directories exist with
+# correct ownership, and registers the systemd unit. The service is NOT
+# enabled or started: the administrator must set HSYNC_ADMIN_KEY in
+# /etc/hsync-server/hsync-server.conf and then opt in explicitly with
+# ``systemctl enable --now hsync-server.service``.
+
+set -e
+
+HSYNC_USER="_hsync-server"
+HSYNC_GROUP="_hsync-server"
+CONFIG_DIR="/etc/hsync-server"
+LOG_DIR="/var/log/hsync-server"
+DATA_DIR="/var/lib/hsync-server"
+
+# ── System user ──────────────────────────────────────────────────────────
+if ! getent group "${HSYNC_GROUP}" >/dev/null 2>&1; then
+    addgroup --system --quiet "${HSYNC_GROUP}"
+fi
+if ! id "${HSYNC_USER}" >/dev/null 2>&1; then
+    adduser --system --quiet \
+        --ingroup "${HSYNC_GROUP}" \
+        --no-create-home \
+        --shell /usr/sbin/nologin \
+        "${HSYNC_USER}"
+fi
+
+# ── Directories ──────────────────────────────────────────────────────────
+mkdir -p "${CONFIG_DIR}" "${LOG_DIR}" "${DATA_DIR}" \
+    "${DATA_DIR}/buckets" "${DATA_DIR}/state" "${DATA_DIR}/certs"
+chown root:root "${CONFIG_DIR}" 2>/dev/null || true
+chmod 0750 "${CONFIG_DIR}"
+chown "${HSYNC_USER}:${HSYNC_GROUP}" "${LOG_DIR}" 2>/dev/null || true
+chmod 0750 "${LOG_DIR}"
+# Data directory: buckets + syncstate.db + TLS identity, listed in the
+# service's ReadWritePaths, so it must exist and be writable by the daemon.
+chown "${HSYNC_USER}:${HSYNC_GROUP}" "${DATA_DIR}" 2>/dev/null || true
+chmod 0750 "${DATA_DIR}"
+for sub in buckets state; do
+    chown "${HSYNC_USER}:${HSYNC_GROUP}" "${DATA_DIR}/${sub}" 2>/dev/null || true
+    chmod 0750 "${DATA_DIR}/${sub}"
+done
+# TLS identity directory (HSYNC_SSL_CERT_DIR): private keys only.
+chown "${HSYNC_USER}:${HSYNC_GROUP}" "${DATA_DIR}/certs" 2>/dev/null || true
+chmod 0700 "${DATA_DIR}/certs"
+
+# ── Config file permissions (conffile) ────────────────────────────────────
+# dpkg marks /etc/hsync-server/hsync-server.conf as a conffile, so its
+# contents are preserved across upgrades. It holds the admin key (a secret),
+# so it is restricted to root only — systemd reads the EnvironmentFile as
+# root before dropping to the _hsync-server user.
+if [ -f "${CONFIG_DIR}/hsync-server.conf" ]; then
+    chown root:root "${CONFIG_DIR}/hsync-server.conf" 2>/dev/null || true
+    chmod 0600 "${CONFIG_DIR}/hsync-server.conf" 2>/dev/null || true
+fi
+
+# ── systemd ──────────────────────────────────────────────────────────────
+# Only register the unit; do NOT enable it (no automatic start at boot).
+# The administrator enables it explicitly: systemctl enable --now hsync-server.service
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload 2>/dev/null || true
+fi
+
+exit 0

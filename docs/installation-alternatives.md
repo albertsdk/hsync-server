@@ -104,6 +104,35 @@ Output: `dist/rpi/armhf/hsync-server` and `dist/rpi/arm64/hsync-server`. The
 host needs Docker with `qemu-user-static` binfmt handlers configured for
 cross-architecture emulation.
 
+### Debian/Ubuntu package
+
+The `deb` and `deb-all` targets assemble a `.deb` that installs the frozen
+server under `/usr/lib/hsync-server` (with `/usr/bin/hsync-server` on PATH), a
+`hsync-server.service` systemd unit, and a conffile at
+`/etc/hsync-server/hsync-server.conf`.
+
+```bash
+poetry install --with build
+./compile.sh --target deb
+# output: dist/deb/hsync-server_<ver>_<arch>.deb
+sudo dpkg -i dist/deb/hsync-server_<ver>_<arch>.deb
+sudo apt install -f
+```
+
+Set `HSYNC_ADMIN_KEY` in `/etc/hsync-server/hsync-server.conf`
+(`openssl rand -hex 32`), then opt in:
+
+```bash
+sudo systemctl enable --now hsync-server.service
+```
+
+Data is stored under `/var/lib/hsync-server`; logs under
+`/var/log/hsync-server`. The package creates a dedicated `_hsync-server` system
+user and never enables the service automatically.
+
+`./compile.sh --target deb-all` cross-builds the `amd64`, `arm64` and `armhf`
+packages inside Docker.
+
 ## Build from source
 
 The source Docker build requires `hsync-server` and `hsync-common` as sibling

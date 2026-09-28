@@ -180,12 +180,16 @@ run the result.
 ```bash
 ./compile.sh                    # host OS/arch → dist/<os>-<arch>/hsync-server
 ./compile.sh --clean            # clean artifacts and rebuild
+./compile.sh --target deb       # Debian/Ubuntu .deb for the host arch
+./compile.sh --target deb-all   # .deb for amd64, arm64 and armhf (Docker + qemu)
 ./compile.sh --target rpi       # Raspberry Pi OS armhf + arm64 (Docker + qemu)
 ```
 
 The `native` target uses the project virtualenv; install the PyInstaller build
-group once with `poetry install --with build`. The `rpi` target builds
-Raspberry Pi OS 32-bit (`armhf`) and 64-bit (`arm64`) executables into
+group once with `poetry install --with build`. The `deb` target produces
+`dist/deb/hsync-server_<ver>_<arch>.deb` (installable with `dpkg -i`); `deb-all`
+cross-builds the three Debian architectures inside Docker. The `rpi` target
+builds Raspberry Pi OS 32-bit (`armhf`) and 64-bit (`arm64`) executables into
 `dist/rpi/<arch>/hsync-server` inside Docker (cross-architecture emulation via
 `qemu-user-static`). See [Contributing](CONTRIBUTING.md) for the full details.
 
