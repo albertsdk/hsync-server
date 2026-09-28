@@ -129,11 +129,7 @@ def test_rerun_preserves_secrets_and_updates_selected_version(tmp_path: Path):
     assert "Endpoint: https://192.168.1.20:9443" in second.stdout
     updated = env_file.read_text()
     api_key = next(line for line in original.splitlines() if line.startswith("HSYNC_ADMIN_KEY="))
-    password = next(
-        line for line in original.splitlines() if line.startswith("HSYNC_SSL_KEYFILE_PASSWORD=")
-    )
     assert api_key in updated
-    assert password in updated
     assert "HSYNC_IMAGE=ghcr.io/albertsdk/hsync-server:v2.0.0" in updated
     assert "HSYNC_BIND_ADDRESS=192.168.1.20" in updated
     assert "HSYNC_CERT_HOSTNAME=192.168.1.20" in updated

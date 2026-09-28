@@ -139,7 +139,6 @@ line:
 ```bash
 export HSYNC_ADMIN_KEY="$(openssl rand -hex 32)"
 export HSYNC_SSL_ENABLED=true
-export HSYNC_SSL_KEYFILE_PASSWORD="$(openssl rand -hex 32)"
 ./docker.sh start
 ```
 
@@ -149,7 +148,6 @@ Enable HTTPS/WSS by setting the relevant environment variables before starting:
 
 ```bash
 HSYNC_SSL_ENABLED=true \
-HSYNC_SSL_KEYFILE_PASSWORD="$(openssl rand -hex 32)" \
 HSYNC_ADMIN_KEY=secret \
 ./docker.sh start
 ```
@@ -420,17 +418,10 @@ Common causes:
   (generate with `openssl rand -hex 32`). When unset, the server generates a
   secret itself and prints the admin token once; it does not require the
   variable to start.
-- `HSYNC_SSL_KEYFILE_PASSWORD` missing when `HSYNC_SSL_ENABLED=true`.
 - Volume permissions — `./docker.sh` and the Compose template run the
   container as the invoking user's UID/GID (`HSYNC_UID`/`HSYNC_GID`), so the
   bind-mounted `hsync-data/` directories stay writable. If you mount custom
   host directories manually, make sure they are writable by that user.
-
-**SSL keyfile password missing:**
-```
-Error: HSYNC_SSL_KEYFILE_PASSWORD is required when SSL is enabled
-```
-Set `HSYNC_SSL_KEYFILE_PASSWORD` when `HSYNC_SSL_ENABLED=true`.
 
 ### Clients cannot connect
 

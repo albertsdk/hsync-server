@@ -29,8 +29,10 @@ the server-local choices not big enough for an ADR.
   `hs_<id>_<secret>` tokens with roles (`admin`/`client`) and per-bucket
   `owner`/`member` membership; scrypt-hashed secrets, KDF cache, per-request
   DB re-check. Replaces the single shared API key (ADR-0008).
-- **Persisted self-signed cert** (`ssl_utils.py:138`) so the TLS fingerprint is
-  stable for peer TOFU pinning across restarts.
+- **Persisted self-signed service identity** (`ssl_utils.py`, ADR-0037): ECDSA
+  P-256, an unencrypted `0600` key in a `0700` directory, 20-year validity, so
+  the TLS fingerprint is stable for client pinning across restarts; rotation via
+  `admin tls rotate`, with an expiry warning at startup.
 - **Resumable uploads via `.part` + fsync** (`api/files/upload.py`) for reliability
   on flaky NAS links.
 - **Tag-driven GHCR release** (`.github/workflows/release.yml`): pushing a

@@ -33,7 +33,6 @@ start:
 ```bash
 export HSYNC_ADMIN_KEY="$(openssl rand -hex 32)"
 export HSYNC_SSL_ENABLED=true
-export HSYNC_SSL_KEYFILE_PASSWORD="$(openssl rand -hex 32)"
 export HSYNC_SSL_CERT_DIR=./certs
 poetry run hsync-server
 ```
@@ -70,6 +69,9 @@ The command prints the fingerprint as `sha256:<hex>`, the same form clients pin
 with `hsync trust server add`. Verify it out of band before trusting it. Do not
 use `--insecure` for authenticated synchronization: disabling certificate
 verification would expose the bearer token to a network attacker.
+
+To rotate the certificate later (e.g. after a suspected compromise), run
+`hsync-server admin tls rotate` and move clients to the new fingerprint.
 
 ## Connect your clients
 

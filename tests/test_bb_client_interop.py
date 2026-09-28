@@ -103,8 +103,8 @@ def _tls_server(tmp_path_factory, bucket: str):
     key_path.write_bytes(
         key.private_bytes(
             serialization.Encoding.PEM,
-            serialization.PrivateFormat.TraditionalOpenSSL,
-            serialization.BestAvailableEncryption(b"test-bb-interop-ssl-password"),
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
         )
     )
 
@@ -114,7 +114,6 @@ def _tls_server(tmp_path_factory, bucket: str):
             "HSYNC_SSL_ENABLED": "True",
             "HSYNC_SSL_CERTFILE": str(cert_path),
             "HSYNC_SSL_KEYFILE": str(key_path),
-            "HSYNC_SSL_KEYFILE_PASSWORD": "test-bb-interop-ssl-password",
         }
     )
     try:

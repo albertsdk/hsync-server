@@ -10,11 +10,13 @@ This module allows the package to be run directly using Python's -m flag.
 import json
 import ssl
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
 import typer
 import uvicorn
+from cryptography import x509
 from hsync_common.endpoint import parse_host_port
 from hsync_common.runtime import runtime_summary
 from pydantic import ValidationError
@@ -28,13 +30,15 @@ from hsync_server.config import (
     get_ssl_certfile,
     get_ssl_enabled,
     get_ssl_keyfile,
-    get_ssl_keyfile_password,
     get_workers,
     load_env_file,
 )
 from hsync_server.constants import ACCOUNT_ID_LEN, HSYNC_VERSION
 from hsync_server.logger import VALID_LOG_LEVELS, setup_logging
 from hsync_server.ssl_utils import get_ssl_config
+
+# Warn when the served TLS certificate is within this many days of expiry.
+_CERT_EXPIRY_WARN_DAYS = 30
 
 # =============================================================================
 # CLI Application
@@ -276,7 +280,6 @@ def main(
         effective_ssl_certfile = ssl_certfile if ssl_certfile else get_ssl_certfile()
         effective_ssl_keyfile = ssl_keyfile if ssl_keyfile else get_ssl_keyfile()
         effective_ssl_cert_dir = ssl_cert_dir if ssl_cert_dir else get_ssl_cert_dir()
-        effective_ssl_keyfile_password = get_ssl_keyfile_password()
     except ValidationError as exc:
         for err in exc.errors():
             print(f"Configuration error: {err['msg']}", file=sys.stderr)
@@ -295,8 +298,12 @@ def main(
         ssl_certfile=effective_ssl_certfile or None,
         ssl_keyfile=effective_ssl_keyfile or None,
         ssl_cert_dir=effective_ssl_cert_dir,
-        ssl_keyfile_password=effective_ssl_keyfile_password or None,
     )
+
+    # Warn when the persisted certificate is near or past expiry (a pinned
+    # identity lives 20 years, so an expiring one means the deployment is old
+    # and the operator must rotate it — see `admin tls rotate`).
+    _warn_if_certificate_expiring(ssl_config.get("ssl_certfile") if ssl_config else None, log)
 
     # Log server startup mode
     if effective_ssl_enabled:
@@ -356,18 +363,50 @@ tls_app = typer.Typer(name="tls", help="Inspect the server TLS certificate.")
 admin_app.add_typer(tls_app, name="tls")
 
 
-def _server_certificate_path() -> Path | None:
-    """Resolve the certificate the server serves TLS with, or None.
+def _warn_if_certificate_expiring(cert_path: str | None, log) -> None:
+    """Log a warning when the served TLS certificate is near or past expiry.
 
-    Prefers an explicit ``--ssl-certfile``/``HSYNC_SSL_CERTFILE``; otherwise the
-    auto-generated ``server.crt`` inside ``HSYNC_SSL_CERT_DIR``.
+    A pinned service identity lives for 20 years (ADR-0037), so an expiring
+    certificate means the deployment is old and should be rotated with
+    ``admin tls rotate``.
     """
-    from hsync_server.config import get_ssl_cert_dir, get_ssl_certfile
+    if not cert_path:
+        return
+    path = Path(cert_path)
+    if not path.is_file():
+        return
+    try:
+        cert = x509.load_pem_x509_certificate(path.read_bytes())
+    except (OSError, ValueError):
+        return
+    days_left = (cert.not_valid_after_utc - datetime.now(UTC)).days
+    if days_left <= _CERT_EXPIRY_WARN_DAYS:
+        log.warning(
+            f"TLS certificate {path} expires in {days_left} day(s); rotate it with "
+            "'hsync-server admin tls rotate'."
+        )
 
-    explicit = get_ssl_certfile()
-    if explicit:
-        return Path(explicit)
-    return Path(get_ssl_cert_dir()) / "server.crt"
+
+def _server_identity_paths() -> tuple[Path, Path]:
+    """Resolve the (certificate, private key) paths the server serves TLS with.
+
+    Prefers explicit ``--ssl-certfile``/``--ssl-keyfile`` (``HSYNC_SSL_CERTFILE``
+    / ``HSYNC_SSL_KEYFILE``); otherwise the auto-generated ``server.crt`` /
+    ``server.key`` inside ``HSYNC_SSL_CERT_DIR``.
+    """
+    from hsync_server.config import get_ssl_cert_dir, get_ssl_certfile, get_ssl_keyfile
+
+    cert = get_ssl_certfile()
+    key = get_ssl_keyfile()
+    if cert and key:
+        return Path(cert), Path(key)
+    cert_dir = Path(get_ssl_cert_dir())
+    return cert_dir / "server.crt", cert_dir / "server.key"
+
+
+def _server_certificate_path() -> Path | None:
+    """Resolve the certificate the server serves TLS with, or None."""
+    return _server_identity_paths()[0]
 
 
 @tls_app.command("fingerprint")
@@ -404,6 +443,41 @@ def tls_fingerprint(
         typer.echo(json.dumps({"fingerprint": fingerprint, "certificate": str(cert_path)}))
     else:
         typer.echo(fingerprint)
+
+
+@tls_app.command("rotate")
+def tls_rotate(
+    hostname: Annotated[
+        str | None,
+        typer.Option("--hostname", help="Certificate common name (default: system hostname)."),
+    ] = None,
+) -> None:
+    """Regenerate the server TLS certificate and key, and print the new fingerprint.
+
+    The certificate is self-signed and validated by fingerprint pinning, so after
+    rotating, point clients at the new fingerprint (accept both the old and the
+    new value during the rotation window — see the client trust documentation).
+    """
+    from hsync_common.ssl_utils import fingerprint_from_der
+
+    from hsync_server.config import get_ssl_certfile, get_ssl_enabled, get_ssl_keyfile
+    from hsync_server.ssl_utils import generate_self_signed_cert
+
+    if not get_ssl_enabled():
+        typer.echo("Error: server TLS is disabled; there is no certificate to rotate.", err=True)
+        raise typer.Exit(1)
+    if get_ssl_certfile() and get_ssl_keyfile():
+        typer.echo(
+            "Error: the certificate is provided explicitly "
+            "(HSYNC_SSL_CERTFILE/HSYNC_SSL_KEYFILE); rotate it outside HSYNC.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    cert_path, key_path = _server_identity_paths()
+    generate_self_signed_cert(str(cert_path), str(key_path), hostname=hostname)
+    der = ssl.PEM_cert_to_DER_cert(cert_path.read_text(encoding="ascii"))
+    typer.echo(f"Certificate rotated: {cert_path}")
+    typer.echo(f"New fingerprint: sha256:{fingerprint_from_der(der)}")
 
 
 def _resolve_account_id(name: str | None, account_id: str | None) -> str:

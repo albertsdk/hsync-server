@@ -11,14 +11,19 @@ This module provides utilities for generating and managing self-signed
 certificates for HTTPS/WSS communication. Certificates are automatically
 generated if not present, enabling encrypted communication out of the box.
 
+The identity follows the shared service-identity model (ADR-0037): ECDSA P-256,
+an unencrypted PKCS#8 private key guarded by ``0600``/``0700`` filesystem
+permissions (SSH host-key model, not a passphrase), and a 20-year validity. The
+certificate is validated by pinning its fingerprint (ADR-0036), not by WebPKI.
+
 Usage:
     from hsync_server.ssl_utils import ensure_certificates, get_ssl_config
 
     # Ensure certificates exist (generates if missing)
-    cert_file, key_file = ensure_certificates()
+    cert_file, key_file = ensure_certificates(HSYNC_SSL_CERT_DIR)
 
     # Get SSL configuration for uvicorn
-    ssl_config = get_ssl_config()
+    ssl_config = get_ssl_config(ssl_enabled=True, ssl_cert_dir=HSYNC_SSL_CERT_DIR)
 """
 
 import ipaddress
@@ -31,53 +36,58 @@ from typing import Any
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from hsync_common.ssl_utils import (
-    DEFAULT_KEY_SIZE,
+    SERVICE_CERT_VALIDITY_DAYS,
     build_self_signed_certificate,
-    generate_rsa_private_key,
+    generate_ecdsa_private_key,
     serialize_cert_pem,
-    serialize_key_pem,
+    serialize_private_key_unencrypted,
 )
 from loguru import logger as log
 
-# Default certificate validity period (365 days)
-DEFAULT_CERT_VALIDITY_DAYS = 365
+# Default certificate validity: the shared service-identity lifetime (20 years).
+# The certificate is authenticated by fingerprint pinning (ADR-0036/ADR-0037),
+# not by WebPKI, so it lives for the deployment instead of a browser-friendly
+# 398/825-day window.
+DEFAULT_CERT_VALIDITY_DAYS = SERVICE_CERT_VALIDITY_DAYS
+
+# Identity file permissions: key 0600, certificate 0644, parent directory 0700.
+_KEY_FILE_MODE = 0o600
+_CERT_FILE_MODE = 0o644
+_DIR_MODE = 0o700
 
 
 def generate_self_signed_cert(
     cert_path: str,
     key_path: str,
-    key_password: bytes,
     hostname: str | None = None,
     validity_days: int = DEFAULT_CERT_VALIDITY_DAYS,
-    key_size: int = DEFAULT_KEY_SIZE,
 ) -> tuple[str, str]:
     """
-    Generate a self-signed certificate and encrypted private key.
+    Generate a self-signed certificate and its private key.
+
+    The key is ECDSA P-256 and is written unencrypted (PKCS#8) with ``0600``
+    permissions in a ``0700`` directory — the SSH host-key / Syncthing model
+    (ADR-0037): the identity is trusted by fingerprint pinning, so the secret is
+    protected by filesystem permissions rather than a passphrase.
 
     Args:
         cert_path: Path where the certificate will be saved.
-        key_path: Path where the encrypted private key will be saved.
-        key_password: Password used to encrypt the private key on disk
-            (PKCS#8 + BestAvailableEncryption). Must be non-empty.
+        key_path: Path where the private key will be saved.
         hostname: Hostname for the certificate (defaults to system hostname).
         validity_days: Certificate validity period in days.
-        key_size: RSA key size in bits.
 
     Returns:
         Tuple of (cert_path, key_path).
 
     Raises:
-        ValueError: If ``key_password`` is empty.
         OSError: If unable to write certificate files.
     """
-    if not key_password:
-        raise ValueError("key_password is required: SSL private keys must always be encrypted")
     if hostname is None:
         hostname = socket.gethostname()
 
     log.info(f"Generating self-signed certificate for hostname: {hostname}")
 
-    private_key = generate_rsa_private_key(key_size)
+    private_key = generate_ecdsa_private_key()
 
     subject_attrs = [
         x509.NameAttribute(NameOID.COUNTRY_NAME, "IT"),
@@ -113,20 +123,22 @@ def generate_self_signed_cert(
 
     not_valid_after = datetime.now(UTC) + timedelta(days=validity_days)
 
-    # Ensure parent directories exist
-    Path(cert_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(key_path).parent.mkdir(parents=True, exist_ok=True)
+    # Ensure parent directories exist; when newly created, restrict to 0700 (the
+    # private key lives here).
+    for parent in (Path(cert_path).parent, Path(key_path).parent):
+        if not parent.exists():
+            parent.mkdir(parents=True, exist_ok=True)
+            os.chmod(parent, _DIR_MODE)
 
-    # Write encrypted private key (PKCS#8 + BestAvailableEncryption)
-    # with restrictive permissions.
+    # Write the private key unencrypted (PKCS#8), protected by permissions.
     with open(key_path, "wb") as f:
-        f.write(serialize_key_pem(private_key, password=key_password))
-    os.chmod(key_path, 0o600)  # Read/write only for owner
+        f.write(serialize_private_key_unencrypted(private_key))
+    os.chmod(key_path, _KEY_FILE_MODE)  # Read/write only for owner
 
     # Write certificate
     with open(cert_path, "wb") as f:
         f.write(serialize_cert_pem(cert))
-    os.chmod(cert_path, 0o644)  # Readable by all
+    os.chmod(cert_path, _CERT_FILE_MODE)  # Readable by all
 
     log.info(f"Certificate generated: {cert_path}")
     log.info(f"Private key generated: {key_path}")
@@ -137,7 +149,6 @@ def generate_self_signed_cert(
 
 def ensure_certificates(
     cert_dir: str,
-    key_password: bytes,
     cert_filename: str = "server.crt",
     key_filename: str = "server.key",
     hostname: str | None = None,
@@ -147,8 +158,6 @@ def ensure_certificates(
 
     Args:
         cert_dir: Directory where certificates are stored.
-        key_password: Password used to encrypt a newly generated private key
-            (PKCS#8 + BestAvailableEncryption). Must be non-empty.
         cert_filename: Certificate filename.
         key_filename: Private key filename.
         hostname: Hostname for the certificate.
@@ -164,9 +173,7 @@ def ensure_certificates(
         return cert_path, key_path
 
     log.info("Certificates not found, generating new self-signed certificates...")
-    return generate_self_signed_cert(
-        cert_path, key_path, key_password=key_password, hostname=hostname
-    )
+    return generate_self_signed_cert(cert_path, key_path, hostname=hostname)
 
 
 def get_ssl_config(
@@ -174,7 +181,6 @@ def get_ssl_config(
     ssl_certfile: str | None = None,
     ssl_keyfile: str | None = None,
     ssl_cert_dir: str | None = None,
-    ssl_keyfile_password: str | None = None,
 ) -> dict[str, Any]:
     """
     Get SSL configuration for uvicorn.
@@ -184,23 +190,14 @@ def get_ssl_config(
         ssl_certfile: Path to SSL certificate file.
         ssl_keyfile: Path to SSL private key file.
         ssl_cert_dir: Directory for auto-generated certificates.
-        ssl_keyfile_password: Password used to decrypt ``ssl_keyfile``.
-            Required when ``ssl_enabled=True`` because private keys are always
-            encrypted on disk. Sourced from ``HSYNC_SSL_KEYFILE_PASSWORD``.
 
     Returns:
-        Dictionary with ``ssl_certfile``, ``ssl_keyfile`` and
-        ``ssl_keyfile_password`` keys (or empty if SSL is disabled).
+        Dictionary with ``ssl_certfile`` and ``ssl_keyfile`` keys (or empty if
+        SSL is disabled). The private key is stored unencrypted (ADR-0037), so
+        no ``ssl_keyfile_password`` is required.
     """
     if not ssl_enabled:
         return {}
-
-    if not ssl_keyfile_password:
-        raise ValueError(
-            "SSL is enabled but HSYNC_SSL_KEYFILE_PASSWORD is empty. "
-            "Set it to a strong secret: the SSL private key is always "
-            "stored encrypted on disk."
-        )
 
     # If explicit paths provided, use them
     if ssl_certfile and ssl_keyfile:
@@ -211,18 +208,14 @@ def get_ssl_config(
         return {
             "ssl_certfile": ssl_certfile,
             "ssl_keyfile": ssl_keyfile,
-            "ssl_keyfile_password": ssl_keyfile_password,
         }
 
     # Auto-generate certificates if cert_dir is provided
     if ssl_cert_dir:
-        cert_path, key_path = ensure_certificates(
-            ssl_cert_dir, key_password=ssl_keyfile_password.encode()
-        )
+        cert_path, key_path = ensure_certificates(ssl_cert_dir)
         return {
             "ssl_certfile": cert_path,
             "ssl_keyfile": key_path,
-            "ssl_keyfile_password": ssl_keyfile_password,
         }
 
     raise ValueError(

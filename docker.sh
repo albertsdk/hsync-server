@@ -147,7 +147,6 @@ ${BOLD}Environment Variables:${RESET}
 
     SSL/TLS (forwarded by name from the current environment):
     HSYNC_SSL_ENABLED           Enable HTTPS/WSS (true/false)
-    HSYNC_SSL_KEYFILE_PASSWORD  Password for the encrypted private key (required when SSL on)
     HSYNC_SSL_CERTFILE          Path to SSL certificate (PEM)
     HSYNC_SSL_KEYFILE           Path to SSL private key (PEM)
     HSYNC_SSL_CERT_DIR          Directory for auto-generated certificates
@@ -295,11 +294,10 @@ cmd_start() {
         docker_args+=(-e HSYNC_ADMIN_KEY)
     fi
 
-    # Forward SSL/TLS settings from the parent environment by name. Passing them
-    # by name (not as VAR=value) keeps the secret HSYNC_SSL_KEYFILE_PASSWORD off
-    # the command line, and ensures `HSYNC_SSL_ENABLED=true ./docker.sh start`
-    # actually reaches the server (the entrypoint reads these to enable HTTPS).
-    for ssl_var in HSYNC_SSL_ENABLED HSYNC_SSL_KEYFILE_PASSWORD \
+    # Forward SSL/TLS settings from the parent environment by name, so
+    # `HSYNC_SSL_ENABLED=true ./docker.sh start` actually reaches the server
+    # (the entrypoint reads these to enable HTTPS).
+    for ssl_var in HSYNC_SSL_ENABLED \
         HSYNC_SSL_CERTFILE HSYNC_SSL_KEYFILE HSYNC_SSL_CERT_DIR; do
         if [[ -n "${!ssl_var:-}" ]]; then
             docker_args+=(-e "${ssl_var}")

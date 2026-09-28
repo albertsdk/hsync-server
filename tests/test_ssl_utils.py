@@ -10,17 +10,15 @@ from unittest.mock import patch
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
 from hsync_server.ssl_utils import (
     DEFAULT_CERT_VALIDITY_DAYS,
-    DEFAULT_KEY_SIZE,
     ensure_certificates,
     generate_self_signed_cert,
     get_ssl_config,
 )
-
-TEST_KEY_PASSWORD = b"test-keyfile-password"
 
 
 class TestGenerateSelfSignedCert:
@@ -31,9 +29,7 @@ class TestGenerateSelfSignedCert:
         cert_path = str(tmp_path / "server.crt")
         key_path = str(tmp_path / "server.key")
 
-        result_cert, result_key = generate_self_signed_cert(
-            cert_path, key_path, key_password=TEST_KEY_PASSWORD
-        )
+        result_cert, result_key = generate_self_signed_cert(cert_path, key_path)
 
         assert result_cert == cert_path
         assert result_key == key_path
@@ -45,38 +41,27 @@ class TestGenerateSelfSignedCert:
         cert_path = str(tmp_path / "server.crt")
         key_path = str(tmp_path / "server.key")
 
-        generate_self_signed_cert(cert_path, key_path, key_password=TEST_KEY_PASSWORD)
+        generate_self_signed_cert(cert_path, key_path)
 
         with open(cert_path, "rb") as f:
             cert_data = f.read()
         cert = x509.load_pem_x509_certificate(cert_data)
         assert cert is not None
 
-    def test_private_key_is_encrypted_pkcs8(self, tmp_path):
-        """Test that the generated private key is encrypted PKCS#8."""
+    def test_private_key_is_unencrypted_ecdsa_pkcs8(self, tmp_path):
+        """The key is an unencrypted ECDSA P-256 PKCS#8 (ADR-0037)."""
         cert_path = str(tmp_path / "server.crt")
         key_path = str(tmp_path / "server.key")
 
-        generate_self_signed_cert(cert_path, key_path, key_password=TEST_KEY_PASSWORD)
+        generate_self_signed_cert(cert_path, key_path)
 
         with open(key_path, "rb") as f:
             key_data = f.read()
 
-        assert key_data.startswith(b"-----BEGIN ENCRYPTED PRIVATE KEY-----")
-        # Loading without the password must fail
-        with pytest.raises((TypeError, ValueError)):
-            serialization.load_pem_private_key(key_data, password=None)
-        # Loading with the correct password must succeed
-        key = serialization.load_pem_private_key(key_data, password=TEST_KEY_PASSWORD)
-        assert key is not None
-
-    def test_rejects_empty_key_password(self, tmp_path):
-        """Test that empty key_password is rejected."""
-        cert_path = str(tmp_path / "server.crt")
-        key_path = str(tmp_path / "server.key")
-
-        with pytest.raises(ValueError, match="key_password is required"):
-            generate_self_signed_cert(cert_path, key_path, key_password=b"")
+        assert key_data.startswith(b"-----BEGIN PRIVATE KEY-----")
+        key = serialization.load_pem_private_key(key_data, password=None)
+        assert isinstance(key, ec.EllipticCurvePrivateKey)
+        assert isinstance(key.curve, ec.SECP256R1)
 
     def test_certificate_has_correct_hostname(self, tmp_path):
         """Test that certificate has the specified hostname."""
@@ -84,9 +69,7 @@ class TestGenerateSelfSignedCert:
         key_path = str(tmp_path / "server.key")
         hostname = "test-server.local"
 
-        generate_self_signed_cert(
-            cert_path, key_path, key_password=TEST_KEY_PASSWORD, hostname=hostname
-        )
+        generate_self_signed_cert(cert_path, key_path, hostname=hostname)
 
         with open(cert_path, "rb") as f:
             cert = x509.load_pem_x509_certificate(f.read())
@@ -99,9 +82,7 @@ class TestGenerateSelfSignedCert:
         cert_path = str(tmp_path / "server.crt")
         key_path = str(tmp_path / "server.key")
 
-        generate_self_signed_cert(
-            cert_path, key_path, key_password=TEST_KEY_PASSWORD, hostname="testhost"
-        )
+        generate_self_signed_cert(cert_path, key_path, hostname="testhost")
 
         with open(cert_path, "rb") as f:
             cert = x509.load_pem_x509_certificate(f.read())
@@ -111,12 +92,24 @@ class TestGenerateSelfSignedCert:
         assert "testhost" in dns_names
         assert "localhost" in dns_names
 
+    def test_certificate_uses_ecdsa_p256_signature(self, tmp_path):
+        """The certificate is signed with ECDSA P-256 (ADR-0037)."""
+        cert_path = str(tmp_path / "server.crt")
+        key_path = str(tmp_path / "server.key")
+
+        generate_self_signed_cert(cert_path, key_path)
+
+        with open(cert_path, "rb") as f:
+            cert = x509.load_pem_x509_certificate(f.read())
+        assert isinstance(cert.public_key(), ec.EllipticCurvePublicKey)
+        assert isinstance(cert.public_key().curve, ec.SECP256R1)
+
     def test_key_file_has_restrictive_permissions(self, tmp_path):
         """Test that private key file has 0600 permissions."""
         cert_path = str(tmp_path / "server.crt")
         key_path = str(tmp_path / "server.key")
 
-        generate_self_signed_cert(cert_path, key_path, key_password=TEST_KEY_PASSWORD)
+        generate_self_signed_cert(cert_path, key_path)
 
         key_stat = os.stat(key_path)
         # Check owner read/write only (0600)
@@ -127,7 +120,7 @@ class TestGenerateSelfSignedCert:
         cert_path = str(tmp_path / "server.crt")
         key_path = str(tmp_path / "server.key")
 
-        generate_self_signed_cert(cert_path, key_path, key_password=TEST_KEY_PASSWORD)
+        generate_self_signed_cert(cert_path, key_path)
 
         cert_stat = os.stat(cert_path)
         # Check readable by all (0644)
@@ -138,7 +131,7 @@ class TestGenerateSelfSignedCert:
         cert_path = str(tmp_path / "subdir" / "deep" / "server.crt")
         key_path = str(tmp_path / "subdir" / "deep" / "server.key")
 
-        generate_self_signed_cert(cert_path, key_path, key_password=TEST_KEY_PASSWORD)
+        generate_self_signed_cert(cert_path, key_path)
 
         assert os.path.exists(cert_path)
         assert os.path.exists(key_path)
@@ -148,16 +141,14 @@ class TestGenerateSelfSignedCert:
         cert_path = str(tmp_path / "server.crt")
         key_path = str(tmp_path / "server.key")
 
-        generate_self_signed_cert(
-            cert_path, key_path, key_password=TEST_KEY_PASSWORD, validity_days=30
-        )
+        generate_self_signed_cert(cert_path, key_path, validity_days=30)
 
         with open(cert_path, "rb") as f:
             cert = x509.load_pem_x509_certificate(f.read())
 
-        # Check validity period is approximately 30 days
-        delta = cert.not_valid_after_utc - cert.not_valid_before_utc  # type: ignore[attr-defined]
-        assert 29 <= delta.days <= 31
+        # The span is validity_days plus the 1-day NotBefore backdate (clock skew).
+        delta = cert.not_valid_after_utc - cert.not_valid_before_utc
+        assert 30 <= delta.days <= 32
 
     def test_uses_system_hostname_by_default(self, tmp_path):
         """Test that system hostname is used when not specified."""
@@ -165,7 +156,7 @@ class TestGenerateSelfSignedCert:
         key_path = str(tmp_path / "server.key")
 
         with patch("socket.gethostname", return_value="mocked-hostname"):
-            generate_self_signed_cert(cert_path, key_path, key_password=TEST_KEY_PASSWORD)
+            generate_self_signed_cert(cert_path, key_path)
 
         with open(cert_path, "rb") as f:
             cert = x509.load_pem_x509_certificate(f.read())
@@ -181,7 +172,7 @@ class TestEnsureCertificates:
         """Test that certificates are generated when they don't exist."""
         cert_dir = str(tmp_path / "certs")
 
-        cert_path, key_path = ensure_certificates(cert_dir, key_password=TEST_KEY_PASSWORD)
+        cert_path, key_path = ensure_certificates(cert_dir)
 
         assert os.path.exists(cert_path)
         assert os.path.exists(key_path)
@@ -199,7 +190,7 @@ class TestEnsureCertificates:
         Path(cert_path).write_text("existing cert")
         Path(key_path).write_text("existing key")
 
-        result_cert, result_key = ensure_certificates(cert_dir, key_password=TEST_KEY_PASSWORD)
+        result_cert, result_key = ensure_certificates(cert_dir)
 
         assert result_cert == cert_path
         assert result_key == key_path
@@ -212,7 +203,6 @@ class TestEnsureCertificates:
 
         cert_path, key_path = ensure_certificates(
             cert_dir,
-            key_password=TEST_KEY_PASSWORD,
             cert_filename="custom.crt",
             key_filename="custom.key",
         )
@@ -242,12 +232,11 @@ class TestGetSslConfig:
             ssl_enabled=True,
             ssl_certfile=cert_path,
             ssl_keyfile=key_path,
-            ssl_keyfile_password="pw",
         )
 
         assert config["ssl_certfile"] == cert_path
         assert config["ssl_keyfile"] == key_path
-        assert config["ssl_keyfile_password"] == "pw"
+        assert "ssl_keyfile_password" not in config
 
     def test_raises_error_if_certfile_not_found(self, tmp_path):
         """Test that FileNotFoundError is raised for missing certfile."""
@@ -256,7 +245,6 @@ class TestGetSslConfig:
                 ssl_enabled=True,
                 ssl_certfile="/nonexistent/cert.pem",
                 ssl_keyfile="/nonexistent/key.pem",
-                ssl_keyfile_password="pw",
             )
 
     def test_raises_error_if_keyfile_not_found(self, tmp_path):
@@ -269,46 +257,29 @@ class TestGetSslConfig:
                 ssl_enabled=True,
                 ssl_certfile=cert_path,
                 ssl_keyfile="/nonexistent/key.pem",
-                ssl_keyfile_password="pw",
             )
 
     def test_auto_generates_certificates(self, tmp_path):
         """Test that certificates are auto-generated when cert_dir is provided."""
         cert_dir = str(tmp_path / "certs")
 
-        config = get_ssl_config(
-            ssl_enabled=True,
-            ssl_cert_dir=cert_dir,
-            ssl_keyfile_password="pw",
-        )
+        config = get_ssl_config(ssl_enabled=True, ssl_cert_dir=cert_dir)
 
         assert "ssl_certfile" in config
         assert "ssl_keyfile" in config
-        assert config["ssl_keyfile_password"] == "pw"
+        assert "ssl_keyfile_password" not in config
         assert os.path.exists(config["ssl_certfile"])
         assert os.path.exists(config["ssl_keyfile"])
 
     def test_raises_error_if_no_paths_provided(self):
         """Test that ValueError is raised when SSL enabled but no paths."""
         with pytest.raises(ValueError, match="SSL is enabled but no certificate"):
-            get_ssl_config(ssl_enabled=True, ssl_keyfile_password="pw")
-
-    def test_raises_error_if_password_missing(self, tmp_path):
-        """Test that ValueError is raised when SSL enabled but no password."""
-        with pytest.raises(ValueError, match="HSYNC_SSL_KEYFILE_PASSWORD is empty"):
-            get_ssl_config(
-                ssl_enabled=True,
-                ssl_cert_dir=str(tmp_path / "certs"),
-            )
+            get_ssl_config(ssl_enabled=True)
 
 
 class TestConstants:
     """Tests for module constants."""
 
-    def test_default_validity_days(self):
-        """Test default certificate validity period."""
-        assert DEFAULT_CERT_VALIDITY_DAYS == 365
-
-    def test_default_key_size(self):
-        """Test default RSA key size."""
-        assert DEFAULT_KEY_SIZE == 2048
+    def test_default_validity_days_is_twenty_years(self):
+        """Test the shared service-identity validity (20 years, ADR-0037)."""
+        assert DEFAULT_CERT_VALIDITY_DAYS == 7305

@@ -123,6 +123,10 @@ with `hsync trust server add`. Verify it out of band before trusting it. Do not
 use `--insecure` for authenticated synchronization: disabling certificate
 verification would expose the bearer token to a network attacker.
 
+To rotate the certificate later (e.g. after a suspected compromise), run
+`docker compose exec server hsync-server admin tls rotate` and move clients to
+the new fingerprint.
+
 ## Connect your clients
 
 Every client authenticates with an account token (`hs_<id>_<secret>`) configured

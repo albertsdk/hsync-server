@@ -271,7 +271,7 @@ class TestTlsFingerprint:
         from hsync_server import config as server_config
         from hsync_server.ssl_utils import ensure_certificates
 
-        cert_path, _ = ensure_certificates(str(tmp_path), key_password=b"test-password")
+        cert_path, _ = ensure_certificates(str(tmp_path))
         monkeypatch.setattr(server_config, "get_ssl_enabled", lambda: True)
         monkeypatch.setattr(server_config, "get_ssl_certfile", lambda: "")
         monkeypatch.setattr(server_config, "get_ssl_cert_dir", lambda: str(tmp_path))
@@ -290,7 +290,7 @@ class TestTlsFingerprint:
         from hsync_server import config as server_config
         from hsync_server.ssl_utils import ensure_certificates
 
-        ensure_certificates(str(tmp_path), key_password=b"test-password")
+        ensure_certificates(str(tmp_path))
         monkeypatch.setattr(server_config, "get_ssl_enabled", lambda: True)
         monkeypatch.setattr(server_config, "get_ssl_certfile", lambda: "")
         monkeypatch.setattr(server_config, "get_ssl_cert_dir", lambda: str(tmp_path))
@@ -300,6 +300,27 @@ class TestTlsFingerprint:
         payload = json_module.loads(result.output)
         assert payload["fingerprint"].startswith("sha256:")
         assert payload["certificate"].endswith("server.crt")
+
+    def test_rotate_changes_the_fingerprint(self, tmp_path, monkeypatch):
+        from hsync_server import config as server_config
+        from hsync_server.ssl_utils import ensure_certificates
+
+        ensure_certificates(str(tmp_path))
+        monkeypatch.setattr(server_config, "get_ssl_enabled", lambda: True)
+        monkeypatch.setattr(server_config, "get_ssl_certfile", lambda: "")
+        monkeypatch.setattr(server_config, "get_ssl_keyfile", lambda: "")
+        monkeypatch.setattr(server_config, "get_ssl_cert_dir", lambda: str(tmp_path))
+
+        before = runner.invoke(cli.app, ["admin", "tls", "fingerprint"])
+        assert before.exit_code == 0, before.output
+
+        result = runner.invoke(cli.app, ["admin", "tls", "rotate"])
+        assert result.exit_code == 0, result.output
+        assert "New fingerprint: sha256:" in result.output
+
+        after = runner.invoke(cli.app, ["admin", "tls", "fingerprint"])
+        assert after.exit_code == 0, after.output
+        assert after.output.strip() != before.output.strip()
 
     def test_tls_disabled_exits_with_error(self, monkeypatch):
         from hsync_server import config as server_config

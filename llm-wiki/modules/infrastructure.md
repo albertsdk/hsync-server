@@ -12,7 +12,7 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
   `get_port` (`:317`), `get_workers` (`:322`), `get_buckets_path` (`:362`),
   `get_state_dir` (`config.py`),
   `get_admin_key` (`:357`), `get_max_upload_size` (`:397`),
-  `get_compression_enabled` (`:437`), SSL getters (`:412`–`:432`),
+  `get_compression_enabled` (`:437`), SSL getters (enabled/certfile/keyfile/cert_dir),
   WS getters (`:442`–`:462`), rate-limit getters (`:367`–`:392`),
   `get_tombstone_ttl_days` (`:527`), delta getters (`get_delta_enabled`,
   `get_delta_token_ttl` only — worthwhileness is client-side
@@ -47,12 +47,15 @@ Wired as a router-level dependency on `auth_router`; `require_admin` gates
 
 ## SSL / TLS (`ssl_utils.py`)
 
-- `generate_self_signed_cert` (`:46`, validity `DEFAULT_CERT_VALIDITY_DAYS = 365`
-  `:43`) builds on `hsync_common.ssl_utils`.
-- `ensure_certificates` (`:138`) persists a cert/key pair under
-  `get_ssl_cert_dir()` (`config.py:432`) so the fingerprint is stable across
-  restarts (TOFU pinning by peers); `get_ssl_config` (`:172`) returns the uvicorn
-  SSL kwargs gated by `get_ssl_enabled()` (`config.py:412`).
+- The server TLS identity follows the shared service-identity model (ADR-0037):
+  **ECDSA P-256**, an **unencrypted** PKCS#8 key (`0600`) in a `0700` directory,
+  and a **20-year** validity (`DEFAULT_CERT_VALIDITY_DAYS =
+  SERVICE_CERT_VALIDITY_DAYS`). `generate_self_signed_cert` builds on
+  `hsync_common.ssl_utils`; the certificate is authenticated by fingerprint
+  pinning, not a passphrase, so there is no `HSYNC_SSL_KEYFILE_PASSWORD`.
+- `ensure_certificates` persists a cert/key pair under `get_ssl_cert_dir()` so the
+  fingerprint is stable across restarts (pinning by clients); `get_ssl_config`
+  returns the uvicorn SSL kwargs gated by `get_ssl_enabled()`.
 - **Two transport topologies** (server TLS is optional):
   (1) behind a TLS-terminating reverse proxy → `get_ssl_enabled()` is `false`, the
   server listens on plain HTTP, and `TRUSTED_PROXIES` gates `X-Forwarded-For`
@@ -66,6 +69,11 @@ Wired as a router-level dependency on `auth_router`; `require_admin` gates
   `hsync trust server add`; `--json` emits `{fingerprint, certificate}`. It reads
   `get_ssl_certfile()` (explicit) or `get_ssl_cert_dir()/server.crt`, and exits
   non-zero when TLS is disabled or the certificate is missing.
+- `hsync-server admin tls rotate [--hostname NAME]` regenerates the persisted
+  cert/key and prints the new fingerprint (the auto-generated identity only — an
+  explicit `HSYNC_SSL_CERTFILE`/`HSYNC_SSL_KEYFILE` is refused). Startup logs a
+  warning when the served certificate is within `_CERT_EXPIRY_WARN_DAYS` (30) of
+  expiry.
 
 ## Hash cache (`hashes.py`)
 

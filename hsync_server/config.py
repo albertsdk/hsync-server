@@ -155,13 +155,6 @@ class Settings(BaseSettings):
     ssl_enabled: bool = Field(default=False, description="Enable HTTPS/WSS")
     ssl_certfile: str = Field(default="", description="Path to SSL certificate file")
     ssl_keyfile: str = Field(default="", description="Path to SSL private key file")
-    ssl_keyfile_password: SecretStr = Field(
-        default=SecretStr(""),
-        description=(
-            "Password used to encrypt/decrypt the SSL private key on disk. "
-            "Required when ssl_enabled=True: keys are never stored in clear text."
-        ),
-    )
     ssl_cert_dir: str = Field(
         default=f"{_HSYNC_PATH}/certs",
         description="Directory for auto-generated certificates",
@@ -305,16 +298,6 @@ class Settings(BaseSettings):
                 "Generate one with: openssl rand -hex 32"
             )
         return v
-
-    @model_validator(mode="after")
-    def validate_ssl_password_when_enabled(self) -> "Settings":
-        """When SSL is enabled, the keyfile password must be configured."""
-        if self.ssl_enabled and not self.ssl_keyfile_password.get_secret_value():
-            raise ValueError(
-                "HSYNC_SSL_KEYFILE_PASSWORD is required when HSYNC_SSL_ENABLED=True. "
-                "SSL private keys must never be stored in clear text."
-            )
-        return self
 
     @model_validator(mode="after")
     def warn_legacy_api_key(self) -> "Settings":
@@ -490,11 +473,6 @@ def get_ssl_certfile() -> str:
 def get_ssl_keyfile() -> str:
     """Get SSL key file path from environment (late binding)."""
     return get_settings().ssl_keyfile
-
-
-def get_ssl_keyfile_password() -> str:
-    """Get SSL key file password from environment (late binding)."""
-    return get_settings().ssl_keyfile_password.get_secret_value()
 
 
 def get_ssl_cert_dir() -> str:

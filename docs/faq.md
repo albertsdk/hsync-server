@@ -195,15 +195,9 @@ Common causes:
 - `HSYNC_ADMIN_KEY` malformed — must be exactly 64 lowercase hex characters
   (generate with `openssl rand -hex 32`). If unset, the server generates and
   prints a one-time admin token instead.
-- `HSYNC_SSL_KEYFILE_PASSWORD` missing when `HSYNC_SSL_ENABLED=true`.
 - Data directory permissions — the container runs as the configured user
   (`HSYNC_UID`/`HSYNC_GID`, defaulting to the invoking user) and must be able
   to write to the bind-mounted data directory.
-
-**"HSYNC_SSL_KEYFILE_PASSWORD is required when SSL is enabled":**
-Set the `HSYNC_SSL_KEYFILE_PASSWORD` environment variable. This is mandatory
-whenever `HSYNC_SSL_ENABLED=true` because the server stores the private key
-encrypted on disk.
 
 ### Clients cannot connect
 

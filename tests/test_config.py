@@ -184,24 +184,6 @@ class TestAdminKeyValidator:
             config.Settings(admin_key=SecretStr("0123456789abcdef"))
 
 
-class TestSslKeyfilePasswordValidator:
-    """Tests for the model_validator enforcing ssl password when SSL is on."""
-
-    def test_ssl_password_required_when_ssl_enabled(self):
-        with pytest.raises(ValidationError, match="HSYNC_SSL_KEYFILE_PASSWORD is required"):
-            config.Settings(ssl_enabled=True, ssl_keyfile_password="")
-
-    def test_ssl_password_not_required_when_ssl_disabled(self):
-        settings = config.Settings(ssl_enabled=False, ssl_keyfile_password="")
-        assert settings.ssl_enabled is False
-        assert settings.ssl_keyfile_password.get_secret_value() == ""
-
-    def test_ssl_password_accepted_when_ssl_enabled(self):
-        settings = config.Settings(ssl_enabled=True, ssl_keyfile_password="some-strong-password")
-        assert settings.ssl_enabled is True
-        assert settings.ssl_keyfile_password.get_secret_value() == "some-strong-password"
-
-
 class TestGetSettings:
     """Tests for get_settings function."""
 
@@ -302,7 +284,6 @@ class TestModuleLevelConstants:
             "get_ssl_enabled",
             "get_ssl_certfile",
             "get_ssl_keyfile",
-            "get_ssl_keyfile_password",
             "get_ssl_cert_dir",
         ):
             assert callable(getattr(config, name, None)), f"missing getter: {name}"

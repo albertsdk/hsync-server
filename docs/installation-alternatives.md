@@ -29,10 +29,9 @@ HSYNC_IMAGE=ghcr.io/albertsdk/hsync-server:v1.0.0
 HSYNC_BIND_ADDRESS=192.168.1.20
 HSYNC_CERT_HOSTNAME=192.168.1.20
 HSYNC_PUBLIC_PORT=9753
-# Generate both secrets with: openssl rand -hex 32
+# Generate the admin secret with: openssl rand -hex 32
 HSYNC_ADMIN_KEY=ADMIN_SECRET_64_HEX
 HSYNC_SSL_ENABLED=true
-HSYNC_SSL_KEYFILE_PASSWORD=CERT_KEY_PASSWORD
 # Host data directory bind-mounted at /project/{buckets,state,certs}.
 HSYNC_DATA_DIR=./hsync-data
 HSYNC_UID=1000
@@ -157,7 +156,6 @@ the minimum to launch for development:
 ```bash
 poetry install --only main
 HSYNC_ADMIN_KEY="$(openssl rand -hex 32)" \
-HSYNC_SSL_KEYFILE_PASSWORD="$(openssl rand -hex 32)" \
 poetry run hsync-server --ssl --ssl-cert-dir ./certs
 ```
 
