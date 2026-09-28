@@ -15,6 +15,7 @@ normal install.
 | Existing Compose automation | [Manual Compose](#manual-compose) |
 | Temporary image diagnostic | [Direct Docker run](#direct-docker-run) |
 | Standalone executable, no Docker | [Standalone binary](#standalone-binary) |
+| Packaged native install (Debian/Ubuntu) | [Debian/Ubuntu package](#debianubuntu-package) |
 | Modify or contribute code | [Build from source](#build-from-source) |
 | Host where Docker is unavailable | [Path B — Native](getting-started-native.md) |
 

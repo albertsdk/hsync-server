@@ -319,6 +319,11 @@ configuration examples. Caddy is covered in the
 If you prefer to run the server directly (without Docker), you can install it
 via Poetry and manage it with systemd.
 
+> On Debian/Ubuntu, the packaged `.deb` automates this whole section (frozen
+> binary under `/usr/lib/hsync-server`, `hsync-server.service`, conffile and a
+> dedicated system user). See
+> [Debian/Ubuntu package](installation-alternatives.md#debianubuntu-package).
+
 ### Install
 
 ```bash

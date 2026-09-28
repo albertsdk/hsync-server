@@ -135,5 +135,5 @@ Review the release notes and back up the data directory before updating. See
 ## Other installation methods
 
 See [Installation Alternatives](installation-alternatives.md) for the manual
-Compose setup, a temporary `docker run`, and the source Docker build with
-`docker.sh`.
+Compose setup, a temporary `docker run`, a Debian/Ubuntu `.deb` package, and the
+source Docker build with `docker.sh`.

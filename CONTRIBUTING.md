@@ -145,6 +145,8 @@ produce a standalone executable straight from the local source tree:
 ```bash
 ./compile.sh                    # host OS/arch → dist/<os>-<arch>/hsync-server
 ./compile.sh --clean            # clean artifacts and rebuild
+./compile.sh --target deb       # Debian/Ubuntu .deb for the host arch
+./compile.sh --target deb-all   # .deb for amd64, arm64 and armhf (Docker + qemu)
 ./compile.sh --target rpi       # Raspberry Pi OS armhf + arm64 (Docker + qemu)
 ./compile.sh --help             # all options
 ```
@@ -152,6 +154,12 @@ produce a standalone executable straight from the local source tree:
 - The `native` target (default) builds one platform-aware onefile binary with
   PyInstaller. It requires the PyInstaller build group in the committed
   virtualenv; install it once with `poetry install --with build`.
+- The `deb` target builds `dist/deb/hsync-server_<ver>_<arch>.deb` for the host
+  architecture (needs `dpkg-deb`); `deb-all` cross-builds the three Debian
+  architectures inside Docker. The package installs the frozen server under
+  `/usr/lib/hsync-server`, plus a systemd unit, a conffile and a dedicated
+  `_hsync-server` user; see
+  [Installation Alternatives](docs/installation-alternatives.md#debianubuntu-package).
 - The `rpi` target builds Raspberry Pi OS 32-bit (`armhf`) and 64-bit (`arm64`)
   executables into `dist/rpi/<arch>/hsync-server`. It runs PyInstaller inside
   Docker cross-build containers built from

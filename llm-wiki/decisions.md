@@ -56,6 +56,16 @@ the server-local choices not big enough for an ADR.
   Rust toolchain needed for the armhf `cryptography` source build) under
   `qemu-user` binfmt. The frozen binary speaks the same CLI/protocol as
   `python -m hsync_server`; the container image stays the primary distribution.
+- **Debian packaging** (`compile.sh`, targets `deb`/`deb-all`): a `--onedir`
+  PyInstaller freeze staged as a `.deb`, reusing the packaging machinery of
+  hsync-client/hsync-bootnode (`packaging/deb/`, `_semver_to_debian`,
+  `_finalize_deb_stage`, `_inject_shlib_depends` via `dpkg-shlibdeps`). The
+  package installs under `/usr/lib/hsync-server` (with `/usr/bin/hsync-server`),
+  `hsync-server.service`, a `/etc/hsync-server/hsync-server.conf` conffile and a
+  dedicated `_hsync-server` user; the unit is registered but not enabled, and
+  `HSYNC_ADMIN_KEY` is left for the operator to set. `deb-all` cross-builds
+  amd64/arm64/armhf inside Docker. Not yet wired into the release workflow (the
+  `.deb` is a local build artifact for now).
   The cross-build image pins its build inputs: the privileged `qemu-user-static`
   binfmt image is pulled by digest and Rust is installed from a SHA256-verified,
   version-pinned `rustup-init` rather than piping a remote script to a shell.

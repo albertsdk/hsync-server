@@ -58,6 +58,9 @@ Decide which installation fits you, then follow that path end to end:
 - [Path B — Native (Poetry/systemd)](getting-started-native.md): pure Python
   process or systemd unit, no containers. **Best for development machines and
   hosts without Docker.**
+- [Debian/Ubuntu package](installation-alternatives.md#debianubuntu-package):
+  the native server packaged as a `.deb` (systemd unit, conffile, dedicated
+  `_hsync-server` user). **Best for Debian/Ubuntu hosts without Docker.**
 
 Start from the [Getting Started](getting-started.md) chooser for a comparison
 table that helps you pick a path.

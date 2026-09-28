@@ -40,8 +40,9 @@ utilities.
   membership gate access.
 - Persistence: files under `get_buckets_path()`; causal versions/tombstones in
   `get_state_dir()/syncstate.db` (ADR-0025). SHA-256 cache is in-memory.
-- Standalone builds: `compile.sh` (targets `native`, `rpi`); the Raspberry Pi
-  cross-build image is `packaging/rpi/Dockerfile.builder`. See
+- Standalone builds: `compile.sh` (targets `native`, `deb`, `deb-all`, `rpi`);
+  the Raspberry Pi cross-build image is `packaging/rpi/Dockerfile.builder`, the
+  Debian packaging tree is `packaging/deb/`. See
   [architecture.md](architecture.md#build--packaging).
 
 ## Conventions used in this wiki

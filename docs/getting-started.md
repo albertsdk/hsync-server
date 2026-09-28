@@ -15,6 +15,7 @@ Follow this guide in two steps:
 | --- | --- |
 | Have Docker (Linux or macOS) and want a ready-made setup with certificate management | [Path A — Docker](getting-started-docker.md) |
 | Prefer a native Python service without containers (development machine, or a host you manage with systemd) | [Path B — Native (Poetry/systemd)](getting-started-native.md) |
+| Prefer a packaged native install on Debian/Ubuntu (`dpkg -i`, no Poetry or Docker) | [Debian/Ubuntu package](installation-alternatives.md#debianubuntu-package) |
 
 Both paths result in a running server on `https://<server-ip>:9753` with a
 self-signed certificate; the difference is only the toolchain:
