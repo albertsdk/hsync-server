@@ -45,7 +45,7 @@ from common import (  # noqa: E402  (import after sys.path tweak)
     print_table,
 )
 
-# Point the version store (syncstate.db + .hsyncnodeid) at a temp state dir.
+# Point the version store (state DB + .hsyncnodeid) at a temp state dir.
 isolate_server_state()
 
 from hsync_server.arbitration import (  # noqa: E402

@@ -23,10 +23,8 @@ from hsync_server.api.events_handlers.validation import is_path_within_bucket
 @pytest.fixture(autouse=True)
 def _isolate_tombstones(tmp_path):
     """Keep tombstone state inside the test tmp dir and reset the cache."""
-    from hsync_common.constants import SYNCSTATE_DB_FILENAME
-
     tombstones.reset_cache()
-    db_path = str(tmp_path / SYNCSTATE_DB_FILENAME)
+    db_path = str(tmp_path / "state.db")
     with patch.object(tombstones, "get_state_db_path", return_value=db_path):
         yield
     tombstones.reset_cache()
@@ -35,12 +33,10 @@ def _isolate_tombstones(tmp_path):
 @pytest.fixture()
 def _isolated_versions(tmp_path):
     """Keep version-store state inside the test tmp dir and reset the cache."""
-    from hsync_common.constants import SYNCSTATE_DB_FILENAME
-
     from hsync_server import versions
 
     versions.reset_cache()
-    db_path = str(tmp_path / SYNCSTATE_DB_FILENAME)
+    db_path = str(tmp_path / "state.db")
     with patch.object(versions, "get_state_db_path", return_value=db_path):
         yield
     versions.reset_cache()

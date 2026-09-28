@@ -20,7 +20,7 @@ developers working on the HSYNC Server codebase.
 ## Metadata Overhead
 
 Synced file bytes are plain files on disk. Causal metadata is SQLite
-(`<state_dir>/syncstate.db`: versions, tombstones, accounts, membership).
+(`<state_dir>/server/`: versions, tombstones, accounts, membership).
 
 - **SHA-256 cache**: in-memory `FILE_HASHES` dict in `hashes.py` (not
   persisted, **not** LRU). Rebuilt at startup; stale on mtime/size mismatch;

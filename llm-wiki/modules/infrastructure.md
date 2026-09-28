@@ -178,7 +178,7 @@ uploads for the same file are ordered (ADR-0022).
 ## Version store & arbitration (`versions.py`, `arbitration.py`)
 
 - `versions.py` wraps `hsync_common.models.version.SyncStateStore` per bucket
-  in `get_state_dir()/syncstate.db` (folder UUID via the `buckets` table,
+  in `get_state_dir()/server/<bucket>.db` (bucket id via the `buckets` table,
   ADR-0025). Lazy connection (fork-safe); per-bucket `RLock`.
   `record_version`/`clear_version` maintain the store; `move_version` and
   `move_version_prefix` carry entries across a rename (single file, or every
@@ -199,7 +199,7 @@ uploads for the same file are ordered (ADR-0022).
 
 ## State-DB maintenance (`state_maintenance.py`)
 
-`syncstate.db` is compacted in place so pruned version/tombstone pages never
+each state DB is compacted in place so pruned version/tombstone pages never
 linger (ADR-0025, `auto_vacuum=INCREMENTAL`):
 
 - `vacuum_on_startup()` / `vacuum_on_shutdown()` (`state_maintenance.py`) run a

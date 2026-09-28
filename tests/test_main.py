@@ -140,7 +140,7 @@ class TestAdminBucketCli:
         import sqlite3
 
         from hsync_server.auth_store import get_auth_store
-        from hsync_server.config import get_state_db_path
+        from hsync_server.config import get_auth_db_path
 
         # Simulate a "ghost" bucket: DB rows exist, directory does not.
         store = get_auth_store()
@@ -158,7 +158,7 @@ class TestAdminBucketCli:
         assert result.exit_code == 0, result.output
         assert "Bucket deleted: ghostbucket" in result.stdout
 
-        with sqlite3.connect(get_state_db_path()) as conn:
+        with sqlite3.connect(get_auth_db_path()) as conn:
             row = conn.execute(
                 "SELECT 1 FROM bucket_members WHERE bucket = ?", ("ghostbucket",)
             ).fetchone()
@@ -176,7 +176,7 @@ class TestNoRealRepoStateIsolation:
         """The repo's real state/buckets dirs are never the tmp isolation dirs."""
         from tests.conftest import _REAL_BUCKETS_DIR, _REAL_STATE_DIR
 
-        db_path = str(_REAL_STATE_DIR / "syncstate.db")
+        db_path = str(_REAL_STATE_DIR / "server")
         assert tmp_path not in _REAL_STATE_DIR.parents
         assert _REAL_STATE_DIR.is_dir() or not _REAL_STATE_DIR.exists()
         assert _REAL_BUCKETS_DIR.is_dir() or not _REAL_BUCKETS_DIR.exists()

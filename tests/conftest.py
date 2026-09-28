@@ -5,7 +5,6 @@ Pytest fixtures for hsync-server tests.
 import os
 import shutil
 import socket
-import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -91,29 +90,24 @@ _REAL_STATE_DIR = _REPO_ROOT / "state"
 _REAL_BUCKETS_DIR = _REPO_ROOT / "buckets"
 
 
-def _real_db_snapshot() -> tuple[tuple[str, tuple], ...] | None:
-    """Return a read-only logical snapshot of the repo's real ``syncstate.db``.
+def _real_db_snapshot() -> tuple[tuple[str, tuple[int, int]], ...] | None:
+    """Snapshot the repo's real ``state/server/`` DB files (name + size + mtime).
 
-    Returns ``None`` when the DB does not exist (nothing to protect).
-    Opening is strictly read-only (``mode=ro``) so taking the snapshot can
+    Returns ``None`` when the directory does not exist (nothing to protect).
+    Read-only: only ``stat``, never opens the files, so taking the snapshot can
     never create ``-wal``/``-shm`` side files in the real state dir.
     """
-    db = _REAL_STATE_DIR / "syncstate.db"
-    if not db.exists():
-        return None
-    tables = ("clients", "bucket_members", "buckets", "folders", "versions", "tombstones")
-    try:
-        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    except sqlite3.OperationalError:
+    directory = _REAL_STATE_DIR / "server"
+    if not directory.is_dir():
         return None
     try:
-        return tuple(
-            (table, row)
-            for table in tables
-            for row in conn.execute(f"SELECT * FROM {table}").fetchall()
-        )
-    finally:
-        conn.close()
+        entries = []
+        for path in sorted(directory.rglob("*.db")):
+            st = path.stat()
+            entries.append((str(path.relative_to(_REAL_STATE_DIR)), (st.st_size, st.st_mtime_ns)))
+        return tuple(entries)
+    except OSError:  # pragma: no cover - defensive
+        return None
 
 
 def _real_buckets_snapshot() -> frozenset[str]:
@@ -133,7 +127,7 @@ def no_tests_touch_real_repo_state(
     state dir and buckets dir; the black-box harness scrubs ``HSYNC_*`` and
     points the subprocess server at temp dirs too. This fixture is the safety
     net for the residual risk: if any code path still resolves to the repo's
-    real ``state/syncstate.db`` (or creates directories under ``buckets/``),
+    real ``state/server/`` DBs (or creates directories under ``buckets/``),
     the logical snapshot changes and the offending test fails instead of
     silently leaving test buckets behind (see the ``bb-*`` ghost rows that
     motivated it).
@@ -145,7 +139,8 @@ def no_tests_touch_real_repo_state(
     after_buckets = _real_buckets_snapshot()
     if after_db != before_db:
         pytest.fail(
-            f"{request.node.nodeid} mutated the repository's real {_REAL_STATE_DIR}/syncstate.db. "
+            f"{request.node.nodeid} mutated the repository's real "
+            f"{_REAL_STATE_DIR}/server/ state DBs. "
             "Tests must use the isolated tmp dirs provided by the fast_scrypt fixture "
             "or scrub HSYNC_* in subprocess servers."
         )

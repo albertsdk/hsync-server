@@ -196,7 +196,7 @@ def main(
 
         HSYNC_ADMIN_KEY         Bootstrap admin secret (64 hex, optional)
         HSYNC_BUCKETS           Path to buckets directory
-        HSYNC_STATE_DIR         Path to syncstate.db directory
+        HSYNC_STATE_DIR         Path to state DB directory
         HSYNC_CORS_ENABLED      Enable CORS (true/false)
         HSYNC_CORS_ORIGINS      Allowed CORS origins (comma-separated)
         HSYNC_MAX_UPLOAD_SIZE   Maximum upload size in bytes

@@ -84,7 +84,7 @@ def isolate_server_state(prefix: str = "hsync_bench_") -> None:
 
     The server ``get_settings()`` is a cached singleton, so the env must be set
     **before** importing any ``hsync_server`` module that resolves paths at
-    runtime (the ``versions``/``tombstones``/``auth`` stores open ``syncstate.db``
+    runtime (the ``versions``/``tombstones``/``auth`` stores open ``state DB``
     under ``state_dir``). The temp directory intentionally lives for the whole
     short-lived bench subprocess (the OS reclaims it) and never touches the
     repository's real ``state/``/``buckets/``.

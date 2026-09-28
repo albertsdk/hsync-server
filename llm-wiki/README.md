@@ -39,7 +39,8 @@ utilities.
   auth store (`auth.py` → `auth_store.py`); roles (`admin`/`client`) + bucket
   membership gate access.
 - Persistence: files under `get_buckets_path()`; causal versions/tombstones in
-  `get_state_dir()/syncstate.db` (ADR-0025). SHA-256 cache is in-memory.
+  per-bucket DBs `get_state_dir()/server/<bucket>.db` (ADR-0025). SHA-256 cache
+  is in-memory.
 - Standalone builds: `compile.sh` (targets `native`, `deb`, `deb-all`, `rpi`);
   the Raspberry Pi cross-build image is `packaging/rpi/Dockerfile.builder`, the
   Debian packaging tree is `packaging/deb/`. See

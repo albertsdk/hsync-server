@@ -8,7 +8,7 @@
 Per-bucket version store for HSYNC Server.
 
 Wraps :class:`hsync_common.models.version.SyncStateStore` with one persisted
-store per bucket, backed by the installation ``syncstate.db`` and keyed by a
+store per bucket, backed by the installation ``state DB`` and keyed by a
 folder UUID in the ``buckets`` table (ADR-0025). No marker is written into
 served bucket directories. The server records the causal version of every
 file it accepts on upload, so its listings and events can advertise version
@@ -68,7 +68,7 @@ def get_version_store(bucket: str) -> SyncStateStore:
     """Return the cached store for a bucket, loading it on first use."""
 
     def _build() -> SyncStateStore:
-        db_path = get_state_db_path()
+        db_path = get_state_db_path(bucket)
         folder_id = get_state_db(db_path).ensure_bucket_id(bucket)
         store = SyncStateStore(
             db_path=db_path,
@@ -221,7 +221,7 @@ def get_server_cid() -> str:
 
     The cid is a 21-char alphanumeric string (``is_valid_cid``-compliant) used
     solely as the author of out-of-band edits detected at arbitration time.
-    Persisted next to ``syncstate.db`` (outside any served bucket).
+    Persisted next to ``state DB`` (outside any served bucket).
 
     The value is memoized in-process after the first read: it is minted once
     and never changes, so the per-upload arbitration path must not re-read the

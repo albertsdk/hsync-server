@@ -9,7 +9,7 @@ links to the relevant guide.
 
 - **One container, files on disk.** The server is a single FastAPI app that
   stores synced bytes as plain files in per-bucket directories. Causal
-  versions, tombstones, and accounts live in SQLite (`syncstate.db` in the
+  versions, tombstones, and accounts live in SQLite (per-bucket DBs and `auth.db` in the
   state directory) — back that file up with the buckets. See
   [Architecture](internal/architecture.md).
 - **Run it anywhere.** Pull the prebuilt multi-arch image (`amd64`/`arm64`) from
@@ -59,7 +59,7 @@ proxy's `https://` URL. See [Architecture](internal/architecture.md).
 
 User files live under the buckets directory (`/project/buckets` in the
 container), one sub-directory per bucket. Causal versions and deletion
-markers live in `HSYNC_STATE_DIR` (`/project/state/syncstate.db`). Back up
+markers live in `HSYNC_STATE_DIR` (`/project/state/server/`). Back up
 both. See [Architecture](internal/architecture.md).
 
 When clients sync with `--ignore-delete` (pure backup mode), the bucket

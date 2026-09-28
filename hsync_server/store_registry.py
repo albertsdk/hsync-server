@@ -8,7 +8,7 @@
 Generic per-bucket store registry (fork-safe, thread-safe).
 
 ``versions.py`` (causal version store) and ``tombstones.py`` (deletion
-markers) are per-bucket wrappers around the shared ``syncstate.db``. Both
+markers) are per-bucket wrappers around the shared ``state DB``. Both
 modules previously re-implemented the same ``_stores`` / ``_locks`` /
 ``_locks_guard`` / ``_pid`` scaffolding: this registry extracts it once.
 

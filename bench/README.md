@@ -20,7 +20,7 @@ asserts only that the measured operation really took the intended branch.
 ## Isolation
 
 The server's `Settings` singleton is cached (`@lru_cache`), so every benchmark
-that touches persisted state (version/arbitration stores open `syncstate.db`
+that touches persisted state (version/arbitration stores open the per-bucket state DB
 under `HSYNC_STATE_DIR`; `resolve_within_bucket` resolves under
 `HSYNC_BUCKETS`) must redirect those env vars **before** importing the
 `hsync_server` modules. `common.isolate_server_state()` does exactly that

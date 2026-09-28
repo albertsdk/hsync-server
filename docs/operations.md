@@ -26,7 +26,7 @@ host in **one data directory** with plain subdirectories:
 | Host directory | Container path | Contents |
 |----------------|----------------|----------|
 | `<data>/buckets` | `/project/buckets` | All uploaded files, one sub-directory per bucket |
-| `<data>/state` | `/project/state` | `syncstate.db` (causal versions and tombstones) |
+| `<data>/state` | `/project/state` | per-bucket state DBs + global `auth.db` (causal versions, tombstones, accounts) |
 | `<data>/certs` | `/project/certs` | Auto-generated SSL certificates (if using built-in SSL) |
 | `<data>/logs` | `/project/logs` | Log files (if `HSYNC_LOG_FILE` is set) |
 
@@ -37,9 +37,9 @@ The directories are bind-mounted into the container, which runs as the
 invoking host user (`HSYNC_UID`/`HSYNC_GID`), so the files are always owned
 by that user and never need `chown`.
 
-> **Note**: Causal versions and tombstones live in `HSYNC_STATE_DIR`
-> (`/project/state/syncstate.db`), not inside the buckets directory. Back up
-> the whole data directory.
+> **Note**: Causal versions, tombstones, accounts and membership live in
+> `HSYNC_STATE_DIR` (`/project/state/server/<bucket>.db` per bucket plus
+> `auth.db`), not inside the buckets directory. Back up the whole data directory.
 
 ---
 

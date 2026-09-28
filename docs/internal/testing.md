@@ -104,7 +104,7 @@ tests/
 | Fixture | Scope | Purpose |
 |---------|-------|---------|
 | `fast_scrypt` (autouse) | function | Low-cost scrypt params, isolated temp `state/` and `buckets/` dirs (monkeypatched per module), cache resets, admin bootstrap |
-| `no_tests_touch_real_repo_state` (autouse) | function | Fails any test that mutates the repository's real `state/syncstate.db` or creates/removes dirs under the real `buckets/` |
+| `no_tests_touch_real_repo_state` (autouse) | function | Fails any test that mutates the repository's real `state/server/` DBs or creates/removes dirs under the real `buckets/` |
 | `deterministic_cli_output` (autouse) | function | Forced plain, uncolored CLI output (CI-safe assertions) |
 | `_prevent_os_environ_leakage` (autouse) | function | Removes env vars added by a test on teardown |
 | `_scrub_hsync_env` (autouse) | function | Removes every `HSYNC_*` inherited from the developer's shell (except `HSYNC_ADMIN_KEY`) so `Settings()` defaults are hermetic |
@@ -144,7 +144,7 @@ async def test_upload_file(client):
 The server's settings default to the repository layout (absolute, resolved
 `<repo>/buckets` and `<repo>/state`, `config.py:_HSYNC_PATH`), so a test that
 forgets to isolate its state would silently pollute the developer's real
-`syncstate.db` and `buckets/` with test rows and directories, leaving
+`state/server/` and `buckets/` with test rows and directories, leaving
 `bb-*` "ghost" test buckets behind in `admin bucket list`.
 The suite enforces isolation at **three independent levels**:
 
@@ -158,7 +158,7 @@ The suite enforces isolation at **three independent levels**:
    `tempfile.mkdtemp` directories (`conftest.py:_start_live_server`).
 3. **`no_tests_touch_real_repo_state` (autouse safety net)** — before and after
    each test it takes a read-only logical snapshot of the repository's real
-   `state/syncstate.db` (tables `clients`, `bucket_members`, `buckets`,
+   `state/server/` DBs (tables `clients`, `bucket_members`, `buckets`,
    `folders`, `versions`, `tombstones`; opened with `mode=ro`, so the snapshot
    itself can never create `-wal`/`-shm` side files) and of the real `buckets/`
    directory set. Any difference fails the **offending test** with an
@@ -296,7 +296,7 @@ Shared state is hammered under real parallelism by:
   SHA-256 cache races (see the module docstring for the invariants);
 - `test_store_registry_concurrency.py` — `PerBucketStores` memoization and the
   per-bucket lock under 12 threads, plus concurrent `record_version` /
-  `record_deletion`: every row must survive in `syncstate.db`;
+  `record_deletion`: every row must survive in the state DB;
 - `test_bb_server_concurrency.py` — parallel clients over the public REST and
   WebSocket surfaces (see the BB table above);
 - `test_compression.py::TestConcurrentStreamedCompression` — concurrent

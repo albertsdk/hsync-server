@@ -16,12 +16,17 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, Literal
 
-from hsync_common.constants import DELTA_TOKEN_TTL, SYNCSTATE_DB_FILENAME
+from hsync_common.constants import DELTA_TOKEN_TTL
 from hsync_common.env import load_env_file as _load_env_file
 from hsync_common.logger import (
     DEFAULT_LOG_COMPRESSION,
     DEFAULT_LOG_RETENTION,
     DEFAULT_LOG_ROTATION,
+)
+from hsync_common.models.folder import (
+    server_auth_db_path,
+    server_state_db_path,
+    state_db_override,
 )
 from hsync_common.models.tombstone import TOMBSTONE_TTL_DAYS_DEFAULT
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
@@ -120,7 +125,7 @@ class Settings(BaseSettings):
     )
     state_dir: str = Field(
         default=f"{_HSYNC_PATH}/state",
-        description="Directory for the installation causal-state database (syncstate.db)",
+        description="Directory for the installation causal-state database (state DB)",
     )
 
     # CORS Configuration
@@ -404,18 +409,27 @@ def get_buckets_path() -> str:
 def get_state_dir() -> str:
     """Get the installation state directory (late binding).
 
-    Holds ``syncstate.db`` (ADR-0025). Override with ``HSYNC_STATE_DIR``.
+    Holds ``state DB`` (ADR-0025). Override with ``HSYNC_STATE_DIR``.
     """
     return get_settings().state_dir
 
 
-def get_state_db_path() -> str:
-    """Get the installation ``syncstate.db`` path (late binding).
+def get_state_db_path(bucket: str) -> str:
+    """Get the sync-state DB path for *bucket* (late binding, ADR-0025).
 
-    Single source for the causal-state DB location (ADR-0025), shared by the
-    version/tombstone stores and the auth store.
+    With ``HSYNC_STATE_DB`` set, that single file is used for every bucket
+    (tests/manual isolation). Otherwise one DB per bucket under
+    ``<state_dir>/server/<bucket>.db``, so buckets never share a file.
     """
-    return str(Path(get_state_dir()) / SYNCSTATE_DB_FILENAME)
+    override = state_db_override()
+    if override is not None:
+        return str(override)
+    return str(server_state_db_path(bucket, Path(get_state_dir())))
+
+
+def get_auth_db_path() -> str:
+    """Get the global server auth DB path (never per bucket, never overridden)."""
+    return str(server_auth_db_path(Path(get_state_dir())))
 
 
 def get_rate_limit_default() -> str:

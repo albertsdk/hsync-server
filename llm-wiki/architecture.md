@@ -2,7 +2,8 @@
 
 Single FastAPI process. REST for file transfer + bucket management; WebSocket for
 real-time event fan-out. Bucket **bytes** are directories on disk; causal
-versions, tombstones, and accounts live in SQLite `syncstate.db` (ADR-0025).
+versions, tombstones, and accounts live in SQLite: one DB per bucket
+(`server/<bucket>.db`) plus a global `auth.db` (ADR-0025).
 
 ## Bootstrap (`main.py`)
 
@@ -87,9 +88,9 @@ the `ErrorResponse` model (`error_handlers.py:37`).
 Buckets live under `get_buckets_path()` (`config.py:362`), one directory per
 bucket. Empty dirs are kept alive by a sentinel file (`api/file_utils.py:29`),
 partial uploads use the `.part` suffix (common `constants.py`), and deletions leave
-tombstones (`tombstones.py`). Causal versions/tombstones live in
-`get_state_dir()/syncstate.db` (ADR-0025); accounts and bucket membership live in
-the same file via the server-only `clients`/`bucket_members` tables
+tombstones (`tombstones.py`). Causal versions/tombstones live in per-bucket DBs
+`get_state_dir()/server/<bucket>.db` (ADR-0025); accounts and bucket membership
+live in the global `server/auth.db` via the server-only `clients`/`bucket_members` tables
 (`auth_store.py`). The SHA-256 cache is an in-memory unbounded dict, rebuilt at startup (not LRU).
 
 ## Build & packaging

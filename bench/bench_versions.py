@@ -42,7 +42,7 @@ from common import (  # noqa: E402  (import after sys.path tweak)
     print_table,
 )
 
-# Point the version store (syncstate.db) + buckets root at a temp dir.
+# Point the version store (state DB) + buckets root at a temp dir.
 isolate_server_state()
 
 from hsync_server.config import get_buckets_path  # noqa: E402

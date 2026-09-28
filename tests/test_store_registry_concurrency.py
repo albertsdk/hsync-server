@@ -11,7 +11,7 @@ rely on: creation is memoized under contention (two threads can never build two
 stores for one bucket) and a per-bucket ``RLock`` serializes every mutation of
 that bucket's store. ``versions.record_version`` / ``tombstones.record_deletion``
 take that lock around record+save, so parallel uploads or deletes of
-*different* paths in one bucket must all land in ``syncstate.db`` — the load
+*different* paths in one bucket must all land in ``state DB`` — the load
 shape a single-threaded request test can never produce.
 
 Every test runs in the isolated temp state/buckets provided by the autouse

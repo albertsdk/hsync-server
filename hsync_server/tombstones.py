@@ -8,7 +8,7 @@
 Per-bucket tombstone management for HSYNC Server.
 
 Wraps :class:`hsync_common.models.tombstone.TombstoneStore` with one persisted
-store per bucket, backed by the installation ``syncstate.db`` and keyed by a
+store per bucket, backed by the installation ``state DB`` and keyed by a
 folder UUID in the ``buckets`` table (ADR-0025). No marker is written into
 served bucket directories. Deletion markers let a client that was offline at
 deletion time avoid resurrecting the file during a full reconciliation.
@@ -46,7 +46,7 @@ def get_tombstone_store(bucket: str) -> TombstoneStore:
     """Return the cached store for a bucket, loading and pruning it on first use."""
 
     def _build() -> TombstoneStore:
-        db_path = get_state_db_path()
+        db_path = get_state_db_path(bucket)
         folder_id = get_state_db(db_path).ensure_bucket_id(bucket)
         store = TombstoneStore(
             db_path=db_path,

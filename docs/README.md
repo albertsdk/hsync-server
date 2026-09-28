@@ -27,9 +27,10 @@ events to connected clients over WebSocket.
 ### Metadata overhead
 
 Synced **file bytes** live as plain files under the buckets directory. Causal
-metadata does **not**: versions, tombstones, accounts, and bucket membership
-are stored in a SQLite database `syncstate.db` under the state directory
-(ADR-0025). Back up that file together with the buckets directory.
+metadata does **not**: versions and tombstones are stored in one SQLite database
+**per bucket** (`<state_dir>/server/<bucket>.db`) and accounts/membership in a
+global `auth.db`, under the state directory (ADR-0025). Back those files up
+together with the buckets directory.
 
 Additional process-local metadata:
 
@@ -37,7 +38,7 @@ Additional process-local metadata:
   rebuilt at startup by walking the buckets tree and grows with every hashed
   path for the life of the process. Stale entries are dropped when mtime/size
   no longer match; there is no size cap.
-- **Tombstones / versions**: SQLite tables in `syncstate.db`, not per-bucket
+- **Tombstones / versions**: SQLite tables in per-bucket DBs, not per-bucket
   JSON files. Tombstone TTL (default 90 days) only garbage-collects markers.
 
 For detailed performance and scalability guidelines, see the
@@ -111,7 +112,7 @@ all defaults.
 | `HSYNC_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error` |
 | `HSYNC_TZ` | `UTC` | Timezone (IANA format, e.g. `Europe/Rome`) used to render log timestamps |
 | `HSYNC_BUCKETS` | `<app>/buckets` (absolute) | Directory for bucket data storage (relative values are resolved against the process CWD) |
-| `HSYNC_STATE_DIR` | `<app>/state` (absolute) | Directory for `syncstate.db` (causal versions and tombstones) |
+| `HSYNC_STATE_DIR` | `<app>/state` (absolute) | Directory for the per-bucket state DBs and the global auth DB |
 | `HSYNC_ADMIN_KEY` | *(optional)* | Bootstrap admin secret (64 hex). If unset, the server generates and prints a one-time admin token. |
 | `HSYNC_MAX_UPLOAD_SIZE` | `10737418240` (10 GiB) | Maximum upload size in bytes |
 | `HSYNC_MIN_FREE_DISK_SPACE` | `524288000` (500 MiB) | Minimum free disk before rejecting uploads (`0` = disabled) |

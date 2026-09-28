@@ -3,7 +3,7 @@
 # https://github.com/albertsdk/hsync
 
 """
-Server-only account and membership store backed by ``syncstate.db``.
+Server-only account and membership store backed by ``state DB``.
 
 The tables ``clients`` and ``bucket_members`` are created by the server on
 the same SQLite file used for causal versions (ADR-0025), but their schema
@@ -35,7 +35,7 @@ from pathlib import Path
 from hsync_common.models.sqlstore import get_state_db, reset_state_db_cache
 from loguru import logger as log
 
-from hsync_server.config import get_state_db_path
+from hsync_server.config import get_auth_db_path
 from hsync_server.constants import ACCOUNT_ID_ALPHABET, ACCOUNT_ID_LEN, mint_alnum_id
 from hsync_server.exceptions import ConflictError, ForbiddenError, ResourceNotFoundError
 
@@ -332,9 +332,9 @@ def _rebind_after_fork() -> None:
 
 
 def get_auth_store() -> AuthStore:
-    """Return the cached :class:`AuthStore` for the installation DB."""
+    """Return the cached :class:`AuthStore` for the global auth DB."""
     _rebind_after_fork()
-    path = get_state_db_path()
+    path = get_auth_db_path()
     with _cache_lock:
         store = _store_cache.get(path)
         if store is None:
@@ -359,7 +359,7 @@ def _iter_bucket_dirs(buckets_root: Path):
 
 
 class AuthStore:
-    """Account and membership store on ``syncstate.db``.
+    """Account and membership store on ``state DB``.
 
     All mutations run inside ``BEGIN IMMEDIATE`` transactions.  scrypt hashing
     is performed **outside** transactions so the write lock is held only for

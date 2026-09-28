@@ -22,9 +22,9 @@ process-local state and the installation SQLite store.
 | Delta signature cache `_signature_cache` | `api/files/delta/signatures.py` | process memory (TTL 300 s, FIFO cap 64, `Lock`-guarded) | none (recomputed on demand) |
 | Delta literal-payload tokens `delta_token_store` | `api/files/delta/tokens.py` | process memory (`RLock`-guarded) + payload temp files | none (TTL-reaped) |
 | Per-bucket WS pools | `connection_manager.py:187` (`bucket_manager`) | process memory | none (live connections) |
-| Tombstone stores (per bucket) | `tombstones.py` cache | process memory + SQLite | `syncstate.db` (`tombstones` table) |
-| Version stores (per bucket) | `versions.py` cache | process memory + SQLite | `syncstate.db` (`versions` table) |
-| Accounts + membership | `auth_store.py` | SQLite | `syncstate.db` (`clients`, `bucket_members` tables) |
+| Tombstone stores (per bucket) | `tombstones.py` cache | process memory + SQLite | per-bucket DB `server/<bucket>.db` (`tombstones` table) |
+| Version stores (per bucket) | `versions.py` cache | process memory + SQLite | per-bucket DB `server/<bucket>.db` (`versions` table) |
+| Accounts + membership | `auth_store.py` | SQLite | global `server/auth.db` (`clients`, `bucket_members` tables) |
 
 The SHA-256 cache maps `sha256(filepath) -> (file_sha256, mtime_ns, size)`: a
 cached digest is served only while the file's current metadata matches the
@@ -33,7 +33,8 @@ captured pair, otherwise the entry is dropped and callers recompute (see
 
 ## Accounts and membership (`auth_store.py`)
 
-Server-only tables on `syncstate.db` (not part of the common `sqlstore` schema):
+Server-only tables on the global auth DB `server/auth.db` (not part of the
+common `sqlstore` schema):
 
 - **`clients`** — `id` (PK, 21-alnum), `name` (UNIQUE, immutable), `role`
   (`admin`/`client`), `status` (`active`/`disabled`), `key_hash` (PHC scrypt),
@@ -66,7 +67,8 @@ defined in the common model, not here.
 ```
 <buckets_path>/<bucket>/...            # real files (relative paths preserved)
 <buckets_path>/<bucket>/.hsynckeep     # sentinel keeping empty dirs alive
-<state_dir>/syncstate.db               # versions + tombstones (ADR-0025)
+<state_dir>/server/<bucket>.db      # versions + tombstones, one per bucket (ADR-0025)
+<state_dir>/server/auth.db          # accounts + membership (global)
 <state_dir>/.hsyncnodeid               # reserved server node cid
 <name>.part                            # in-progress resumable upload
 ```

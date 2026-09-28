@@ -61,7 +61,7 @@ Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–
   (the REST endpoint never uses `delete_files=False`).
 - **Test isolation net**: `tests/conftest.py` adds autouse
   `no_tests_touch_real_repo_state`, which snapshots the repository's real
-  `state/syncstate.db` and `buckets/` around each test and fails the
+  `state/server/` and `buckets/` around each test and fails the
   offending test on any mutation (protection against test rows leaking into
   the developer's real DB).
 - Missing bucket → `BucketNotFoundError` (`exceptions.py:111`).
