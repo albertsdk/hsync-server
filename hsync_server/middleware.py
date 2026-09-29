@@ -112,6 +112,12 @@ class VersionMiddleware(BaseHTTPMiddleware):
             The HTTP response with X-Server-Version and X-Protocol-Version
             headers, or 426 Upgrade Required on a protocol-version mismatch.
         """
+        # Advertised on every response (accepted and rejected alike).
+        version_headers = {
+            HEADER_SERVER_VERSION: HSYNC_VERSION,
+            HEADER_PROTOCOL_VERSION: PROTOCOL_VERSION_REST,
+        }
+
         # Validate the client-name slug first: a malformed product identifier
         # is rejected outright (400), regardless of its protocol version. The
         # validation rule is the SSOT in hsync_common.constants.
@@ -124,10 +130,7 @@ class VersionMiddleware(BaseHTTPMiddleware):
                     "error": "Malformed client name",
                     "client_name": client_name,
                 },
-                headers={
-                    HEADER_SERVER_VERSION: HSYNC_VERSION,
-                    HEADER_PROTOCOL_VERSION: PROTOCOL_VERSION_REST,
-                },
+                headers=version_headers,
             )
 
         # Get the client's protocol version from the header (if any)
@@ -146,18 +149,14 @@ class VersionMiddleware(BaseHTTPMiddleware):
                     "client_protocol_version": client_protocol,
                     "server_protocol_version": PROTOCOL_VERSION_REST,
                 },
-                headers={
-                    HEADER_SERVER_VERSION: HSYNC_VERSION,
-                    HEADER_PROTOCOL_VERSION: PROTOCOL_VERSION_REST,
-                },
+                headers=version_headers,
             )
 
         # Process the request
         response = await call_next(request)
 
         # Always advertise the server's app and protocol versions.
-        response.headers[HEADER_SERVER_VERSION] = HSYNC_VERSION
-        response.headers[HEADER_PROTOCOL_VERSION] = PROTOCOL_VERSION_REST
+        response.headers.update(version_headers)
 
         return response
 

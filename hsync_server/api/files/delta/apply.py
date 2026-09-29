@@ -358,7 +358,7 @@ async def delta_apply(
                     f"{Path(conflicted).name}"
                 )
 
-            update_file_timestamp(part_path, None, str(meta.get("mtime") or ""))
+            update_file_timestamp(part_path, str(meta.get("mtime") or ""))
             if permissions:
                 await set_permissions(part_path, permissions)
             replace(part_path, file_location)

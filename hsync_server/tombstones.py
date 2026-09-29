@@ -20,12 +20,11 @@ from os import walk
 from pathlib import Path
 
 from hsync_common.models.event import is_valid_cid
-from hsync_common.models.sqlstore import get_state_db
 from hsync_common.models.tombstone import TombstoneStore, relpath_in_bucket
 
 from hsync_server.api.file_utils import is_sentinel_file
-from hsync_server.config import get_state_db_path, get_tombstone_ttl_days
-from hsync_server.store_registry import PerBucketStores
+from hsync_server.config import get_tombstone_ttl_days
+from hsync_server.store_registry import PerBucketStores, bucket_state_identity
 from hsync_server.versions import get_version_store
 
 __all__ = [
@@ -46,8 +45,7 @@ def get_tombstone_store(bucket: str) -> TombstoneStore:
     """Return the cached store for a bucket, loading and pruning it on first use."""
 
     def _build() -> TombstoneStore:
-        db_path = get_state_db_path(bucket)
-        folder_id = get_state_db(db_path).ensure_bucket_id(bucket)
+        db_path, folder_id = bucket_state_identity(bucket)
         store = TombstoneStore(
             db_path=db_path,
             folder_id=folder_id,

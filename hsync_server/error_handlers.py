@@ -52,11 +52,12 @@ EXCEPTION_STATUS_CODES: dict[type, int] = {
 
 
 def get_status_code_for_exception(exc: HSyncError) -> int:
-    """
-    Get the appropriate HTTP status code for an exception.
+    """Get the HTTP status code for *exc* by exact type, walking its MRO.
 
-    Checks the exception type hierarchy to find the most specific
-    status code mapping.
+    Walking ``type(exc).__mro__`` makes the lookup order-independent: the most
+    specific class with a mapping wins, so adding a new exception type can never
+    silently change another type's status code (the previous ``isinstance`` scan
+    depended on hand-maintained dict insertion order).
 
     Args:
         exc: The exception to get status code for.
@@ -64,8 +65,9 @@ def get_status_code_for_exception(exc: HSyncError) -> int:
     Returns:
         HTTP status code.
     """
-    for exc_type, status_code in EXCEPTION_STATUS_CODES.items():
-        if isinstance(exc, exc_type):
+    for exc_type in type(exc).__mro__:
+        status_code = EXCEPTION_STATUS_CODES.get(exc_type)
+        if status_code is not None:
             return status_code
     return status.HTTP_500_INTERNAL_SERVER_ERROR
 

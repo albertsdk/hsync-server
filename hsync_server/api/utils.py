@@ -58,20 +58,9 @@ def build_content_disposition(filename: str) -> str:
     return f'attachment; filename="{filename}"'
 
 
-def is_valid_bucket(value: str) -> bool:
-    """
-    Validate a bucket name.
-
-    Bucket names must contain only alphanumeric characters, hyphens
-    and underscores. They cannot start or end with a hyphen or underscore.
-
-    Args:
-        value: The bucket name to validate.
-
-    Returns:
-        True if the bucket name is valid, False otherwise.
-    """
-    return is_valid_bucket_name(value)
+# Bucket-name validation is the hsync-common SSOT (``hsync_common.path_validation``);
+# re-exported under the API-layer name so endpoint call sites stay unchanged.
+is_valid_bucket = is_valid_bucket_name
 
 
 def resolve_within_bucket(bucket: str, rel: str, *, resolve_final: bool = True) -> str | None:

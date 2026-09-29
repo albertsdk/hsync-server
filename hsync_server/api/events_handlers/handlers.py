@@ -73,15 +73,15 @@ async def _handle_create_or_modify(
     if not src:
         return None
 
+    label = ActionLabel.CREATE if create_dir else ActionLabel.MODIFY
+    verb = "Added" if create_dir else "Modified"
+
     if "path" in src:
         dir_obj = Dir.from_dict(src, bucket_dir)
         if not _validate_path(dir_obj.path, bucket_dir):
             return None
         if dir_obj.path and dir_obj.permissions:
-            log.info(
-                f"{ActionLabel.CREATE if create_dir else ActionLabel.MODIFY} "
-                f'{"Added" if create_dir else "Modified"} dir "{dir_obj.path}" (CID: {cid})'
-            )
+            log.info(f'{label} {verb} dir "{dir_obj.path}" (CID: {cid})')
             if create_dir:
                 Path(dir_obj.path).mkdir(parents=True, exist_ok=True)
             await set_directory_permissions(dir_obj.path, dir_obj.permissions)
@@ -92,10 +92,7 @@ async def _handle_create_or_modify(
         filepath = file_obj.filepath
         if filepath is None or not _validate_path(filepath, bucket_dir):
             return None
-        log.info(
-            f"{ActionLabel.CREATE if create_dir else ActionLabel.MODIFY} "
-            f'{"Added" if create_dir else "Modified"} file "{filepath}" (CID: {cid})'
-        )
+        log.info(f'{label} {verb} file "{filepath}" (CID: {cid})')
         # A (re-)created file invalidates any prior deletion marker so peers
         # do not delete the freshly added file on their next full sync.
         if not is_sentinel_file(filepath):

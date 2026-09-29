@@ -107,9 +107,7 @@ def cleanup_empty_dir(dir_path: str, bucket_root: str | None = None) -> None:
         log.warning(f'Cannot remove directory "{dir_path}": {exc}')
 
 
-def update_file_timestamp(
-    file_location: str, ctime: str | None = None, mtime: str | None = None
-) -> None:
+def update_file_timestamp(file_location: str, mtime: str | None = None) -> None:
     """
     Restore the file modification time.
 
@@ -117,11 +115,11 @@ def update_file_timestamp(
     ISO format datetime string. Only the modification time is restored: POSIX
     ``ctime`` is not settable and writing it into ``atime`` would corrupt the
     access time, so the access time is set to ``mtime`` to keep them consistent.
+    The wire ``ctime`` field sent by clients is accepted upstream but never
+    applied here (POSIX cannot set it).
 
     Args:
         file_location: Path to the file.
-        ctime: Accepted for protocol compatibility but not applied (POSIX
-            ctime cannot be set).
         mtime: Modification time (Unix timestamp or ISO string).
     """
     if not mtime:

@@ -26,7 +26,21 @@ import os
 import threading
 from collections.abc import Callable
 
-from hsync_common.models.sqlstore import reset_state_db_cache
+from hsync_common.models.sqlstore import get_state_db, reset_state_db_cache
+
+from hsync_server.config import get_state_db_path
+
+
+def bucket_state_identity(bucket: str) -> tuple[str, str]:
+    """Return ``(db_path, folder_id)`` for *bucket*'s shared state DB.
+
+    Resolves the per-bucket DB path and ensures its folder UUID exists (minting
+    it on first use). :mod:`versions` and :mod:`tombstones` both bootstrap their
+    stores from this pair, so the identity resolution lives in one place.
+    """
+    db_path = get_state_db_path(bucket)
+    folder_id = get_state_db(db_path).ensure_bucket_id(bucket)
+    return db_path, folder_id
 
 
 class PerBucketStores[T]:

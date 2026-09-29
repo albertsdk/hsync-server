@@ -128,8 +128,6 @@ async def grant_member(
 
     try:
         store.grant_member(bucket, target, ctx.id, caller_is_admin=(ctx.role == "admin"))
-    except ForbiddenError:
-        raise
     except ConflictError as e:
         return conflict_response(str(e))
 
@@ -210,8 +208,6 @@ async def transfer_or_reclaim_owner(
         else:
             store.transfer_owner(bucket, target, ctx.id, caller_is_admin=(ctx.role == "admin"))
             action = "transferred"
-    except ForbiddenError:
-        raise
     except ConflictError as e:
         return conflict_response(str(e))
 

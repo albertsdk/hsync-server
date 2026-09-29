@@ -149,45 +149,48 @@ def arbitrate_upload(
         remote_corrected_mtime=stored_corrected_mtime,
     )
 
-    if decision is SyncDecision.in_sync:
-        # Identical content already on disk: no-op accept (caller may 409 dup).
-        return ArbitrationResult(
-            outcome=ArbitrationOutcome.accepted,
-            record_vclock=merge_vclocks(incoming_vclock, stored_vclock),
-            record_corrected_mtime=incoming_corrected_mtime or stored_corrected_mtime,
-        )
-    if decision is SyncDecision.upload:
-        # Incoming causally ahead (or stored at base): accept.
-        return ArbitrationResult(
-            outcome=ArbitrationOutcome.accepted,
-            record_vclock=merge_vclocks(incoming_vclock, stored_vclock),
-            record_corrected_mtime=incoming_corrected_mtime,
-        )
-    if decision is SyncDecision.download:
-        # Stored dominates incoming: the upload is stale (an ancestor).
-        return ArbitrationResult(
-            outcome=ArbitrationOutcome.superseded,
-            record_vclock=stored_vclock or {},
-            record_corrected_mtime=stored_corrected_mtime,
-            loser_cid=None,
-        )
-    # conflict_upload: incoming wins tie-break ⇒ accept, preserve stored loser.
-    # conflict_download: incoming loses ⇒ reject, preserve incoming loser.
-    if decision is SyncDecision.conflict_upload:
-        loser_cid = stored["origin_cid"] if stored and stored["origin_cid"] else effective_origin
-        return ArbitrationResult(
-            outcome=ArbitrationOutcome.accepted_conflict_won,
-            record_vclock=merge_vclocks(incoming_vclock, stored_vclock),
-            record_corrected_mtime=incoming_corrected_mtime,
-            loser_cid=loser_cid,
-        )
-    # conflict_download
-    return ArbitrationResult(
-        outcome=ArbitrationOutcome.conflict_lost,
-        record_vclock=stored_vclock or {},
-        record_corrected_mtime=stored_corrected_mtime,
-        loser_cid=effective_origin,
-    )
+    match decision:
+        case SyncDecision.in_sync:
+            # Identical content already on disk: no-op accept (caller may 409 dup).
+            return ArbitrationResult(
+                outcome=ArbitrationOutcome.accepted,
+                record_vclock=merge_vclocks(incoming_vclock, stored_vclock),
+                record_corrected_mtime=incoming_corrected_mtime or stored_corrected_mtime,
+            )
+        case SyncDecision.upload:
+            # Incoming causally ahead (or stored at base): accept.
+            return ArbitrationResult(
+                outcome=ArbitrationOutcome.accepted,
+                record_vclock=merge_vclocks(incoming_vclock, stored_vclock),
+                record_corrected_mtime=incoming_corrected_mtime,
+            )
+        case SyncDecision.download:
+            # Stored dominates incoming: the upload is stale (an ancestor).
+            return ArbitrationResult(
+                outcome=ArbitrationOutcome.superseded,
+                record_vclock=stored_vclock or {},
+                record_corrected_mtime=stored_corrected_mtime,
+                loser_cid=None,
+            )
+        case SyncDecision.conflict_upload:
+            # Incoming wins the tie-break ⇒ accept, preserve the stored loser.
+            loser_cid = (
+                stored["origin_cid"] if stored and stored["origin_cid"] else effective_origin
+            )
+            return ArbitrationResult(
+                outcome=ArbitrationOutcome.accepted_conflict_won,
+                record_vclock=merge_vclocks(incoming_vclock, stored_vclock),
+                record_corrected_mtime=incoming_corrected_mtime,
+                loser_cid=loser_cid,
+            )
+        case _:
+            # conflict_download: incoming loses ⇒ reject, preserve the incoming loser.
+            return ArbitrationResult(
+                outcome=ArbitrationOutcome.conflict_lost,
+                record_vclock=stored_vclock or {},
+                record_corrected_mtime=stored_corrected_mtime,
+                loser_cid=effective_origin,
+            )
 
 
 def conflicted_copy_name(file_location: str, cid: str | None, ts: str) -> str:

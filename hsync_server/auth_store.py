@@ -606,6 +606,15 @@ class AuthStore:
             row = self.conn.execute("SELECT * FROM clients WHERE name = ?", (name,)).fetchone()
         return self._row_to_account(row) if row else None
 
+    def resolve_account(self, id_or_name: str) -> AccountRow | None:
+        """Resolve an account by id first, then by name, or None if neither matches.
+
+        The single id-or-name lookup used by the admin/CLI surfaces (distinct from
+        :meth:`resolve_target`, which requires exactly one explicit selector and
+        raises on a miss).
+        """
+        return self.get_account(id_or_name) or self.get_account_by_name(id_or_name)
+
     def resolve_target(self, client_id: str | None, name: str | None) -> AccountRow:
         """Resolve exactly one of ``client_id``/``name`` to an account.
 

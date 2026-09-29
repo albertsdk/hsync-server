@@ -339,8 +339,8 @@ async def upload_file(
             and hmac.compare_digest(sha256sum, get_sha256_hash(file_location) or "")
         ):
             log.warning(f"File already present: {file_location}")
-            # Update timestamps even if skipping upload
-            update_file_timestamp(file_location, ctime, mtime)
+            # Update mtime even if skipping upload
+            update_file_timestamp(file_location, mtime)
             # The utime pass changed the (mtime_ns) the cache keyed on: refresh
             # the entry so the next identical upload still hits the dup-skip.
             set_sha256_hash(file_location, sha256sum)
@@ -630,7 +630,7 @@ async def upload_file(
             # Set timestamps and permissions on the *final* file after the
             # atomic rename — metadata is only applied to content that passed
             # integrity verification.
-            update_file_timestamp(file_location, ctime, mtime)
+            update_file_timestamp(file_location, mtime)
 
             if permissions:
                 await set_permissions(file_location, permissions)

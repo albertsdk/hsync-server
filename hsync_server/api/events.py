@@ -26,12 +26,12 @@ Close codes:
 """
 
 import asyncio
-import time
+from collections.abc import Awaitable, Callable
 from json import JSONDecodeError, loads
 from pathlib import Path
 
 from fastapi import WebSocket, WebSocketDisconnect
-from hsync_common.models.event import EventName, is_valid_cid
+from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.path_validation import validate_remote_relpath, wire_relpaths
 from hsync_common.protocol.handshake import (
     PROTOCOL_VERSION_WS,
@@ -59,7 +59,7 @@ from hsync_server.api.events_handlers.handlers import (
     handle_symlink_event,
 )
 from hsync_server.api.utils import is_valid_bucket
-from hsync_server.auth import AuthContext, verify_token
+from hsync_server.auth import AuthContext, account_is_live, verify_token
 from hsync_server.auth_store import get_auth_store
 from hsync_server.config import (
     get_buckets_path,
@@ -77,7 +77,10 @@ from hsync_server.routers import public_router
 
 _VALID_EVENT_NAMES = frozenset(e.value for e in EventName)
 
-_EVENT_HANDLERS = {
+# Event handlers share one dispatch shape except for ``renamed`` (which also
+# takes the destination); the ellipsis callable keeps the table heterogeneous
+# without per-call ``type: ignore`` comments.
+_EVENT_HANDLERS: dict[EventName, Callable[..., Awaitable[Event | None]]] = {
     EventName.added: handle_added_event,
     EventName.modified: handle_modified_event,
     EventName.deleted: handle_deleted_event,
@@ -123,12 +126,7 @@ def _check_ws_access(ctx: AuthContext, bucket: str) -> bool:
     account = store.get_account(ctx.id)
     if account is None:
         return False
-    if account.status != "active":
-        return False
-    if account.key_generation != ctx.key_generation:
-        return False
-    now = int(time.time())
-    if account.key_expires_at is not None and now >= account.key_expires_at:
+    if not account_is_live(account, ctx.key_generation):
         return False
     return store.has_access(ctx.id, bucket, is_admin=(ctx.role == "admin"))
 
@@ -305,9 +303,9 @@ async def _process_one_message(
             return True
 
         if event_name == EventName.renamed:
-            event = await handler(src, dst, bucket_dir, bucket, cid)  # type: ignore[call-arg,operator]
+            event = await handler(src, dst, bucket_dir, bucket, cid)
         else:
-            event = await handler(src, bucket_dir, bucket, cid)  # type: ignore[call-arg,operator]
+            event = await handler(src, bucket_dir, bucket, cid)
 
         if event:
             # Broadcast with internal authz re-check per connection.

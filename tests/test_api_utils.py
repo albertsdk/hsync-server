@@ -62,16 +62,14 @@ class TestUpdateFileTimestamp:
         temp_path = tmp_path / "test.txt"
         temp_path.write_bytes(b"test")
 
-        # Use Unix timestamps as strings (ctime differs from mtime on purpose)
-        ctime = "1705320600"
         mtime = "1705320700"
 
-        update_file_timestamp(str(temp_path), ctime, mtime)
+        update_file_timestamp(str(temp_path), mtime)
 
         stat = os.stat(str(temp_path))
         # mtime is restored from the mtime argument
         assert abs(stat.st_mtime - 1705320700) < 1
-        # atime mirrors mtime; ctime must NOT be written into atime
+        # atime mirrors mtime
         assert abs(stat.st_atime - 1705320700) < 1
 
     def test_update_with_iso_format(self, tmp_path):
@@ -81,7 +79,7 @@ class TestUpdateFileTimestamp:
 
         iso_time = "2024-01-15T12:30:00+00:00"
 
-        update_file_timestamp(str(temp_path), ctime=iso_time, mtime=iso_time)
+        update_file_timestamp(str(temp_path), mtime=iso_time)
 
         expected_ts = datetime.fromisoformat(iso_time).timestamp()
         stat = os.stat(str(temp_path))
@@ -106,7 +104,7 @@ class TestUpdateFileTimestamp:
 
         original_mtime = os.stat(str(temp_path)).st_mtime
 
-        update_file_timestamp(str(temp_path), ctime=None, mtime=None)
+        update_file_timestamp(str(temp_path), mtime=None)
 
         # Timestamp should be unchanged
         assert os.stat(str(temp_path)).st_mtime == original_mtime

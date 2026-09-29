@@ -25,7 +25,7 @@ def _isolate_tombstones(tmp_path):
     """Keep tombstone state inside the test tmp dir and reset the cache."""
     tombstones.reset_cache()
     db_path = str(tmp_path / "state.db")
-    with patch.object(tombstones, "get_state_db_path", return_value=db_path):
+    with patch("hsync_server.store_registry.get_state_db_path", return_value=db_path):
         yield
     tombstones.reset_cache()
 
@@ -37,7 +37,7 @@ def _isolated_versions(tmp_path):
 
     versions.reset_cache()
     db_path = str(tmp_path / "state.db")
-    with patch.object(versions, "get_state_db_path", return_value=db_path):
+    with patch("hsync_server.store_registry.get_state_db_path", return_value=db_path):
         yield
     versions.reset_cache()
 

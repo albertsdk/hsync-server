@@ -158,6 +158,22 @@ def verify_token(token: str, store: AuthStore) -> AuthContext:
     return ctx
 
 
+def account_is_live(account: AccountRow, generation: int | None = None) -> bool:
+    """Pure liveness predicate for an authenticated account.
+
+    True when the account is ``active``, its key has not expired, and — when
+    *generation* is given — the token's generation still matches the account's
+    (so a rotated or revoked token is rejected). Shared by the REST/CLI auth
+    path and the per-frame WebSocket re-check so the two cannot drift.
+    """
+    if account.status != "active":
+        return False
+    if generation is not None and account.key_generation != generation:
+        return False
+    now = int(time.time())
+    return account.key_expires_at is None or now < account.key_expires_at
+
+
 def _check_account(account: AccountRow, gen_at_verify: int, key_kind: str) -> AuthContext | None:
     """Check status/generation/expiry after hash verification.
 
@@ -165,20 +181,22 @@ def _check_account(account: AccountRow, gen_at_verify: int, key_kind: str) -> Au
     """
     now = int(time.time())
 
-    # For prior-key verifies, check the grace window.
     if key_kind == "prior":
+        # A prior key is accepted only inside its grace window; its generation
+        # intentionally differs, so the generation check is skipped.
         if not account.prior_expires_at or now >= account.prior_expires_at:
             return None
-    # Active key: generation must match.
-    elif gen_at_verify != account.key_generation:
-        return None
+        generation: int | None = None
+    else:
+        generation = gen_at_verify
 
-    if account.status != "active":
-        log.warning(f"[SECURITY] Account {account.id} (name={account.name}) is disabled")
-        return None
-
-    if account.key_expires_at is not None and now >= account.key_expires_at:
-        log.warning(f"[SECURITY] Key for account {account.id} (name={account.name}) has expired")
+    if not account_is_live(account, generation):
+        if account.status != "active":
+            log.warning(f"[SECURITY] Account {account.id} (name={account.name}) is disabled")
+        elif account.key_expires_at is not None and now >= account.key_expires_at:
+            log.warning(
+                f"[SECURITY] Key for account {account.id} (name={account.name}) has expired"
+            )
         return None
 
     return AuthContext(

@@ -33,12 +33,11 @@ from os.path import relpath
 from pathlib import Path
 
 from hsync_common.models.event import is_valid_cid
-from hsync_common.models.sqlstore import get_state_db
 from hsync_common.models.version import FileVersion, SyncStateStore, VersionInfo, relpath_in_bucket
 
-from hsync_server.config import get_state_db_path, get_state_dir
+from hsync_server.config import get_state_dir
 from hsync_server.constants import mint_alnum_id
-from hsync_server.store_registry import PerBucketStores
+from hsync_server.store_registry import PerBucketStores, bucket_state_identity
 
 __all__ = [
     "clear_version",
@@ -68,8 +67,7 @@ def get_version_store(bucket: str) -> SyncStateStore:
     """Return the cached store for a bucket, loading it on first use."""
 
     def _build() -> SyncStateStore:
-        db_path = get_state_db_path(bucket)
-        folder_id = get_state_db(db_path).ensure_bucket_id(bucket)
+        db_path, folder_id = bucket_state_identity(bucket)
         store = SyncStateStore(
             db_path=db_path,
             folder_id=folder_id,

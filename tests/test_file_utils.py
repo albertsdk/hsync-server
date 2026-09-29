@@ -167,28 +167,17 @@ class TestUpdateFileTimestamp:
         expected = datetime.fromisoformat("2021-01-01T00:00:00").replace(tzinfo=UTC).timestamp()
         assert abs(stat.st_mtime - expected) < 1
 
-    def test_ctime_not_written_into_atime(self, tmp_path):
-        """ctime is accepted but never applied; atime mirrors mtime."""
+    def test_atime_mirrors_mtime(self, tmp_path):
+        """atime is set to mtime; the wire ctime is never applied."""
         test_file = tmp_path / "test.txt"
         test_file.write_text("content")
 
-        # ctime intentionally different from mtime
-        file_utils.update_file_timestamp(str(test_file), ctime="1609459200", mtime="1609545600")
+        file_utils.update_file_timestamp(str(test_file), mtime="1609545600")
 
         stat = test_file.stat()
         assert abs(stat.st_mtime - 1609545600) < 1
-        # atime must follow mtime, not ctime
+        # atime must follow mtime
         assert abs(stat.st_atime - 1609545600) < 1
-
-    def test_ctime_only_is_not_applied(self, tmp_path):
-        """When only ctime is provided, timestamps are left unchanged."""
-        test_file = tmp_path / "test.txt"
-        test_file.write_text("content")
-        original_mtime = test_file.stat().st_mtime
-
-        file_utils.update_file_timestamp(str(test_file), ctime="1609459200")
-
-        assert test_file.stat().st_mtime == original_mtime
 
     def test_no_timestamp_provided(self, tmp_path):
         """No timestamp update if neither provided."""

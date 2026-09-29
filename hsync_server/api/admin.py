@@ -304,7 +304,7 @@ async def create_bucket_on_behalf(request: Request, req: CreateBucketRequest) ->
 
     store = get_auth_store()
     # Resolve owner by id or name.
-    target = store.get_account_by_name(req.owner) or store.get_account(req.owner)
+    target = store.resolve_account(req.owner)
     if target is None:
         return not_found_response("Owner account not found.")
     if target.status != "active":
@@ -312,11 +312,6 @@ async def create_bucket_on_behalf(request: Request, req: CreateBucketRequest) ->
 
     try:
         create_bucket(req.bucket, owner_account_id=target.id, owner_name=target.name)
-    except InvalidBucketNameError as e:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"error": e.error_code, "message": e.message},
-        )
     except ConflictError:
         return conflict_response("Bucket already exists.")
 
