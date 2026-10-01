@@ -6,10 +6,10 @@ with automatic TLS, reverse proxy configuration, and running as a systemd servic
 > For day-to-day operations (backup, upgrade, monitoring, performance) see the
 > [Operations Guide](operations.md).
 >
-> For a private-LAN quick start, see [Path A — Docker](getting-started-docker.md)
-> or [Path B — Native](getting-started-native.md).
-> For source builds and other methods, see
-> [Installation Alternatives](installation-alternatives.md).
+> For a private-LAN quick start, see the
+> [installer script](getting-started-script.md) or
+> [Docker](getting-started-docker.md). For source builds and other methods, see
+> the [Getting Started chooser](getting-started.md).
 
 ---
 
@@ -51,7 +51,7 @@ with automatic TLS, reverse proxy configuration, and running as a systemd servic
 The project includes a [`docker.sh`](../docker.sh) script for contributors and
 source deployments. It handles image building, container lifecycle, data
 directory management, and SSL configuration. It is not the release quick start; use
-[Path A — Docker](getting-started-docker.md) unless you need a local build.
+the [installer script](getting-started-script.md) unless you need a local build.
 
 ### Available commands
 
@@ -320,7 +320,7 @@ via Poetry and manage it with systemd.
 > On Debian/Ubuntu, the packaged `.deb` automates this whole section (frozen
 > binary under `/usr/lib/hsync-server`, `hsync-server.service`, conffile and a
 > dedicated system user). See
-> [Debian/Ubuntu package](installation-alternatives.md#debianubuntu-package).
+> [Debian package](getting-started-deb.md).
 
 ### Install
 
@@ -479,9 +479,9 @@ Or set `HSYNC_LOG_LEVEL=debug` in your environment file.
 ## See also
 
 - [Operations Guide](operations.md) — backup, upgrade, monitoring, performance.
-- [Getting Started](getting-started.md) — chooser between the Docker and native
-  install paths.
-- [Installation Alternatives](installation-alternatives.md) — source and manual installs.
+- [Getting Started](getting-started.md) — chooser between the four install
+  methods.
+- [From source](getting-started-source.md) — clone and run, or a standalone binary.
 - [API Reference](api.md) — complete REST + WebSocket contract.
 - [Architecture](internal/architecture.md) — server components and module structure.
 - [Reverse Proxy Guide](reverse-proxy.md) — nginx and Traefik configuration.

@@ -51,20 +51,24 @@ you are.
 
 ### 1. Choose your server
 
-Decide which installation fits you, then follow that path end to end:
+Decide which installation fits you, then follow that method end to end. Methods
+are ordered from the simplest to the most involved:
 
-- [Path A — Docker](getting-started-docker.md): released container image,
-  Docker Compose, certificate management. **Best for private LAN, least
-  setup.**
-- [Path B — Native (Poetry/systemd)](getting-started-native.md): pure Python
-  process or systemd unit, no containers. **Best for development machines and
-  hosts without Docker.**
-- [Debian/Ubuntu package](installation-alternatives.md#debianubuntu-package):
-  the native server packaged as a `.deb` (systemd unit, conffile, dedicated
-  `_hsync-server` user). **Best for Debian/Ubuntu hosts without Docker.**
+- [Method 1 — Installer script](getting-started-script.md): `install.sh` via
+  `curl`, released container image, certificate management. **Best for a host
+  with Docker, least setup.**
+- [Method 2 — Docker / Compose](getting-started-docker.md): manual Compose,
+  direct `docker run`, or a source image build. **Best if you manage
+  containers.**
+- [Method 3 — Debian/Ubuntu package](getting-started-deb.md): the server
+  packaged as a `.deb` (systemd unit, conffile, dedicated `_hsync-server`
+  user). **Best for a Debian/Ubuntu host without Docker.**
+- [Method 4 — From source](getting-started-source.md): clone and run with
+  `run.sh` / Poetry, or a standalone binary. **Best for development or a host
+  you control.**
 
 Start from the [Getting Started](getting-started.md) chooser for a comparison
-table that helps you pick a path.
+table that helps you pick.
 
 ### 2. Connect your clients
 
@@ -93,7 +97,6 @@ including how to invoke the CLI on each installation type — is in
 | [authentication.md](authentication.md) | Auth flow: WebSocket handshake, account token validation, CID registration. |
 | [sync-flow.md](sync-flow.md) | Server-side sync flow: storage, event broadcast, tombstones. |
 | [delta-transfer.md](delta-transfer.md) | Rsync-style block sync protocol. |
-| [installation-alternatives.md](installation-alternatives.md) | Manual Compose, direct Docker run, source Docker build, Poetry. |
 | [log-labels.md](log-labels.md) | Every action label the server can write to its logs. |
 | [internal/architecture.md](internal/architecture.md) | Server internals (FastAPI app, connection manager, storage, hashing). |
 | [internal/developer.md](internal/developer.md) | Contributor: module structure and component reference. |

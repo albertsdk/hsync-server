@@ -159,7 +159,7 @@ produce a standalone executable straight from the local source tree:
   architectures inside Docker. The package installs the frozen server under
   `/usr/lib/hsync-server`, plus a systemd unit, a conffile and a dedicated
   `_hsync-server` user; see
-  [Installation Alternatives](docs/installation-alternatives.md#debianubuntu-package).
+  [Debian package](docs/getting-started-deb.md).
 - The `rpi` target builds Raspberry Pi OS 32-bit (`armhf`) and 64-bit (`arm64`)
   executables into `dist/rpi/<arch>/hsync-server`. It runs PyInstaller inside
   Docker cross-build containers built from

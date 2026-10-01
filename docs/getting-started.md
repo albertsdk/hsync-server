@@ -3,40 +3,30 @@
 HSYNC Server is a file-sync hub: clients upload/download buckets, and changes
 propagate to every connected client in real time.
 
-Follow this guide in two steps:
+Pick **one** installation method below, follow it to a running server, then
+connect your clients. The methods are ordered from the simplest and most
+immediate to the most involved.
 
-1. **Choose your server** (Docker or native) — select one path below.
-2. **Connect your clients** — create the account, the bucket, and grant access
-   with the commands shown in the path you chose.
+| # | Method | Best for | Guide |
+| - | ------ | -------- | ----- |
+| 1 | **Installer script** (`install.sh` via `curl`) | Least setup on a host with Docker: one command, certificate and secrets handled | [Install with the script](getting-started-script.md) |
+| 2 | **Docker / Compose** (manual) | You already manage containers, or want to build the image yourself | [Docker](getting-started-docker.md) |
+| 3 | **Debian/Ubuntu package** (`.deb`) | A Debian/Ubuntu host without Docker, managed by systemd | [Debian package](getting-started-deb.md) |
+| 4 | **From source** (clone and run) | Development, or a host where you control the toolchain | [Run from source](getting-started-source.md) |
 
-## Choose your path
+All methods result in a server on `https://<server-ip>:9753` with a self-signed
+certificate; only the toolchain differs. The installer script and the manual
+Docker path use the same released container image.
 
-| If you… | Follow |
-| --- | --- |
-| Have Docker (Linux or macOS) and want a ready-made setup with certificate management | [Path A — Docker](getting-started-docker.md) |
-| Prefer a native Python service without containers (development machine, or a host you manage with systemd) | [Path B — Native (Poetry/systemd)](getting-started-native.md) |
-| Prefer a packaged native install on Debian/Ubuntu (`dpkg -i`, no Poetry or Docker) | [Debian/Ubuntu package](installation-alternatives.md#debianubuntu-package) |
-
-Both paths result in a running server on `https://<server-ip>:9753` with a
-self-signed certificate; the difference is only the toolchain:
-
-| | Path A — Docker | Path B — Native |
-| --- | --- | --- |
-| Install | `install.sh` installer (Compose) | Poetry + `hsync-common` sibling repo |
-| Service | Docker containers + host data directory (bind mounts) | Process, optionally a systemd unit |
-| Admin CLI | `docker compose exec server python -m hsync_server admin …` | `poetry run hsync-server admin …` |
-| Upgrade | run the installer again | `git pull` + `poetry install` |
-| Best for | private LAN, least setup | development, no-Docker / managed host |
-
-> For a public Internet-facing server, complete a path first and then follow
+> For a public Internet-facing server, complete a method first and then follow
 > the [Production Deployment Guide](deployment.md).
 
 ## What's next after the server is running
 
 - **Connect your clients** — every client authenticates with an account token
-  (`hs_<id>_<secret>`) via its `HSYNC_API_KEY` variable. The path you chose
-  shows the exact commands to create the account, create the bucket, and
-  attribute it.
+  (`hs_<id>_<secret>`) via its `HSYNC_API_KEY` variable. The method you chose
+  shows the exact commands to create the account, create the bucket, and grant
+  access.
 - **Administrate** — accounts and buckets via the local CLI; the full command
   reference (and how to invoke it per installation type) is in
   [Roles and Permissions](roles-and-permissions.md).

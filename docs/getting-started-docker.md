@@ -1,182 +1,104 @@
-# Getting Started — Path A: Docker
+# Getting Started — Method 2: Docker / Compose (manual)
 
-This path installs a released multi-architecture container with Docker
-Compose, generates the required secrets, persists bucket data and certificates
-in a plain host data directory, and verifies that the server becomes healthy.
-Every command below is Docker-specific; on a native install follow
-[Path B](getting-started-native.md) instead.
+Use this method when you already manage containers, want to run the released
+image with your own Compose setup, or want to build the image from source. For
+the one-command installer instead, see
+[Method 1: installer script](getting-started-script.md).
 
-> This profile uses a persistent self-signed certificate. It is suitable for a
-> trusted private LAN, but not for exposing HSYNC directly to the Internet. For a
+> The quick start uses a persistent self-signed certificate: suitable for a
+> trusted private LAN, not for exposing HSYNC directly to the Internet. For a
 > public server, follow the [Production Deployment Guide](deployment.md).
 
 ## Prerequisites
 
 - Linux or macOS with Docker Engine or Docker Desktop running
 - Docker Compose v2 (`docker compose version`)
-- OpenSSL
-- `curl` and `sha256sum` for the verified download shown below
-
-Docker must already be installed. The HSYNC installer never invokes `sudo`,
-changes firewall rules, or installs system packages.
+- OpenSSL (to generate the admin secret)
 
 ## Install
 
-### Quick install (one command, latest stable release)
+### With the released image (manual Compose)
 
-```bash
-curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh | bash
+Download `compose.yaml` from the release, create a private `.env` beside it, and
+start it:
+
+```dotenv
+HSYNC_IMAGE=ghcr.io/albertsdk/hsync-server:v1.0.0
+HSYNC_BIND_ADDRESS=192.168.1.20
+HSYNC_CERT_HOSTNAME=192.168.1.20
+HSYNC_PUBLIC_PORT=9753
+# Generate the admin secret with: openssl rand -hex 32
+HSYNC_ADMIN_KEY=ADMIN_SECRET_64_HEX
+HSYNC_SSL_ENABLED=true
+# Host data directory bind-mounted at /project/{buckets,state,certs}.
+HSYNC_DATA_DIR=./hsync-data
+HSYNC_UID=1000
+HSYNC_GID=1000
+HSYNC_BUCKETS=/project/buckets
+HSYNC_STATE_DIR=/project/state
+HSYNC_SSL_CERT_DIR=/project/certs
 ```
 
-This downloads and runs the installer in one step. The default installation
-listens on `localhost` only — see [LAN setup](#lan-setup) below to bind a
-concrete LAN address.
-
-### Verified install (checksum)
-
-If you prefer to verify the download before running it:
+Protect and validate the configuration, then start it:
 
 ```bash
-curl -fLO "https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh"
-curl -fLO "https://github.com/albertsdk/hsync-server/releases/latest/download/SHA256SUMS"
-sha256sum --ignore-missing -c SHA256SUMS
-chmod 700 install.sh
-./install.sh
+chmod 600 .env compose.yaml
+docker compose config --quiet
+docker compose pull
+docker compose up -d --wait
 ```
 
-On macOS, use `shasum -a 256 install.sh` and compare the result
-with the matching line in `SHA256SUMS`.
+Use the release `SHA256SUMS` file to verify `compose.yaml`. Do not mix a Compose
+file from one release with an image from another without reviewing the release
+notes.
 
-The default installation:
+### Quick container (diagnostic only)
 
-- stores configuration in `~/.local/share/hsync-server`;
-- runs the latest stable `ghcr.io/albertsdk/hsync-server:vX.Y.Z` image;
-- listens on port `9753` on localhost only;
-- enables built-in HTTPS with a persistent self-signed certificate;
-- stores files, causal state and certificates in the plain host directory
-  `<install-dir>/hsync-data` (back it up; restore it to migrate);
-- generates the bootstrap admin secret and private-key password locally without
-  printing them.
-
-### LAN setup
-
-To connect from other devices on a private LAN, provide the server's concrete
-LAN address on the **first installation**. The installer also uses this address
-as the container hostname so the generated certificate contains a matching IP
-Subject Alternative Name:
+A temporary `docker run` is useful only for a short image or health-check
+diagnostic — it has no declarative lifecycle or persistent TLS identity:
 
 ```bash
-# Quick install with a LAN bind address
-curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh | bash -s -- --bind-address 192.168.1.20
-
-# Or, with the verified download:
-./install.sh --bind-address 192.168.1.20
+docker run --rm -d --name hsync-server-test \
+  -p 127.0.0.1:9753:9753 \
+  -e HSYNC_ADMIN_KEY="$(openssl rand -hex 32)" \
+  ghcr.io/albertsdk/hsync-server:v1.0.0
+curl http://127.0.0.1:9753/health
+docker stop hsync-server-test
 ```
 
-The installer refuses to change the address later because the persisted
-certificate identifies the original address. Moving the service to another IP
-requires an explicit certificate rotation or a separate installation, followed
-by re-establishing client trust.
+The diagnostic endpoint is plaintext and bound to localhost. HSYNC clients
+refuse to send API keys over HTTP, so do not use this as a deployment.
 
-Run `./install.sh --help` for version, port, install-directory,
-validation-only, and dry-run options.
+### Build the image from source
 
-To install a **specific version** instead of the latest stable one, download
-the installer from that release (replace `latest/download` with
-`download/vX.Y.Z` in the URLs above) or pass the version explicitly:
-`./install.sh --version v1.0.0`. Conversely, `--version latest` makes any
-installer resolve and pin the latest stable release automatically.
+The source build requires `hsync-server` and `hsync-common` as sibling
+repositories. From the `hsync-server` checkout:
+
+```bash
+./docker.sh build
+./docker.sh start --env-file dev.env
+```
+
+`docker.sh start` starts an image that has already been built; it does not pull
+the GHCR image or build automatically. `./docker.sh` also supports `stop`,
+`restart`, `status`, `logs -f`, `shell` and `clean`. See the
+[Developer Guide](internal/developer.md) for the repository setup.
 
 ## Verify the server is healthy
-
-The installer waits for the container health check. You can verify it again
-with:
 
 ```bash
 curl --insecure https://localhost:9753/health && echo "SERVER OK!"
 ```
 
-## Export the certificate for clients
+With the manual Compose setup, the certificate lives under
+`<data-dir>/certs/server.crt`; export it and connect clients exactly as in
+[Method 1 → Export the certificate](getting-started-script.md#export-the-certificate-for-clients).
+The admin CLI is `docker compose exec server …` in both Docker methods — see
+[Roles and Permissions](roles-and-permissions.md).
 
-Read the bootstrap admin secret locally:
-
-```bash
-grep '^HSYNC_ADMIN_KEY=' "$HOME/.local/share/hsync-server/.env"
-```
-
-> On first start the server creates the bootstrap admin account with token
-> `hs_HsyncAdminBootstrap01_<secret>` (silent when `HSYNC_ADMIN_KEY` is set).
-> See [Roles and Permissions → Admin bootstrap](roles-and-permissions.md#admin-bootstrap).
-
-Export the public certificate and copy it to each client over a trusted
-channel:
+## Manage and update
 
 ```bash
-INSTALL_DIR="$HOME/.local/share/hsync-server"
-cd "$INSTALL_DIR"
-docker compose exec server hsync-server admin tls fingerprint
-docker compose cp server:/project/certs/server.crt ./server.crt
-```
-
-The command prints the fingerprint as `sha256:<hex>`, the same form clients pin
-with `hsync trust server add`. Verify it out of band before trusting it. Do not
-use `--insecure` for authenticated synchronization: disabling certificate
-verification would expose the bearer token to a network attacker.
-
-To rotate the certificate later (e.g. after a suspected compromise), run
-`docker compose exec server hsync-server admin tls rotate` and move clients to
-the new fingerprint.
-
-## Connect your clients
-
-Every client authenticates with an account token (`hs_<id>_<secret>`) configured
-as `HSYNC_API_KEY`. With the server running, create a dedicated account per
-client, create the bucket, and attribute it (run these once per client/bucket;
-full syntax in [Roles and Permissions](roles-and-permissions.md)):
-
-```bash
-INSTALL_DIR="$HOME/.local/share/hsync-server"
-
-# 1. Create an account for this client (the token is printed once)
-cd "$INSTALL_DIR" && docker compose exec server \
-  python -m hsync_server admin client add \
-  --name CLIENT_NAME --role client
-
-# 2. Create the bucket the client will sync
-cd "$INSTALL_DIR" && docker compose exec server \
-  python -m hsync_server admin bucket create --bucket BUCKET
-
-# 3. Give the client account access to the bucket
-cd "$INSTALL_DIR" && docker compose exec server \
-  python -m hsync_server admin bucket grant \
-  --bucket BUCKET --client CLIENT_NAME
-```
-
-> The bootstrap admin token (`hs_HsyncAdminBootstrap01_<secret>`) from step
-> **Export the certificate for clients** has full access and needs none of
-> these steps for evaluation. See [Roles and Permissions](roles-and-permissions.md#cli-tools)
-> for the full command reference.
-
-Then configure the client on each device:
-
-```bash
-export HSYNC_API_KEY="hs_<id>_<secret>"
-hsync server server.example.com -b photos -p /path/to/dir --ca-cert /trusted/path/server.crt
-```
-
-- `server.example.com` — the server hostname (positional argument; `https://` is implied);
-- `-b` — the bucket created above;
-- `-p` — local directory to sync;
-- `--ca-cert` — the exported certificate.
-
-> For all client options, see the
-> [client Getting Started guide](https://github.com/albertsdk/hsync-client/blob/main/docs/getting-started.md).
-
-## Manage the server
-
-```bash
-INSTALL_DIR="$HOME/.local/share/hsync-server"
-cd "$INSTALL_DIR"
 docker compose ps
 docker compose logs -f
 docker compose restart
@@ -184,25 +106,13 @@ docker compose down
 docker compose up -d --wait
 ```
 
-`docker compose down` does not delete the data directory. Remove
-`<install-dir>/hsync-data` only if you intentionally want to delete all files
-and persisted certificates.
+`docker compose down` does not delete the data directory. To update, pull the
+new image tag (or rebuild with `./docker.sh build`) and bring the stack up
+again. Review the release notes and back up the data directory first. See
+[Operations → Upgrade](operations.md#upgrade-guide).
 
-## Update
+## Next
 
-Download the installer from the target release, verify it, and run it again
-with the same installation directory. It updates the pinned image version
-while preserving secrets and data:
-
-```bash
-./install.sh
-```
-
-Review the release notes and back up the buckets before updating. See
-[Operations → Upgrade](operations.md#upgrade-guide) for details.
-
-## Other installation methods
-
-This bootstrap is the supported Docker quick start. For manual Compose, a
-temporary `docker run`, and the source Docker build, see
-[Installation Alternatives](installation-alternatives.md).
+- Prefer the automated installer? [Installer script](getting-started-script.md).
+- No Docker host? [Debian package](getting-started-deb.md) or
+  [run from source](getting-started-source.md).

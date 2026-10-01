@@ -34,7 +34,7 @@ It scales with your setup — from a laptop or NAS on a small LAN to a VPS servi
 **Quick navigation:**
 - **New to HSYNC Server?** Start with [What you can do](#what-you-can-do-with-hsync-server) and the [Getting Started guide](docs/getting-started.md)
 - **Do you need the server?** See [Do you need the server?](#do-you-need-the-server) — and the client's [p2p Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/p2p-mode.md) alternative
-- **Need another installation method?** See [Installation Alternatives](docs/installation-alternatives.md)
+- **Need another installation method?** See the [Getting Started guide](docs/getting-started.md)
 - **Want to contribute?** See [Contributing](CONTRIBUTING.md)
 - **Looking for detailed documentation?** Navigate to [docs/README.md](docs/README.md)
 
@@ -65,7 +65,7 @@ Verify it is healthy:
 curl --insecure https://localhost:9753/health && echo "SERVER OK!"
 ```
 
-To reach the server from other devices on a private LAN, pass its LAN address on the **first** install (`curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh | bash -s -- --bind-address LAN_IP`): the persistent certificate is generated for that address. Prefer no containers? Use [Getting Started — Native](docs/getting-started-native.md).
+To reach the server from other devices on a private LAN, pass its LAN address on the **first** install (`curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh | bash -s -- --bind-address LAN_IP`): the persistent certificate is generated for that address. Prefer no containers? Use [Getting Started — From source](docs/getting-started-source.md).
 
 Then create the accounts and the buckets and connect the clients — the [Getting Started guide](docs/getting-started.md) shows the exact commands for each path, and [Roles and Permissions](docs/roles-and-permissions.md) covers accounts, roles and keys. For an Internet-facing server, continue with the [Production Deployment Guide](docs/deployment.md).
 
@@ -226,8 +226,7 @@ Key variables:
 | Document | What it covers |
 | -------- | -------------- |
 | [Documentation Index](docs/README.md) | System requirements, env vars, upgrade, client examples |
-| [Getting Started](docs/getting-started.md) | Recommended private-LAN install and first connection |
-| [Installation Alternatives](docs/installation-alternatives.md) | Manual Compose, direct Docker, source build, Poetry |
+| [Getting Started](docs/getting-started.md) | Chooser for the four install methods and first connection |
 | [Deployment Guide](docs/deployment.md) | Docker Compose, reverse proxy, systemd, troubleshooting |
 | [Operations Guide](docs/operations.md) | Backup/restore, upgrade, monitoring, performance |
 | [API Reference](docs/api.md) | Complete REST + WebSocket API reference |

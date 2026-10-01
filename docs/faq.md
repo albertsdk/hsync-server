@@ -13,9 +13,9 @@ links to the relevant guide.
   state directory) — back that file up with the buckets. See
   [Architecture](internal/architecture.md).
 - **Run it anywhere.** Pull the prebuilt multi-arch image (`amd64`/`arm64`) from
-  GHCR with the recommended Docker installer ([Path A](getting-started-docker.md)),
-  or choose a source or native method from
-  [Installation Alternatives](installation-alternatives.md).
+  GHCR with the [installer script](getting-started-script.md), or choose the
+  [Docker](getting-started-docker.md), [Debian package](getting-started-deb.md)
+  or [source](getting-started-source.md) method.
 - **Secure by default.** Every authenticated endpoint requires a Bearer API key
   (constant-time comparison) and is meant to run behind HTTPS/WSS.
 - **Real-time fan-out.** A WebSocket hub relays change events to all connected

@@ -1,8 +1,10 @@
 name: Release
 
-# Build and push the multi-arch server image to GHCR when a vX.Y.Z tag is
-# pushed. The Dockerfile depends on ../hsync-common at build time, so the build
-# context is the repository root and hsync-common is checked out alongside.
+# Build and publish the server's release assets when a vX.Y.Z tag is pushed: the
+# multi-arch GHCR image, the Linux native binaries, the .deb packages
+# (amd64/arm64/armhf), the Docker Compose file and the install.sh installer. The
+# Dockerfile and the Poetry path dependency both need ../hsync-common at build
+# time, so it is checked out alongside.
 on:
   push:
     tags: ["v*"]
@@ -65,8 +67,84 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+
+  build-binaries:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,   target: linux-amd64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { path: hsync-server }
+      - uses: actions/checkout@v7
+        with:
+          repository: albertsdk/hsync-common
+          ref: main
+          path: hsync-common
+          token: ${{ secrets.HSYNC_COMMON_PAT }}
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.13" }
+      - run: pipx install poetry
+      - name: Build native binary
+        working-directory: hsync-server
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install --with build --no-interaction
+          ./compile.sh -v "${GITHUB_REF_NAME#v}"
+      - name: Package binary
+        working-directory: hsync-server
+        run: |
+          mkdir -p release-out
+          tar czf "release-out/hsync-server-${GITHUB_REF_NAME#v}-${{ matrix.target }}.tar.gz" \
+            "dist/${{ matrix.target }}/hsync-server"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bin-${{ matrix.target }}
+          path: hsync-server/release-out/*
+
+  build-packages:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: { path: hsync-server }
+      - uses: actions/checkout@v7
+        with:
+          repository: albertsdk/hsync-common
+          ref: main
+          path: hsync-common
+          token: ${{ secrets.HSYNC_COMMON_PAT }}
+      # The .deb packages are cross-built for ARMv7/arm64 under qemu-user. The
+      # QEMU that ships with the ubuntu-latest runner has regressed and makes gcc
+      # crash deterministically with SIGSEGV (exit 139) while emitting -O3 code
+      # for some CPython/OpenSSL translation units (e.g. Python/_warnings.c),
+      # aborting the source builds even at -j1. Register a pinned, known-good
+      # QEMU/binfmt build instead of relying on the runner default. A recent
+      # QEMU (v10.x) is required: older lines (e.g. v7.0.0) avoid the gcc
+      # SIGSEGV but regress the emulated link step, making CPython's libm probe
+      # (AC_CHECK_FUNCS acosh/asinh/... -lm) fail with "requires C99 compatible
+      # libm" during ./configure.
+      - name: Set up QEMU (pinned, known-good)
+        uses: docker/setup-qemu-action@v4
+        with:
+          image: tonistiigi/binfmt:qemu-v10.1.3
+          platforms: arm,arm64
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build .deb packages
+        working-directory: hsync-server
+        run: ./compile.sh --target deb-all -v "${GITHUB_REF_NAME#v}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: hsync-server/dist/deb/*.deb
+
   assets:
-    needs: image
+    needs: [image, build-binaries, build-packages]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -74,12 +152,28 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Prepare deployment assets
+      - uses: actions/download-artifact@v8
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Flatten assets
         run: |
-          sed "s/^readonly DEFAULT_VERSION=.*/readonly DEFAULT_VERSION=\"${GITHUB_REF_NAME}\"/" install.sh > install.sh.tmp
-          mv install.sh.tmp install.sh
-          chmod 755 install.sh
-          sha256sum install.sh compose.yaml > SHA256SUMS
+          cd assets
+          # download-artifact preserves the artifact's internal directory
+          # structure, so the packages artifact lands under deb/. Move every file
+          # to the top level for flat release assets.
+          find . -mindepth 2 -type f -exec mv -t . {} +
+          find . -mindepth 1 -type d -empty -delete
+      - name: Prepare installer and Compose file
+        run: |
+          sed "s/^readonly DEFAULT_VERSION=.*/readonly DEFAULT_VERSION=\"${GITHUB_REF_NAME}\"/" \
+            install.sh > "assets/install.sh"
+          chmod 755 "assets/install.sh"
+          cp compose.yaml "assets/compose.yaml"
+      - name: Generate checksums
+        run: |
+          cd assets
+          sha256sum * > SHA256SUMS
       - name: Publish GitHub release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -91,5 +185,4 @@ jobs:
           # Create the release if it doesn't exist; ignore error if it does.
           gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag ${PRERELEASE_FLAG} || true
           # Upload assets, overwriting any existing ones with the same name.
-          gh release upload "${GITHUB_REF_NAME}" --clobber \
-            install.sh compose.yaml SHA256SUMS
+          gh release upload "${GITHUB_REF_NAME}" --clobber assets/*

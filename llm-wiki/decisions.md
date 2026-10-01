@@ -37,9 +37,11 @@ the server-local choices not big enough for an ADR.
   on flaky NAS links.
 - **Tag-driven GHCR release** (`.github/workflows/release.yml`): pushing a
   `vX.Y.Z` tag builds and pushes a multi-arch (`linux/amd64`, `linux/arm64`)
-  image to `ghcr.io/albertsdk/hsync-server`, tagged with the version and
-  `latest`, then publishes the version-stamped `install.sh`, `compose.yaml`, and
-  `SHA256SUMS` as GitHub release assets. Build context is the repo root with
+  image to `ghcr.io/albertsdk/hsync-server`,   tagged with the version and
+  `latest`, then publishes the version-stamped `install.sh`, `compose.yaml`,
+  `SHA256SUMS`, the Linux native binaries (`linux-amd64`/`linux-arm64`) and the
+  `.deb` packages (`amd64`/`arm64`/`armhf`) as GitHub release assets — the same
+  asset set as `hsync-bootnode`. Build context is the repo root with
   `../hsync-common` checked out alongside, matching `docker.sh`/`Dockerfile`.
   `install.sh` generates local secrets and deploys that pinned image; the
   container image remains the primary distribution (a standalone executable is
@@ -51,6 +53,12 @@ the server-local choices not big enough for an ADR.
   tag in `.env` — the floating GHCR `:latest` tag is deliberately not written
   to `.env`, so a plain `docker compose pull` never upgrades implicitly
   (`install.sh`, `resolve_latest_version`).
+- **Uniform `run.sh` (clone-and-run)**: a thin wrapper (`run.sh`) that checks the
+  sibling `../hsync-common`, creates the in-project `.venv` via Poetry (main
+  group only) and execs `hsync-server` — the mirror of `hsync-bootnode/run.sh`.
+  The four installation methods are one page per method
+  (`docs/getting-started-<script|docker|deb|source>.md`) behind a link-only
+  chooser (`docs/getting-started.md`), kept identical in shape to the bootnode.
 - **Standalone binary build** (`compile.sh`, targets `native`/`rpi`): a PyInstaller
   onefile freeze mirroring the client/bootnode build scripts. `native` uses the
   host virtualenv's Poetry `build` group; `rpi` cross-builds armhf/arm64 in

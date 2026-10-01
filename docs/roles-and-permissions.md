@@ -296,9 +296,10 @@ installation and administration.
 
 | Installation | Invocation |
 | --- | --- |
-| Docker via `install.sh` (Path A) | `cd "$INSTALL_DIR" && docker compose exec server python -m hsync_server admin …` |
-| Docker from source (`docker.sh`) | `./docker.sh shell`, then `python -m hsync_server admin …` inside the container |
-| Native Poetry (Path B) | `poetry run hsync-server admin …` (or the `hsync-server` console script in the venv) |
+| Installer script (Docker Compose) | `cd "$INSTALL_DIR" && docker compose exec server python -m hsync_server admin …` |
+| Docker manual / from source (`docker.sh`) | `./docker.sh shell`, then `python -m hsync_server admin …` inside the container |
+| Debian package (`.deb`) | service stopped, then `sudo sh -c 'set -a; . /etc/hsync-server/hsync-server.conf; set +a; hsync-server admin …'` |
+| From source (`run.sh` / Poetry) | `./run.sh admin …` (or `poetry run hsync-server admin …`) |
 | Native systemd (`/opt/hsync`) | as the `hsync` user, source `/opt/hsync/prod.env` and run `/opt/hsync/hsync-server/.venv/bin/hsync-server admin …` |
 
 For native installs, run the CLI from the same directory (or with the same
