@@ -34,7 +34,6 @@ It scales with your setup — from a laptop or NAS on a small LAN to a VPS servi
 **Quick navigation:**
 - **New to HSYNC Server?** Start with [What you can do](#what-you-can-do-with-hsync-server) and the [Getting Started guide](docs/getting-started.md)
 - **Do you need the server?** See [Do you need the server?](#do-you-need-the-server) — and the client's [p2p Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/p2p-mode.md) alternative
-- **Need another installation method?** See the [Getting Started guide](docs/getting-started.md)
 - **Want to contribute?** See [Contributing](CONTRIBUTING.md)
 - **Looking for detailed documentation?** Navigate to [docs/README.md](docs/README.md)
 
@@ -53,56 +52,19 @@ A server is not always necessary. **You need it when** your devices are on diffe
 
 ## Getting started
 
-On a machine with Docker (Linux or macOS), install the latest stable release — the installer sets up Docker Compose, generates the secrets and a self-signed certificate, and serves `https://localhost:9753`:
+HSYNC Server installs on a host with Docker, as a Debian/Ubuntu package, or
+directly from a clone. Pick one method and follow it end to end:
 
-```bash
-curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh | bash
-```
+- [Installer script](docs/getting-started-script.md) — one `curl` command and the
+  released container image (least setup on a host with Docker);
+- [Docker / Compose](docs/getting-started-docker.md) — manual container setup;
+- [Debian package](docs/getting-started-deb.md) — `.deb` with a systemd unit;
+- [From source](docs/getting-started-source.md) — clone and run.
 
-Verify it is healthy:
-
-```bash
-curl --insecure https://localhost:9753/health && echo "SERVER OK!"
-```
-
-To reach the server from other devices on a private LAN, pass its LAN address on the **first** install (`curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh | bash -s -- --bind-address LAN_IP`): the persistent certificate is generated for that address. Prefer no containers? Use [Getting Started — From source](docs/getting-started-source.md).
-
-Then create the accounts and the buckets and connect the clients — the [Getting Started guide](docs/getting-started.md) shows the exact commands for each path, and [Roles and Permissions](docs/roles-and-permissions.md) covers accounts, roles and keys. For an Internet-facing server, continue with the [Production Deployment Guide](docs/deployment.md).
-
-## Why HSYNC Server?
-
-HSYNC is designed to synchronize files **in real-time** using **only the HTTP/HTTPS protocol**.
-This makes it the ideal choice in environments where HTTP is the only protocol
-allowed through firewalls, proxies, or network policies — a common constraint in
-corporate networks, cloud environments, and restricted infrastructures.<br><br>
-The table below compares HSYNC with common alternatives on five dimensions.<br>
-**Native Storage** means the tool stores your files in their original format,
-directly browsable on disk — no proprietary containers, block stores, or
-opaque internal formats.
-
-| Tool | Protocol | HTTP | Real-Time | Native Storage | Architecture |
-|------|----------|:---:|:---:|:---:|------|
-| **HSYNC Server** | HTTP / HTTPS | ✅ | ✅ | ✅ | Client-Server + P2P |
-| rsync | SSH or rsync daemon | ❌ | ❌ | ✅ | Client-Server |
-| Syncthing | BEP (custom) | ❌ | ✅ | ✅ | P2P |
-| Nextcloud | HTTP / HTTPS (WebDAV) | ✅ | ⚠️ ¹ | ✅ | Client-Server |
-| Seafile | HTTP / HTTPS | ✅ | ⚠️ ¹ | ❌ ² | Client-Server |
-| scp / sftp | SSH | ❌ | ❌ | ✅ | Client-Server |
-| Unison | SSH or direct socket | ❌ | ❌ | ✅ | P2P |
-| Rclone | S3, SFTP, etc. | ⚠️ ⁴ | ❌ | ⚠️ ³ | Client-Server |
-
-> ¹ Local filesystem monitoring via desktop client; no native push notifications (WebSocket) like HSYNC.<br>
-> ² Seafile uses a proprietary block-based internal storage format; files are not directly accessible from the filesystem without the Seafile server.<br>
-> ³ Rclone with the `crypt` backend stores files in an opaque encrypted format; with other backends (e.g., SFTP, local) files remain in their original format.<br>
-> ⁴ Rclone's HTTP backend is read-only (download-only) and does not perform synchronization; Rclone's core operation relies on other protocols (S3, SFTP, etc.).
-
-**When to choose HSYNC Server:**
-- 🏢 **Corporate networks** — only ports 80/443 are open through the firewall
-- ☁️ **Cloud environments** — services behind load balancers or reverse proxies
-- 🔒 **Restricted infrastructures** — SSH is disabled, VPNs unavailable
-- 🌐 **Web-friendly setups** — route traffic through CDNs, WAFs, or API gateways
-- ⚡ **Real-time reactivity** — unlike traditional HTTP-based tools that rely on periodic polling, HSYNC reacts instantly to file changes using local watchdogs and event-driven WebSockets.
-- 🏠 **Self-hosted by design** — you operate the hub, the storage and the credentials: buckets are plain directories on your own filesystem and access is per-account with roles, with no third-party service in the data path.
+The [Getting Started](docs/getting-started.md) chooser compares the methods;
+[Roles and Permissions](docs/roles-and-permissions.md) covers accounts, roles
+and keys; and the [Production Deployment Guide](docs/deployment.md) covers
+Internet-facing setups.
 
 ## Architecture Overview
 
@@ -153,6 +115,41 @@ flowchart TB
 - 🧩 Delta transfer (rsync-style block sync for large files)
 - 🗜️ Zstandard (zstd) transfer compression
 
+## Why HSYNC Server?
+
+HSYNC is designed to synchronize files **in real-time** using **only the HTTP/HTTPS protocol**.
+This makes it the ideal choice in environments where HTTP is the only protocol
+allowed through firewalls, proxies, or network policies — a common constraint in
+corporate networks, cloud environments, and restricted infrastructures.<br><br>
+The table below compares HSYNC with common alternatives on five dimensions.<br>
+**Native Storage** means the tool stores your files in their original format,
+directly browsable on disk — no proprietary containers, block stores, or
+opaque internal formats.
+
+| Tool | Protocol | HTTP | Real-Time | Native Storage | Architecture |
+|------|----------|:---:|:---:|:---:|------|
+| **HSYNC Server** | HTTP / HTTPS | ✅ | ✅ | ✅ | Client-Server + P2P |
+| rsync | SSH or rsync daemon | ❌ | ❌ | ✅ | Client-Server |
+| Syncthing | BEP (custom) | ❌ | ✅ | ✅ | P2P |
+| Nextcloud | HTTP / HTTPS (WebDAV) | ✅ | ⚠️ ¹ | ✅ | Client-Server |
+| Seafile | HTTP / HTTPS | ✅ | ⚠️ ¹ | ❌ ² | Client-Server |
+| scp / sftp | SSH | ❌ | ❌ | ✅ | Client-Server |
+| Unison | SSH or direct socket | ❌ | ❌ | ✅ | P2P |
+| Rclone | S3, SFTP, etc. | ⚠️ ⁴ | ❌ | ⚠️ ³ | Client-Server |
+
+> ¹ Local filesystem monitoring via desktop client; no native push notifications (WebSocket) like HSYNC.<br>
+> ² Seafile uses a proprietary block-based internal storage format; files are not directly accessible from the filesystem without the Seafile server.<br>
+> ³ Rclone with the `crypt` backend stores files in an opaque encrypted format; with other backends (e.g., SFTP, local) files remain in their original format.<br>
+> ⁴ Rclone's HTTP backend is read-only (download-only) and does not perform synchronization; Rclone's core operation relies on other protocols (S3, SFTP, etc.).
+
+**When to choose HSYNC Server:**
+- 🏢 **Corporate networks** — only ports 80/443 are open through the firewall
+- ☁️ **Cloud environments** — services behind load balancers or reverse proxies
+- 🔒 **Restricted infrastructures** — SSH is disabled, VPNs unavailable
+- 🌐 **Web-friendly setups** — route traffic through CDNs, WAFs, or API gateways
+- ⚡ **Real-time reactivity** — unlike traditional HTTP-based tools that rely on periodic polling, HSYNC reacts instantly to file changes using local watchdogs and event-driven WebSockets.
+- 🏠 **Self-hosted by design** — you operate the hub, the storage and the credentials: buckets are plain directories on your own filesystem and access is per-account with roles, with no third-party service in the data path.
+
 ## Command Line Options
 
 ```bash
@@ -173,25 +170,10 @@ hsync-server [options]
 
 ## Building a Standalone Binary
 
-`./compile.sh` freezes the server into a self-contained executable with
-[PyInstaller](https://pyinstaller.org/) — no Python installation is required to
-run the result.
-
-```bash
-./compile.sh                    # host OS/arch → dist/<os>-<arch>/hsync-server
-./compile.sh --clean            # clean artifacts and rebuild
-./compile.sh --target deb       # Debian/Ubuntu .deb for the host arch
-./compile.sh --target deb-all   # .deb for amd64, arm64 and armhf (Docker + qemu)
-./compile.sh --target rpi       # Raspberry Pi OS armhf + arm64 (Docker + qemu)
-```
-
-The `native` target uses the project virtualenv; install the PyInstaller build
-group once with `poetry install --with build`. The `deb` target produces
-`dist/deb/hsync-server_<ver>_<arch>.deb` (installable with `dpkg -i`); `deb-all`
-cross-builds the three Debian architectures inside Docker. The `rpi` target
-builds Raspberry Pi OS 32-bit (`armhf`) and 64-bit (`arm64`) executables into
-`dist/rpi/<arch>/hsync-server` inside Docker (cross-architecture emulation via
-`qemu-user-static`). See [Contributing](CONTRIBUTING.md) for the full details.
+`./compile.sh` freezes the server into a self-contained executable (no Python
+required). Targets, outputs and cross-build notes are in
+[From source → Standalone binary](docs/getting-started-source.md#standalone-binary-no-python-on-the-target)
+and [Contributing](CONTRIBUTING.md).
 
 ## Configuration
 
@@ -236,7 +218,7 @@ Key variables:
 | [Contributing](CONTRIBUTING.md) | Development setup and contribution guidelines |
 | [Security Policy](SECURITY.md) | Supported versions and how to report vulnerabilities |
 
-### Associated Ecosystem Components
+## Associated Ecosystem Components
 
 - [HSYNC Common](https://github.com/albertsdk/hsync-common/blob/main/README.md) - Shared models, constants, and utilities used by the client
 - [HSYNC Client](https://github.com/albertsdk/hsync-client/blob/main/README.md) - Sync client (Server Mode and p2p Mode)
