@@ -46,6 +46,11 @@ the server-local choices not big enough for an ADR.
   `install.sh` generates local secrets and deploys that pinned image; the
   container image remains the primary distribution (a standalone executable is
   also available — see below).
+- **Fixed-name `latest` aliases**: the `release` job copies each versioned asset
+  to a stable name (`hsync-server-linux-amd64.tar.gz`, `hsync-server-amd64.deb`,
+  `hsync-server-x86_64.rpm`, …) so the docs link
+  `releases/latest/download/<name>` without a version (`RELEASES.md` §5.8);
+  guarded by `tests/test_compile_script.py`.
 - **`install.sh --version latest`**: the installer resolves the latest stable
   GitHub Release by following the `github.com/<repo>/releases/latest` redirect
   with `curl -fsSIL -w %{url_effective}` (no GitHub API, no rate limit; drafts

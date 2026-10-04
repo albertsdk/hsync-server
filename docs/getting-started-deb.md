@@ -14,17 +14,17 @@ unit, a dedicated `_hsync-server` system user, and a conffile at
 
 ### From the release (recommended)
 
-Download the package for your architecture from the release page and install it:
+Download the latest package for your architecture and install it:
 
 ```bash
-curl -fLO "https://github.com/albertsdk/hsync-server/releases/latest/download/hsync-server_VERSION_ARCH.deb"
-sudo dpkg -i hsync-server_VERSION_ARCH.deb
+curl -fLO "https://github.com/albertsdk/hsync-server/releases/latest/download/hsync-server-amd64.deb"
+sudo dpkg -i hsync-server-amd64.deb
 sudo apt install -f
 ```
 
-Replace `VERSION` and `ARCH` with the release you downloaded (for example
-`1.0.0` and `amd64`). To install a specific version, use the URL of that release
-(replace `latest/download` with `download/vX.Y.Z`).
+The URL always points to the **latest stable** release; use `arm64` or `armhf`
+instead of `amd64` on those architectures. To pin a version, use
+`https://github.com/albertsdk/hsync-server/releases/download/vX.Y.Z/hsync-server_<version>_<arch>.deb`.
 
 ### Build from the checkout
 
