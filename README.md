@@ -59,6 +59,7 @@ directly from a clone. Pick one method and follow it end to end:
   released container image (least setup on a host with Docker);
 - [Docker / Compose](docs/getting-started-docker.md) — manual container setup;
 - [Debian package](docs/getting-started-deb.md) — `.deb` with a systemd unit;
+- [RPM package](docs/getting-started-rpm.md) — `.rpm` for RHEL/Rocky/Alma/Fedora;
 - [From source](docs/getting-started-source.md) — clone and run.
 
 The [Getting Started](docs/getting-started.md) chooser compares the methods;

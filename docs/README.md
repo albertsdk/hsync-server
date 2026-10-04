@@ -63,7 +63,10 @@ are ordered from the simplest to the most involved:
 - [Method 3 — Debian/Ubuntu package](getting-started-deb.md): the server
   packaged as a `.deb` (systemd unit, conffile, dedicated `_hsync-server`
   user). **Best for a Debian/Ubuntu host without Docker.**
-- [Method 4 — From source](getting-started-source.md): clone and run with
+- [Method 4 — RPM package](getting-started-rpm.md): the server packaged as a
+  `.rpm` (systemd unit, conffile, dedicated `_hsync-server` user). **Best for a
+  RHEL/Rocky/Alma/Fedora host without Docker.**
+- [Method 5 — From source](getting-started-source.md): clone and run with
   `run.sh` / Poetry, or a standalone binary. **Best for development or a host
   you control.**
 
