@@ -85,7 +85,7 @@ exit 0
 %files
 %config(noreplace) %attr(0600,root,root) %{_sysconfdir}/hsync-server/hsync-server.conf
 %dir %attr(0750,root,root) %{_sysconfdir}/hsync-server
-%attr(0755,root,root) %{_prefix}/lib/hsync-server
+%{_prefix}/lib/hsync-server
 /usr/bin/hsync-server
 %{_mandir}/man1/hsync-server.1.gz
 /usr/lib/systemd/system/hsync-server.service
