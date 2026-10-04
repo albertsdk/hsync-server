@@ -96,13 +96,15 @@ live in the global `server/auth.db` via the server-only `clients`/`bucket_member
 ## Build & packaging
 
 `compile.sh` freezes the server into a standalone executable with PyInstaller.
-Four targets:
+Six targets:
 
 | Target | Output | Toolchain |
 | ------ | ------ | --------- |
 | `native` (default) | `dist/<os>-<arch>/hsync-server` | host `.venv` + Poetry `build` group (`pyinstaller`) |
 | `deb` | `dist/deb/hsync-server_<ver>_<arch>.deb` | host `.venv` + `dpkg-deb`, onedir freeze staged under `/usr/lib/hsync-server` |
 | `deb-all` | `dist/deb/hsync-server_<ver>_{amd64,arm64,armhf}.deb` | Docker cross-build from `packaging/deb/Dockerfile.builder` under `qemu-user` binfmt |
+| `rpm` | `dist/rpm/hsync-server-<ver>-1.<dist>.<arch>.rpm` | host `.venv` + `rpmbuild`, same onedir payload staged for `/usr/lib/hsync-server` |
+| `rpm-all` | `dist/rpm/hsync-server-<ver>-1.el9.{x86_64,aarch64}.rpm` | Docker cross-build from `packaging/rpm/Dockerfile.builder` (Rocky Linux 9) under `qemu-user` binfmt |
 | `rpi` | `dist/rpi/{armhf,arm64}/hsync-server` | Docker cross-build from `packaging/rpi/Dockerfile.builder` (Debian bookworm, Python 3.12, Poetry, Rust) under `qemu-user` binfmt |
 
 The `native`/`rpi` targets share `_onefile_pyi_flags` (`compile.sh`), a onefile
@@ -116,15 +118,19 @@ prerelease to the Debian form (`-`→`~`), `_arch_to_deb` maps `uname -m`, and
 `_inject_shlib_depends` runs `dpkg-shlibdeps` so `libc6`/`zlib1g` land in
 `Depends`. The package installs under `/usr/lib/hsync-server` with a
 `/usr/bin/hsync-server` symlink and a dedicated `_hsync-server` user, and its
-unit is registered but not enabled. `ENTRY_POINT` is
+unit is registered but not enabled. The `rpm`/`rpm-all` targets reuse the same
+onedir payload and `packaging/rpm/` (`.spec`, Rocky Linux 9 builder);
+`_semver_to_rpm`/`_arch_to_rpm` mirror the deb helpers, the man page and
+conffile are packaged from the deb payload, and an RPM erase keeps the data and
+the `_hsync-server` user (there is no `purge` equivalent). `ENTRY_POINT` is
 `hsync_server/__main__.py`; the console entry point is `run()`
 (`hsync_server/__main__.py:290`). The frozen app exposes the same CLI as
 `python -m hsync_server`.
 
-`deb-all` and `rpi` need Docker with `qemu-user-static` binfmt handlers; `deb`
-needs only `dpkg-deb`, and `native` does not touch Docker. The server still
-ships primarily as the multi-arch container image built by
-`.github/workflows/release.yml` (which does not yet publish the `.deb`).
+`deb-all`, `rpm-all` and `rpi` need Docker with `qemu-user-static` binfmt
+handlers; `deb`/`rpm` need only `dpkg-deb`/`rpmbuild`, and `native` does not
+touch Docker. The server ships as the multi-arch container image **and** as
+`.deb`/`.rpm` assets, all built by `.github/workflows/release.yml`.
 
 > Human-oriented diagrams (system overview, upload/WS sequences):
 > `../docs/internal/architecture.md`.
