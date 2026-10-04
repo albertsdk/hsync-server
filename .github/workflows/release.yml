@@ -2,9 +2,10 @@ name: Release
 
 # Build and publish the server's release assets when a vX.Y.Z tag is pushed: the
 # multi-arch GHCR image, the Linux native binaries, the .deb packages
-# (amd64/arm64/armhf), the Docker Compose file and the install.sh installer. The
-# Dockerfile and the Poetry path dependency both need ../hsync-common at build
-# time, so it is checked out alongside.
+# (amd64/arm64/armhf), the .rpm packages (x86_64/aarch64), the Docker Compose
+# file and the install.sh installer. The Dockerfile and the Poetry path
+# dependency both need ../hsync-common at build time, so it is checked out
+# alongside.
 on:
   push:
     tags: ["v*"]
@@ -135,13 +136,17 @@ jobs:
           platforms: arm,arm64
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-      - name: Build .deb packages
+      - name: Build .deb and .rpm packages
         working-directory: hsync-server
-        run: ./compile.sh --target deb-all -v "${GITHUB_REF_NAME#v}"
+        run: |
+          ./compile.sh --target deb-all -v "${GITHUB_REF_NAME#v}"
+          ./compile.sh --target rpm-all -v "${GITHUB_REF_NAME#v}"
       - uses: actions/upload-artifact@v7
         with:
           name: packages
-          path: hsync-server/dist/deb/*.deb
+          path: |
+            hsync-server/dist/deb/*.deb
+            hsync-server/dist/rpm/*.rpm
 
   assets:
     needs: [image, build-binaries, build-packages]

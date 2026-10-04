@@ -12,7 +12,8 @@ immediate to the most involved.
 | 1 | **Installer script** (`install.sh` via `curl`) | Least setup on a host with Docker: one command, certificate and secrets handled | [Install with the script](getting-started-script.md) |
 | 2 | **Docker / Compose** (manual) | You already manage containers, or want to build the image yourself | [Docker](getting-started-docker.md) |
 | 3 | **Debian/Ubuntu package** (`.deb`) | A Debian/Ubuntu host without Docker, managed by systemd | [Debian package](getting-started-deb.md) |
-| 4 | **From source** (clone and run) | Development, or a host where you control the toolchain | [Run from source](getting-started-source.md) |
+| 4 | **RPM package** (`.rpm`) | A RHEL/Rocky/Alma/Fedora host without Docker, managed by systemd | [RPM package](getting-started-rpm.md) |
+| 5 | **From source** (clone and run) | Development, or a host where you control the toolchain | [Run from source](getting-started-source.md) |
 
 All methods result in a server on `https://<server-ip>:9753` with a self-signed
 certificate; only the toolchain differs. The installer script and the manual
