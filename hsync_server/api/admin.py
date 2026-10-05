@@ -38,6 +38,7 @@ from hsync_server.api.responses import (
 from hsync_server.api.utils import is_valid_bucket
 from hsync_server.auth import AuthContext, require_admin
 from hsync_server.auth_store import (
+    AuthStore,
     ConflictError,
     TargetNotFoundError,
     get_auth_store,
@@ -54,6 +55,10 @@ admin_router = APIRouter(
     tags=["Admin"],
     dependencies=[Depends(require_admin)],
 )
+
+# Injected per request: the AuthStore singleton (reset/rebind-aware). One
+# dependency instead of a ``store = get_auth_store()`` line in every handler.
+StoreDep = Annotated[AuthStore, Depends(get_auth_store)]
 
 
 # =============================================================================
@@ -122,9 +127,8 @@ def _account_to_dict(a) -> dict:
 
 @admin_router.get(REST_ADMIN_CLIENTS_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
-async def list_clients(request: Request) -> JSONResponse:
+async def list_clients(request: Request, store: StoreDep) -> JSONResponse:
     """List all accounts (never includes hashes or secrets)."""
-    store = get_auth_store()
     accounts = store.list_accounts()
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -134,7 +138,9 @@ async def list_clients(request: Request) -> JSONResponse:
 
 @admin_router.post(REST_ADMIN_CLIENTS_PATH, status_code=status.HTTP_201_CREATED)
 @limiter.limit(RATE_LIMIT_ADMIN)
-async def create_client(request: Request, req: CreateClientRequest) -> JSONResponse:
+async def create_client(
+    request: Request, req: CreateClientRequest, store: StoreDep
+) -> JSONResponse:
     """Create a new account. Returns the token once."""
     try:
         validate_name(req.name)
@@ -146,7 +152,6 @@ async def create_client(request: Request, req: CreateClientRequest) -> JSONRespo
 
     expires_at = _parse_expiry(req.expires_at, req.valid_days)
 
-    store = get_auth_store()
     try:
         account_id, token = store.create_account(req.name, req.role, expires_at)
     except ConflictError as e:
@@ -169,11 +174,12 @@ async def create_client(request: Request, req: CreateClientRequest) -> JSONRespo
 
 @admin_router.post(REST_ADMIN_CLIENT_ROTATE_KEY_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
-async def rotate_key(request: Request, client_id: str, req: RotateKeyRequest) -> JSONResponse:
+async def rotate_key(
+    request: Request, client_id: str, req: RotateKeyRequest, store: StoreDep
+) -> JSONResponse:
     """Rotate the account's key. Returns the new token once."""
     expires_at = _parse_expiry(req.expires_at, req.valid_days)
 
-    store = get_auth_store()
     try:
         token = store.rotate_key(client_id, grace_seconds=req.grace_seconds, expires_at=expires_at)
     except TargetNotFoundError:
@@ -191,7 +197,9 @@ async def rotate_key(request: Request, client_id: str, req: RotateKeyRequest) ->
 
 @admin_router.patch(REST_ADMIN_CLIENT_EXPIRY_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
-async def set_expiry(request: Request, client_id: str, req: SetExpiryRequest) -> JSONResponse:
+async def set_expiry(
+    request: Request, client_id: str, req: SetExpiryRequest, store: StoreDep
+) -> JSONResponse:
     """Set, extend, or remove the key expiry."""
     if req.none:
         expires_at = None
@@ -200,7 +208,6 @@ async def set_expiry(request: Request, client_id: str, req: SetExpiryRequest) ->
         if expires_at is None:
             raise ValidationError("Provide 'expires_at', 'valid_days', or 'none'.")
 
-    store = get_auth_store()
     try:
         store.set_expiry(client_id, expires_at)
     except TargetNotFoundError:
@@ -218,11 +225,11 @@ async def disable_client(
     request: Request,
     client_id: str,
     ctx: Annotated[AuthContext, Depends(require_admin)],
+    store: StoreDep,
 ) -> JSONResponse:
     """Disable an account (blocks auth, closes WS). Self-disable → 409."""
     if client_id == ctx.id:
         return conflict_response("Cannot disable your own account.")
-    store = get_auth_store()
     try:
         store.disable(client_id)
     except TargetNotFoundError:
@@ -241,9 +248,8 @@ async def disable_client(
 
 @admin_router.post(REST_ADMIN_CLIENT_ENABLE_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
-async def enable_client(request: Request, client_id: str) -> JSONResponse:
+async def enable_client(request: Request, client_id: str, store: StoreDep) -> JSONResponse:
     """Enable a previously disabled account."""
-    store = get_auth_store()
     try:
         store.enable(client_id)
     except TargetNotFoundError:
@@ -260,10 +266,10 @@ async def enable_client(request: Request, client_id: str) -> JSONResponse:
 async def delete_client(
     request: Request,
     client_id: str,
+    store: StoreDep,
     cascade: bool = False,
 ) -> JSONResponse:
     """Delete an account. Use ?cascade=true to delete owned buckets."""
-    store = get_auth_store()
     try:
         store.delete_account(client_id, cascade=cascade)
     except TargetNotFoundError:
@@ -285,9 +291,8 @@ async def delete_client(
 
 @admin_router.get(REST_ADMIN_BUCKETS_PATH)
 @limiter.limit(RATE_LIMIT_ADMIN)
-async def list_all_buckets(request: Request) -> JSONResponse:
+async def list_all_buckets(request: Request, store: StoreDep) -> JSONResponse:
     """List all buckets (FS ∪ membership), including orphans and ghosts."""
-    store = get_auth_store()
     buckets = store.list_all_buckets()
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -297,12 +302,13 @@ async def list_all_buckets(request: Request) -> JSONResponse:
 
 @admin_router.post(REST_ADMIN_BUCKETS_PATH, status_code=status.HTTP_201_CREATED)
 @limiter.limit(RATE_LIMIT_ADMIN)
-async def create_bucket_on_behalf(request: Request, req: CreateBucketRequest) -> JSONResponse:
+async def create_bucket_on_behalf(
+    request: Request, req: CreateBucketRequest, store: StoreDep
+) -> JSONResponse:
     """Create a bucket on behalf of a specified owner (admin only)."""
     if not is_valid_bucket(req.bucket):
         raise InvalidBucketNameError(details={"bucket": req.bucket})
 
-    store = get_auth_store()
     # Resolve owner by id or name.
     target = store.resolve_account(req.owner)
     if target is None:

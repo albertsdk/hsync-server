@@ -32,7 +32,7 @@ utilities.
   `X-Client-Name` validator (`is_valid_client_name`) are re-exported from the
   same SSOT (`:21`); `CONTENT_TYPE_OCTET_STREAM` at `:20`.
 - API prefix: `/api/v1` hardcoded per route (e.g. `api/buckets.py:41`); admin
-  sub-router prefix at `api/admin.py:12`.
+  sub-router prefix at `api/admin.py:54`.
 - Protocol versions enforced from common SSOT (`hsync_common.protocol.handshake`):
   REST in `VersionMiddleware` (`middleware.py:130`), WS in `events.py` handshake.
 - Auth: per-account tokens (`hs_<id>_<secret>`) verified via scrypt against the

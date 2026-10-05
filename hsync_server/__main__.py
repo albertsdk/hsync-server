@@ -12,7 +12,7 @@ import ssl
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 import uvicorn
@@ -68,10 +68,19 @@ def _validate_log_level(value: str | None) -> str | None:
     return value
 
 
-def _exit_account_not_found() -> None:
-    """Emit the canonical "account not found" CLI error and exit with code 1."""
-    typer.echo("Error: account not found", err=True)
+def _fail(message: str) -> NoReturn:
+    """Print an ``Error: <message>`` line to stderr and exit with status 1.
+
+    Single CLI error path: every command reports failures with the same prefix
+    and exit code instead of repeating the echo+Exit pair.
+    """
+    typer.echo(f"Error: {message}", err=True)
     raise typer.Exit(1) from None
+
+
+def _exit_account_not_found() -> NoReturn:
+    """Emit the canonical "account not found" CLI error and exit with code 1."""
+    _fail("account not found")
 
 
 def _resolve_bind_host_port(host: str | None, port: int | None) -> tuple[str, int | None]:
@@ -266,8 +275,7 @@ def main(
         try:
             load_env_file(env_file)
         except FileNotFoundError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            raise typer.Exit(1)
+            _fail(str(e))
 
     # Get configuration values (CLI args take precedence over env vars).
     # Settings validation runs lazily here; translate any ValidationError into
@@ -424,20 +432,14 @@ def tls_fingerprint(
     from hsync_server.config import get_ssl_enabled
 
     if not get_ssl_enabled():
-        typer.echo("Error: server TLS is disabled; there is no certificate to inspect.", err=True)
-        raise typer.Exit(1)
+        _fail("server TLS is disabled; there is no certificate to inspect.")
     cert_path = _server_certificate_path()
     if cert_path is None or not cert_path.is_file():
-        typer.echo(
-            f"Error: certificate not found at {cert_path}; start the server once to generate it.",
-            err=True,
-        )
-        raise typer.Exit(1)
+        _fail(f"certificate not found at {cert_path}; start the server once to generate it.")
     try:
         der = ssl.PEM_cert_to_DER_cert(cert_path.read_text(encoding="ascii"))
     except (OSError, ValueError) as exc:
-        typer.echo(f"Error: cannot read certificate {cert_path}: {exc}", err=True)
-        raise typer.Exit(1) from None
+        _fail(f"cannot read certificate {cert_path}: {exc}")
     fingerprint = f"sha256:{fingerprint_from_der(der)}"
     if as_json:
         typer.echo(json.dumps({"fingerprint": fingerprint, "certificate": str(cert_path)}))
@@ -464,15 +466,12 @@ def tls_rotate(
     from hsync_server.ssl_utils import generate_self_signed_cert
 
     if not get_ssl_enabled():
-        typer.echo("Error: server TLS is disabled; there is no certificate to rotate.", err=True)
-        raise typer.Exit(1)
+        _fail("server TLS is disabled; there is no certificate to rotate.")
     if get_ssl_certfile() and get_ssl_keyfile():
-        typer.echo(
-            "Error: the certificate is provided explicitly "
-            "(HSYNC_SSL_CERTFILE/HSYNC_SSL_KEYFILE); rotate it outside HSYNC.",
-            err=True,
+        _fail(
+            "the certificate is provided explicitly "
+            "(HSYNC_SSL_CERTFILE/HSYNC_SSL_KEYFILE); rotate it outside HSYNC."
         )
-        raise typer.Exit(1)
     cert_path, key_path = _server_identity_paths()
     generate_self_signed_cert(str(cert_path), str(key_path), hostname=hostname)
     der = ssl.PEM_cert_to_DER_cert(cert_path.read_text(encoding="ascii"))
@@ -485,8 +484,7 @@ def _resolve_account_id(name: str | None, account_id: str | None) -> str:
     from hsync_server.auth_store import TargetNotFoundError, get_auth_store
 
     if (name is None) == (account_id is None):
-        typer.echo("Error: provide exactly one of --name or --id", err=True)
-        raise typer.Exit(1)
+        _fail("provide exactly one of --name or --id")
     store = get_auth_store()
     try:
         target = store.resolve_target(account_id, name)
@@ -523,20 +521,17 @@ def client_add(
     try:
         validate_name(name)
     except ValueError as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1) from None
+        _fail(str(e))
 
     if role not in ("admin", "client"):
-        typer.echo("Error: role must be 'admin' or 'client'", err=True)
-        raise typer.Exit(1)
+        _fail("role must be 'admin' or 'client'")
 
     expiry = _cli_parse_expiry(expires_at, valid_days)
     store = get_auth_store()
     try:
         aid, token = store.create_account(name, role, expiry)
     except ConflictError as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1) from None
+        _fail(str(e))
 
     typer.echo(f"Account created: id={aid}, name={name}, role={role}")
     typer.echo(f"Token (save now, not recoverable): {token}")
@@ -598,8 +593,7 @@ def client_set_expiry(
     else:
         expiry = _cli_parse_expiry(expires_at, valid_days)
         if expiry is None:
-            typer.echo("Error: provide --valid-days, --expires-at, or --none", err=True)
-            raise typer.Exit(1)
+            _fail("provide --valid-days, --expires-at, or --none")
     store = get_auth_store()
     try:
         store.set_expiry(aid, expiry)
@@ -624,8 +618,7 @@ def client_disable(
     except TargetNotFoundError:
         _exit_account_not_found()
     except ConflictError as e:
-        typer.echo(f"Error: {e} (use --force to override)", err=True)
-        raise typer.Exit(1) from None
+        _fail(f"{e} (use --force to override)")
     typer.echo(f"Disabled: {aid}")
 
 
@@ -663,8 +656,7 @@ def client_remove(
     except TargetNotFoundError:
         _exit_account_not_found()
     except ConflictError as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1) from None
+        _fail(str(e))
     typer.echo(f"Deleted: {aid}")
 
 
@@ -705,8 +697,7 @@ def bucket_create(
             owner_name="admin",
         )
     except ConflictError as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(1) from None
+        _fail(str(exc))
     typer.echo(f"Bucket created: {bucket}")
 
 
@@ -728,8 +719,7 @@ def bucket_delete(
     try:
         delete_bucket(bucket, delete_files=not db_only)
     except BucketNotFoundError as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(1) from None
+        _fail(str(exc))
     typer.echo(f"Bucket deleted: {bucket}")
 
 
@@ -752,8 +742,7 @@ def bucket_grant(
     try:
         store.grant_member(bucket, target, BOOTSTRAP_ADMIN_ID, caller_is_admin=True)
     except (ConflictError, ForbiddenError) as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1) from None
+        _fail(str(e))
     typer.echo(f"Granted: {target.name} → member of {bucket}")
 
 
@@ -776,8 +765,7 @@ def bucket_revoke(
     try:
         store.revoke_member(bucket, target.id, BOOTSTRAP_ADMIN_ID, caller_is_admin=True)
     except (ConflictError, ForbiddenError, TargetNotFoundError) as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1) from None
+        _fail(str(e))
     typer.echo(f"Revoked: {target.name} from {bucket}")
 
 
@@ -802,8 +790,7 @@ def bucket_set_owner(
 
     bucket_dir = Path(get_buckets_path()) / bucket
     if not bucket_dir.exists():
-        typer.echo("Error: bucket directory does not exist", err=True)
-        raise typer.Exit(1)
+        _fail("bucket directory does not exist")
 
     current_owner = store.get_owner(bucket)
     try:
@@ -814,8 +801,7 @@ def bucket_set_owner(
             store.transfer_owner(bucket, target, BOOTSTRAP_ADMIN_ID, caller_is_admin=True)
             action = "transferred"
     except (ConflictError, ForbiddenError) as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1) from None
+        _fail(str(e))
     typer.echo(f"Ownership {action}: {bucket} → {target.name}")
 
 
@@ -826,8 +812,7 @@ def _cli_parse_expiry(expires_at: str | None, valid_days: int | None) -> int | N
     try:
         return parse_expiry(expires_at, valid_days)
     except ValueError as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1) from None
+        _fail(str(e))
 
 
 if __name__ == "__main__":

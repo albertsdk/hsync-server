@@ -38,6 +38,7 @@ from hsync_server.api.responses import (
 from hsync_server.api.utils import is_valid_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.auth_store import (
+    AccountRow,
     ConflictError,
     ForbiddenError,
     TargetNotFoundError,
@@ -80,6 +81,23 @@ def _check_owner_or_admin(bucket: str, ctx: AuthContext) -> None:
     raise BucketNotFoundError(details={"bucket": bucket})
 
 
+def _resolve_member_target(req: GrantMemberRequest | TransferOwnerRequest) -> AccountRow | None:
+    """Resolve the request's single target account, or ``None`` when it is missing.
+
+    The "exactly one of client_id/name" rule is owned by
+    :meth:`AuthStore.resolve_target`; an invalid selector surfaces as a
+    ``ValidationError`` and a missing account as ``None`` (the caller maps it to
+    the uniform not-found response). Single point for the target-resolution
+    prologue shared by ``grant_member`` and ``transfer_or_reclaim_owner``.
+    """
+    try:
+        return get_auth_store().resolve_target(req.client_id, req.name)
+    except TargetNotFoundError:
+        return None
+    except ValueError as e:
+        raise ValidationError(str(e)) from None
+
+
 @auth_router.get(rest_bucket_template(REST_MEMBERS_SUFFIX))
 async def list_members(
     bucket: str,
@@ -115,17 +133,11 @@ async def grant_member(
     """Grant membership to an account (owner/admin only)."""
     _check_owner_or_admin(bucket, ctx)
 
-    if (req.client_id is None) == (req.name is None):
-        raise ValidationError("Provide exactly one of 'client_id' or 'name'.")
+    target = _resolve_member_target(req)
+    if target is None:
+        return account_not_found_response()
 
     store = get_auth_store()
-    try:
-        target = store.resolve_target(req.client_id, req.name)
-    except TargetNotFoundError:
-        return account_not_found_response()
-    except ValueError as e:
-        raise ValidationError(str(e)) from None
-
     try:
         store.grant_member(bucket, target, ctx.id, caller_is_admin=(ctx.role == "admin"))
     except ConflictError as e:
@@ -185,17 +197,11 @@ async def transfer_or_reclaim_owner(
     """
     _check_owner_or_admin(bucket, ctx)
 
-    if (req.client_id is None) == (req.name is None):
-        raise ValidationError("Provide exactly one of 'client_id' or 'name'.")
+    target = _resolve_member_target(req)
+    if target is None:
+        return account_not_found_response()
 
     store = get_auth_store()
-    try:
-        target = store.resolve_target(req.client_id, req.name)
-    except TargetNotFoundError:
-        return account_not_found_response()
-    except ValueError as e:
-        raise ValidationError(str(e)) from None
-
     current_owner = store.get_owner(bucket)
     try:
         if current_owner is None:
