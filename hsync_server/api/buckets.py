@@ -11,6 +11,7 @@ REST endpoints for bucket management:
 - DELETE /api/v1/buckets/{bucket}  — delete (admin only; cleans DB+FS).
 """
 
+import asyncio
 from pathlib import Path
 from typing import Annotated
 
@@ -99,7 +100,10 @@ async def delete_bucket(
     tombstones, bucket mapping).  Non-admin callers get 403; non-existent
     or inaccessible buckets return 404.
     """
-    _delete_bucket(bucket)
+    # ``delete_bucket`` removes the whole bucket tree (``shutil.rmtree``) plus
+    # the DB rows: a blocking, potentially long operation. Run it on a worker
+    # thread so a large bucket delete cannot stall the event loop.
+    await asyncio.to_thread(_delete_bucket, bucket)
     log.info(f'Bucket: "{bucket}" deleted by admin {ctx.name}')
 
     return JSONResponse(

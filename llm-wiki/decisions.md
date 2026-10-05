@@ -25,6 +25,26 @@ the server-local choices not big enough for an ADR.
 - **Per-bucket WS pools** (`connection_manager.py:71`) instead of one global hub:
   isolation + smaller broadcast fan-out; global slot accounting still caps total
   and per-IP connections (`config.py:457`/`:462`).
+- **Single event loop; blocking work offloaded to threads.** The server is
+  deployed as one uvicorn worker (`HSYNC_WORKERS=1`; the WS registry and
+  presence counters are in-process, `connection_manager.py:18`). Blocking I/O
+  and GIL-releasing CPU work run via `asyncio.to_thread` (file hashing,
+  decompression, delta signatures/match, scrypt token verify, fsync);
+  compressed downloads use a dedicated CPU-sized pool (`compression.py:67`):
+  `async_compress_stream` (`compression.py:123`) reads on the loop via
+  `aiofiles` and offloads one ~1 MiB batch at a time, holding a worker only
+  while a batch is compressed — never while the consumer is parked on socket
+  backpressure — so a small pool serves many concurrent slow downloads without
+  starvation. **Not offloaded**: state-DB writes (`record_version` /
+  `record_deletion`, p50 ~21 us in `bench/bench_versions.py` — cheaper than the
+  `to_thread` hop) and the delete/upload arbitration critical sections
+  (atomicity). The upload's fused SHA-256 stays on the loop: it is a deliberate
+  single-pass optimisation and hashlib releases the GIL on large buffers; the
+  pre-upload backup snapshot is deliberately synchronous because it runs
+  *outside* the per-path lock and must stay atomic against the loop.
+  **Not adopted**: multi-process fan-out (`HSYNC_WORKERS>1`) — it
+  would break WS fan-out, per-file `asyncio.Lock` serialization and the
+  in-process hash/delta/auth caches.
 - **Per-account tokens + bucket membership** (`auth.py` → `auth_store/`) —
   `hs_<id>_<secret>` tokens with roles (`admin`/`client`) and per-bucket
   `owner`/`member` membership; scrypt-hashed secrets, KDF cache, per-request

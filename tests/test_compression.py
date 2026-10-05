@@ -2,6 +2,8 @@
 Tests for compression utilities.
 """
 
+import asyncio
+
 import pytest
 from hsync_common.compression import (
     MIN_SIZE_FOR_COMPRESSION,
@@ -134,9 +136,13 @@ class TestCompression:
         decompressed = decompress_data(compressed)
         assert decompressed == test_content
 
-    def test_async_compress_stream_yields_decompressible_frame(self, tmp_path):
+    def test_async_compress_stream_yields_decompressible_frame(self, tmp_path, monkeypatch):
         """Streaming compression yields a single one-shot-decompressible frame."""
         import asyncio
+
+        # Force a small batch so the output is emitted incrementally instead of
+        # in one offloaded batch.
+        monkeypatch.setattr(compression, "_COMPRESS_BATCH_BYTES", 16 * 1024)
 
         test_file = tmp_path / "stream.txt"
         # Larger than chunk_size to force multiple yielded chunks.
@@ -247,10 +253,10 @@ class TestConcurrentStreamedCompression:
 
     ``python-zstandard`` instances are not safe for concurrent or interleaved
     operations: one shared ``ZstdCompressor`` corrupts frames (``ZstdError:
-    Src size is incorrect``) and can segfault the process. ``async_compress_stream``
-    runs its ``stream_writer.write`` calls on the event-loop thread, so a
-    thread-local pool cannot isolate concurrent streams either — each call must
-    own its compressor.
+    Src size is incorrect``) and can segfault the process. The compression runs
+    on a pool of worker threads, so concurrent streams execute in parallel:
+    each ``async_compress_stream`` call must own its compressor, and a
+    module-level one is forbidden.
     """
 
     STREAMS = 6
@@ -293,3 +299,88 @@ class TestConcurrentStreamedCompression:
         concurrent = asyncio.run(run())
         serial = [asyncio.run(_compress_whole(path)) for path in contents]
         assert concurrent == serial
+
+
+class TestAsyncCompressStreamOffload:
+    """The zstd compression runs on a worker thread, not the event loop.
+
+    Regression: before the offload, a single ``stream_writer.write`` covering the
+    whole file ran on the event-loop thread, stalling every other coroutine for
+    the entire duration of a large download.
+    """
+
+    def test_compression_runs_on_a_worker_thread(self, tmp_path, monkeypatch):
+        import threading
+
+        test_file = tmp_path / "offload.bin"
+        content = b"offload payload " * 4096  # ~64 KB
+        test_file.write_bytes(content)
+
+        original = compression._write_batch
+        seen: list[threading.Thread] = []
+
+        def _spy(writer, data):
+            seen.append(threading.current_thread())
+            return original(writer, data)
+
+        monkeypatch.setattr(compression, "_write_batch", _spy)
+
+        frame = asyncio.run(_compress_whole(str(test_file)))
+        assert decompress_data(frame) == content
+        assert seen, "the compressor thread never ran"
+        assert all(thread is not threading.main_thread() for thread in seen)
+
+    def test_parked_consumer_does_not_starve_another_stream(self, tmp_path, monkeypatch):
+        """A reader parked on backpressure must not hold a compression worker.
+
+        Regression: the previous one-worker-per-transfer model let a single
+        parked consumer occupy the only pool slot, starving every other
+        compressed download.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        test_file = tmp_path / "starve.bin"
+        test_file.write_bytes(b"starvation probe " * 200_000)  # ~3.2 MB
+
+        single = ThreadPoolExecutor(max_workers=1, thread_name_prefix="test-zstd")
+        monkeypatch.setattr(compression, "_compress_executor", single)
+        try:
+
+            async def run():
+                parked = compression.async_compress_stream(str(test_file))
+                await parked.__anext__()  # suspended at yield: no worker held
+                fresh = compression.async_compress_stream(str(test_file))
+                try:
+                    await asyncio.wait_for(fresh.__anext__(), timeout=3.0)
+                finally:
+                    await fresh.aclose()
+                    await parked.aclose()
+
+            asyncio.run(run())
+        finally:
+            single.shutdown(wait=True)
+
+    def test_missing_file_propagates_to_the_consumer(self, tmp_path):
+        async def run():
+            return [
+                chunk
+                async for chunk in compression.async_compress_stream(str(tmp_path / "missing.bin"))
+            ]
+
+        with pytest.raises(FileNotFoundError):
+            asyncio.run(run())
+
+    def test_early_close_does_not_hang(self, tmp_path):
+        """A client disconnect (early ``aclose``) unwinds the worker promptly."""
+        test_file = tmp_path / "big.bin"
+        test_file.write_bytes(b"backpressure payload " * 65536)  # ~1.3 MB
+
+        async def run():
+            agen = compression.async_compress_stream(str(test_file), chunk_size=4096)
+            first = await agen.__anext__()
+            assert first
+            await asyncio.wait_for(agen.aclose(), timeout=5.0)
+            # The loop must still be responsive after the abort.
+            await asyncio.sleep(0)
+
+        asyncio.run(run())

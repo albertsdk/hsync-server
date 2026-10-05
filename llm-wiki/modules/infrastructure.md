@@ -118,17 +118,31 @@ available). Helper functions: `record_delta_transfer`, `record_bytes_saved`,
 
 ## Compression (`compression.py`)
 
-Streaming zstd: `async_compress_stream` (`:54`, 64 KB chunks) for downloads;
-`_StreamSink` (`:33`) adapts the zstd writer to an async iterator. The helper
-builds **one `ZstdCompressor` per call** — python-zstandard instances are not
-safe to share across concurrent/interleaved operations, and stream writes run
-on the event-loop thread, so only per-call ownership is correct — a
-module-level compressor is forbidden. Construction costs
+Compressed downloads run **off the event loop**. `async_compress_stream`
+(`:123`) reads the file on the loop via `aiofiles`, coalesces reads into
+`_COMPRESS_BATCH_BYTES` (~1 MiB, `:51`) batches and compresses each batch on a
+dedicated worker pool (`_COMPRESS_MAX_WORKERS`, `:67`, resolved from the cgroup
+CPU quota clamped by `os.cpu_count()`; never the
+shared asyncio default executor that hashing/decompression use). The batch size
+is kept at 1 MiB on purpose: a larger batch removes a few offload hops but the
+consumer receives nothing until the whole batch is compressed, and a sweep
+measured first-byte latency growing steeply with the batch. A worker is
+held only while a batch is compressed, **never while the consumer is parked on
+socket backpressure**, so a small CPU-sized pool serves many concurrent — even
+slow — downloads with no starvation. `_StreamSink` (`:89`) buffers the writer
+output and is drained (and yielded) on the loop after each batch. Each call owns
+its `ZstdCompressor` for the whole transfer (python-zstandard instances are not
+safe to share across concurrent/interleaved operations — a module-level
+compressor is forbidden); `write`/`close` are always awaited one at a time, so
+the pool may run them on different threads but never concurrently. Construction,
+writes and the finalizing `close()` all run on the pool; the single-frame header
+embeds the uncompressed size so one-shot client/Android decompression still
+works, and memory is bounded to one batch per transfer. Construction costs
 ~1.1 us at level 3 (`bench/bench_compression.py`), negligible against the
 >= 10 KB streams this path serves. The one-shot delta-literal path
 (`api/files/delta/signatures.py` `_compress_literals`) uses
 `hsync_common.compression.compress_data`, whose instances are thread-local.
-Decompression: `decompress_file_to_file` (`:95`, capped streaming
+Decompression: `decompress_file_to_file` (`:180`, capped streaming
 file→file, fsync'd — run it via `asyncio.to_thread`, used by uploads so
 neither the payload nor the event loop is blocked) plus the
 `hsync_common.compression` primitives (`decompress_stream` capped streaming,

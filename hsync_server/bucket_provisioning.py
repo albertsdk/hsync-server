@@ -95,7 +95,8 @@ def delete_bucket(bucket: str, *, delete_files: bool = True) -> str:
     Raises:
         InvalidBucketNameError: The bucket name is invalid.
         BucketNotFoundError: ``delete_files`` is True and no directory exists
-            for the bucket.
+            for the bucket (checked before and, on removal failure, after, so a
+            concurrent delete that wins the race is a 404 rather than a 500).
         DeleteError: The directory could not be removed.
     """
     if not is_valid_bucket_name(bucket):
@@ -110,6 +111,11 @@ def delete_bucket(bucket: str, *, delete_files: bool = True) -> str:
         try:
             store.delete_bucket(bucket)
         except OSError as e:
+            # Another delete can win the race after the exists() check above
+            # (the REST endpoint yields while this runs on a worker thread):
+            # a now-missing directory is a 404, not a server error.
+            if not bucket_dir.exists():
+                raise BucketNotFoundError(details={"bucket": bucket}) from None
             log.error(f"Failed to delete bucket {bucket}: {e}", exc_info=True)
             raise DeleteError(
                 message=f"Failed to delete bucket: {bucket}",

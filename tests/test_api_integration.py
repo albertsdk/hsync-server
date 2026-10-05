@@ -134,6 +134,48 @@ class TestBucketEndpoints:
         assert response.status_code == 500
         assert "HSYNC-4003" in response.text
 
+    @pytest.mark.asyncio
+    async def test_delete_bucket_runs_off_the_event_loop(self, monkeypatch):
+        """The blocking bucket delete (rmtree + DB) runs on a worker thread."""
+        import threading
+        from types import SimpleNamespace
+
+        from hsync_server.api import buckets
+
+        seen: list[threading.Thread] = []
+
+        def _spy(bucket):
+            seen.append(threading.current_thread())
+            return bucket
+
+        monkeypatch.setattr(buckets, "_delete_bucket", _spy)
+
+        response = await buckets.delete_bucket("offload-bucket", ctx=SimpleNamespace(name="admin"))
+
+        assert response.status_code == 200
+        assert seen, "delete_bucket never ran"
+        assert all(thread is not threading.main_thread() for thread in seen)
+
+    def test_delete_bucket_lost_race_maps_to_not_found(self, temp_buckets_dir, monkeypatch):
+        """A delete that loses a race (dir already gone) is a 404, not a 500."""
+        import shutil
+
+        from hsync_server import bucket_provisioning
+        from hsync_server.exceptions import BucketNotFoundError
+
+        bucket_dir = os.path.join(temp_buckets_dir, "race-bucket")
+        os.makedirs(bucket_dir)
+
+        class _RaceStore:
+            def delete_bucket(self, bucket: str) -> None:
+                shutil.rmtree(bucket_dir)  # a concurrent delete won the race
+                raise FileNotFoundError(bucket_dir)
+
+        monkeypatch.setattr(bucket_provisioning, "get_auth_store", lambda: _RaceStore())
+
+        with pytest.raises(BucketNotFoundError):
+            bucket_provisioning.delete_bucket("race-bucket")
+
 
 class TestAuthenticationRequired:
     """Tests for authentication requirement."""

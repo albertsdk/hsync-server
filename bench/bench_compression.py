@@ -18,7 +18,7 @@ and the one-shot path goes through hsync-common's thread-local
   (measured median ~1.1 us, i.e. negligible against a >=10 KB stream);
 * ``compress_data(64KiB)`` — the delta-literal path (thread-local SSOT helper);
 * ``async_compress_stream(256KiB|1MiB)`` — the full compressed-download helper:
-  per-call compressor + ``aiofiles`` chunked read + single-frame flush.
+  per-call compressor + worker-thread chunked read + single-frame flush.
 
 Persist-heavy/streaming scenarios run at a lower effective sample count. Every
 measured op asserts its branch (compressor usable, payload round-trips, the

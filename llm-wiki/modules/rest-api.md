@@ -58,7 +58,12 @@ Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–
     "ghost" rows whose directory no longer exists.
 - `buckets.py` only translates outcomes to HTTP: create catches
   `ConflictError` → 409, delete re-raises for the standard handler mapping
-  (the REST endpoint never uses `delete_files=False`).
+  (the REST endpoint never uses `delete_files=False`). The REST delete runs the
+  blocking `delete_bucket` (whole-tree `shutil.rmtree` + DB rows) on a worker
+  thread (`asyncio.to_thread`, `buckets.py:106`) so a large bucket cannot stall
+  the event loop; the admin CLI path stays synchronous (it has no loop to free).
+  A concurrent delete that loses the race (directory already gone when the
+  removal runs) maps to 404, not 500 (`bucket_provisioning.py:117`).
 - **Test isolation net**: `tests/conftest.py` adds autouse
   `no_tests_touch_real_repo_state`, which snapshots the repository's real
   `state/server/` and `buckets/` around each test and fails the
@@ -157,21 +162,23 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   duration via `format_duration(..., subsecond=True)` — e.g.
   `[UPLOAD] "bucket/path/file" (CID: abc) in 1.2s`.
 
-## Download (`api/files/download.py:43`)
+## Download (`api/files/download.py:49`)
 
 Streams the file; supports zstd via `compression.async_compress_stream`
-(`compression.py:53`) when `get_compression_enabled()` (`config.py:437`). The
-`filename` is confined with `resolve_within_bucket` (full resolve): a symlink
-whose target stays inside the bucket is served **transparently** (static-
-server semantics — this endpoint serves content on demand), while one whose
-target escapes the bucket fails the confinement and is rejected (400).
+(`compression.py:123`) when `get_compression_enabled()` (`config.py:510`); the
+compression itself runs on a dedicated worker pool (see
+`llm-wiki/modules/infrastructure.md#compression-compressionpy`), not the event
+loop. The `filename` is confined with `resolve_within_bucket` (full resolve): a
+symlink whose target stays inside the bucket is served **transparently**
+(static-server semantics — this endpoint serves content on demand), while one
+whose target escapes the bucket fails the confinement and is rejected (400).
 Symlinks are *replicated* structurally via the WS `symlink` event and
 `POST /symlinks`, never through this content endpoint. Missing file →
 `FileNotFoundError` (`exceptions.py:118`).
 
 > **Coding contract**: the response body carries no HTTP content coding other
 > than `identity` or `Content-Encoding: zstd` (ADR 0010). The route is excluded
-> from `TransferAwareGZipMiddleware` (`middleware.py:175`), so a client that
+> from `TransferAwareGZipMiddleware` (`middleware.py:260`), so a client that
 > advertises gzip still receives the exact bytes with an ordinary
 > `Content-Length` — clients abort a transfer on any other coding, and chunked
 > gzip would invalidate the `Range`/resume offsets. The same exclusion applies
