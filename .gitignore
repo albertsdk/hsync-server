@@ -12,6 +12,10 @@ __pycache__/
 venv/
 ENV/
 
+# Local environment files (copy from the committed *.env.example templates)
+dev.env
+prod.env
+
 # Git
 .git
 .gitignore

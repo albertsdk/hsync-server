@@ -20,7 +20,7 @@ does. No Poetry installation is required.
 
 ```bash
 HSYNC_API_KEY=dev-key .venv/bin/python -m hsync_server
-# or use the provided dev.env template
+# or: cp dev.env.example dev.env and load it with --env-file dev.env
 ```
 
 ## Code Style

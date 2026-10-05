@@ -55,7 +55,9 @@ without a hard disconnect. Disable an account immediately with
 
 - Store `HSYNC_ADMIN_KEY` **only** in `prod.env`, never in shell history or
   version control
-- Add `prod.env` and `dev.env` to `.gitignore` (already done in the template)
+- Start from the committed `dev.env.example` / `prod.env.example` templates:
+  the local `dev.env` / `prod.env` are gitignored, so secrets never enter
+  version control
 - Use environment variable injection from a secrets manager (Vault, SOPS, etc.)
   in automated deployments
 

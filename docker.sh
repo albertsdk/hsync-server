@@ -160,8 +160,8 @@ ${BOLD}Examples:${RESET}
 
 Start prints the server URL (e.g. https://localhost:9753) as soon as the
 container answers /health; no need to read the logs. The URL uses HTTPS
-when HSYNC_SSL_ENABLED=true in the env-file (the default in dev.env and
-prod.env) with a self-signed certificate: use curl -k or accept the browser
+when HSYNC_SSL_ENABLED=true in the env-file (the default in dev.env.example and
+prod.env.example) with a self-signed certificate: use curl -k or accept the browser
 warning on first visit.
 
 All persistent data lives on the host under ${DATA_DIR}:

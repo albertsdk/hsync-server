@@ -108,8 +108,9 @@ including how to invoke the CLI on each installation type — is in
 ## Environment Variables
 
 The server is configured entirely through `HSYNC_*` environment variables.
-Below is the complete list. See [`dev.env`](../dev.env) for a template with
-all defaults.
+Below is the complete list. See [`dev.env.example`](../dev.env.example) for a
+development template and [`prod.env.example`](../prod.env.example) for a
+production one; copy the relevant file to `dev.env` / `prod.env` and customize it.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -137,7 +138,7 @@ all defaults.
 | `HSYNC_WS_MAX_CONNECTIONS` | `1000` | Maximum total WebSocket connections |
 | `HSYNC_WS_MAX_CONNECTIONS_PER_IP` | `10` | Maximum WebSocket connections per IP |
 | `HSYNC_TOMBSTONE_TTL_DAYS` | `90` | Deletion marker retention (days; `0` = forever). Markers only; not a recycle bin |
-| `HSYNC_SSL_ENABLED` | `false` (app default) | Enable HTTPS/WSS with auto-generated self-signed certs. The shipped `dev.env` and `prod.env` profiles set it to `true`, so the Docker quickstart serves **https** on this port |
+| `HSYNC_SSL_ENABLED` | `false` (app default) | Enable HTTPS/WSS with auto-generated self-signed certs. The shipped `dev.env.example` and `prod.env.example` profiles set it to `true`, so the Docker quickstart serves **https** on this port |
 | `HSYNC_SSL_CERTFILE` | — | Custom SSL certificate path (auto-generated if not set) |
 | `HSYNC_SSL_KEYFILE` | — | Custom SSL private key path (auto-generated if not set) |
 | `HSYNC_SSL_CERT_DIR` | `./certs` | Directory for auto-generated certificates |
@@ -151,7 +152,7 @@ all defaults.
 | `HSYNC_DELTA_TOKEN_TTL` | `300` | Seconds a literal-payload download token stays valid |
 | `HSYNC_RATE_LIMIT_DELTA` | `100/minute` | Rate limit for delta transfer endpoints |
 | `HSYNC_RELOAD` | `false` | Enable uvicorn auto-reload (development only) |
-| `HSYNC_ENABLE_DOCS` | `false` (app default) | Expose `/docs` (Swagger UI) and `/redoc`. Set it to `true` in your env-file to browse the API interactively (`prod.env` leaves it off) |
+| `HSYNC_ENABLE_DOCS` | `false` (app default) | Expose `/docs` (Swagger UI) and `/redoc`. Set it to `true` in your env-file to browse the API interactively (`prod.env.example` leaves it off) |
 
 > **Note**: The server does not include a built-in TLS terminator for production
 > use. For production deployments, run the server behind a reverse proxy (nginx,

@@ -75,6 +75,7 @@ The source build requires `hsync-server` and `hsync-common` as sibling
 repositories. From the `hsync-server` checkout:
 
 ```bash
+cp dev.env.example dev.env
 ./docker.sh build
 ./docker.sh start --env-file dev.env
 ```

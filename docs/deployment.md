@@ -83,7 +83,8 @@ the [installer script](getting-started-script.md) unless you need a local build.
 # 1. Build the image (first time only, or after pulling changes)
 ./docker.sh build
 
-# 2. Start the server with an environment file
+# 2. Create your env file from the template, then start the server
+cp prod.env.example prod.env
 ./docker.sh start --env-file prod.env
 
 # 3a. The script waits for the server to answer /health and prints the URL to use:
@@ -102,10 +103,10 @@ curl -k https://localhost:9753/health && echo "SERVER OK!"
 ```
 
 > The URL scheme printed by `docker.sh start` is derived from the env-file:
-> `HSYNC_SSL_ENABLED=true` (the default in both `dev.env` and `prod.env`)
-> means **https**, otherwise http. To browse the interactive API docs,
-> set `HSYNC_ENABLE_DOCS=true` in your env-file (it defaults to `false`
-> and `prod.env` keeps it off).
+> `HSYNC_SSL_ENABLED=true` (the default in both `dev.env.example` and
+> `prod.env.example`) means **https**, otherwise http. To browse the
+> interactive API docs, set `HSYNC_ENABLE_DOCS=true` in your env-file (it
+> defaults to `false` and `prod.env.example` keeps it off).
 
 ### Container-aware behavior
 
