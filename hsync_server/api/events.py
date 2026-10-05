@@ -465,7 +465,6 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             await websocket.close(code=4009, reason="Bucket not found")
             return
 
-        # Register with per-bucket connection manager.
         manager = bucket_manager.get_manager(bucket)
         _register_client(manager, bucket, cid, websocket, ctx)
         registered = manager

@@ -237,7 +237,6 @@ async def disable_client(
     except ConflictError as e:
         return conflict_response(str(e))
 
-    # Close WS connections for this account.
     _close_ws_by_account(client_id)
 
     log.info(f"Disabled account {client_id}")
@@ -277,7 +276,6 @@ async def delete_client(
     except ConflictError as e:
         return conflict_response(str(e))
 
-    # Close WS connections for this account.
     _close_ws_by_account(client_id)
 
     log.info(f"Deleted account {client_id}")

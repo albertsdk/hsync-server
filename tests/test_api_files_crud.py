@@ -16,7 +16,6 @@ class TestFileUpload:
     @pytest.mark.asyncio
     async def test_upload_file(self, client: AsyncClient, temp_buckets_dir: str):
         """Upload a file to a bucket."""
-        # Create bucket
         bucket_path = os.path.join(temp_buckets_dir, "uploadbucket")
         os.makedirs(bucket_path)
 
@@ -37,7 +36,6 @@ class TestFileUpload:
         data = response.json()
         assert data["info"] == "File uploaded successfully"
 
-        # Verify file was created
         uploaded_file = os.path.join(bucket_path, "test.txt")
         assert os.path.exists(uploaded_file)
         with open(uploaded_file, "rb") as f:
@@ -62,7 +60,6 @@ class TestFileUpload:
 
         assert response.status_code == 201
 
-        # Verify nested file was created
         nested_file = os.path.join(bucket_path, "subdir", "deep", "nested.txt")
         assert os.path.exists(nested_file)
 
@@ -84,7 +81,6 @@ class TestFileUpload:
         # Upload succeeds and creates the directory structure
         assert response.status_code == 201
 
-        # Verify file was created in the expected location
         expected_path = os.path.join(temp_buckets_dir, "newbucket", "subdir", "test.txt")
         assert os.path.exists(expected_path)
 

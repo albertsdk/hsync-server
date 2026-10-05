@@ -53,7 +53,6 @@ class BucketsMixin(AuthStoreBase):
                 """
             ).fetchall()
 
-        # Build bucket → members map.
         bucket_map: dict[str, dict] = {}
         for r in member_rows:
             b = r["bucket"]

@@ -126,7 +126,6 @@ class DeltaTokenStore:
             # so the cache stays valid without a rescan (O(1) update).
             self._storage_size = total_storage + len(payload)
 
-            # Update metrics
             update_active_tokens(len(self._tokens))
             update_temp_storage(total_storage + len(payload))
 

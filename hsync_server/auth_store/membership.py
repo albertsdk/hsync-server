@@ -127,7 +127,6 @@ class MembershipMixin(AuthStoreBase):
         with self._lock:
             self._require_owner_or_admin(bucket, caller_id, caller_is_admin, "grant membership")
 
-            # Check target is not already owner.
             target_role = self.get_member_role(bucket, target.id)
             if target_role == "owner":
                 raise ConflictError("Target is already the owner. Use transfer instead.")

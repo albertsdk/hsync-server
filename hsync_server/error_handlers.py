@@ -88,7 +88,6 @@ async def hsync_exception_handler(_request: Request, exc: HSyncError) -> JSONRes
     """
     status_code = get_status_code_for_exception(exc)
 
-    # Log based on severity
     if status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
         log.error(f"{exc.error_code}: {exc.message}", exc_info=True)
     elif status_code >= status.HTTP_400_BAD_REQUEST:
@@ -176,10 +175,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     Args:
         app: The FastAPI application instance.
     """
-    # Handle custom HSYNC exceptions
     app.add_exception_handler(HSyncError, hsync_exception_handler)  # type: ignore[arg-type]
 
-    # Handle Pydantic validation errors
     app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
 
     # Handle all other unhandled exceptions (must be last)

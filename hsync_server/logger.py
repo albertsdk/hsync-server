@@ -174,7 +174,6 @@ def setup_logging(
     Returns:
         Configured loguru logger instance.
     """
-    # Validate log level
     level_lower = level.lower()
     if level_lower not in VALID_LOG_LEVELS:
         valid = ", ".join(VALID_LOG_LEVELS)
@@ -184,7 +183,6 @@ def setup_logging(
     if log_format is None:
         log_format = get_log_format()
 
-    # Get log file from parameter or environment-backed Settings
     log_file = logfile or get_log_file()
 
     is_json = log_format == "json"

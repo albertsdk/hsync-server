@@ -78,7 +78,6 @@ async def create_symlink(
     if not target:
         raise InvalidPathError(details={"path": path, "reason": "target is required"})
 
-    # Validate the link target: it must stay inside the bucket.
     if not is_safe_symlink_target(absolute, target, resolve_within_bucket(bucket, "") or ""):
         log.warning(
             f"{ActionLabel.SECURITY} Symlink target escapes bucket, "
@@ -103,7 +102,6 @@ async def create_symlink(
     elif dest.is_symlink() or dest.exists():
         dest.unlink()
 
-    # Create parent directories if needed.
     parent = dest.parent
     if not parent.exists():
         parent.mkdir(parents=True, exist_ok=True)

@@ -111,7 +111,6 @@ class TestConnectionManager:
             "client3": _entry(ws3),
         }
 
-        # Create an event from client1
         file = File(
             filepath="/buckets/test/test.txt", size=100, sha256sum="abc", permissions="-rw-r--r--"
         )

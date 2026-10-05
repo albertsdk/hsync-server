@@ -54,7 +54,6 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        # Get existing request ID from header or generate a new one
         request_id = request.headers.get("X-Request-ID")
         if not request_id:
             request_id = str(uuid.uuid4())
@@ -63,19 +62,16 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         # even after the context-local is cleared by this finally block.
         request.state.request_id = request_id
 
-        # Set request ID in context for logging
         set_request_id(request_id)
 
         try:
             # Process the request
             response = await call_next(request)
 
-            # Add request ID to response headers
             response.headers["X-Request-ID"] = request_id
 
             return response
         finally:
-            # Clear the request ID from context
             set_request_id(None)
 
 
@@ -133,7 +129,6 @@ class VersionMiddleware(BaseHTTPMiddleware):
                 headers=version_headers,
             )
 
-        # Get the client's protocol version from the header (if any)
         client_protocol = request.headers.get(HEADER_PROTOCOL_VERSION, "")
 
         # Hard-fail on an explicit mismatch; capabilities never bridge versions.

@@ -104,7 +104,6 @@ class TestRateLimitExceededHandler:
         request.client = MagicMock()
         request.client.host = "192.168.1.100"
 
-        # Create a mock exception with the expected attributes
         exc = MagicMock(spec=RateLimitExceeded)
         exc.detail = "Rate limit exceeded: 100/minute"
         exc.retry_after = 60
@@ -121,7 +120,6 @@ class TestRateLimitExceededHandler:
         request.client = MagicMock()
         request.client.host = "192.168.1.100"
 
-        # Create a mock exception with the expected attributes
         exc = MagicMock(spec=RateLimitExceeded)
         exc.detail = "Rate limit exceeded: 100/minute"
         exc.retry_after = 60

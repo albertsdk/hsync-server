@@ -281,7 +281,6 @@ async def post_delta_signatures(
         )
         log.info(f"Delta not worthwhile for {body.path}: {reason} (ratio={ratio:.2f})")
 
-        # Record rejected transfer
         record_delta_transfer("download", "rejected")
         record_transfer_duration("download", "total", time.time() - start_time)
 

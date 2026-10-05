@@ -73,7 +73,6 @@ class FileLockManager:
                 # Only one coroutine can be here for the same file_path
                 await do_something_with_file()
         """
-        # Get or create the lock for this file path
         async with self._dict_lock:
             if file_path not in self._locks:
                 self._locks[file_path] = asyncio.Lock()

@@ -92,7 +92,6 @@ async def get_upload_status(
 
     partial_path = f"{file_path}{PARTIAL_DOWNLOAD_SUFFIX}"
 
-    # Check if complete file already exists with same SHA-256
     if (
         sha256sum
         and is_sha256_hex(sha256sum)
@@ -108,10 +107,8 @@ async def get_upload_status(
             },
         )
 
-    # Check for partial file
     if Path(partial_path).exists():
         partial_size = Path(partial_path).stat().st_size
-        # Validate partial file is not larger than expected
         if size > 0 and partial_size >= size:
             # Partial file is invalid, remove it
             remove(partial_path)
@@ -263,7 +260,6 @@ async def get_files(
     if not Path(dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket, "path": path})
 
-    # Collect file metadata
     file_list = []
     for root, dirs, files in walk(dir):
         # Skip hidden directories using is_hidden_dir

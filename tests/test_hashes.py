@@ -143,7 +143,6 @@ class TestSetSHA256Hashes:
     def test_set_sha256_hashes_directory(self):
         """Test computing hashes for directory contents."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Create some test files
             for i in range(3):
                 filepath = os.path.join(temp_dir, f"file{i}.txt")
                 with open(filepath, "w") as f:
@@ -157,12 +156,10 @@ class TestSetSHA256Hashes:
     def test_set_sha256_hashes_skips_os_cache(self):
         """Test that OS cache files (.DS_Store, Thumbs.db) are skipped."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Create regular file
             regular_file = os.path.join(temp_dir, "regular.txt")
             with open(regular_file, "w") as f:
                 f.write("regular content")
 
-            # Create OS cache files
             ds_store = os.path.join(temp_dir, ".DS_Store")
             with open(ds_store, "w") as f:
                 f.write("cache content")
@@ -177,7 +174,6 @@ class TestSetSHA256Hashes:
     def test_set_sha256_hashes_includes_dotfiles(self):
         """Test that dotfiles (.env, .gitignore) are included (industry standard)."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Create regular file
             regular_file = os.path.join(temp_dir, "regular.txt")
             with open(regular_file, "w") as f:
                 f.write("regular content")
@@ -197,12 +193,10 @@ class TestSetSHA256Hashes:
     def test_set_sha256_hashes_includes_dotfile_dirs(self):
         """Test that dotfile directories (.git/) are included (industry standard)."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Create regular file in root
             regular_file = os.path.join(temp_dir, "regular.txt")
             with open(regular_file, "w") as f:
                 f.write("content")
 
-            # Create dotfile directory with file inside
             dot_dir = os.path.join(temp_dir, ".git")
             os.makedirs(dot_dir)
             dot_file = os.path.join(dot_dir, "config")
@@ -216,7 +210,6 @@ class TestSetSHA256Hashes:
     def test_set_sha256_hashes_recursive(self):
         """Test recursive directory traversal."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Create nested structure
             subdir = os.path.join(temp_dir, "subdir")
             os.makedirs(subdir)
 

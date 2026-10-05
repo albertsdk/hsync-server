@@ -113,7 +113,6 @@ async def download_file(
 
     checksum_header = {"X-Checksum-SHA256": sha256sum} if sha256sum else {}
 
-    # Check if compression should be used:
     # - Compression is enabled on server
     # - File is compressible (not too small, not pre-compressed)
     # - No Range header (resume requests skip compression)

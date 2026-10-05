@@ -540,7 +540,6 @@ class TestConcurrency:
         assert resp.status_code == 200
         sig_body = resp.json()
 
-        # Create two different modifications
         new1 = bytearray(base)
         new1[50:110] = b"A" * 60
         sigs = [BlockSignature(**s) for s in sig_body["signatures"]]

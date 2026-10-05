@@ -297,13 +297,11 @@ def test_app() -> Generator[FastAPI]:
     from hsync_server.error_handlers import register_exception_handlers
     from hsync_server.rate_limiter import limiter, rate_limit_exceeded_handler
 
-    # Create a fresh app for testing
     app = FastAPI(title="HSYNC Test")
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
     app.add_middleware(SlowAPIMiddleware)
 
-    # Register custom exception handlers
     register_exception_handlers(app)
 
     # Create new routers for test app (avoid reusing global routers)
@@ -314,7 +312,6 @@ def test_app() -> Generator[FastAPI]:
     test_public_router = APIRouter(tags=["Public Router"])
     test_auth_router = APIRouter(tags=["Auth Router"], dependencies=[Depends(verify_api_key)])
 
-    # Register health endpoint
     @test_public_router.get("/health")
     async def health():
         return ""

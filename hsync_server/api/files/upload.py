@@ -268,7 +268,6 @@ async def upload_file(
             except OSError:
                 log.warning("Could not check disk space")
 
-        # Validate and sanitize inputs
         if not is_valid_cid(cid):
             raise ValidationError(
                 message="Invalid client ID format",
@@ -379,7 +378,6 @@ async def upload_file(
         # Ensure directory exists
         Path(file_directory).mkdir(parents=True, exist_ok=True)
 
-        # Create backup of existing file before overwriting
         # This ensures readers can still access the complete original file
         # while the new version is being uploaded
         backup_path = f"{file_location}{BACKUP_SUFFIX}"
@@ -394,9 +392,7 @@ async def upload_file(
         # raw copy is expanded below.
         fused_sha = None if is_compressed else hashlib.sha256()
 
-        # Handle resumable upload
         if is_resumable:
-            # Validate partial file exists and has expected size
             # Client-input errors (missing file, wrong offset) are 400,
             # not 500 — the client must correct its request.
             if not Path(partial_file_path).exists():
@@ -411,7 +407,6 @@ async def upload_file(
                     details={"expected_offset": current_size, "provided_offset": offset},
                 )
 
-            # Append to partial file
             total_bytes = offset
             # Fused checksum (resume): ingest the already-received prefix so
             # the digest covers the complete file. Compressed uploads are
@@ -429,7 +424,6 @@ async def upload_file(
                 # Ensure appended data reaches physical storage
                 await _flush_to_disk(f)
 
-            # Check if upload is complete
             if size > 0 and total_bytes < size:
                 # Partial upload - more chunks expected
                 return _partial_upload_response(total_bytes, size)
@@ -442,7 +436,6 @@ async def upload_file(
 
             # If size > 0, this might be first chunk of a multi-chunk upload
             if size > 0 and Path(partial_file_path).exists():
-                # Remove stale partial file
                 remove(partial_file_path)
 
             # Create the temp file in the destination directory so the final
@@ -463,7 +456,6 @@ async def upload_file(
                 # Ensure written data reaches physical storage
                 await _flush_to_disk(temp_file)
 
-            # Handle compressed upload - decompress the file
             if is_compressed and total_bytes > 0:
                 # Anti decompression-bomb: the compressed payload may expand
                 # arbitrarily, so the decompressed size is hard-capped. The

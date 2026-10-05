@@ -48,13 +48,11 @@ class TestBucketEndpoints:
         data = response.json()
         assert data["info"] == "Bucket created successfully"
 
-        # Verify bucket directory was created
         assert os.path.isdir(os.path.join(temp_buckets_dir, "testbucket"))
 
     @pytest.mark.asyncio
     async def test_create_bucket_already_exists(self, client: AsyncClient, temp_buckets_dir: str):
         """Creating existing bucket returns conflict."""
-        # Create bucket directory first
         os.makedirs(os.path.join(temp_buckets_dir, "existing"))
 
         response = await client.post("/api/v1/buckets", params={"bucket": "existing"})
@@ -69,7 +67,6 @@ class TestBucketEndpoints:
     @pytest.mark.asyncio
     async def test_get_bucket(self, client: AsyncClient, temp_buckets_dir: str):
         """Get bucket information."""
-        # Create bucket
         bucket_path = os.path.join(temp_buckets_dir, "infobucket")
         os.makedirs(bucket_path)
 
@@ -90,7 +87,6 @@ class TestBucketEndpoints:
     @pytest.mark.asyncio
     async def test_delete_bucket(self, client: AsyncClient, temp_buckets_dir: str):
         """Delete a bucket."""
-        # Create bucket
         bucket_path = os.path.join(temp_buckets_dir, "to-delete")
         os.makedirs(bucket_path)
 
@@ -100,7 +96,6 @@ class TestBucketEndpoints:
         assert data["info"] == "Bucket deleted successfully"
         assert data["bucket"] == "to-delete"
 
-        # Verify bucket was deleted
         assert not os.path.exists(bucket_path)
 
     @pytest.mark.asyncio
@@ -129,7 +124,6 @@ class TestBucketEndpoints:
         """Delete bucket with OSError returns 500."""
         from unittest.mock import patch
 
-        # Create bucket
         bucket_path = os.path.join(temp_buckets_dir, "oserror-bucket")
         os.makedirs(bucket_path)
 
@@ -147,15 +141,12 @@ class TestAuthenticationRequired:
     @pytest.mark.asyncio
     async def test_bucket_endpoints_require_auth(self, client_no_auth: AsyncClient):
         """Bucket endpoints require authentication."""
-        # GET bucket
         response = await client_no_auth.get("/api/v1/buckets/test")
         assert response.status_code == 401
 
-        # POST bucket
         response = await client_no_auth.post("/api/v1/buckets", data={"bucket": "test"})
         assert response.status_code == 401
 
-        # DELETE bucket
         response = await client_no_auth.delete("/api/v1/buckets/test")
         assert response.status_code == 401
 

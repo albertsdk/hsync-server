@@ -183,7 +183,6 @@ class TestFileSizeLimit:
         bucket_path = os.path.join(temp_buckets_dir, "sizelimitbucket")
         os.makedirs(bucket_path)
 
-        # Create content larger than limit
         large_content = b"x" * 1000
 
         with patch("hsync_server.api.files.upload.get_max_upload_size", return_value=100):
@@ -391,7 +390,6 @@ class TestFileListValidation:
         bucket_path = os.path.join(temp_buckets_dir, "cachebucket")
         os.makedirs(bucket_path)
 
-        # Create visible and OS cache files
         with open(os.path.join(bucket_path, "visible.txt"), "w") as f:
             f.write("visible")
         with open(os.path.join(bucket_path, ".DS_Store"), "w") as f:
@@ -414,7 +412,6 @@ class TestFileListValidation:
         bucket_path = os.path.join(temp_buckets_dir, "dotfilebucket")
         os.makedirs(bucket_path)
 
-        # Create visible and dotfiles
         with open(os.path.join(bucket_path, "visible.txt"), "w") as f:
             f.write("visible")
         with open(os.path.join(bucket_path, ".env"), "w") as f:

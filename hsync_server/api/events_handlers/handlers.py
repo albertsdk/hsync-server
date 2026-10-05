@@ -191,7 +191,6 @@ async def handle_deleted_event(
     if not src:
         return None
 
-    # Handle directory deletion
     if "path" in src:
         dir_obj = Dir.from_dict(src, bucket_dir)
         # allow_root=False rejects an attempt to rmtree the bucket directory itself
@@ -214,7 +213,6 @@ async def handle_deleted_event(
                 rmtree(dir_obj.path, ignore_errors=False)
             return Event(cid, bucket_dir, bucket, EventName.deleted, dir_obj)
 
-    # Handle file deletion
     elif "filepath" in src:
         file_obj = File.from_dict(src, bucket_dir, False)
         if not _validate_path(file_obj.filepath, bucket_dir):
@@ -272,7 +270,6 @@ async def handle_renamed_event(
     if not src or not dst:
         return None
 
-    # Handle directory rename
     if src.get("path"):
         src_dir = Dir.from_dict(src, bucket_dir)
         dst_dir = Dir.from_dict(dst, bucket_dir)
@@ -298,7 +295,6 @@ async def handle_renamed_event(
                 log.warning(f"Could not update causal state for {dst_dir.path}: {e}")
             return Event(cid, bucket_dir, bucket, EventName.renamed, src_dir, dst_dir)
 
-    # Handle file rename
     elif src.get("filepath"):
         src_file = File.from_dict(src, bucket_dir, False)
         dst_file = File.from_dict(dst, bucket_dir, False)

@@ -112,7 +112,6 @@ class TestGenerateSelfSignedCert:
         generate_self_signed_cert(cert_path, key_path)
 
         key_stat = os.stat(key_path)
-        # Check owner read/write only (0600)
         assert (key_stat.st_mode & 0o777) == 0o600
 
     def test_cert_file_has_readable_permissions(self, tmp_path):
@@ -123,7 +122,6 @@ class TestGenerateSelfSignedCert:
         generate_self_signed_cert(cert_path, key_path)
 
         cert_stat = os.stat(cert_path)
-        # Check readable by all (0644)
         assert (cert_stat.st_mode & 0o777) == 0o644
 
     def test_creates_parent_directories(self, tmp_path):
@@ -184,7 +182,6 @@ class TestEnsureCertificates:
         cert_dir = str(tmp_path / "certs")
         os.makedirs(cert_dir)
 
-        # Create dummy certificate files
         cert_path = os.path.join(cert_dir, "server.crt")
         key_path = os.path.join(cert_dir, "server.key")
         Path(cert_path).write_text("existing cert")
@@ -194,7 +191,6 @@ class TestEnsureCertificates:
 
         assert result_cert == cert_path
         assert result_key == key_path
-        # Verify content wasn't overwritten
         assert Path(cert_path).read_text() == "existing cert"
 
     def test_custom_filenames(self, tmp_path):
@@ -224,7 +220,6 @@ class TestGetSslConfig:
         cert_path = str(tmp_path / "server.crt")
         key_path = str(tmp_path / "server.key")
 
-        # Create dummy files
         Path(cert_path).write_text("cert")
         Path(key_path).write_text("key")
 

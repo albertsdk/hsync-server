@@ -22,7 +22,6 @@ Usage:
     # Ensure certificates exist (generates if missing)
     cert_file, key_file = ensure_certificates(HSYNC_SSL_CERT_DIR)
 
-    # Get SSL configuration for uvicorn
     ssl_config = get_ssl_config(ssl_enabled=True, ssl_cert_dir=HSYNC_SSL_CERT_DIR)
 """
 
@@ -98,7 +97,6 @@ def generate_self_signed_cert(
         x509.NameAttribute(NameOID.COMMON_NAME, hostname),
     ]
 
-    # Build certificate with Subject Alternative Names (SAN)
     # Include both hostname and localhost for local development
     san_list = [
         x509.DNSName(hostname),
@@ -135,7 +133,6 @@ def generate_self_signed_cert(
         f.write(serialize_private_key_unencrypted(private_key))
     os.chmod(key_path, _KEY_FILE_MODE)  # Read/write only for owner
 
-    # Write certificate
     with open(cert_path, "wb") as f:
         f.write(serialize_cert_pem(cert))
     os.chmod(cert_path, _CERT_FILE_MODE)  # Readable by all

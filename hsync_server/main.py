@@ -90,7 +90,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     maintenance_stop = asyncio.Event()
     maintenance_task = asyncio.create_task(run_periodic_incremental_vacuum(maintenance_stop))
 
-    # Log total startup time.
     tot_time = round(time.time() - start, 3)
     log.info(f"HSYNC Server started in: {tot_time} sec.")
 
@@ -102,7 +101,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         vacuum_on_shutdown()
 
 
-# Initialize FastAPI application with metadata
 # API docs (Swagger UI / ReDoc) are disabled by default in production;
 # set HSYNC_ENABLE_DOCS=true for development.
 _settings = get_settings()
@@ -122,7 +120,6 @@ app.add_middleware(SlowAPIMiddleware)
 # Register custom exception handlers for standardized error responses
 register_exception_handlers(app)
 
-# Register API routers
 # Public router: endpoints that don't require authentication
 app.include_router(public_router)
 # Auth router: endpoints that require account token authentication

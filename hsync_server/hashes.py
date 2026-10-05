@@ -128,7 +128,6 @@ def set_sha256_hashes(directory: str) -> int:
     if not Path(directory).is_dir():
         raise ValueError(f"Invalid directory path: {directory}")
 
-    # Reset the hash storage
     FILE_HASHES.clear()
     file_count = 0
 

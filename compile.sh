@@ -303,7 +303,6 @@ clean_artifacts() {
     fi
 }
 
-# Check prerequisites
 check_prerequisites() {
     # Ensure we're in the correct directory
     if [[ ! -f "${PYPROJECT}" ]]; then

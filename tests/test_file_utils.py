@@ -33,7 +33,6 @@ class TestEnsureSentinelInDir:
         """Sentinel is not created if directory has files."""
         from hsync_server.constants import HSYNCKEEP_FILENAME
 
-        # Create a regular file
         (tmp_path / "file.txt").write_text("content")
 
         file_utils.ensure_sentinel_in_dir(str(tmp_path))
@@ -44,7 +43,6 @@ class TestEnsureSentinelInDir:
         """Sentinel is not duplicated if already exists."""
         from hsync_server.constants import HSYNCKEEP_FILENAME
 
-        # Create sentinel
         (tmp_path / HSYNCKEEP_FILENAME).write_text("")
 
         # Should not raise
@@ -148,7 +146,6 @@ class TestUpdateFileTimestamp:
 
         file_utils.update_file_timestamp(str(test_file), mtime="1609459200")
 
-        # Check that file was modified to the expected timestamp
         stat = test_file.stat()
         assert abs(stat.st_mtime - 1609459200) < 1
 

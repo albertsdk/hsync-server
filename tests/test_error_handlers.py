@@ -121,7 +121,6 @@ class TestValidationExceptionHandler:
         """Test handling Pydantic validation errors."""
         request = mocker.MagicMock()
 
-        # Create a mock RequestValidationError
         exc = mocker.MagicMock(spec=RequestValidationError)
         exc.errors.return_value = [
             {"loc": ["body", "field"], "msg": "field required", "type": "value_error.missing"}

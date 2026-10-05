@@ -19,7 +19,6 @@ class TestLoadEnvFile:
 
         config.load_env_file(str(env_file))
 
-        # Verify the settings reflect the loaded values
         settings = config.get_settings()
         assert settings.port == 9999
         assert settings.log_level == "debug"

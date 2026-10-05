@@ -296,7 +296,6 @@ def main(
     # Configure logging before starting the server
     log = setup_logging(level=effective_log_level, no_color=no_color)
 
-    # Log version at startup
     log.info(f"HSYNC Server v{HSYNC_VERSION}")
     log.info(runtime_summary())
 
@@ -313,7 +312,6 @@ def main(
     # and the operator must rotate it — see `admin tls rotate`).
     _warn_if_certificate_expiring(ssl_config.get("ssl_certfile") if ssl_config else None, log)
 
-    # Log server startup mode
     if effective_ssl_enabled:
         log.info(f"Starting HSYNC server with HTTPS/WSS on port {effective_port}")
         log.info(f"Certificate: {ssl_config.get('ssl_certfile', 'N/A')}")

@@ -34,7 +34,6 @@ def app_with_middleware():
 
     @app.get("/test")
     async def test_endpoint():
-        # Return the current request ID from context
         return {"request_id": get_request_id()}
 
     return app
@@ -55,7 +54,6 @@ class TestRequestIdMiddleware:
 
         assert response.status_code == 200
         assert "X-Request-ID" in response.headers
-        # Verify it's a valid UUID
         request_id = response.headers["X-Request-ID"]
         uuid.UUID(request_id)  # Raises if invalid
 

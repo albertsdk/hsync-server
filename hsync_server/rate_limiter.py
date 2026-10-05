@@ -98,7 +98,6 @@ def get_client_ip(request: Request) -> str:
     return get_remote_address(request)
 
 
-# Initialize the rate limiter with custom key function
 limiter = Limiter(
     key_func=get_client_ip,
     default_limits=[RATE_LIMIT_DEFAULT],
