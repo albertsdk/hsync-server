@@ -151,6 +151,16 @@ than restart. See
 The server exposes a timestamp endpoint (`/api/v1/time`) clients use to correct
 clock skew. See [API → Monitoring & Sync](api.md#monitoring--sync).
 
+### How do I publish read-only data?
+
+Run the client on the read-only device with `--sync-direction download-only`: it
+pulls updates from the bucket and never uploads or deletes. The account still
+needs read access to the bucket (an account token with membership), but the
+device cannot modify anything — the usual setup for branch or kiosk terminals.
+See the
+[client read-only mirror example](https://github.com/albertsdk/hsync-client/blob/main/docs/examples-server.md#14-read-only-mirror-from-the-server);
+in p2p Mode the same direction needs no shared key.
+
 ## Operations
 
 ### How do I monitor the server?
