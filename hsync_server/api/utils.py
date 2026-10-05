@@ -14,8 +14,10 @@ including path validation, SHA-256 computation, and file permission handling.
 from asyncio import to_thread
 from os import chmod
 from pathlib import Path
+from shutil import disk_usage
 from urllib.parse import quote
 
+from fastapi import Request
 from hsync_common.path_validation import (
     is_valid_bucket_name,
     resolve_within,
@@ -28,7 +30,12 @@ from hsync_common.permissions import (
 from hsync_common.permissions import get_permissions as _read_permissions
 from loguru import logger as log
 
-from hsync_server.config import get_buckets_path
+from hsync_server.config import get_buckets_path, get_settings
+from hsync_server.exceptions import (
+    FileTooLargeError,
+    InsufficientStorageError,
+    ValidationError,
+)
 
 
 def build_content_disposition(filename: str) -> str:
@@ -143,3 +150,80 @@ async def set_directory_permissions(dir_path: str, permissions: str) -> None:
     mode = octal_to_mode(sanitize_remote_permissions(permissions)) | OWNER_DIRECTORY_ACCESS
     log.debug(f'Set directory permissions: "{dir_path}" ({permissions} -> {mode:o})')
     await to_thread(chmod, dir_path, mode)
+
+
+def enforce_size_cap(total_bytes: int, max_size: int, *, label: str = "File") -> None:
+    """Raise :class:`FileTooLargeError` when *total_bytes* exceeds a cap.
+
+    Shared by the full-upload and delta-apply paths so the anti-DoS size cap
+    cannot drift between them. A non-positive cap means "unlimited".
+    """
+    if max_size > 0 and total_bytes > max_size:
+        raise FileTooLargeError(
+            message=f"{label} exceeds maximum allowed size of {max_size} bytes",
+            details={"max_size": max_size, "size": total_bytes},
+        )
+
+
+def ensure_disk_space(incoming_size: int) -> None:
+    """Reject an incoming write that would break the free-space reserve.
+
+    Shared by the full-upload and delta-apply paths so the anti-exhaustion
+    guard cannot drift between them. A non-positive reserve disables the check;
+    a ``disk_usage`` failure (unreadable path) is a warning, not a rejection.
+
+    Raises:
+        InsufficientStorageError: When free space is below reserve + *size*.
+    """
+    min_free = get_settings().min_free_disk_space
+    if min_free <= 0:
+        return
+    try:
+        usage = disk_usage(get_buckets_path())
+    except OSError:
+        log.warning("Could not check disk space")
+        return
+    required = min_free + incoming_size
+    if usage.free < required:
+        free_mb = usage.free / (1024 * 1024)
+        required_mb = required / (1024 * 1024)
+        raise InsufficientStorageError(
+            message=(
+                f"Insufficient storage: {free_mb:.0f} MB available, {required_mb:.0f} MB required"
+            ),
+            details={"available_bytes": usage.free, "required_bytes": required},
+        )
+
+
+async def read_request_body_capped(request: Request, max_bytes: int) -> bytes:
+    """Read a request body without ever buffering more than *max_bytes*.
+
+    Streams the body and raises as soon as the running total crosses the cap, so
+    an oversized — or chunked, length-less — request is never fully
+    materialised in memory first. A ``Content-Length`` over the cap is rejected
+    before reading a single byte.
+
+    Raises:
+        ValidationError: When the declared or streamed body exceeds the cap.
+    """
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            declared_size = int(declared)
+        except ValueError:
+            declared_size = None
+        if declared_size is not None and declared_size > max_bytes:
+            raise ValidationError(
+                message="Request body too large",
+                details={"max_size": max_bytes, "declared_size": declared_size},
+            )
+
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > max_bytes:
+            raise ValidationError(
+                message="Request body too large",
+                details={"max_size": max_bytes, "received_size": len(body)},
+            )
+    return bytes(body)

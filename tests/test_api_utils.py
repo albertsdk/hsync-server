@@ -14,11 +14,19 @@ from hsync_server.api.file_utils import (
 )
 from hsync_server.api.utils import (
     build_content_disposition,
+    enforce_size_cap,
+    ensure_disk_space,
     get_permissions,
     is_valid_bucket,
+    read_request_body_capped,
     resolve_within_bucket,
     set_directory_permissions,
     set_permissions,
+)
+from hsync_server.exceptions import (
+    FileTooLargeError,
+    InsufficientStorageError,
+    ValidationError,
 )
 
 
@@ -526,3 +534,104 @@ class TestBuildContentDisposition:
         """Every produced value survives the latin-1 header encoding."""
         for name in ("plain", "dati-\u010d", "\u0142", "\u6d4b\u8bd5.txt", "emoji-\U0001f600"):
             build_content_disposition(name).encode("latin-1")
+
+
+class TestReadRequestBodyCapped:
+    """The capped reader must reject oversized bodies without buffering them."""
+
+    @pytest.mark.anyio
+    async def test_declared_length_over_cap_is_rejected_without_reading(self):
+        from starlette.requests import Request
+
+        async def _unreachable_receive():  # pragma: no cover - must not run
+            raise AssertionError("body must not be read")
+
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/",
+                "headers": [(b"content-length", b"100")],
+            },
+            _unreachable_receive,
+        )
+
+        with pytest.raises(ValidationError):
+            await read_request_body_capped(request, 10)
+
+    @pytest.mark.anyio
+    async def test_stream_aborts_before_draining_the_body(self):
+        from starlette.requests import Request
+
+        chunks = [b"x" * 8, b"x" * 8, b"x" * 8]
+        consumed = 0
+
+        async def receive():
+            nonlocal consumed
+            chunk = chunks[consumed] if consumed < len(chunks) else b""
+            consumed += 1
+            return {
+                "type": "http.request",
+                "body": chunk,
+                "more_body": consumed < len(chunks),
+            }
+
+        request = Request({"type": "http", "method": "POST", "path": "/", "headers": []}, receive)
+
+        with pytest.raises(ValidationError):
+            await read_request_body_capped(request, 10)
+
+        # The third chunk was never requested: the cap tripped on the second.
+        assert consumed == 2
+
+    @pytest.mark.anyio
+    async def test_body_within_cap_is_returned(self):
+        from starlette.requests import Request
+
+        async def receive():
+            return {"type": "http.request", "body": b"hello", "more_body": False}
+
+        request = Request({"type": "http", "method": "POST", "path": "/", "headers": []}, receive)
+
+        assert await read_request_body_capped(request, 10) == b"hello"
+
+
+class TestEnsureDiskSpace:
+    """The shared free-space guard used by upload and delta apply."""
+
+    def test_raises_when_below_reserve(self, monkeypatch, tmp_path):
+        from hsync_server.api import utils as utils_module
+
+        class _Settings:
+            min_free_disk_space = 10**18
+
+        monkeypatch.setattr(utils_module, "get_settings", lambda: _Settings())
+        monkeypatch.setattr(utils_module, "get_buckets_path", lambda: str(tmp_path))
+
+        with pytest.raises(InsufficientStorageError):
+            ensure_disk_space(1)
+
+    def test_noop_when_reserve_disabled(self, monkeypatch, tmp_path):
+        from hsync_server.api import utils as utils_module
+
+        class _Settings:
+            min_free_disk_space = 0
+
+        monkeypatch.setattr(utils_module, "get_settings", lambda: _Settings())
+        monkeypatch.setattr(utils_module, "get_buckets_path", lambda: str(tmp_path))
+
+        ensure_disk_space(10**18)  # must not raise
+
+
+class TestEnforceSizeCap:
+    """The shared anti-DoS size-cap guard (upload + delta apply)."""
+
+    def test_raises_above_cap(self):
+        with pytest.raises(FileTooLargeError):
+            enforce_size_cap(11, 10, label="Delta result")
+
+    def test_allows_at_cap(self):
+        enforce_size_cap(10, 10)
+
+    def test_non_positive_cap_means_unlimited(self):
+        enforce_size_cap(10**18, 0)

@@ -157,6 +157,12 @@ control its behavior:
 | `HSYNC_DELTA_TOKEN_TTL` | `300` | Seconds a literal-payload download token stays valid |
 | `HSYNC_RATE_LIMIT_DELTA` | `100/minute` | Rate limit for delta transfer endpoints |
 
+Delta operations are bounded by the same size guards as a full transfer: a
+reconstructed file may not exceed `HSYNC_MAX_UPLOAD_SIZE`, the server must retain
+`HSYNC_MIN_FREE_DISK_SPACE` of free space, and the signature request body is
+capped at 50 MB. A delta that would produce a larger file is rejected and the
+client falls back to a full upload.
+
 `HSYNC_DELTA_MIN_FILE_SIZE` and `HSYNC_DELTA_MAX_CHANGE_RATIO` may appear in
 the settings model but the **server does not read them**. Worthwhileness
 (minimum size, max change ratio) is decided by the client using

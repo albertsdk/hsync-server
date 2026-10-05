@@ -389,6 +389,57 @@ class TestDeltaApply:
         assert (bucket_dir / "docs" / "link.bin").is_symlink()
         assert (bucket_dir / target_rel).read_bytes() == base
 
+    async def test_new_size_over_upload_cap_is_rejected(
+        self, client, bucket_dir, tmp_path, monkeypatch
+    ):
+        """A delta declaring a new_size above the upload cap is a 400.
+
+        Regression: without the cap, N copy ops could declare an arbitrarily
+        large new_size and amplify a small request into a disk-filling write
+        (the ops-coverage check alone does not bound the total size).
+        """
+        monkeypatch.setattr("hsync_server.api.files.delta.apply.get_max_upload_size", lambda: 100)
+        base = _base_bytes()
+        _write_base(bucket_dir, base)
+        payload = _apply_multipart(base, base + b"extra", tmp_path)
+        meta = json.loads(payload["data"]["metadata"])
+        meta["new_size"] = 101  # one byte over the patched cap
+        payload["data"]["metadata"] = json.dumps(meta)
+
+        resp = await client.post("/api/v1/buckets/bucket1/files/delta/apply", **payload)
+
+        assert resp.status_code == 400
+        assert "maximum allowed size" in resp.json()["message"]
+        # The base file is untouched and no partial artifact is left behind.
+        assert (bucket_dir / "docs/big.bin").read_bytes() == base
+
+    async def test_disk_full_returns_507(self, client, bucket_dir, tmp_path):
+        """A delta that breaks the free-space reserve is 507, not a 500.
+
+        Regression: `ensure_disk_space` raises `InsufficientStorageError`
+        (507); it must be re-raised as-is, matching the full-upload contract,
+        instead of being wrapped into an opaque 500.
+        """
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        base = _base_bytes()
+        _write_base(bucket_dir, base)
+        payload = _apply_multipart(base, base + b"extra", tmp_path)
+
+        with (
+            patch(
+                "hsync_server.api.utils.get_settings",
+                return_value=SimpleNamespace(min_free_disk_space=10**18),
+            ),
+            patch("hsync_server.api.utils.disk_usage", return_value=MagicMock(free=0)),
+        ):
+            resp = await client.post("/api/v1/buckets/bucket1/files/delta/apply", **payload)
+
+        assert resp.status_code == 507
+        assert "HSYNC-4004" in resp.text
+        assert (bucket_dir / "docs/big.bin").read_bytes() == base
+
     async def test_conflict_lost_copy_has_no_part_suffix(self, client, bucket_dir, tmp_path):
         """Regression: the conflict-lost copy must be named from the FINAL
         path (ADR-0021). The old code passed the temporary ``.delta.part``

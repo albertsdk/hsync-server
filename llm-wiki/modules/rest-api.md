@@ -21,11 +21,11 @@ client mirrors cannot drift.
 | `DELETE /buckets/{bucket}` | `buckets.delete_bucket` (`buckets.py:91`) | key | default |
 | `GET /buckets/{bucket}/files` | `files/list.get_files` (`list.py:124`) | key | default |
 | `GET /buckets/{bucket}/files/upload-status` | `files/list.get_upload_status` (`list.py:40`) | key | default |
-| `GET /buckets/{bucket}/tombstones` | `files/list.get_tombstones` (`list.py:194`) | key | default |
+| `GET /buckets/{bucket}/tombstones` | `files/list.get_tombstones` (`list.py:326`) | key | default |
 | `POST /buckets/{bucket}/files` | `files/upload.upload_file` (`upload.py:70`) | key | upload |
 | `GET /files/download` | `files/download.download_file` (`download.py:43`) | key | download |
 | `DELETE /files` | `files/delete.delete_file` (`delete.py:44`) | key | default |
-| `POST /buckets/{bucket}/tombstones` | tombstone record (`list.py`) | key | default |
+| `POST /buckets/{bucket}/tombstones` | `files/list.post_tombstones` (`list.py:362`) | key | default |
 | `GET /buckets/{bucket}/presence` | `presence.get_presence` (`presence.py:29`) | key | default |
 | `GET /health` | `health.root` (`health.py:32`) | none | — |
 | `GET /api/v1/time` | `health.get_time` (`health.py:57`) | none | — |
@@ -225,9 +225,11 @@ correctness over loop-freedom.
   (`hsync_client/p2p_server.py:_handle_upload_status`) and Android
   (`P2PServer.kt:handleUploadStatus`) — so the client resume logic works
   uniformly in both server mode and P2P mode.
-- `get_tombstones` (`list.py:194`) returns the bucket's tombstone entries from
+- `get_tombstones` (`list.py:326`) returns the bucket's tombstone entries from
   `get_tombstone_store` (`tombstones.py:38`); the `POST` counterpart records
-  client-side deletions into the same store.
+  client-side deletions into the same store. Its body is streamed with a 50 MB
+  cap (`read_request_body_capped`, `api/utils.py`) so a hostile member cannot
+  buffer an unbounded body; an oversized body is a 400.
 
 ## Delete (`api/files/delete.py:44`)
 
@@ -246,10 +248,10 @@ See `../docs/delta-transfer.md` for user-facing documentation.
 
 | Method + path | Handler | Auth | Rate limit |
 | ------------- | ------- | ---- | ---------- |
-| `GET /buckets/{bucket}/files/delta/signatures` | `delta.signatures.get_signatures` (`delta/signatures.py:50`) | key | delta |
-| `POST /buckets/{bucket}/files/delta/signatures` | `delta.signatures.match_signatures` (`delta/signatures.py:100`) | key | delta |
-| `POST /buckets/{bucket}/files/delta/apply` | `delta.apply.delta_apply` (`delta/apply.py:140`) | key | delta |
-| `GET /buckets/{bucket}/files/delta/data/{token}` | `delta.data.get_delta_data` (`delta/data.py:40`) | key | delta |
+| `GET /buckets/{bucket}/files/delta/signatures` | `delta.signatures.get_delta_signatures` (`delta/signatures.py:150`) | key | delta |
+| `POST /buckets/{bucket}/files/delta/signatures` | `delta.signatures.post_delta_signatures` (`delta/signatures.py:210`) | key | delta |
+| `POST /buckets/{bucket}/files/delta/apply` | `delta.apply.delta_apply` (`delta/apply.py:167`) | key | delta |
+| `GET /buckets/{bucket}/files/delta/data/{token}` | `delta.data.get_delta_data` (`delta/data.py:41`) | key | delta |
 
 **Concurrency**: The `delta_apply` endpoint uses a per-file lock manager
 (`file_lock_manager.py`) to serialize concurrent delta applies on the same file.
@@ -267,7 +269,18 @@ race check and released after the atomic rename, ensuring that the entire
 apply operation is atomic with respect to other delta applies on the same file.
 
 **Caps and limits**:
-- `POST /delta/signatures` body size: max 50 MB (`_MAX_SIGNATURES_BODY_SIZE`)
+- `POST /delta/signatures` body size: max 50 MB (`_MAX_SIGNATURES_BODY_SIZE`),
+  enforced by streaming (`read_request_body_capped`) so the body is never fully
+  buffered first.
+- `POST /delta/apply` result size: bounded by `get_max_upload_size()` and the
+  same free-space reserve as a full upload (shared `enforce_size_cap` +
+  `ensure_disk_space`, `api/utils.py`). An over-cap `new_size` is a 400
+  (`FileTooLargeError`), and a reserve breach is a 507 (`InsufficientStorageError`);
+  otherwise N copy ops (each within `base_size`) could declare an arbitrarily
+  large `new_size` and amplify a small request into a disk-filling write.
+- Global request body: `MaxRequestSizeMiddleware` (`middleware.py`) rejects any
+  HTTP body over `get_max_request_body_size()` with 413 at the ASGI boundary
+  (before parsing and before auth); see `infrastructure.md`.
 - Total temp file storage: max 10 GB (`DELTA_MAX_TEMP_STORAGE_BYTES`)
 - Active tokens: max 1000 (`DELTA_MAX_ACTIVE_TOKENS`)
 - Token TTL: 300s (configurable via `HSYNC_DELTA_TOKEN_TTL`)

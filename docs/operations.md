@@ -388,6 +388,7 @@ automatically. Configure rotation with:
 | **Files per bucket** | No hard limit. Listing performance depends on filesystem `readdir` speed. For buckets with >100k files, consider subdirectories. |
 | **Concurrent clients** | Up to `HSYNC_WS_MAX_CONNECTIONS` (default 1000). Each WebSocket connection uses ~50–100 KB of RAM. |
 | **Max upload size** | Configurable via `HSYNC_MAX_UPLOAD_SIZE` (default 10 GiB). |
+| **Max request body** | Configurable via `HSYNC_MAX_REQUEST_BODY_SIZE` (default = max upload + 64 MiB); rejected with `413` before the body is buffered. |
 | **Concurrent uploads** | Limited by uvicorn worker threads and `HSYNC_WORKERS` (must be 1 for WebSocket support). |
 
 ### Large file behavior
@@ -396,6 +397,10 @@ automatically. Configure rotation with:
   downloads without loading the entire file into memory.
 - **Memory usage**: The server uses `aiofiles` for async I/O and streams file
   content in chunks. A 10 GB upload will not consume 10 GB of RAM.
+- **Request body buffering**: The HTTP body is parsed and spooled to a temporary
+  file before the handler runs, so it is bounded by `HSYNC_MAX_REQUEST_BODY_SIZE`;
+  a request over that cap is rejected with `413` as soon as it is detected,
+  before it can fill disk.
 - **Disk space**: The server checks `HSYNC_MIN_FREE_DISK_SPACE` before accepting
   uploads and rejects them if disk space is too low.
 

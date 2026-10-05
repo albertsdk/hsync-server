@@ -270,10 +270,10 @@ class TestFileDiskSpace:
 
         with (
             patch(
-                "hsync_server.api.files.upload.get_settings",
+                "hsync_server.api.utils.get_settings",
                 return_value=SimpleNamespace(min_free_disk_space=reserve),
             ),
-            patch("shutil.disk_usage", return_value=fake_usage),
+            patch("hsync_server.api.utils.disk_usage", return_value=fake_usage),
         ):
             response = await client.post(
                 "/api/v1/buckets/diskbucket/files",
@@ -309,10 +309,10 @@ class TestFileDiskSpace:
 
         with (
             patch(
-                "hsync_server.api.files.upload.get_settings",
+                "hsync_server.api.utils.get_settings",
                 return_value=SimpleNamespace(min_free_disk_space=reserve),
             ),
-            patch("shutil.disk_usage", return_value=fake_usage),
+            patch("hsync_server.api.utils.disk_usage", return_value=fake_usage),
         ):
             response = await client.post(
                 "/api/v1/buckets/diskbucket2/files",

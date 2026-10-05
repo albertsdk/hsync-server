@@ -14,6 +14,7 @@ This module provides the REST API endpoints for:
 
 import asyncio
 import hmac
+import json
 import os
 from os import remove, walk
 from pathlib import Path
@@ -38,7 +39,7 @@ from hsync_common.protocol.rest import (
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
-from hsync_server.api.utils import resolve_within_bucket
+from hsync_server.api.utils import read_request_body_capped, resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
 from hsync_server.constants import BACKUP_SUFFIX, ActionLabel
@@ -51,6 +52,11 @@ from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import get_tombstone_store
 from hsync_server.versions import server_version_info
+
+# Cap on the POST /tombstones body: comfortably above a full
+# ``TOMBSTONE_MAX_ENTRIES`` payload, so a hostile member cannot force the
+# server to buffer an unbounded body before validation runs.
+_MAX_TOMBSTONE_BODY_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
 @auth_router.get(rest_bucket_template(REST_FILES_UPLOAD_STATUS_SUFFIX))
@@ -384,9 +390,10 @@ async def post_tombstones(
         InvalidPathError: If the body is not a JSON object.
     """
     check_bucket_access(bucket, ctx)
+    body_bytes = await read_request_body_capped(request, _MAX_TOMBSTONE_BODY_SIZE)
     try:
-        payload = await request.json()
-    except Exception:
+        payload = json.loads(body_bytes)
+    except (ValueError, UnicodeDecodeError):
         raise InvalidPathError(details={"reason": "invalid JSON body"})
     if not isinstance(payload, dict):
         raise InvalidPathError(details={"reason": "tombstone payload must be a JSON object"})

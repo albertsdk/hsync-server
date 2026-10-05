@@ -51,6 +51,11 @@ VALID_LOG_FORMATS: Final[tuple[str, ...]] = ("text", "json")
 # Application root path - resolved absolute path to the project directory
 _HSYNC_PATH: str = str(Path(__file__).parent.parent.resolve())
 
+# Headroom added to ``max_upload_size`` when deriving the request-body cap:
+# multipart boundaries and the small text parts (metadata, vclock, cid) share
+# the same HTTP body as the file, so the cap must exceed the largest legal file.
+MAX_REQUEST_BODY_OVERHEAD: Final[int] = 64 * 1024 * 1024  # 64 MiB
+
 
 # =============================================================================
 # Environment File Loading
@@ -114,6 +119,14 @@ class Settings(BaseSettings):
         default=10 * 1024 * 1024 * 1024,  # 10GB
         ge=0,
         description="Maximum file upload size in bytes",
+    )
+    max_request_body_size: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Hard cap in bytes on any HTTP request body, enforced before the "
+            "body is buffered (0 = derive from max_upload_size)"
+        ),
     )
 
     # Storage Configuration
@@ -447,6 +460,21 @@ def get_trusted_proxies() -> frozenset[str]:
 def get_max_upload_size() -> int:
     """Get maximum upload size in bytes from environment (late binding)."""
     return get_settings().max_upload_size
+
+
+def get_max_request_body_size() -> int:
+    """Get the effective hard cap on HTTP request bodies in bytes (late binding).
+
+    An explicit ``HSYNC_MAX_REQUEST_BODY_SIZE`` always wins; otherwise the cap
+    is ``max_upload_size`` plus multipart headroom, so a legal upload at the
+    size limit still fits. ``0`` disables the cap (both settings unlimited).
+    """
+    settings = get_settings()
+    if settings.max_request_body_size > 0:
+        return settings.max_request_body_size
+    if settings.max_upload_size > 0:
+        return settings.max_upload_size + MAX_REQUEST_BODY_OVERHEAD
+    return 0
 
 
 def get_cors_enabled() -> bool:

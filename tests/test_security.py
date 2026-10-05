@@ -437,3 +437,37 @@ class TestWebSocketEventSecurity:
         assert mock_websocket.close.call_args.kwargs.get("code") == 4000 or (
             mock_websocket.close.call_args.args and mock_websocket.close.call_args.args[0] == 4000
         )
+
+
+class TestPriorKeyCacheRevocation:
+    """A rotated-out prior key must not survive inside the KDF cache."""
+
+    def test_second_rotation_revokes_a_cached_prior_key(self):
+        from hsync_server.auth import reset_auth_cache, verify_token
+        from hsync_server.auth_store import get_auth_store
+        from hsync_server.exceptions import InvalidApiKeyError
+
+        reset_auth_cache()
+        try:
+            store = get_auth_store()
+            account_id, token1 = store.create_account("cache-user", "client")
+
+            # First use caches token1 as an active-key verification.
+            assert verify_token(token1, store).id == account_id
+
+            # Rotation 1: token1 becomes the prior key (grace window) and is
+            # still accepted. The second call exercises the cached prior entry,
+            # which is bound to the current prior hash.
+            store.rotate_key(account_id, grace_seconds=3600)
+            assert verify_token(token1, store).id == account_id
+            assert verify_token(token1, store).id == account_id
+
+            # Rotation 2: the prior slot now holds rotation 1's key, so token1
+            # is no longer a valid secret. A cached prior result would wrongly
+            # keep it alive for the fresh grace window.
+            store.rotate_key(account_id, grace_seconds=3600)
+
+            with pytest.raises(InvalidApiKeyError):
+                verify_token(token1, store)
+        finally:
+            reset_auth_cache()

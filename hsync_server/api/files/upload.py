@@ -51,6 +51,8 @@ from hsync_server.api.file_utils import (
     update_file_timestamp,
 )
 from hsync_server.api.utils import (
+    enforce_size_cap,
+    ensure_disk_space,
     resolve_within_bucket,
     set_permissions,
 )
@@ -61,7 +63,7 @@ from hsync_server.arbitration import (
 )
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import decompress_file_to_file
-from hsync_server.config import get_buckets_path, get_max_upload_size, get_settings
+from hsync_server.config import get_buckets_path, get_max_upload_size
 from hsync_server.constants import BACKUP_SUFFIX, DEFAULT_FILE_PERMISSIONS, ActionLabel
 from hsync_server.exceptions import (
     ChecksumMismatchError,
@@ -138,19 +140,6 @@ def _wire_relpath(bucket: str, path: str, filename: str | None) -> str:
     multipart part and is rendered as-is, matching the previous f-string.
     """
     return f"{bucket}/{path}/{filename}" if path else f"{bucket}/{filename}"
-
-
-def _enforce_size_cap(total_bytes: int, max_upload_size: int) -> None:
-    """Raise :class:`FileTooLargeError` when an upload exceeds the configured cap.
-
-    A non-positive cap means "unlimited". Shared by the resume-append and the
-    standard upload loops so the anti-DoS check cannot drift between them.
-    """
-    if max_upload_size > 0 and total_bytes > max_upload_size:
-        raise FileTooLargeError(
-            message=f"File exceeds maximum size of {max_upload_size} bytes",
-            details={"max_size": max_upload_size, "received_bytes": total_bytes},
-        )
 
 
 def _partial_upload_response(total_bytes: int, size: int) -> JSONResponse:
@@ -245,28 +234,7 @@ async def upload_file(
 
         # Check disk space before accepting upload (size-aware: the filesystem
         # must hold the configured reserve plus the incoming file)
-        min_free = get_settings().min_free_disk_space
-        if min_free > 0:
-            from shutil import disk_usage
-
-            try:
-                usage = disk_usage(buckets_path)
-                required = min_free + size
-                if usage.free < required:
-                    free_mb = usage.free / (1024 * 1024)
-                    required_mb = required / (1024 * 1024)
-                    raise InsufficientStorageError(
-                        message=(
-                            f"Insufficient storage: {free_mb:.0f} MB available, "
-                            f"{required_mb:.0f} MB required"
-                        ),
-                        details={
-                            "available_bytes": usage.free,
-                            "required_bytes": required,
-                        },
-                    )
-            except OSError:
-                log.warning("Could not check disk space")
+        ensure_disk_space(size)
 
         if not is_valid_cid(cid):
             raise ValidationError(
@@ -418,7 +386,7 @@ async def upload_file(
             async with aiofiles.open(partial_file_path, "ab") as f:
                 while chunk := await file.read(_UPLOAD_COPY_CHUNK):
                     total_bytes += len(chunk)
-                    _enforce_size_cap(total_bytes, max_upload_size)
+                    enforce_size_cap(total_bytes, max_upload_size)
                     await f.write(chunk)
                     fused_sha.update(chunk)
                 # Ensure appended data reaches physical storage
@@ -449,7 +417,7 @@ async def upload_file(
                 file_location_tmp = str(temp_file.name)
                 while chunk := await file.read(_UPLOAD_COPY_CHUNK):
                     total_bytes += len(chunk)
-                    _enforce_size_cap(total_bytes, max_upload_size)
+                    enforce_size_cap(total_bytes, max_upload_size)
                     await temp_file.write(chunk)
                     if fused_sha is not None:
                         fused_sha.update(chunk)

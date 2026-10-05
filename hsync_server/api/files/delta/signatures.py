@@ -61,7 +61,7 @@ from pydantic import BaseModel, Field
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.files.delta._util import delta_disabled_response
 from hsync_server.api.files.delta.tokens import delta_token_store
-from hsync_server.api.utils import resolve_within_bucket
+from hsync_server.api.utils import read_request_body_capped, resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import COMPRESSION_LEVEL, should_compress
 from hsync_server.config import get_compression_enabled, get_delta_enabled
@@ -223,16 +223,8 @@ async def post_delta_signatures(
 
     # Read and validate body size before Pydantic parsing, regardless
     # of whether Content-Length is present or the client uses chunked
-    # encoding — without this an attacker could bypass the 50 MB cap.
-    body_bytes = await request.body()
-    if len(body_bytes) > _MAX_SIGNATURES_BODY_SIZE:
-        raise ValidationError(
-            message="Request body too large",
-            details={
-                "max_size": _MAX_SIGNATURES_BODY_SIZE,
-                "received_size": len(body_bytes),
-            },
-        )
+    # encoding — the body is streamed so it is never fully buffered first.
+    body_bytes = await read_request_body_capped(request, _MAX_SIGNATURES_BODY_SIZE)
 
     body = DeltaSignaturesRequest.model_validate_json(body_bytes)
 

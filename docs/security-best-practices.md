@@ -190,6 +190,25 @@ reasonable for most deployments, but adjust them based on your workload:
 
 ---
 
+## Request Body Limits
+
+The server rejects an HTTP request body larger than `HSYNC_MAX_REQUEST_BODY_SIZE`
+bytes **before** it parses or buffers it, and before authentication runs, so an
+oversized body can never fill disk or memory first (HTTP `413`). By default the
+cap is derived from the upload limit (`HSYNC_MAX_UPLOAD_SIZE` + 64 MiB
+headroom); set it explicitly to a smaller value to tighten the surface, or to
+`0` together with `HSYNC_MAX_UPLOAD_SIZE=0` to disable it entirely:
+
+```bash
+export HSYNC_MAX_REQUEST_BODY_SIZE=2147483648   # 2 GiB hard cap
+```
+
+A delta upload (`POST …/delta/apply`) rebuilds a file on disk, so it is bound by
+the same `HSYNC_MAX_UPLOAD_SIZE` and `HSYNC_MIN_FREE_DISK_SPACE` guards as a full
+upload — an oversized delta result is rejected instead of written.
+
+---
+
 ## WebSocket Hardening
 
 ### Connection limits

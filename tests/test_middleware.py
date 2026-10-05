@@ -20,6 +20,7 @@ from hsync_server.constants import (
 from hsync_server.error_handlers import global_exception_handler
 from hsync_server.logger import get_request_id
 from hsync_server.middleware import (
+    MaxRequestSizeMiddleware,
     RequestIdMiddleware,
     TransferAwareGZipMiddleware,
     VersionMiddleware,
@@ -445,3 +446,89 @@ class TestTransferAwareGZipMiddleware:
 
         assert response.status_code == 200
         assert "Content-Encoding" not in response.headers
+
+
+# =============================================================================
+# MaxRequestSizeMiddleware
+# =============================================================================
+
+
+class TestMaxRequestSizeMiddleware:
+    """Pre-auth request-body cap: declared-length fast path and chunked abort."""
+
+    def test_declared_length_over_cap_is_413(self):
+        app = FastAPI()
+        app.add_middleware(MaxRequestSizeMiddleware, max_size=10)
+
+        @app.post("/upload")
+        async def _upload():
+            return {"ok": True}
+
+        response = TestClient(app).post("/upload", content=b"x" * 100)
+
+        assert response.status_code == 413
+
+    def test_body_under_cap_is_accepted(self):
+        app = FastAPI()
+        app.add_middleware(MaxRequestSizeMiddleware, max_size=1000)
+
+        @app.post("/upload")
+        async def _upload():
+            return {"ok": True}
+
+        response = TestClient(app).post("/upload", content=b"x" * 100)
+
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+
+    def test_zero_cap_disables_the_limit(self):
+        app = FastAPI()
+        app.add_middleware(MaxRequestSizeMiddleware, max_size=0)
+
+        @app.post("/upload")
+        async def _upload():
+            return {"ok": True}
+
+        response = TestClient(app).post("/upload", content=b"x" * (1024 * 1024))
+
+        assert response.status_code == 200
+
+    @pytest.mark.anyio
+    async def test_chunked_body_without_length_is_aborted_early(self):
+        """No Content-Length: the running total trips mid-stream."""
+        consumed = 0
+
+        async def app(scope, receive, send):
+            nonlocal consumed
+            while True:
+                message = await receive()
+                if message["type"] == "http.request":
+                    consumed += len(message.get("body", b""))
+                    if not message.get("more_body"):
+                        break
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        middleware = MaxRequestSizeMiddleware(app, max_size=10)
+        scope = {"type": "http", "method": "POST", "path": "/", "headers": []}
+        chunks = iter(
+            [
+                {"type": "http.request", "body": b"x" * 8, "more_body": True},
+                {"type": "http.request", "body": b"x" * 8, "more_body": True},
+                {"type": "http.request", "body": b"x" * 8, "more_body": False},
+            ]
+        )
+
+        async def receive():
+            return next(chunks)
+
+        sent: list[dict] = []
+
+        async def send(message):
+            sent.append(message)
+
+        await middleware(scope, receive, send)
+
+        assert sent[0]["status"] == 413
+        # Only the first chunk reached the app: the body was not drained.
+        assert consumed == 8

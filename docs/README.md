@@ -120,7 +120,8 @@ all defaults.
 | `HSYNC_BUCKETS` | `<app>/buckets` (absolute) | Directory for bucket data storage (relative values are resolved against the process CWD) |
 | `HSYNC_STATE_DIR` | `<app>/state` (absolute) | Directory for the per-bucket state DBs and the global auth DB |
 | `HSYNC_ADMIN_KEY` | *(optional)* | Bootstrap admin secret (64 hex). If unset, the server generates and prints a one-time admin token. |
-| `HSYNC_MAX_UPLOAD_SIZE` | `10737418240` (10 GiB) | Maximum upload size in bytes |
+| `HSYNC_MAX_UPLOAD_SIZE` | `10737418240` (10 GiB) | Maximum upload size in bytes (`0` = unlimited, which also disables the request-body cap below unless it is set explicitly) |
+| `HSYNC_MAX_REQUEST_BODY_SIZE` | `0` (auto) | Hard cap in bytes on any HTTP request body, enforced before it is buffered. `0` derives `HSYNC_MAX_UPLOAD_SIZE` + 64 MiB |
 | `HSYNC_MIN_FREE_DISK_SPACE` | `524288000` (500 MiB) | Minimum free disk before rejecting uploads (`0` = disabled) |
 | `HSYNC_CORS_ENABLED` | `false` | Enable CORS headers |
 | `HSYNC_CORS_ORIGINS` | — | Allowed CORS origins (comma-separated) |

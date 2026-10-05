@@ -9,12 +9,14 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
   `HSYNC_*` env vars. Singleton via `get_settings()` (`config.py:285`).
 - `load_env_file` (`config.py:54`) loads a dotenv before settings resolve.
 - Typed accessors (used everywhere instead of touching `Settings` directly):
-  `get_port` (`:317`), `get_workers` (`:322`), `get_buckets_path` (`:362`),
+  `get_port` (`:358`), `get_workers` (`:363`), `get_buckets_path` (`:399`),
   `get_state_dir` (`config.py`),
-  `get_admin_key` (`:357`), `get_max_upload_size` (`:397`),
-  `get_compression_enabled` (`:437`), SSL getters (enabled/certfile/keyfile/cert_dir),
-  WS getters (`:442`–`:462`), rate-limit getters (`:367`–`:392`),
-  `get_tombstone_ttl_days` (`:527`), delta getters (`get_delta_enabled`,
+  `get_admin_key` (`:388`), `get_max_upload_size` (`:460`),
+  `get_max_request_body_size` (`:465`; derives `max_upload_size + 64 MiB` when
+  `max_request_body_size` is 0; 0 = uncapped),
+  `get_compression_enabled` (`:510`), SSL getters (enabled/certfile/keyfile/cert_dir),
+  WS getters (`:530`–`:550`), rate-limit getters (`:430`–`:455`),
+  `get_tombstone_ttl_days` (`:560`), delta getters (`get_delta_enabled`,
   `get_delta_token_ttl` only — worthwhileness is client-side
   (`hsync_common` constants), so the server has no min-file-size / change-ratio
   knobs).
@@ -29,11 +31,15 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
 
 `verify_api_key` (`auth.py`) — Bearer account token `hs_<id>_<secret>`; scrypt
 verify against the account store (`auth_store/`) with a KDF cache (SHA-256 of
-the token → account id + generation) and a per-request DB re-check of
-status/generation/expiry. `key_prefix` (8 hex) is logged instead of the secret.
-Wired as a router-level dependency on `auth_router`; `require_admin` gates
-`admin_router`. Bucket membership is enforced by `check_bucket_access`
-(`api/authz.py`).
+the token → `(account_id, generation, key_kind, prior_key_hash)`) and a
+per-request DB re-check of status/generation/expiry. A cached **prior** entry is
+trusted only while the account's current `prior_key_hash` matches the cached
+fingerprint: a later rotation replaces the prior secret, so the entry stops
+matching and falls through to a full verify — a rotated-out key cannot survive
+the next grace window, while repeated requests within one grace window still
+skip scrypt. `key_prefix` (8 hex) is logged instead of the secret. Wired as a
+router-level dependency on `auth_router`; `require_admin` gates `admin_router`.
+Bucket membership is enforced by `check_bucket_access` (`api/authz.py`).
 
 ## Rate limiting (`rate_limiter.py`)
 
@@ -144,9 +150,9 @@ neither the payload nor the event loop is blocked) plus the
 
 `InterceptHandler` (`logger.py:73`) extends the common `BaseInterceptHandler` to
 route stdlib logging into loguru. `setup_logging` (`:103`) honors
-`get_log_level`/`get_log_format`/`get_log_file`/rotation (`config.py:332`–`347`).
+`get_log_level`/`get_log_format`/`get_log_file`/rotation (`config.py:368`–`383`).
 Timestamps are rendered in the configured IANA timezone (`get_tz`,
-`config.py:372`; `HSYNC_TZ`, default `UTC` — validated by a `field_validator`
+`config.py:378`; `HSYNC_TZ`, default `UTC` — validated by a `field_validator`
 on `Settings.tz`) via the tz-aware `timestamp_formatter` passed to
 `hsync_common.logger.build_record_formatter` (`logger.py:_build_formatters`).
 Console colors are gated by `hsync_common.runtime.color_output_enabled`
@@ -154,7 +160,16 @@ Console colors are gated by `hsync_common.runtime.color_output_enabled`
 `hsync_common.runtime.runtime_summary()` (`__main__.py:233`) with the detected
 container runtime, cgroup memory/CPU limits and TTY state.
 Request correlation via `get_request_id`/`set_request_id` (`:63`/`:68`), set by
-`RequestIdMiddleware` (`middleware.py:31`).
+`RequestIdMiddleware` (`middleware.py:37`).
+
+`MaxRequestSizeMiddleware` (`middleware.py`) caps every HTTP request body at
+`get_max_request_body_size()` bytes *before* FastAPI parses/spools it and
+*before* the auth dependency runs: a declared `Content-Length` over the cap is
+answered with 413 immediately, and a chunked body is aborted mid-stream (the
+internal `_RequestBodyTooLarge` subclasses `BaseException` so FastAPI's
+body-parse `except Exception` cannot swallow it into a 400). This is what bounds
+what an unauthenticated client can make the server buffer on disk/in memory, the
+per-endpoint checks being too late. `0` disables the cap.
 
 **Action-label colorization**: the server has no project-local label table.
 `ActionLabel` is re-exported from `hsync_common.labels`

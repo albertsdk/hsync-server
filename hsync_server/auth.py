@@ -68,7 +68,11 @@ class AuthContext:
 # =============================================================================
 
 _CACHE_MAX_ENTRIES = 10000
-_cache: dict[str, tuple[str, int, str]] = {}
+# (account_id, generation_at_verify, key_kind, prior_key_hash)
+# ``prior_key_hash`` is empty for active entries and the tested prior PHC hash
+# for prior entries, so a cache hit can be invalidated when a later rotation
+# replaces the prior secret (see verify_token).
+_cache: dict[str, tuple[str, int, str, str]] = {}
 _cache_lock = threading.Lock()
 
 
@@ -76,23 +80,25 @@ def _cache_key(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def _cache_get(token: str) -> tuple[str, int, str] | None:
+def _cache_get(token: str) -> tuple[str, int, str, str] | None:
     with _cache_lock:
         return _cache.get(_cache_key(token))
 
 
-def _cache_put(token: str, account_id: str, generation: int, key_kind: str) -> None:
+def _cache_put(
+    token: str, account_id: str, generation: int, key_kind: str, prior_key_hash: str = ""
+) -> None:
     with _cache_lock:
         # Bound the cache to avoid unbounded growth.
         if len(_cache) > _CACHE_MAX_ENTRIES:
             _cache.clear()
-        _cache[_cache_key(token)] = (account_id, generation, key_kind)
+        _cache[_cache_key(token)] = (account_id, generation, key_kind, prior_key_hash)
 
 
 def _cache_evict_account(account_id: str) -> None:
     """Evict all cache entries for an account (on rotate/disable/delete)."""
     with _cache_lock:
-        to_remove = [k for k, (aid, _, _) in _cache.items() if aid == account_id]
+        to_remove = [k for k, (aid, _, _, _) in _cache.items() if aid == account_id]
         for k in to_remove:
             _cache.pop(k, None)
 
@@ -111,9 +117,10 @@ def reset_auth_cache() -> None:
 def verify_token(token: str, store: AuthStore) -> AuthContext:
     """Verify a bearer/ws token and return the :class:`AuthContext`.
 
-    Raises ``InvalidApiKeyError`` on any failure.  The KDF cache stores only
-    the scrypt result ``(account_id, generation_at_verify, key_kind)``.  On
-    every call the account row is re-read from the DB to check status,
+    Raises ``InvalidApiKeyError`` on any failure.  The KDF cache stores
+    ``(account_id, generation_at_verify, key_kind, prior_key_hash)``; prior
+    entries are bound to the tested prior hash so a rotation invalidates them.
+    On every call the account row is re-read from the DB to check status,
     generation, and expiry.
     """
     parsed = parse_token(token)
@@ -126,10 +133,15 @@ def verify_token(token: str, store: AuthStore) -> AuthContext:
     # Try cache first.
     cached = _cache_get(token)
     if cached is not None:
-        cached_id, gen_at_verify, key_kind = cached
+        cached_id, gen_at_verify, key_kind, prior_fp = cached
         if cached_id == account_id:
             account = store.get_account(account_id)
-            if account is not None:
+            # A prior entry is trusted only while the account's current prior
+            # hash is unchanged: a later rotation replaces it, so the cached
+            # fingerprint stops matching and falls through to a full verify —
+            # otherwise a rotated-out key would stay accepted through the new
+            # grace window (revocation bypass).
+            if account is not None and (key_kind == "active" or account.prior_key_hash == prior_fp):
                 ctx = _check_account(account, gen_at_verify, key_kind)
                 if ctx is not None:
                     return ctx
@@ -149,8 +161,11 @@ def verify_token(token: str, store: AuthStore) -> AuthContext:
         )
         raise InvalidApiKeyError()
 
-    # Cache the KDF result.
-    _cache_put(token, account_id, account.key_generation, verified_kind)
+    # Cache the KDF result. Prior entries carry the tested prior hash so a later
+    # rotation invalidates them; a repeated request within the same grace window
+    # then costs no scrypt.
+    prior_fp = (account.prior_key_hash or "") if verified_kind == "prior" else ""
+    _cache_put(token, account_id, account.key_generation, verified_kind, prior_fp)
 
     ctx = _check_account(account, account.key_generation, verified_kind)
     if ctx is None:

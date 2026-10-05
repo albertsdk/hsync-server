@@ -259,6 +259,13 @@ sudo ufw allow 9753/tcp
 - The server checks `HSYNC_MIN_FREE_DISK_SPACE` before accepting uploads.
 - Free up disk space or set `HSYNC_MIN_FREE_DISK_SPACE=0` to disable the check.
 
+**Request fails with HTTP 413 "Request body too large":**
+- The request body exceeds `HSYNC_MAX_REQUEST_BODY_SIZE` (by default
+  `HSYNC_MAX_UPLOAD_SIZE` + 64 MiB). Raise that variable, or lower
+  `HSYNC_MAX_UPLOAD_SIZE` consistently with the maximum file you send.
+- A delta upload that would reconstruct a file larger than
+  `HSYNC_MAX_UPLOAD_SIZE` is rejected too; the client falls back to a full upload.
+
 **Upload returns 409 Conflict:**
 - A file with the same SHA-256 hash already exists on the server (duplicate
   upload; the client can skip it), or the upload lost the causal arbitration: it

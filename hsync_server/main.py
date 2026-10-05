@@ -36,11 +36,22 @@ from .api import (  # noqa: F401
     presence,
 )
 from .auth_store import get_auth_store
-from .config import get_buckets_path, get_cors_enabled, get_cors_origins, get_settings
+from .config import (
+    get_buckets_path,
+    get_cors_enabled,
+    get_cors_origins,
+    get_max_request_body_size,
+    get_settings,
+)
 from .constants import HEADER_CLIENT_NAME, HEADER_CLIENT_VERSION, HSYNC_VERSION
 from .error_handlers import register_exception_handlers
 from .hashes import set_sha256_hashes
-from .middleware import RequestIdMiddleware, TransferAwareGZipMiddleware, VersionMiddleware
+from .middleware import (
+    MaxRequestSizeMiddleware,
+    RequestIdMiddleware,
+    TransferAwareGZipMiddleware,
+    VersionMiddleware,
+)
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .routers import auth_router, public_router
 from .state_maintenance import (
@@ -131,6 +142,18 @@ app.include_router(admin_api.admin_router)
 # Transfer payloads (file bytes and delta literals) are excluded: their coding
 # is the sync protocol's own (identity | zstd) and clients reject anything else.
 app.add_middleware(TransferAwareGZipMiddleware, minimum_size=1000)
+
+# Reject oversized request bodies at the ASGI receive boundary. FastAPI parses
+# and spools multipart bodies before the auth dependency runs, so this is the
+# only layer that bounds what an unauthenticated client can make the server
+# buffer on disk/in memory.
+_max_body_size = get_max_request_body_size()
+if _max_body_size <= 0:
+    log.warning(
+        "Request-body cap disabled (HSYNC_MAX_REQUEST_BODY_SIZE=0 with "
+        "HSYNC_MAX_UPLOAD_SIZE=0); request bodies are unbounded"
+    )
+app.add_middleware(MaxRequestSizeMiddleware, max_size=_max_body_size)
 
 # Add CORS middleware if enabled (for web frontend compatibility)
 if get_cors_enabled():

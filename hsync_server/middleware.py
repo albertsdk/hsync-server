@@ -21,7 +21,7 @@ from loguru import logger as log
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import JSONResponse, Response
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .constants import (
     HEADER_CLIENT_NAME,
@@ -154,6 +154,97 @@ class VersionMiddleware(BaseHTTPMiddleware):
         response.headers.update(version_headers)
 
         return response
+
+
+class MaxRequestSizeMiddleware:
+    """Reject HTTP request bodies larger than *max_size* before they are buffered.
+
+    FastAPI reads and spools the entire request body — multipart file parts
+    included — *before* it resolves the authentication dependency, so the
+    per-endpoint size checks run too late to bound what a client can make the
+    server store in memory or in a spool file. This middleware enforces the cap
+    at the ASGI ``receive`` boundary: a declared ``Content-Length`` over the
+    limit is answered immediately with 413, and a chunked body (no length) is
+    aborted as soon as the running total crosses it.
+
+    ``max_size <= 0`` disables the cap.
+
+    Usage:
+        app.add_middleware(MaxRequestSizeMiddleware, max_size=...)
+    """
+
+    def __init__(self, app: ASGIApp, max_size: int) -> None:
+        self._app = app
+        self._max_size = max_size
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or self._max_size <= 0:
+            await self._app(scope, receive, send)
+            return
+
+        for name, value in scope.get("headers", []):
+            if name == b"content-length" and _declared_length_exceeds(value, self._max_size):
+                await _send_request_too_large(send)
+                return
+
+        received = 0
+
+        async def limited_receive() -> Message:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self._max_size:
+                    raise _RequestBodyTooLarge()
+            return message
+
+        response_started = False
+
+        async def tracking_send(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self._app(scope, limited_receive, tracking_send)
+        except _RequestBodyTooLarge:
+            if response_started:
+                raise
+            await _send_request_too_large(send)
+
+
+class _RequestBodyTooLarge(BaseException):
+    """Internal signal raised by :class:`MaxRequestSizeMiddleware`.
+
+    Subclasses :class:`BaseException` deliberately: FastAPI converts any
+    ``Exception`` raised while parsing the request body into a generic 400,
+    which would swallow the signal before the middleware can answer 413.
+    """
+
+
+def _declared_length_exceeds(value: bytes, max_size: int) -> bool:
+    """True when a ``Content-Length`` header value is a number above the cap."""
+    try:
+        return int(value) > max_size
+    except ValueError:
+        return False
+
+
+async def _send_request_too_large(send: Send) -> None:
+    """Emit a minimal 413 JSON response on the raw ASGI channel."""
+    body = b'{"error": "HSYNC-1006", "message": "Request body too large"}'
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
 
 
 # Request paths that stream hsync payload *bytes*: the full-file download and

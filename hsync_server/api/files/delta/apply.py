@@ -59,7 +59,12 @@ from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import update_file_timestamp
 from hsync_server.api.files.delta._util import delta_disabled_response
 from hsync_server.api.files.upload import _flush_to_disk
-from hsync_server.api.utils import resolve_within_bucket, set_permissions
+from hsync_server.api.utils import (
+    enforce_size_cap,
+    ensure_disk_space,
+    resolve_within_bucket,
+    set_permissions,
+)
 from hsync_server.arbitration import (
     ArbitrationOutcome,
     arbitrate_upload,
@@ -67,9 +72,10 @@ from hsync_server.arbitration import (
 )
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import decompress_file_to_file
-from hsync_server.config import get_buckets_path, get_delta_enabled
+from hsync_server.config import get_buckets_path, get_delta_enabled, get_max_upload_size
 from hsync_server.exceptions import (
     ConflictLostError,
+    InsufficientStorageError,
     InvalidBucketNameError,
     InvalidPathError,
     SupersededError,
@@ -200,6 +206,13 @@ async def delta_apply(
 
         meta = _parse_metadata(metadata)
         base_sha256, new_sha256, new_size, ops = _validate_instructions(meta)
+
+        # The rebuild materialises `new_size` bytes on disk: enforce the same
+        # size cap and free-space reserve as a full upload. Without this, N copy
+        # ops (all <= base_size) can declare an arbitrarily large new_size and
+        # amplify a small request into a disk-exhausting write.
+        enforce_size_cap(new_size, get_max_upload_size(), label="Delta result")
+        ensure_disk_space(new_size)
 
         cid = meta.get("cid", "delta")
         if not is_valid_cid(cid):
@@ -419,6 +432,7 @@ async def delta_apply(
         HSyncFileNotFoundError,
         SupersededError,
         ConflictLostError,
+        InsufficientStorageError,
         ValidationError,
     ):
         _record_delta_upload(start_time, "failure")
