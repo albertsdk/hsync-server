@@ -34,6 +34,7 @@ It scales with your setup — from a laptop or NAS on a small LAN to a VPS servi
 **Quick navigation:**
 - **New to HSYNC Server?** Start with [What you can do](#what-you-can-do-with-hsync-server) and the [Getting Started guide](docs/getting-started.md)
 - **Do you need the server?** See [Do you need the server?](#do-you-need-the-server) — and the client's [p2p Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/p2p-mode.md) alternative
+- **Privacy & security** See [Privacy, security & openness](#privacy-security--openness)
 - **Want to contribute?** See [Contributing](CONTRIBUTING.md)
 - **Looking for detailed documentation?** Navigate to [docs/README.md](docs/README.md)
 
@@ -151,6 +152,13 @@ opaque internal formats.
 - ⚡ **Real-time reactivity** — unlike traditional HTTP-based tools that rely on periodic polling, HSYNC reacts instantly to file changes using local watchdogs and event-driven WebSockets.
 - 🏠 **Self-hosted by design** — you operate the hub, the storage and the credentials: buckets are plain directories on your own filesystem and access is per-account with roles, with no third-party service in the data path.
 
+## Privacy, security & openness
+
+- 🏠 **Private** — self-hosted by design: no vendor account and no third-party service in the data path; buckets are plain directories and access is per-account with roles.
+- 🧾 **Encrypted** — HTTPS/WSS with a server certificate you can pin (`hsync-server admin tls fingerprint`); no plaintext payload path.
+- 📖 **Open** — the REST and WebSocket API is documented end to end and built on the shared, versioned protocol (see the [API Reference](docs/api.md) and the [protocol](https://github.com/albertsdk/hsync-common/blob/main/docs/protocol.md)).
+- 📡 **No telemetry** — the server sends no usage data or analytics anywhere.
+
 ## Command Line Options
 
 ```bash
@@ -218,6 +226,7 @@ Key variables:
 | [Sync Flow](docs/sync-flow.md) | Server-side sync flow: storage, events, tombstones |
 | [FAQ](docs/faq.md) | Frequently asked questions and troubleshooting |
 | [Contributing](CONTRIBUTING.md) | Development setup and contribution guidelines |
+| [Report an issue](https://github.com/albertsdk/hsync-server/issues) | Open development and bug tracking |
 | [Security Policy](SECURITY.md) | Supported versions and how to report vulnerabilities |
 
 ## Associated Ecosystem Components
