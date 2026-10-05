@@ -25,7 +25,7 @@ the server-local choices not big enough for an ADR.
 - **Per-bucket WS pools** (`connection_manager.py:71`) instead of one global hub:
   isolation + smaller broadcast fan-out; global slot accounting still caps total
   and per-IP connections (`config.py:457`/`:462`).
-- **Per-account tokens + bucket membership** (`auth.py` → `auth_store.py`) —
+- **Per-account tokens + bucket membership** (`auth.py` → `auth_store/`) —
   `hs_<id>_<secret>` tokens with roles (`admin`/`client`) and per-bucket
   `owner`/`member` membership; scrypt-hashed secrets, KDF cache, per-request
   DB re-check. Replaces the single shared API key (ADR-0008).

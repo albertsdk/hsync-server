@@ -181,20 +181,26 @@ def fast_scrypt(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
     import secrets as _secrets
 
     from hsync_server import auth_store
+    from hsync_server.auth_store import credentials as _auth_credentials
 
     # --- Low scrypt params ---
-    monkeypatch.setattr(auth_store, "SCRYPT_N", 2**4)
-    monkeypatch.setattr(auth_store, "SCRYPT_R", 8)
-    monkeypatch.setattr(auth_store, "SCRYPT_P", 1)
-    monkeypatch.setattr(auth_store, "SCRYPT_MAXMEM", 32 * 1024 * 1024)
-    dummy_salt = _secrets.token_bytes(auth_store.SALT_LEN)
+    # The scrypt parameters live in the ``credentials`` submodule and are read
+    # at call time by _hash_secret/_verify_secret, so patch them there.
+    monkeypatch.setattr(_auth_credentials, "SCRYPT_N", 2**4)
+    monkeypatch.setattr(_auth_credentials, "SCRYPT_R", 8)
+    monkeypatch.setattr(_auth_credentials, "SCRYPT_P", 1)
+    monkeypatch.setattr(_auth_credentials, "SCRYPT_MAXMEM", 32 * 1024 * 1024)
+    dummy_salt = _secrets.token_bytes(_auth_credentials.SALT_LEN)
     # _DUMMY_PHC is the PHC string auth._dummy_verify reads; rebuild it with
     # the patched low scrypt params so the anti-enumeration burn stays fast.
-    monkeypatch.setattr(
-        auth_store,
-        "_DUMMY_PHC",
-        auth_store._hash_secret("hsync-dummy-key-for-timing", dummy_salt),
-    )
+    # ``hsync_server.auth`` imported the value at import time, so patch it there
+    # (and on the facade) as well as on the defining submodule.
+    dummy_phc = _auth_credentials._hash_secret("hsync-dummy-key-for-timing", dummy_salt)
+    monkeypatch.setattr(_auth_credentials, "_DUMMY_PHC", dummy_phc)
+    monkeypatch.setattr(auth_store, "_DUMMY_PHC", dummy_phc)
+    import hsync_server.auth as _auth_module
+
+    monkeypatch.setattr(_auth_module, "_DUMMY_PHC", dummy_phc, raising=False)
 
     # --- Isolate state dir and buckets ---
     tmp = tmp_path_factory.mktemp("hsync_test")

@@ -92,7 +92,7 @@ no existence leak.
 
 | Component | File |
 |---|---|
-| Account store (tables, scrypt, bootstrap, CRUD) | `hsync_server/auth_store.py` |
+| Account store (tables, scrypt, bootstrap, CRUD) | `hsync_server/auth_store/` |
 | Token verification + AuthContext + dependencies | `hsync_server/auth.py` |
 | Bucket endpoints (ownership, authz) | `hsync_server/api/buckets.py` |
 | Membership/owner API | `hsync_server/api/members.py` |

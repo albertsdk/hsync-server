@@ -25,10 +25,10 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
 - Delta transfer config that **takes effect**: `delta_enabled` (default
   `true`), `delta_token_ttl` (300s), `rate_limit_delta` ("100/minute").
 
-## Authentication (`auth.py` + `auth_store.py`)
+## Authentication (`auth.py` + `auth_store/`)
 
 `verify_api_key` (`auth.py`) — Bearer account token `hs_<id>_<secret>`; scrypt
-verify against the account store (`auth_store.py`) with a KDF cache (SHA-256 of
+verify against the account store (`auth_store/`) with a KDF cache (SHA-256 of
 the token → account id + generation) and a per-request DB re-check of
 status/generation/expiry. `key_prefix` (8 hex) is logged instead of the secret.
 Wired as a router-level dependency on `auth_router`; `require_admin` gates

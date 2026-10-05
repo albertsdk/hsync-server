@@ -36,7 +36,7 @@ Prometheus metrics exposed at `/metrics` via `Instrumentator` (`main.py:125`).
 | `public_router` | none (health, metrics, time, WS) | `routers.py:27` |
 
 `verify_api_key` (`auth.py`) extracts the Bearer token and verifies it against
-the account store (`auth_store.py`): scrypt hash check with a KDF cache, then a
+the account store (`auth_store/`): scrypt hash check with a KDF cache, then a
 per-request DB re-check of status/generation/expiry. Failures raise
 `MissingApiKeyError`/`InvalidApiKeyError`; authorization failures raise
 `ForbiddenError`/`ConflictError` (`exceptions.py`). Bucket-scoped endpoints
@@ -91,7 +91,7 @@ partial uploads use the `.part` suffix (common `constants.py`), and deletions le
 tombstones (`tombstones.py`). Causal versions/tombstones live in per-bucket DBs
 `get_state_dir()/server/<bucket>.db` (ADR-0025); accounts and bucket membership
 live in the global `server/auth.db` via the server-only `clients`/`bucket_members` tables
-(`auth_store.py`). The SHA-256 cache is an in-memory unbounded dict, rebuilt at startup (not LRU).
+(`auth_store/`). The SHA-256 cache is an in-memory unbounded dict, rebuilt at startup (not LRU).
 
 ## Build & packaging
 

@@ -50,7 +50,7 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 
 | Scenario | Public API measured |
 | --- | --- |
-| `parse_token(valid\|bad_prefix\|bad_id\|bad_secret)` | `auth_store.parse_token` (`hsync_server/auth_store.py:191`) — wire token gate, one per REST/WS auth |
+| `parse_token(valid\|bad_prefix\|bad_id\|bad_secret)` | `auth_store.parse_token` (`hsync_server/auth_store/credentials.py:96`) — wire token gate, one per REST/WS auth |
 | `auth_cache_key(sha256)` | `auth._cache_key` (`hsync_server/auth.py:74`) — SHA-256(token) KDF cache key |
 | `get_client_ip(trusted+xff\|direct)` | `rate_limiter.get_client_ip` (`hsync_server/rate_limiter.py:74`) — trusted-proxy gate |
 | `parse_ws_rate(10/second)` | `rate_limiter._parse_ws_rate` (`:170`) |
@@ -69,7 +69,7 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 ## Findings (baseline `bench_result.txt`, count=2000, this machine)
 
 * **The per-request gates are sub-microsecond** — `parse_token(valid)` ~0.0006 ms
-  (one precompiled fullmatch `auth_store.py:191` instead of a 21-iteration
+  (one precompiled fullmatch `auth_store/credentials.py:96` instead of a 21-iteration
   generator), `parse_token(bad_secret)` ~0.0005 ms, `auth_cache_key`
   ~0.0005 ms, `get_client_ip` ~0.0002 ms, `is_valid_bucket` ~0.0003 ms, the
   slot accounts ~0.0002 ms. None of them is a request-lifecycle bottleneck;

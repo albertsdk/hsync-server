@@ -24,14 +24,14 @@ process-local state and the installation SQLite store.
 | Per-bucket WS pools | `connection_manager.py:187` (`bucket_manager`) | process memory | none (live connections) |
 | Tombstone stores (per bucket) | `tombstones.py` cache | process memory + SQLite | per-bucket DB `server/<bucket>.db` (`tombstones` table) |
 | Version stores (per bucket) | `versions.py` cache | process memory + SQLite | per-bucket DB `server/<bucket>.db` (`versions` table) |
-| Accounts + membership | `auth_store.py` | SQLite | global `server/auth.db` (`clients`, `bucket_members` tables) |
+| Accounts + membership | `auth_store/` | SQLite | global `server/auth.db` (`clients`, `bucket_members` tables) |
 
 The SHA-256 cache maps `sha256(filepath) -> (file_sha256, mtime_ns, size)`: a
 cached digest is served only while the file's current metadata matches the
 captured pair, otherwise the entry is dropped and callers recompute (see
 [modules/infrastructure.md](modules/infrastructure.md) — Hash cache).
 
-## Accounts and membership (`auth_store.py`)
+## Accounts and membership (`auth_store/`)
 
 Server-only tables on the global auth DB `server/auth.db` (not part of the
 common `sqlstore` schema):
@@ -44,7 +44,7 @@ common `sqlstore` schema):
 - **`bucket_members`** — PK `(bucket, client_id)`, `role` (`owner`/`member`);
   partial UNIQUE index enforces exactly one owner per bucket.
 
-`AuthStore` (`auth_store.py`) is the single source of truth for account CRUD,
+`AuthStore` (`auth_store/store.py`) is the single source of truth for account CRUD,
 membership, transfer/reclaim, cascade delete, and the last-admin invariant.
 
 ## Tombstones (`tombstones.py`)

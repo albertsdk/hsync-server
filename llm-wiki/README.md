@@ -36,7 +36,7 @@ utilities.
 - Protocol versions enforced from common SSOT (`hsync_common.protocol.handshake`):
   REST in `VersionMiddleware` (`middleware.py:130`), WS in `events.py` handshake.
 - Auth: per-account tokens (`hs_<id>_<secret>`) verified via scrypt against the
-  auth store (`auth.py` → `auth_store.py`); roles (`admin`/`client`) + bucket
+  auth store (`auth.py` → `auth_store/`); roles (`admin`/`client`) + bucket
   membership gate access.
 - Persistence: files under `get_buckets_path()`; causal versions/tombstones in
   per-bucket DBs `get_state_dir()/server/<bucket>.db` (ADR-0025). SHA-256 cache
