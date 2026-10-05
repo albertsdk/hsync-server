@@ -41,9 +41,7 @@ The same steps, spelled out:
 ```bash
 poetry install --only main
 export HSYNC_ADMIN_KEY="$(openssl rand -hex 32)"
-export HSYNC_SSL_ENABLED=true
-export HSYNC_SSL_CERT_DIR=./certs
-poetry run hsync-server
+poetry run hsync-server --ssl --ssl-cert-dir ./certs
 ```
 
 - The server listens on `https://localhost:9753` (default port).
