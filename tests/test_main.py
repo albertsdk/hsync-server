@@ -80,6 +80,15 @@ class TestStartupOptions:
         assert kwargs["host"] == "127.0.0.1"
         assert kwargs["port"] == 9124
 
+    def test_ipv6_host_is_passed_unbracketed(self):
+        run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+        with run_p as mock_run, log_p, ssl_p, reload_p, workers_p:
+            result = runner.invoke(cli.app, ["--host", "[::1]:9124"])
+        assert result.exit_code == 0
+        _, kwargs = mock_run.call_args
+        assert kwargs["host"] == "::1"
+        assert kwargs["port"] == 9124
+
     def test_host_port_and_port_flag_are_mutually_exclusive(self):
         run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
         with run_p as mock_run, log_p, ssl_p, reload_p, workers_p:

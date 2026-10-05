@@ -160,6 +160,7 @@ hsync-server [options]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--env-file PATH` | Load environment variables from file | - |
+| `--host HOST[:PORT]` | Address to bind (`HOST[:PORT]`, e.g. `0.0.0.0:9753` or `[::1]:9753`; the port is mutually exclusive with `-p/--port`) | `0.0.0.0` |
 | `-p, --port PORT` | Server port | `9753` |
 | `--log-level LEVEL` | Log level (debug, info, warning, error, critical) | `info` |
 | `--no-color` | Disable colored log output | `false` |
