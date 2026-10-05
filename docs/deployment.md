@@ -267,27 +267,12 @@ Caddy automatically provisions and renews Let's Encrypt certificates. Replace
 ```dotenv
 # prod.env — generate the admin secret with: openssl rand -hex 32
 HSYNC_ADMIN_KEY=ADMIN_SECRET_64_HEX
-HSYNC_LOG_LEVEL=info
 HSYNC_LOG_FORMAT=json
 HSYNC_LOG_FILE=/project/logs/hsync-server.log
 HSYNC_LOG_ROTATION=100 MB
 HSYNC_LOG_RETENTION=30 days
-HSYNC_TZ=UTC
-HSYNC_BUCKETS=/project/buckets
-HSYNC_STATE_DIR=/project/state
-HSYNC_SSL_ENABLED=false
-HSYNC_MAX_UPLOAD_SIZE=10737418240
-HSYNC_MAX_REQUEST_BODY_SIZE=0
-HSYNC_MIN_FREE_DISK_SPACE=524288000
 HSYNC_TOMBSTONE_TTL_DAYS=30
 HSYNC_TRUSTED_PROXIES=172.16.0.0/12
-HSYNC_RATE_LIMIT_DEFAULT=500/minute
-HSYNC_RATE_LIMIT_UPLOAD=200/minute
-HSYNC_RATE_LIMIT_DOWNLOAD=1000/minute
-HSYNC_RATE_LIMIT_ADMIN=20/minute
-HSYNC_RATE_LIMIT_WS_MESSAGES=10/second
-HSYNC_WS_MAX_CONNECTIONS=1000
-HSYNC_WS_MAX_CONNECTIONS_PER_IP=10
 ```
 
 > **Important**: Generate a strong random admin key (64 hex):
@@ -333,9 +318,9 @@ sudo install -d -o hsync -g hsync /opt/hsync
 sudo -u hsync git clone https://github.com/albertsdk/hsync-server.git /opt/hsync/hsync-server
 sudo -u hsync git clone https://github.com/albertsdk/hsync-common.git /opt/hsync/hsync-common
 
-# Install dependencies
+# Install dependencies with Poetry (see CONTRIBUTING.md for the full
+# source-setup steps) and create the in-project virtualenv
 cd /opt/hsync/hsync-server
-sudo -u hsync env POETRY_VIRTUALENVS_IN_PROJECT=true poetry install --only main
 
 # Create required directories
 sudo -u hsync mkdir -p /opt/hsync/{buckets,state,certs,logs}
@@ -351,7 +336,6 @@ HSYNC_BUCKETS=/opt/hsync/buckets
 HSYNC_STATE_DIR=/opt/hsync/state
 HSYNC_SSL_CERT_DIR=/opt/hsync/certs
 HSYNC_LOG_FILE=/opt/hsync/logs/hsync-server.log
-HSYNC_SSL_ENABLED=false
 ```
 
 Protect it with `sudo chown hsync:hsync /opt/hsync/prod.env` and

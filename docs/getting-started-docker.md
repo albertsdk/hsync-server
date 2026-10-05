@@ -26,17 +26,9 @@ start it:
 HSYNC_IMAGE=ghcr.io/albertsdk/hsync-server:v1.0.0
 HSYNC_BIND_ADDRESS=192.168.1.20
 HSYNC_CERT_HOSTNAME=192.168.1.20
-HSYNC_PUBLIC_PORT=9753
 # Generate the admin secret with: openssl rand -hex 32
 HSYNC_ADMIN_KEY=ADMIN_SECRET_64_HEX
 HSYNC_SSL_ENABLED=true
-# Host data directory bind-mounted at /project/{buckets,state,certs}.
-HSYNC_DATA_DIR=./hsync-data
-HSYNC_UID=1000
-HSYNC_GID=1000
-HSYNC_BUCKETS=/project/buckets
-HSYNC_STATE_DIR=/project/state
-HSYNC_SSL_CERT_DIR=/project/certs
 ```
 
 Protect and validate the configuration, then start it:

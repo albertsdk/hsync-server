@@ -204,7 +204,7 @@ Common causes:
 **Connection refused:**
 ```bash
 # Verify the server is listening
-curl http://localhost:9753/health
+curl --insecure https://localhost:9753/health
 
 # Check firewall rules
 sudo ufw status
@@ -232,7 +232,7 @@ sudo ufw allow 9753/tcp
 **WebSocket connection fails:**
 - Ensure the client sends an `auth` frame as the first message after connecting.
 - The WebSocket URL format is:
-  ```
+  ```text
   wss://host:9753/api/v1/buckets/{bucket}/events/{cid}
   ```
 - Check the WebSocket close code:

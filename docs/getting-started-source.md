@@ -23,8 +23,8 @@ managed host prefer the [installer script](getting-started-script.md) or the
 With both repositories cloned side by side:
 
 ```bash
-git clone <hsync-server-url> hsync-server
-git clone <hsync-common-url> hsync-common
+git clone https://github.com/albertsdk/hsync-server.git hsync-server
+git clone https://github.com/albertsdk/hsync-common.git hsync-common
 cd hsync-server
 ./run.sh
 ```
@@ -36,12 +36,11 @@ message if `../hsync-common` is missing.
 
 ### Native commands
 
-The same steps, spelled out:
+The same steps, spelled out (the virtualenv is created by `run.sh`):
 
 ```bash
-poetry install --only main
 export HSYNC_ADMIN_KEY="$(openssl rand -hex 32)"
-poetry run hsync-server --ssl --ssl-cert-dir ./certs
+.venv/bin/hsync-server --ssl
 ```
 
 - The server listens on `https://localhost:9753` (default port).
@@ -64,12 +63,12 @@ curl --insecure https://localhost:9753/health && echo "SERVER OK!"
 
 ## Standalone binary (no Python on the target)
 
-`compile.sh` freezes the server into a self-contained executable:
+`compile.sh` freezes the server into a self-contained executable (install the
+build dependencies first — see [Contributing](../CONTRIBUTING.md)):
 
 ```bash
-poetry install --with build
 ./compile.sh
-# output: dist/<os>-<arch>/hsync-server
+# → dist/<os>-<arch>/hsync-server
 ./dist/linux-amd64/hsync-server --version
 ```
 
@@ -77,7 +76,7 @@ Raspberry Pi OS executables (`armhf`/`arm64`) are cross-built inside Docker:
 
 ```bash
 ./compile.sh --target rpi
-# output: dist/rpi/armhf/hsync-server and dist/rpi/arm64/hsync-server
+# → dist/rpi/armhf/hsync-server and dist/rpi/arm64/hsync-server
 ```
 
 The executable reads the same `HSYNC_*` variables and CLI options as the native
@@ -104,23 +103,24 @@ commands with the server **stopped**, then restart it:
 cd /path/to/hsync-server
 
 # 1. Create an account for this client (the token is printed once)
-poetry run hsync-server admin client add --name CLIENT_NAME --role client
+.venv/bin/hsync-server admin client add --name CLIENT_NAME --role client
 
 # 2. Create the bucket the client will sync
-poetry run hsync-server admin bucket create --bucket BUCKET
+.venv/bin/hsync-server admin bucket create --bucket BUCKET
 
 # 3. Give the client account access to the bucket
-poetry run hsync-server admin bucket grant --bucket BUCKET --client CLIENT_NAME
+.venv/bin/hsync-server admin bucket grant --bucket BUCKET --client CLIENT_NAME
 
 # 4. Restart the server
-poetry run hsync-server
+.venv/bin/hsync-server
 ```
 
 Then, on each device:
 
 ```bash
-export HSYNC_API_KEY="hs_<id>_<secret>"
-hsync server server.example.com -b photos -p /path/to/dir --ca-cert certs/server.crt
+export HSYNC_API_KEY="hs_ACCOUNT_ID_ACCOUNT_SECRET"
+hsync server server.example.com -b photos -p /path/to/dir \
+  --ca-cert certs/server.crt
 ```
 
 > Full command reference: [Roles and Permissions](roles-and-permissions.md).
@@ -136,7 +136,7 @@ interactive terminal. The complete unit, hardening and day-2 steps are in
 ```bash
 cd /path/to/hsync-server
 git pull
-poetry install --only main
+# re-run ./run.sh if the dependencies changed
 ```
 
 Review the release notes and back up the data directory before updating. See

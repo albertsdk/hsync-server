@@ -28,16 +28,9 @@ instead of `amd64` on those architectures. To pin a version, use
 
 ### Build from the checkout
 
-From the `hsync-server` checkout (needs Poetry and the sibling `hsync-common`):
-
-```bash
-poetry install --with build
-./compile.sh --target deb
-# output: dist/deb/hsync-server_<ver>_<arch>.deb
-```
-
-`./compile.sh --target deb-all` cross-builds the `amd64`, `arm64` and `armhf`
-packages inside Docker.
+To build from the checkout, follow the build steps in
+[Contributing](../CONTRIBUTING.md). `./compile.sh --target deb-all` cross-builds
+the `amd64`, `arm64` and `armhf` packages inside Docker.
 
 ## Configure before the first start
 
@@ -46,7 +39,12 @@ root: set the bootstrap admin secret and enable TLS so real clients can
 authenticate.
 
 ```bash
-sudo sh -c 'sed -i "s|^HSYNC_ADMIN_KEY=.*|HSYNC_ADMIN_KEY=$(openssl rand -hex 32)|; s|^#HSYNC_SSL_ENABLED=false|HSYNC_SSL_ENABLED=true|" /etc/hsync-server/hsync-server.conf'
+sudo sh -c 'sed -i \
+  "s|^HSYNC_ADMIN_KEY=.*|HSYNC_ADMIN_KEY=$(openssl rand -hex 32)|" \
+  /etc/hsync-server/hsync-server.conf'
+sudo sed -i \
+  's|^#HSYNC_SSL_ENABLED=false|HSYNC_SSL_ENABLED=true|' \
+  /etc/hsync-server/hsync-server.conf
 ```
 
 Data is stored under `/var/lib/hsync-server`; logs under `/var/log/hsync-server`.
@@ -95,8 +93,9 @@ sudo systemctl start hsync-server.service
 Then, on each device:
 
 ```bash
-export HSYNC_API_KEY="hs_<id>_<secret>"
-hsync server server.example.com -b photos -p /path/to/dir --ca-cert /trusted/path/server.crt
+export HSYNC_API_KEY="hs_ACCOUNT_ID_ACCOUNT_SECRET"
+hsync server server.example.com -b photos -p /path/to/dir \
+  --ca-cert /trusted/path/server.crt
 ```
 
 > Full command reference: [Roles and Permissions](roles-and-permissions.md).

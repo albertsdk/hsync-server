@@ -33,7 +33,7 @@ characters:
 
 ```bash
 openssl rand -hex 32
-# Output: 3f9c2b7a... (64 hex chars)
+# → 3f9c2b7a... (64 hex chars)
 ```
 
 ### Rotate keys
@@ -70,7 +70,7 @@ without a hard disconnect. Disable an account immediately with
 The HSYNC Server itself listens on port `9753` by default. **Never expose this
 port directly to the internet.** Instead:
 
-```
+```text
 Internet ──► Reverse Proxy (:443) ──► HSYNC Server (:9753, localhost only)
 ```
 
@@ -107,7 +107,7 @@ If your reverse proxy is on a different host, configure `HSYNC_TRUSTED_PROXIES`
 with the proxy's IP address or subnet so the server correctly resolves client
 IPs from `X-Forwarded-For` headers:
 
-```bash
+```dotenv
 HSYNC_TRUSTED_PROXIES=10.0.0.5,172.16.0.0/12
 ```
 
@@ -217,7 +217,7 @@ upload — an oversized delta result is rejected instead of written.
 
 Prevent a single misbehaving client from exhausting server resources:
 
-```bash
+```text
 # Defaults are already conservative
 HSYNC_WS_MAX_CONNECTIONS=1000          # global cap
 HSYNC_WS_MAX_CONNECTIONS_PER_IP=10     # per-IP cap
@@ -227,7 +227,7 @@ HSYNC_WS_MAX_CONNECTIONS_PER_IP=10     # per-IP cap
 
 Shorter heartbeats detect dead connections faster but increase overhead:
 
-```bash
+```text
 HSYNC_WS_HEARTBEAT_INTERVAL=30   # ping every 30s
 HSYNC_WS_HEARTBEAT_TIMEOUT=10    # wait 10s for pong
 ```
@@ -244,7 +244,7 @@ decrease them for LAN deployments where quick disconnect detection matters.
 
 JSON-formatted logs are easier to parse with log aggregation tools:
 
-```bash
+```dotenv
 HSYNC_LOG_FORMAT=json
 HSYNC_LOG_FILE=/project/logs/hsync-server.log
 ```

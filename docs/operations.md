@@ -148,6 +148,8 @@ lvremove -f /dev/vg0/hsync-buckets-snap
 **Method 3: Hot backup via `docker cp` (acceptable for small buckets)**
 
 ```bash
+BACKUP_DIR="/var/backups/hsync"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 docker cp hsync-server:/project/buckets /tmp/hsync-buckets-backup
 tar -czf "$BACKUP_DIR/hsync-buckets-$TIMESTAMP.tar.gz" -C /tmp hsync-buckets-backup .
 rm -rf /tmp/hsync-buckets-backup
@@ -167,6 +169,7 @@ rm -rf /tmp/hsync-buckets-backup
 mv hsync-data hsync-data.bak.$(date +%Y%m%d)
 
 # 3. Restore from backup
+BACKUP_DIR="/var/backups/hsync"
 mkdir -p hsync-data
 tar -xzf "$BACKUP_DIR/hsync-data-20250101-120000.tar.gz" -C hsync-data
 
@@ -256,12 +259,12 @@ docker compose pull
 docker compose up -d
 ```
 
-### Systemd (Poetry)
+### Systemd (source checkout)
 
 ```bash
-cd /opt/hsync-server
+cd /opt/hsync/hsync-server
 git pull
-poetry install --only main
+# re-run the Poetry install if dependencies changed (see CONTRIBUTING.md)
 sudo systemctl restart hsync-server
 ```
 

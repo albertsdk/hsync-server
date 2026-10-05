@@ -40,7 +40,7 @@ creation. The relationship with buckets is expressed through **membership**: a
 `client` account can be the `owner` of some buckets and a `member` of others, or
 have no relationship with a bucket at all.
 
-```
+```text
 Account (role: admin | client)
    │
    ├── admin  → access to ALL buckets + account management
@@ -52,7 +52,7 @@ Account (role: admin | client)
 
 ### Hierarchy
 
-```
+```text
 admin
   ├── manages all accounts (including other admins)
   ├── operates on all buckets
@@ -239,7 +239,7 @@ authorization is determined by `(account role, bucket membership)`.
 
 ### Token format
 
-```
+```text
 hs_<account_id 21 alnum>_<secret 64 hex>
 ```
 

@@ -41,7 +41,7 @@ graph LR
 All authenticated endpoints require the `Authorization` header with an account
 token:
 
-```
+```http
 Authorization: Bearer hs_<account_id>_<secret>
 ```
 
@@ -349,7 +349,7 @@ Unix epoch seconds. Clients use this for NTP-like clock-offset estimation.
 
 ### Endpoint
 
-```
+```text
 ws(s)://host:9753/api/v1/buckets/{bucket}/events/{cid}
 ```
 

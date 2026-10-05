@@ -64,7 +64,8 @@ as the container hostname so the generated certificate contains a matching IP
 Subject Alternative Name:
 
 ```bash
-curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh | bash -s -- --bind-address 192.168.1.20
+curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh \
+  | bash -s -- --bind-address 192.168.1.20
 ```
 
 The installer refuses to change the address later because the persisted
@@ -126,8 +127,9 @@ docker compose exec server python -m hsync_server admin bucket grant --bucket BU
 Then, on each device, configure the client:
 
 ```bash
-export HSYNC_API_KEY="hs_<id>_<secret>"
-hsync server server.example.com -b photos -p /path/to/dir --ca-cert /trusted/path/server.crt
+export HSYNC_API_KEY="hs_ACCOUNT_ID_ACCOUNT_SECRET"
+hsync server server.example.com -b photos -p /path/to/dir \
+  --ca-cert /trusted/path/server.crt
 ```
 
 - `server.example.com` — the server hostname (positional argument; `https://` is implied);

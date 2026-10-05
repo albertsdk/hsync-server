@@ -14,7 +14,7 @@ a client role accesses only buckets it owns or is a member of.
 
 ## Token format
 
-```
+```text
 hs_<account_id 21 alnum>_<secret 64 hex>
 ```
 
@@ -35,7 +35,7 @@ The admin account has `name=admin`, `id=HsyncAdminBootstrap01`, `role=admin`.
 
 ## Authentication flow (WebSocket)
 
-```
+```text
 Client                              HSYNC Server
   │                                       │
   │── WSS connect ───────────────────────▶│
