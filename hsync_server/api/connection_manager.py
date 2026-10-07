@@ -1,6 +1,5 @@
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If received, this code can be found at the source:
-# https://github.com/albertsdk/hsync
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Alberto Basso
 
 """
 WebSocket connection management for HSYNC Server.
