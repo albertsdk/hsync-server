@@ -11,7 +11,7 @@ directory, and verifies that the server becomes healthy.
 
 ## Prerequisites
 
-- Linux or macOS with Docker Engine or Docker Desktop running
+- <img src="assets/os/linux.svg" alt="Linux" width="16" height="16"> <img src="assets/os/apple.svg" alt="macOS" width="16" height="16"> Linux or macOS with Docker Engine or Docker Desktop running
 - Docker Compose v2 (`docker compose version`)
 - OpenSSL
 - `curl` and `sha256sum` for the verified download shown below

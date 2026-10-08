@@ -14,7 +14,7 @@ events to connected clients over WebSocket.
 | CPU | 1 core (x86_64 or arm64) |
 | RAM | 256 MB |
 | Disk | 1 GB free (plus storage for your files) |
-| OS | Linux (kernel ≥ 4.15), macOS, or Windows (WSL2) |
+| OS | <img src="assets/os/linux.svg" alt="Linux" width="16" height="16"> Linux (kernel ≥ 4.15), <img src="assets/os/apple.svg" alt="macOS" width="16" height="16"> macOS, or <img src="assets/os/windows.svg" alt="Windows" width="16" height="16"> Windows (WSL2) |
 
 ### Recommended
 
