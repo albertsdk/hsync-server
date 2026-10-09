@@ -21,7 +21,7 @@ process-local state and the installation SQLite store.
 | SHA-256 cache `FILE_HASHES` | `hashes.py` | process memory (unbounded dict, not LRU) | rebuilt at startup from disk (`set_sha256_hashes`) |
 | Delta signature cache `_signature_cache` | `api/files/delta/signatures.py` | process memory (TTL 300 s, FIFO cap 64, `Lock`-guarded) | none (recomputed on demand) |
 | Delta literal-payload tokens `delta_token_store` | `api/files/delta/tokens.py` | process memory (`RLock`-guarded) + payload temp files | none (TTL-reaped) |
-| Per-bucket WS pools | `connection_manager.py:187` (`bucket_manager`) | process memory | none (live connections) |
+| Per-bucket WS pools | `api/connection_manager.py::bucket_manager` | process memory | none (live connections) |
 | Tombstone stores (per bucket) | `tombstones.py` cache | process memory + SQLite | per-bucket DB `server/<bucket>.db` (`tombstones` table) |
 | Version stores (per bucket) | `versions.py` cache | process memory + SQLite | per-bucket DB `server/<bucket>.db` (`versions` table) |
 | Accounts + membership | `auth_store/` | SQLite | global `server/auth.db` (`clients`, `bucket_members` tables) |
@@ -44,21 +44,21 @@ common `sqlstore` schema):
 - **`bucket_members`** — PK `(bucket, client_id)`, `role` (`owner`/`member`);
   partial UNIQUE index enforces exactly one owner per bucket.
 
-`AuthStore` (`auth_store/store.py`) is the single source of truth for account CRUD,
+`AuthStore` (`auth_store/store.py::AuthStore`) is the single source of truth for account CRUD,
 membership, transfer/reclaim, cascade delete, and the last-admin invariant.
 
 ## Tombstones (`tombstones.py`)
 
 Server-side façade over the common `TombstoneStore`:
 
-| Function | Line | Role |
-| -------- | ---- | ---- |
-| `get_tombstone_store` | `tombstones.py` | load/cache the per-bucket store (`buckets` table → folder UUID) |
-| `record_deletion` | `:49` | add a tombstone on delete/`deleted` event |
-| `clear_deletion` | `:66` | drop a tombstone when the path is re-uploaded |
-| `reset_cache` | `:76` | test/lifecycle hook |
+| Function | Location | Role |
+| -------- | -------- | ---- |
+| `get_tombstone_store` | `tombstones.py::get_tombstone_store` | load/cache the per-bucket store (`buckets` table → folder UUID) |
+| `record_deletion` | `tombstones.py::record_deletion` | add a tombstone on delete/`deleted` event |
+| `clear_deletion` | `tombstones.py::clear_deletion` | drop a tombstone when the path is re-uploaded |
+| `reset_cache` | `tombstones.py::reset_cache` | test/lifecycle hook |
 
-TTL bound: `get_tombstone_ttl_days()` (`config.py:472`) → store `prune()`. Causal
+TTL bound: `get_tombstone_ttl_days()` (`config.py::get_tombstone_ttl_days`) → store `prune()`. Causal
 merge semantics (vector-clock dominance + content tie-break) and hashed keys are
 defined in the common model, not here.
 
@@ -73,8 +73,10 @@ defined in the common model, not here.
 <name>.part                            # in-progress resumable upload
 ```
 
-Sentinel + cleanup logic: `api/file_utils.py` (`is_sentinel_file:22`,
-`ensure_sentinel_in_dir:29`, `cleanup_empty_dir:67`). No `.hsyncfolder` marker
+Sentinel + cleanup logic: `api/file_utils.py` (`is_sentinel_file`
+`api/file_utils.py::is_sentinel_file`, `ensure_sentinel_in_dir`
+`api/file_utils.py::ensure_sentinel_in_dir`, `cleanup_empty_dir`
+`api/file_utils.py::cleanup_empty_dir`). No `.hsyncfolder` marker
 is written into served buckets; the `buckets` table maps name → folder UUID.
 
 > Field-level attribute tables: [common data-models](../../hsync-common/llm-wiki/data-models.md).

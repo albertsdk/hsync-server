@@ -19,11 +19,11 @@ a concrete anomaly needs a cost breakdown / a CPU-saturation sweep.
 
 ## Isolation (critical)
 
-The server `Settings` singleton is cached (`config.py:339` `@lru_cache`), and its
+The server `Settings` singleton is cached (`config.py::get_settings` `@lru_cache`), and its
 defaults point at the repo's own `state/`/`buckets/`. Every benchmark that
 touches persisted state sets `HSYNC_STATE_DIR`/`HSYNC_BUCKETS` to a fresh temp
 dir **before** importing any `hsync_server` module — `common.isolate_server_state()`
-(`bench/common.py`) — so the repository's real `state/`/`buckets/` are never read
+(`bench/common.py::isolate_server_state`) — so the repository's real `state/`/`buckets/` are never read
 or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 
 ## Files
@@ -50,31 +50,31 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 
 | Scenario | Public API measured |
 | --- | --- |
-| `parse_token(valid\|bad_prefix\|bad_id\|bad_secret)` | `auth_store.parse_token` (`hsync_server/auth_store/credentials.py:96`) — wire token gate, one per REST/WS auth |
-| `auth_cache_key(sha256)` | `auth._cache_key` (`hsync_server/auth.py:74`) — SHA-256(token) KDF cache key |
-| `get_client_ip(trusted+xff\|direct)` | `rate_limiter.get_client_ip` (`hsync_server/rate_limiter.py:74`) — trusted-proxy gate |
-| `parse_ws_rate(10/second)` | `rate_limiter._parse_ws_rate` (`:170`) |
-| `token_bucket.acquire(hit\|drained)` | `rate_limiter.TokenBucket.acquire` (`:220`) — per-WS-message budget |
-| `set_sha256_hash` / `get_sha256_hash(hit\|miss)` / `del_sha256_hash(hit\|miss)` | `hashes` (`hsync_server/hashes.py:29,:52,:83`) — per-file cache + freshness check |
-| `resolve_within_bucket(hit\|escape\|no-deref)` | `api.utils.resolve_within_bucket` (`hsync_server/api/utils.py:50`) — per-request confinement |
-| `is_valid_bucket` | `api.utils.is_valid_bucket` (`:34`) |
-| `is_sentinel_file(hit\|miss)` | `api.file_utils.is_sentinel_file` (`hsync_server/api/file_utils.py:27`) |
-| `update_file_timestamp(normal\|clamp\|missing)` | `api.file_utils.update_file_timestamp` (`:110`) — mtime restore + far-future clamp |
-| `arbitrate_upload(first\|dominant\|superseded\|conflict_won\|conflict_lost)` | `arbitration.arbitrate_upload` (`hsync_server/arbitration.py:74`) — per-upload causal gate |
-| `conflicted_copy_name` | `arbitration.conflicted_copy_name` (`:193`) |
-| `server_version_info(recorded\|missing)` | `versions.server_version_info` (`hsync_server/versions.py:145`) — per-listing version |
-| `record_version(persist)` | `versions.record_version` (`:74`) — per-upload record + SQLite save |
-| `try_acquire_slot(under\|global_cap\|per_ip_cap)` / `release_slot` | `api.connection_manager.BucketConnectionManager` (`hsync_server/api/connection_manager.py:151,:163`) — per-WS-join DoS gate |
+| `parse_token(valid\|bad_prefix\|bad_id\|bad_secret)` | `auth_store.parse_token` (`auth_store/credentials.py::parse_token`) — wire token gate, one per REST/WS auth |
+| `auth_cache_key(sha256)` | `auth._cache_key` (`auth.py::_cache_key`) — SHA-256(token) KDF cache key |
+| `get_client_ip(trusted+xff\|direct)` | `rate_limiter.get_client_ip` (`rate_limiter.py::get_client_ip`) — trusted-proxy gate |
+| `parse_ws_rate(10/second)` | `rate_limiter._parse_ws_rate` (`rate_limiter.py::_parse_ws_rate`) |
+| `token_bucket.acquire(hit\|drained)` | `rate_limiter.TokenBucket.acquire` (`rate_limiter.py::TokenBucket.acquire`) — per-WS-message budget |
+| `set_sha256_hash` / `get_sha256_hash(hit\|miss)` / `del_sha256_hash(hit\|miss)` | `hashes` (`hashes.py::set_sha256_hash`, `hashes.py::get_sha256_hash`, `hashes.py::del_sha256_hash`) — per-file cache + freshness check |
+| `resolve_within_bucket(hit\|escape\|no-deref)` | `api.utils.resolve_within_bucket` (`api/utils.py::resolve_within_bucket`) — per-request confinement |
+| `is_valid_bucket` | `api.utils.is_valid_bucket` (`api/utils.py::is_valid_bucket`) |
+| `is_sentinel_file(hit\|miss)` | `api.file_utils.is_sentinel_file` (`api/file_utils.py::is_sentinel_file`) |
+| `update_file_timestamp(normal\|clamp\|missing)` | `api.file_utils.update_file_timestamp` (`api/file_utils.py::update_file_timestamp`) — mtime restore + far-future clamp |
+| `arbitrate_upload(first\|dominant\|superseded\|conflict_won\|conflict_lost)` | `arbitration.arbitrate_upload` (`arbitration.py::arbitrate_upload`) — per-upload causal gate |
+| `conflicted_copy_name` | `arbitration.conflicted_copy_name` (`arbitration.py::conflicted_copy_name`) |
+| `server_version_info(recorded\|missing)` | `versions.server_version_info` (`versions.py::server_version_info`) — per-listing version |
+| `record_version(persist)` | `versions.record_version` (`versions.py::record_version`) — per-upload record + SQLite save |
+| `try_acquire_slot(under\|global_cap\|per_ip_cap)` / `release_slot` | `api.connection_manager.BucketConnectionManager` (`api/connection_manager.py::BucketConnectionManager`) — per-WS-join DoS gate |
 
 ## Findings (baseline `bench_result.txt`, count=2000, this machine)
 
 * **The per-request gates are sub-microsecond** — `parse_token(valid)` ~0.0006 ms
-  (one precompiled fullmatch `auth_store/credentials.py:96` instead of a 21-iteration
+  (one precompiled fullmatch `auth_store/credentials.py::parse_token` instead of a 21-iteration
   generator), `parse_token(bad_secret)` ~0.0005 ms, `auth_cache_key`
   ~0.0005 ms, `get_client_ip` ~0.0002 ms, `is_valid_bucket` ~0.0003 ms, the
   slot accounts ~0.0002 ms. None of them is a request-lifecycle bottleneck;
   slowapi/scrypt dominate the real thing. `server_version_info` hoists the
-  `VersionInfo` import (`versions.py`): `recorded` ~0.0024 ms, `missing`
+  `VersionInfo` import (`versions.py::server_version_info`): `recorded` ~0.0024 ms, `missing`
   ~0.0019 ms; `arbitrate_upload` ~0.0037–0.0043 ms on every branch and
   `record_version(persist)` ~0.020 ms ride the shared `hsync-common` store
   opts. Committed baseline `bench_result.txt` 2026-09-26 (count=2000, this
@@ -87,7 +87,7 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 * **The upload gate is branch-insensitive** — `arbitrate_upload` sits at
   ~0.0037–0.0043 ms on every branch: the version-store read + wire-version
   parse dominate, while the `.hsyncnodeid` sidecar is memoized in-process
-  (``versions.py`` → ``get_server_cid``, invalidated by ``reset_cache``) so no
+  (`versions.py::get_server_cid`, invalidated by `versions.py::reset_cache`) so no
   per-upload file read happens. The verdict (accept/supersede/conflict) adds
   nothing measurable; `conflicted_copy_name` ~0.0029 ms.
 * **Per-listing version is cheap, per-upload persist is not** —
@@ -117,14 +117,14 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 * **Lifespan is small on top** — spawn → `GET /health` 200 ≈ 1.1 s with empty
   buckets; the bootstrap + empty preload + synchronous VACUUM add ~200–300 ms.
 * **Hash preload scales with data** — with `--files 5000` readiness rises to
-  ≈ 1.3 s, i.e. `set_sha256_hashes` adds ~200 ms for 5000 files (linear).
+  ≈ 1.3 s, i.e. `set_sha256_hashes` (`hashes.py::set_sha256_hashes`) adds ~200 ms for 5000 files (linear).
 * **Decision: preload is NOT removed.** The preload is a pure freshness-checked
   cache, but several request paths read it **directly** without the
-  recompute-on-miss fallback: `list.py:96` (listing `sha256sum` + HMAC),
-  `download.py:109` (download header), `upload.py:272/:523` (dedup/disk hash),
-  `apply.py:302` (delta base hash). Dropping the eager preload would return
+  recompute-on-miss fallback: `api/files/list.py::get_files` (listing `sha256sum` + HMAC),
+  `api/files/download.py::download_file` (download header), `api/files/upload.py::upload_file` (dedup/disk hash),
+  `api/files/delta/apply.py::delta_apply` (delta base hash). Dropping the eager preload would return
   empty/`None` hashes on those paths until recomputed — a correctness change,
-  not a timing one. Converting all of them to `get_or_compute_sha256` is a broad
+  not a timing one. Converting all of them to `hsync_common` `get_or_compute_sha256` is a broad
   async refactor across the file API. Per the robustness-over-speed rule, the
   preload stays and the startup cost is reported as-is.
 

@@ -8,7 +8,7 @@ utilities.
 > End-user / human docs live in [`../docs/`](../docs/README.md)
 > (`getting-started`, `api.md`, `sync-flow.md`, `faq.md`,
 > `internal/architecture.md`). This wiki is the **first search surface**:
-> start here, follow the `path/to/file.py:line` references to reach code directly.
+> start here, follow the `path::symbol` references to reach code directly.
 
 ## Map
 
@@ -25,22 +25,27 @@ utilities.
 
 ## Quick facts
 
-- Package root: `hsync_server/` (`hsync_server/__init__.py:1`).
-- ASGI app object: `app` in `hsync_server/main.py:77` (FastAPI, lifespan-managed).
+- Package root: `hsync_server/`.
+- ASGI app object: `app` (`main.py::app`) (FastAPI, lifespan-managed).
 - Version SSOT: `HSYNC_VERSION` re-exported from `hsync_common.constants`
-  (`hsync_server/constants.py:25`); wire header names (`HEADER_*`) and the
-  `X-Client-Name` validator (`is_valid_client_name`) are re-exported from the
-  same SSOT (`:21`); `CONTENT_TYPE_OCTET_STREAM` at `:20`.
-- API prefix: `/api/v1` hardcoded per route (e.g. `api/buckets.py:41`); admin
-  sub-router prefix at `api/admin.py:54`.
+  (`hsync_common/constants.py::HSYNC_VERSION`); wire header names (`HEADER_*`) and
+  the `X-Client-Name` validator (`is_valid_client_name`) are re-exported from the
+  same SSOT (`hsync_common/constants.py::HEADER_CLIENT_NAME`,
+  `hsync_common/constants.py::is_valid_client_name`); `CONTENT_TYPE_OCTET_STREAM`
+  at `hsync_common/constants.py::CONTENT_TYPE_OCTET_STREAM`.
+- API prefix: `/api/v1` from the shared SSOT
+  (`hsync_common/protocol/rest.py::REST_API_PREFIX`), applied per route via the
+  `rest_*` helpers (e.g. `api/buckets.py::get_bucket`); admin sub-router at
+  `api/admin.py::admin_router`.
 - Protocol versions enforced from common SSOT (`hsync_common.protocol.handshake`):
-  REST in `VersionMiddleware` (`middleware.py:130`), WS in `events.py` handshake.
+  REST in `VersionMiddleware` (`middleware.py::VersionMiddleware`), WS in
+  `api/events.py` handshake.
 - Auth: per-account tokens (`hs_<id>_<secret>`) verified via scrypt against the
   auth store (`auth.py` → `auth_store/`); roles (`admin`/`client`) + bucket
   membership gate access.
-- Persistence: files under `get_buckets_path()`; causal versions/tombstones in
-  per-bucket DBs `get_state_dir()/server/<bucket>.db` (ADR-0025). SHA-256 cache
-  is in-memory.
+- Persistence: files under `get_buckets_path()` (`config.py::get_buckets_path`);
+  causal versions/tombstones in per-bucket DBs `get_state_dir()/server/<bucket>.db`
+  (ADR-0025, `config.py::get_state_dir`). SHA-256 cache is in-memory.
 - Standalone builds: `compile.sh` (targets `native`, `deb`, `deb-all`, `rpi`);
   the Raspberry Pi cross-build image is `packaging/rpi/Dockerfile.builder`, the
   Debian packaging tree is `packaging/deb/`. See
@@ -53,6 +58,6 @@ utilities.
 
 ## Conventions used in this wiki
 
-- Every claim is anchored to code via `path/to/file.py:line`.
+- Every claim is anchored to code via `path::symbol` (never line numbers).
 - No large code blocks are duplicated; intent is described and the code referenced.
 - Kept in sync with `../docs/` per the Dual-Docs rule in `AGENTS.md`.

@@ -5,7 +5,7 @@
 
 Issues that require an architectural choice before implementation.
 Once a decision is made, convert the chosen option into an ADR under
-`../hsync-common/docs/internal/adr/` and implement accordingly.
+`../../hsync-common/docs/internal/adr/` and implement accordingly.
 
 ---
 
@@ -13,10 +13,10 @@ Once a decision is made, convert the chosen option into an ADR under
 
 ### Current behaviour
 
-`hsync_server/api/files/download.py:132-145`
+`api/files/download.py::download_file`
 
 When a download is served with zstd compression, the response uses
-`StreamingResponse` (`download.py:137`) which does not include a
+`StreamingResponse` (`api/files/download.py::download_file`) which does not include a
 `Content-Length` header. The compressed size is not known a priori because
 compression happens chunk-by-chunk in a streaming fashion.
 
@@ -30,7 +30,7 @@ compression happens chunk-by-chunk in a streaming fashion.
 - **Bandwidth planning**: multi-file sync queues benefit from knowing each
   file's transfer size to schedule optimally.
 
-The `X-Checksum-SHA256` header is already set (`download.py:105`), confirming
+The `X-Checksum-SHA256` header is already set (`api/files/download.py::download_file`), confirming
 the server knows the original file metadata.
 
 ### Options
@@ -55,4 +55,4 @@ the server knows the original file metadata.
 
 - Full test audit: commit `debcd90` on `main`
 - Implemented fixes (Problems 1, 2, 3, 5, 7): same commit
-- ADR template: `hsync-common/docs/internal/adr/`
+- ADR template: `../../hsync-common/docs/internal/adr/`

@@ -1,8 +1,9 @@
 # HSYNC Server — REST API (`api/`)
 
-All paths are prefixed `/api/v1` (`constants.py:38`). Endpoints attach to
+All paths are prefixed `/api/v1` from the shared SSOT
+(`hsync_common/protocol/rest.py::REST_API_PREFIX`). Endpoints attach to
 `auth_router` (Bearer key) unless noted; `public_router` for health/metrics/time.
-Human-oriented flow diagrams: `../docs/architecture.md`; the machine-readable REST
+Human-oriented flow diagrams: `../docs/internal/architecture.md`; the machine-readable REST
 contract is the generated OpenAPI snapshot in `hsync-common` (`protocol/rest/openapi.json`).
 
 The route decorators do not hard-code literals: they use the shared path names in
@@ -16,27 +17,28 @@ client mirrors cannot drift.
 
 | Method + path | Handler | Auth | Rate limit |
 | ------------- | ------- | ---- | ---------- |
-| `GET /buckets/{bucket}` | `buckets.get_bucket` (`buckets.py:42`) | key | default |
-| `POST /buckets` | `buckets.create_bucket` (`buckets.py:62`) | key | default |
-| `DELETE /buckets/{bucket}` | `buckets.delete_bucket` (`buckets.py:91`) | key | default |
-| `GET /buckets/{bucket}/files` | `files/list.get_files` (`list.py:124`) | key | default |
-| `GET /buckets/{bucket}/files/upload-status` | `files/list.get_upload_status` (`list.py:40`) | key | default |
-| `GET /buckets/{bucket}/tombstones` | `files/list.get_tombstones` (`list.py:326`) | key | default |
-| `POST /buckets/{bucket}/files` | `files/upload.upload_file` (`upload.py:70`) | key | upload |
-| `GET /files/download` | `files/download.download_file` (`download.py:43`) | key | download |
-| `DELETE /files` | `files/delete.delete_file` (`delete.py:44`) | key | default |
-| `POST /buckets/{bucket}/tombstones` | `files/list.post_tombstones` (`list.py:362`) | key | default |
-| `GET /buckets/{bucket}/presence` | `presence.get_presence` (`presence.py:29`) | key | default |
-| `GET /health` | `health.root` (`health.py:32`) | none | — |
-| `GET /api/v1/time` | `health.get_time` (`health.py:57`) | none | — |
-| `GET /metrics` | Prometheus (`main.py:127`) | none | — |
+| `GET /buckets/{bucket}` | `buckets.get_bucket` (`api/buckets.py::get_bucket`) | key | default |
+| `POST /buckets` | `buckets.create_bucket` (`api/buckets.py::create_bucket`) | key | default |
+| `DELETE /buckets/{bucket}` | `buckets.delete_bucket` (`api/buckets.py::delete_bucket`) | key | default |
+| `GET /buckets/{bucket}/files` | `files/list.get_files` (`api/files/list.py::get_files`) | key | default |
+| `GET /buckets/{bucket}/files/upload-status` | `files/list.get_upload_status` (`api/files/list.py::get_upload_status`) | key | default |
+| `GET /buckets/{bucket}/tombstones` | `files/list.get_tombstones` (`api/files/list.py::get_tombstones`) | key | default |
+| `POST /buckets/{bucket}/files` | `files/upload.upload_file` (`api/files/upload.py::upload_file`) | key | upload |
+| `GET /files/download` | `files/download.download_file` (`api/files/download.py::download_file`) | key | download |
+| `DELETE /files` | `files/delete.delete_file` (`api/files/delete.py::delete_file`) | key | default |
+| `POST /buckets/{bucket}/tombstones` | `files/list.post_tombstones` (`api/files/list.py::post_tombstones`) | key | default |
+| `GET /buckets/{bucket}/presence` | `presence.get_presence` (`api/presence.py::get_presence`) | key | default |
+| `GET /health` | `health.root` (`api/health.py::root`) | none | — |
+| `GET /api/v1/time` | `health.get_time` (`api/health.py::get_time`) | none | — |
+| `GET /metrics` | Prometheus (`main.py::app`) | none | — |
 
 `GET /health` accepts an optional `size` query param (bounded to
-`HEALTH_MAX_PROBE_BYTES`, `health.py:24`): it returns that many NUL bytes so
+`HEALTH_MAX_PROBE_BYTES`, `api/health.py::HEALTH_MAX_PROBE_BYTES`): it returns that many NUL bytes so
 the client's autotune can measure throughput (`measure_bandwidth_active`).
 Default (no `size`) is the empty 200 readiness probe.
 
-Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–`60`).
+Rate-limit values: `config.py::get_rate_limit_default` /
+`config.py::get_rate_limit_upload` / `config.py::get_rate_limit_download`.
 
 ## Buckets (`api/buckets.py` + `bucket_provisioning.py`)
 
@@ -45,13 +47,13 @@ Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–
 - Filesystem + ownership logic lives in `bucket_provisioning.py`, the single
   path shared by the REST endpoint AND the local admin CLI
   (`admin bucket create` / `admin bucket delete`, `__main__.py`):
-  - `create_bucket` (`bucket_provisioning.py:34`) mkdir under
+  - `create_bucket` (`bucket_provisioning.py::create_bucket`) mkdir under
     `get_buckets_path()` + `AuthStore.set_owner_on_create`; on ownership
     failure the orphan directory is removed before raising `DeleteError`.
     Existing name → `ConflictError` (REST maps it to 409). The admin
     create-on-behalf endpoint (`api/admin.py`) delegates here too, so it
     inherits the same name validation and orphan rollback.
-  - `delete_bucket` (`bucket_provisioning.py:88`) validates the name, then
+  - `delete_bucket` (`bucket_provisioning.py::delete_bucket`) validates the name, then
     delegates to `AuthStore.delete_bucket` (DB rows + `shutil.rmtree`). With
     `delete_files=False` it calls `AuthStore.delete_bucket_db` only — the CLI
     exposes it as `admin bucket delete --bucket <name> --db-only` to clean up
@@ -60,18 +62,18 @@ Rate-limit values: `RATE_LIMIT_DEFAULT/UPLOAD/DOWNLOAD` (`rate_limiter.py:54`–
   `ConflictError` → 409, delete re-raises for the standard handler mapping
   (the REST endpoint never uses `delete_files=False`). The REST delete runs the
   blocking `delete_bucket` (whole-tree `shutil.rmtree` + DB rows) on a worker
-  thread (`asyncio.to_thread`, `buckets.py:106`) so a large bucket cannot stall
+  thread (`asyncio.to_thread`, `api/buckets.py::delete_bucket`) so a large bucket cannot stall
   the event loop; the admin CLI path stays synchronous (it has no loop to free).
   A concurrent delete that loses the race (directory already gone when the
-  removal runs) maps to 404, not 500 (`bucket_provisioning.py:117`).
+  removal runs) maps to 404, not 500 (`bucket_provisioning.py::delete_bucket`).
 - **Test isolation net**: `tests/conftest.py` adds autouse
   `no_tests_touch_real_repo_state`, which snapshots the repository's real
   `state/server/` and `buckets/` around each test and fails the
   offending test on any mutation (protection against test rows leaking into
   the developer's real DB).
-- Missing bucket → `BucketNotFoundError` (`exceptions.py:111`).
+- Missing bucket → `BucketNotFoundError` (`exceptions.py::BucketNotFoundError`).
 
-## Upload (`api/files/upload.py:152`)
+## Upload (`api/files/upload.py::upload_file`)
 
 Multipart form fields: `cid, file, path, ctime, mtime, sha256sum, permissions`
 (default `664`), resumable fields `offset, size, compressed, compressed_size`,
@@ -96,27 +98,27 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
 - Compressed uploads are **not resumable**: `compressed=true` with
   `offset > 0` is rejected up-front (the resumable path never decompresses).
 - Subdir path and filename confined to the bucket via `resolve_within_bucket`
-  (`api/utils.py:46`) — rejects cross-bucket escapes (`../other-bucket/x`).
+  (`api/utils.py::resolve_within_bucket`) — rejects cross-bucket escapes (`../other-bucket/x`).
 - Resumable: `offset > 0` appends to a `.part` file; full write flushed via
-  `_flush_to_disk` → `fsync` (`upload.py:92`). In-flight temp files are
+  `_flush_to_disk` → `fsync` (`api/files/upload.py::_flush_to_disk`). In-flight temp files are
   dot-prefixed (`.hsync-upload-*`), so they never appear in `/files` listings.
 - **Overwrite backup**: when the target already exists, its previous content is
-  snapshotted to `<path>.backup` by `_backup_existing_file` (`upload.py`) — a
+  snapshotted to `<path>.backup` by `_backup_existing_file` (`api/files/upload.py::_backup_existing_file`) — a
   hard link (O(1), same inode) with a `copy2` fallback when the filesystem has
   no link support or a stale backup blocks the link. The publish uses an atomic
   `replace` onto a new inode, so the snapshot never aliases the new content:
   readers keep the complete previous version while the upload is in flight.
 - Optional zstd payload expanded with `decompress_file_to_file`
-  (`compression.py`, capped via `decompress_stream`) in a worker thread
+  (`compression.py::decompress_file_to_file`, capped via `decompress_stream`) in a worker thread
   (`asyncio.to_thread`): the compressed temp file is decompressed
   chunk-by-chunk into a second temp file which is then renamed over it, so
   neither side is ever fully buffered in memory nor is the event loop
   stalled; the cap is the declared `size` (anti decompression-bomb) and a
   decompressed size different from `size` is rejected.
-- On success cache updated `set_sha256_hash` (`hashes.py:28`) and any tombstone
-  cleared `clear_deletion` (`tombstones.py:66`).
-- Size guard `get_max_upload_size()` (`config.py:397`) → `FileTooLargeError`.
-- **Same-SHA metadata branch** (`upload.py`): when the uploaded content
+- On success cache updated `set_sha256_hash` (`hashes.py::set_sha256_hash`) and any tombstone
+  cleared `clear_deletion` (`tombstones.py::clear_deletion`).
+- Size guard `get_max_upload_size()` (`config.py::get_max_upload_size`) → `FileTooLargeError`.
+- **Same-SHA metadata branch** (`api/files/upload.py::upload_file`): when the uploaded content
   hash equals the on-disk hash, the server does NOT reject the upload — it
   updates the file timestamp from the incoming `ctime`/`mtime`, then compares
   the incoming permissions against the stored file and, on a divergence,
@@ -126,9 +128,9 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   Identical content with no metadata change keeps the legacy
   `409 File already present`. The metadata apply + `modified` re-broadcast is
   the shared `apply_metadata_to_existing_file` helper
-  (`api/files/permissions.py`), also used by the dedicated `PATCH` endpoint.
-- **`PATCH …/files/permissions`** (`api/files/permissions.py`,
-  `patch_file_permissions`): metadata-only convergence (chmod and/or touch).
+  (`api/files/permissions.py::apply_metadata_to_existing_file`), also used by the dedicated `PATCH` endpoint.
+- **`PATCH …/files/permissions`** (`api/files/permissions.py::patch_file_permissions`):
+  metadata-only convergence (chmod and/or touch).
   Query params `filename` (bucket-relative), `permissions` (octal, sanitized),
   optional `mtime` (ADR-0023 corrected Unix timestamp), `vclock` (JSON-encoded
   effective vector clock) and `version_id`. Applies whatever diverges WITHOUT
@@ -142,14 +144,14 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   chmod or a plain `touch` on a large file never re-sends its bytes. Applying
   an mtime preserves the cached content digest so the next same-SHA upload
   still hits the dedup skip.
-- **`GET …/dirs`** (`api/files/list.py`, `get_dirs`): directory metadata
+- **`GET …/dirs`** (`api/files/list.py::get_dirs`): directory metadata
   listing `[{"path": <bucket-relative>, "permissions": <octal>}, …]`, sorted
   by path; skips hidden dirs and dir-symlinks. Directories carry no content
   hash and never appear in `/files`, so this listing feeds the clients'
   download-only directory-permission converge.
-- Permissions applied via `set_permissions` (`api/utils.py:82`) — special bits
+- Permissions applied via `set_permissions` (`api/utils.py::set_permissions`) — special bits
   (setuid/setgid/sticky) stripped (`sanitize_remote_permissions`).
-- Wire-supplied mtimes clamped to `now + 300 s` (`api/file_utils.py:24`).
+- Wire-supplied mtimes clamped to `now + 300 s` (`api/file_utils.py::MTIME_MAX_FUTURE_SKEW_SECONDS`).
 - Broadcasts an `added` event to bucket subscribers, skipping hidden files
   (see [websocket.md](websocket.md)).
 - **No path leak on errors**: error responses never expose absolute
@@ -162,10 +164,11 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   duration via `format_duration(..., subsecond=True)` — e.g.
   `[UPLOAD] "bucket/path/file" (CID: abc) in 1.2s`.
 
-## Download (`api/files/download.py:49`)
+## Download (`api/files/download.py::download_file`)
 
 Streams the file; supports zstd via `compression.async_compress_stream`
-(`compression.py:123`) when `get_compression_enabled()` (`config.py:510`); the
+(`compression.py::async_compress_stream`) when `get_compression_enabled()`
+(`config.py::get_compression_enabled`); the
 compression itself runs on a dedicated worker pool (see
 `llm-wiki/modules/infrastructure.md#compression-compressionpy`), not the event
 loop. The `filename` is confined with `resolve_within_bucket` (full resolve): a
@@ -174,11 +177,11 @@ symlink whose target stays inside the bucket is served **transparently**
 whose target escapes the bucket fails the confinement and is rejected (400).
 Symlinks are *replicated* structurally via the WS `symlink` event and
 `POST /symlinks`, never through this content endpoint. Missing file →
-`FileNotFoundError` (`exceptions.py:118`).
+`FileNotFoundError` (`exceptions.py::FileNotFoundError`).
 
 > **Coding contract**: the response body carries no HTTP content coding other
 > than `identity` or `Content-Encoding: zstd` (ADR 0010). The route is excluded
-> from `TransferAwareGZipMiddleware` (`middleware.py:260`), so a client that
+> from `TransferAwareGZipMiddleware` (`middleware.py::TransferAwareGZipMiddleware`), so a client that
 > advertises gzip still receives the exact bytes with an ordinary
 > `Content-Length` — clients abort a transfer on any other coding, and chunked
 > gzip would invalidate the `Range`/resume offsets. The same exclusion applies
@@ -204,7 +207,7 @@ when the bucket does not exist or the caller is not a member).
 
 ## List / upload-status / tombstones (`api/files/list.py`)
 
-The `/files` listing resolves per-file metadata (`File.get`, `models/file.py`)
+The `/files` listing resolves per-file metadata (`File.get`, `hsync_common/models/file.py::File.get`)
 on **asyncio worker threads** (`asyncio.to_thread`): a cache-miss recomputes
 the SHA-256 (blocking I/O + CPU), so the per-file hashing no longer blocks the
 loop. The directory walk itself, hidden/symlink checks and the per-entry
@@ -221,30 +224,30 @@ same-path upload could mix generations into the tombstone/event metadata —
 correctness over loop-freedom.
 
 
-- `get_files` (`list.py:124`) walks the bucket, skips hidden/sentinel/`.part`
+- `get_files` (`api/files/list.py::get_files`) walks the bucket, skips hidden/sentinel/`.part`
   files (`is_hidden_file`, `is_hidden_dir`, `PARTIAL_DOWNLOAD_SUFFIX`), skips
   file-symlinks whose target escapes the bucket (`is_safe_symlink_target`,
   so `secret -> /etc/passwd` never leaks its hash/metadata through the
-  listing), attaches cached hashes (`get_sha256_hash`, `hashes.py:42`),
+  listing), attaches cached hashes (`get_sha256_hash`, `hashes.py::get_sha256_hash`),
   returns `File` dicts.
-- `get_upload_status` (`list.py:40`) reports existing `.part` size for resume.
+- `get_upload_status` (`api/files/list.py::get_upload_status`) reports existing `.part` size for resume.
   **p2p parity**: the same endpoint is now served by p2p masters — Python
-  (`hsync_client/p2p_server.py:_handle_upload_status`) and Android
-  (`P2PServer.kt:handleUploadStatus`) — so the client resume logic works
+  (`hsync_client/p2p_server.py::_handle_upload_status`) and Android
+  (`P2PServer.kt`, `handleUploadStatus`) — so the client resume logic works
   uniformly in both server mode and P2P mode.
-- `get_tombstones` (`list.py:326`) returns the bucket's tombstone entries from
-  `get_tombstone_store` (`tombstones.py:38`); the `POST` counterpart records
+- `get_tombstones` (`api/files/list.py::get_tombstones`) returns the bucket's tombstone entries from
+  `get_tombstone_store` (`tombstones.py::get_tombstone_store`); the `POST` counterpart records
   client-side deletions into the same store. Its body is streamed with a 50 MB
-  cap (`read_request_body_capped`, `api/utils.py`) so a hostile member cannot
+  cap (`read_request_body_capped`, `api/utils.py::read_request_body_capped`) so a hostile member cannot
   buffer an unbounded body; an oversized body is a 400.
 
-## Delete (`api/files/delete.py:44`)
+## Delete (`api/files/delete.py::delete_file`)
 
 Removes the file (for a symlink path, the **link itself**, never its target —
 final component left unresolved by the confinement), drops its hash
-(`del_sha256_hash`, `hashes.py:56`), records a tombstone (`record_deletion`,
-`tombstones.py:49`), cleans up now-empty dirs (`cleanup_empty_dir`,
-`api/file_utils.py:67`), and broadcasts a `deleted` event. The delta apply
+(`del_sha256_hash`, `hashes.py::del_sha256_hash`), records a tombstone (`record_deletion`,
+`tombstones.py::record_deletion`), cleans up now-empty dirs (`cleanup_empty_dir`,
+`api/file_utils.py::cleanup_empty_dir`), and broadcasts a `deleted` event. The delta apply
 endpoint (`delta/apply.py`) **refuses symlink paths with 400**: a delta
 patches file content and must never turn a symlink into a regular file.
 
@@ -255,19 +258,19 @@ See `../docs/delta-transfer.md` for user-facing documentation.
 
 | Method + path | Handler | Auth | Rate limit |
 | ------------- | ------- | ---- | ---------- |
-| `GET /buckets/{bucket}/files/delta/signatures` | `delta.signatures.get_delta_signatures` (`delta/signatures.py:150`) | key | delta |
-| `POST /buckets/{bucket}/files/delta/signatures` | `delta.signatures.post_delta_signatures` (`delta/signatures.py:210`) | key | delta |
-| `POST /buckets/{bucket}/files/delta/apply` | `delta.apply.delta_apply` (`delta/apply.py:167`) | key | delta |
-| `GET /buckets/{bucket}/files/delta/data/{token}` | `delta.data.get_delta_data` (`delta/data.py:41`) | key | delta |
+| `GET /buckets/{bucket}/files/delta/signatures` | `delta.signatures.get_delta_signatures` (`api/files/delta/signatures.py::get_delta_signatures`) | key | delta |
+| `POST /buckets/{bucket}/files/delta/signatures` | `delta.signatures.post_delta_signatures` (`api/files/delta/signatures.py::post_delta_signatures`) | key | delta |
+| `POST /buckets/{bucket}/files/delta/apply` | `delta.apply.delta_apply` (`api/files/delta/apply.py::delta_apply`) | key | delta |
+| `GET /buckets/{bucket}/files/delta/data/{token}` | `delta.data.get_delta_data` (`api/files/delta/data.py::get_delta_data`) | key | delta |
 
 **Concurrency**: The `delta_apply` endpoint uses a per-file lock manager
 (`file_lock_manager.py`) to serialize concurrent delta applies on the same file.
 Signature computation and matching (`compute_signatures`, `find_matches_file`),
 literal compression and token issuance all run on **asyncio worker threads**
 (`asyncio.to_thread`) so the event loop never blocks. Two shared caches are
-cross-thread by design: `_signature_cache` (`delta/signatures.py`, TTL 300 s,
+cross-thread by design: `_signature_cache` (`api/files/delta/signatures.py::_signature_cache`, TTL 300 s,
 FIFO cap 64, guarded by `_signature_cache_lock` — computed outside the lock)
-and `delta_token_store` (`delta/tokens.py`, `threading.RLock` around
+and `delta_token_store` (`api/files/delta/tokens.py::delta_token_store`, `threading.RLock` around
 issue/lookup/consume/discard/cleanup so the token-cap and storage checks are
 atomic). Regression coverage: `tests/test_concurrency_hardening.py`.
 This prevents race conditions where multiple clients would write to the same
@@ -276,20 +279,23 @@ race check and released after the atomic rename, ensuring that the entire
 apply operation is atomic with respect to other delta applies on the same file.
 
 **Caps and limits**:
-- `POST /delta/signatures` body size: max 50 MB (`_MAX_SIGNATURES_BODY_SIZE`),
+- `POST /delta/signatures` body size: max 50 MB (`_MAX_SIGNATURES_BODY_SIZE`,
+  `api/files/delta/signatures.py::_MAX_SIGNATURES_BODY_SIZE`),
   enforced by streaming (`read_request_body_capped`) so the body is never fully
   buffered first.
 - `POST /delta/apply` result size: bounded by `get_max_upload_size()` and the
   same free-space reserve as a full upload (shared `enforce_size_cap` +
-  `ensure_disk_space`, `api/utils.py`). An over-cap `new_size` is a 400
+  `ensure_disk_space`, `api/utils.py::enforce_size_cap`). An over-cap `new_size` is a 400
   (`FileTooLargeError`), and a reserve breach is a 507 (`InsufficientStorageError`);
   otherwise N copy ops (each within `base_size`) could declare an arbitrarily
   large `new_size` and amplify a small request into a disk-filling write.
-- Global request body: `MaxRequestSizeMiddleware` (`middleware.py`) rejects any
+- Global request body: `MaxRequestSizeMiddleware` (`middleware.py::MaxRequestSizeMiddleware`) rejects any
   HTTP body over `get_max_request_body_size()` with 413 at the ASGI boundary
   (before parsing and before auth); see `infrastructure.md`.
-- Total temp file storage: max 10 GB (`DELTA_MAX_TEMP_STORAGE_BYTES`)
-- Active tokens: max 1000 (`DELTA_MAX_ACTIVE_TOKENS`)
+- Total temp file storage: max 10 GB (`DELTA_MAX_TEMP_STORAGE_BYTES`,
+  `api/files/delta/tokens.py::DELTA_MAX_TEMP_STORAGE_BYTES`)
+- Active tokens: max 1000 (`DELTA_MAX_ACTIVE_TOKENS`,
+  `api/files/delta/tokens.py::DELTA_MAX_ACTIVE_TOKENS`)
 - Token TTL: 300s (configurable via `HSYNC_DELTA_TOKEN_TTL`)
 
 **Metrics**: All delta endpoints record Prometheus metrics (see `metrics.py`):
@@ -300,10 +306,12 @@ includes the wall-clock duration via `format_duration(..., subsecond=True)`.
 ## Shared helpers (`api/utils.py`, `api/file_utils.py`)
 
 - `api/utils.py`: bucket validation, `resolve_within_bucket` per-bucket
-  confinement (`:46`), permission get/set (`:70`/`:83`/`:103`, wire values
-  masked of special bits).
-- `api/file_utils.py`: sentinel handling (`:27`/`:34`), empty-dir cleanup (`:72`),
-  timestamp updates with far-future clamp (`:110`).
+  confinement (`api/utils.py::resolve_within_bucket`), permission get/set
+  (`api/utils.py::get_permissions` / `api/utils.py::set_permissions` / `api/utils.py::set_directory_permissions`,
+  wire values masked of special bits).
+- `api/file_utils.py`: sentinel handling (`api/file_utils.py::is_sentinel_file` /
+  `api/file_utils.py::ensure_sentinel_in_dir`), empty-dir cleanup (`api/file_utils.py::cleanup_empty_dir`),
+  timestamp updates with far-future clamp (`api/file_utils.py::update_file_timestamp`).
 
 > Validation primitives are reused from `hsync_common` (path_validation,
 > permissions); do not reimplement them here (DRY rule, `AGENTS.md`).

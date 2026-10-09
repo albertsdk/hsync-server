@@ -10,8 +10,8 @@ the server-local choices not big enough for an ADR.
 | ADR | Server code that implements it |
 | --- | ------------------------------ |
 | [0001 server-vs-p2p-modes](../../hsync-common/docs/internal/adr/0001-server-vs-p2p-modes.md) | this whole process is the REST/WS server half; p2p is client-only |
-| [0003 tombstone-gossip](../../hsync-common/docs/internal/adr/0003-tombstone-gossip.md) | `tombstones.py`; `GET/POST .../tombstones` (`api/files/list.py:194`) |
-| [0005 protocol-versioning](../../hsync-common/docs/internal/adr/0005-protocol-versioning.md) | REST `VersionMiddleware` hard-fail 426 + malformed `X-Client-Name` 400 (`middleware.py:130`); WS handshake mismatch (`api/events.py`) |
+| [0003 tombstone-gossip](../../hsync-common/docs/internal/adr/0003-tombstone-gossip.md) | `tombstones.py`; `GET/POST .../tombstones` (`api/files/list.py::get_tombstones`, `api/files/list.py::post_tombstones`) |
+| [0005 protocol-versioning](../../hsync-common/docs/internal/adr/0005-protocol-versioning.md) | REST `VersionMiddleware` hard-fail 426 + malformed `X-Client-Name` 400 (`middleware.py::VersionMiddleware`); WS handshake mismatch (`api/events.py`) |
 | [0022 causal-vector-clock-conflict-model](../../hsync-common/docs/internal/adr/0022-causal-vector-clock-conflict-model.md) | per-bucket version stores (`versions.py`) + causal upload arbitration (`arbitration.py`, shared by upload and delta-apply, `FileLockManager` critical section); SHA-256 dedup (`hashes.py`) + checksum verify on upload |
 | [0023 corrected-mtime-tie-break](../../hsync-common/docs/internal/adr/0023-corrected-mtime-tie-break.md) | same arbitration core, now with the chronological tie-break: `arbitrate_upload` takes `incoming_corrected_mtime` (form field on upload and metadata on delta/apply), compares it with the stored `corrected_mtime`, falls back to SHA-256 when unknown/tied, records the winner via `record_version` and exposes it in listings (`server_version_info`) and the 201 `version` object |
 | [0025 sqlite-external-state-store](../../hsync-common/docs/internal/adr/0025-sqlite-external-state-store.md) | `get_state_dir()`; `versions.py` / `tombstones.py` (per-bucket DB `server/<bucket>.db`, no in-bucket marker); `.hsyncnodeid` next to the state dir |
@@ -21,17 +21,17 @@ the server-local choices not big enough for an ADR.
 - **Filesystem for user data; SQLite for causal metadata.** Bucket files live
   under `get_buckets_path()`. Versions and tombstones live in per-bucket DBs
   `get_state_dir()/server/<bucket>.db` (ADR-0025). SHA-256 cache is still in-memory
-  and rebuilt at startup (`main.py:58` → `hashes.py:73`).
-- **Per-bucket WS pools** (`connection_manager.py:71`) instead of one global hub:
+  and rebuilt at startup (`main.py::lifespan` → `hashes.py::set_sha256_hashes`).
+- **Per-bucket WS pools** (`api/connection_manager.py::BucketConnectionManager`) instead of one global hub:
   isolation + smaller broadcast fan-out; global slot accounting still caps total
-  and per-IP connections (`config.py:457`/`:462`).
+  and per-IP connections (`config.py::get_ws_max_connections` / `config.py::get_ws_max_connections_per_ip`).
 - **Single event loop; blocking work offloaded to threads.** The server is
   deployed as one uvicorn worker (`HSYNC_WORKERS=1`; the WS registry and
-  presence counters are in-process, `connection_manager.py:18`). Blocking I/O
+  presence counters are in-process, `api/connection_manager.py::BucketConnectionManager`). Blocking I/O
   and GIL-releasing CPU work run via `asyncio.to_thread` (file hashing,
   decompression, delta signatures/match, scrypt token verify, fsync);
-  compressed downloads use a dedicated CPU-sized pool (`compression.py:67`):
-  `async_compress_stream` (`compression.py:123`) reads on the loop via
+  compressed downloads use a dedicated CPU-sized pool (`compression.py::_COMPRESS_MAX_WORKERS`):
+  `async_compress_stream` (`compression.py::async_compress_stream`) reads on the loop via
   `aiofiles` and offloads one ~1 MiB batch at a time, holding a worker only
   while a batch is compressed — never while the consumer is parked on socket
   backpressure — so a small pool serves many concurrent slow downloads without
