@@ -131,8 +131,8 @@ async def grant_member(
 ) -> JSONResponse:
     """Grant membership to an account (owner/admin only).
 
-    The response is uniform whether or not the target account exists
-    (finding F-03): a missing account does not create a membership but returns
+    The response is uniform whether or not the target account exists;
+    a missing account does not create a membership but returns
     the same 201 body, so the endpoint is not an account-existence oracle. The
     owner can confirm the result via the member listing.
     """

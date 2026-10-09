@@ -176,7 +176,7 @@ app.add_middleware(VersionMiddleware)
 # Configure Prometheus metrics instrumentation.
 # Excludes documentation and monitoring endpoints from metrics collection.
 # The /metrics endpoint itself is served by an authenticated route in
-# ``hsync_server.metrics`` (finding F-02: it must not be public).
+# ``hsync_server.metrics`` (it must not be public).
 Instrumentator(
     excluded_handlers=["/docs", REST_METRICS_PATH, REST_HEALTH_PATH],
 ).instrument(app)

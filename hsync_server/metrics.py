@@ -137,7 +137,7 @@ def update_temp_storage(bytes_used: int) -> None:
 async def metrics_endpoint() -> Response:
     """Prometheus metrics endpoint.
 
-    Authenticated (finding F-02): the endpoint was previously exposed publicly
+    Authenticated: the endpoint was previously exposed publicly
     by the instrumentator; it now requires a valid account token.
     """
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

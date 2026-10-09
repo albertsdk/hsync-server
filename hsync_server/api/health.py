@@ -20,7 +20,7 @@ from hsync_server.routers import public_router
 # Hard cap on the /health probe payload: bounds the amplification surface of
 # an unauthenticated endpoint that can return an arbitrary number of bytes.
 # Kept at the client autotune default (256 KB) — the autotune probe is
-# unauthenticated by design, so the cap is the mitigation (finding F-01).
+# unauthenticated by design, so the cap is the mitigation.
 HEALTH_MAX_PROBE_BYTES = 256 * 1024  # 256 KB
 
 

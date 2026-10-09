@@ -159,7 +159,7 @@ class TestDeltaToken:
 # =============================================================================
 class TestInfoDisclosure:
     def test_health_amplification(self, pt):
-        # Fixed: /health?size= cap reduced to 256 KB (client autotune default) — F-01.
+        # Fixed: /health?size= cap reduced to 256 KB (client autotune default).
         _assert_secure(pt.probe_health_amplification())
 
     def test_health_size_bounded(self, pt):
@@ -177,11 +177,11 @@ class TestInfoDisclosure:
         _assert_secure(pt.probe_openapi_exposed())
 
     def test_account_enumeration(self, pt):
-        # Fixed: grant_member returns a uniform 201 (no existence oracle) — F-03.
+        # Fixed: grant_member returns a uniform 201 (no existence oracle).
         _assert_secure(pt.probe_account_enumeration())
 
     def test_bucket_quota(self, pt):
-        # Fixed: create_bucket enforces a per-account quota (F-04).
+        # Fixed: create_bucket enforces a per-account quota.
         _assert_secure(pt.probe_bucket_quota(count=_QUOTA_BUCKETS))
 
 

@@ -69,7 +69,7 @@ async def create_bucket(
 
     Returns 409 if the bucket name is already taken (directory exists).
     Returns 403 if the caller already owns ``max_buckets_per_account`` buckets
-    (finding F-04: per-account bucket quota).
+    (per-account bucket quota).
     """
     max_buckets = get_max_buckets_per_account()
     if max_buckets > 0 and get_auth_store().count_owned_buckets(ctx.id) >= max_buckets:
