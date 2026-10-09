@@ -60,12 +60,12 @@ tests/
 ├── test_api_integration.py             # End-to-end integration tests
 ├── test_api_utils.py                   # API utility helpers
 ├── test_bb_auth_protocol_limits.py     # Black-box: auth, protocol version and rate-limit use cases
-├── test_bb_bucket_lifecycle.py         # Black-box: bucket create/read/list/delete lifecycle, isolation, presence
+├── test_bb_bucket_lifecycle.py         # Black-box: bucket create/read/list/delete lifecycle, isolation, presence, restart persistence
 ├── test_bb_client_interop.py           # Black-box: real hsync-client CLI driven from the server repo (TLS interop)
 ├── test_bb_delta_transfer.py           # Black-box: delta transfer use case (signatures, tokens, apply)
 ├── test_bb_download_compression.py     # Black-box: download-side zstd compression for large files
-├── test_bb_file_download_delete.py     # Black-box: file download and delete use cases
-├── test_bb_file_upload.py              # Black-box: file upload use case (resume, compression, overwrite)
+├── test_bb_file_download_delete.py     # Black-box: file download (incl. HTTP Range resume) and delete use cases
+├── test_bb_file_upload.py              # Black-box: file upload use case (resume, compression, overwrite, disk-space 507, decompression-bomb guard)
 ├── test_bb_members_presence.py         # Black-box: bucket membership (grant/list/revoke) and presence counters
 ├── test_bb_server_concurrency.py       # Black-box: parallel REST + WebSocket concurrency stress
 ├── test_bb_tombstones_status.py        # Black-box: tombstone listing, merge, and resumable upload-status
@@ -110,7 +110,7 @@ tests/
 | `_scrub_hsync_env` (autouse) | function | Removes every `HSYNC_*` inherited from the developer's shell (except `HSYNC_ADMIN_KEY`) so `Settings()` defaults are hermetic |
 | `client` / `client_no_auth` | function | Async HTTPX clients against a fresh FastAPI test app, with/without admin auth |
 | `test_app` | function | Assembled router/handler stack on isolated state (no uvicorn) |
-| `live_server` / `start_live_server` / `bb_http` / `bb_bucket` | module/function | Black-box harness: real server subprocess on an ephemeral port with scrubbed `HSYNC_*` env and temp dirs |
+| `live_server` / `start_live_server` / `restartable_live_server` / `bb_http` / `bb_bucket` | module/function | Black-box harness: real server subprocess on an ephemeral port with scrubbed `HSYNC_*` env and temp dirs; `restartable_live_server` restarts on shared buckets/state so persistence can be exercised |
 
 ### Using fixtures
 
@@ -269,12 +269,12 @@ than unit tests.
 | File | What it covers |
 |------|---------------|
 | `test_bb_auth_protocol_limits.py` | Authentication, protocol‑version mismatch, rate‑limit enforcement, auth negatives on protected routes. |
-| `test_bb_bucket_lifecycle.py` | Bucket create / read / list / delete lifecycle, cross‑bucket isolation, presence. |
+| `test_bb_bucket_lifecycle.py` | Bucket create / read / list / delete lifecycle, cross‑bucket isolation, presence, and state persistence across a server restart. |
 | `test_bb_client_interop.py` | Real hsync‑client CLI driven from the server repo over TLS (capabilities, upload, two‑client convergence). |
 | `test_bb_delta_transfer.py` | Delta transfer use case (signatures, tokens, apply, negatives). |
 | `test_bb_download_compression.py` | Download-side compression contract: large files stream zstd (`Content-Encoding: zstd`), below-threshold files are never re-encoded by the gzip layer, metadata responses stay gzipped, and parallel compressed downloads round-trip. |
-| `test_bb_file_download_delete.py` | File download and delete use cases. |
-| `test_bb_file_upload.py` | File upload use case (resume, compression, overwrite, validation). |
+| `test_bb_file_download_delete.py` | File download (including the HTTP Range 206/416 resume contract) and delete use cases. |
+| `test_bb_file_upload.py` | File upload use case (resume, compression, overwrite, validation, disk‑space 507, decompression‑bomb guard). |
 | `test_bb_members_presence.py` | Bucket membership (grant/list/revoke) and presence counters with a connected member. |
 | `test_bb_server_concurrency.py` | Parallel REST load (upload/list/download/delete from several clients) and WebSocket relay fan-out from concurrent publishers. WS helpers shared via `tests/ws_helpers.py`. |
 | `test_bb_tombstones_status.py` | Tombstone listing, causal merge, and resumable upload‑status. |

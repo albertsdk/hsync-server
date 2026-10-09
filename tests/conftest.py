@@ -4,6 +4,7 @@ Pytest fixtures for hsync-server tests.
 
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -667,6 +668,45 @@ def _stop_proc(proc: subprocess.Popen) -> None:
         proc.wait(timeout=5)
 
 
+def _terminate_orphan_server_processes() -> None:
+    """Best-effort reap of ``hsync_server`` subprocesses still parented to pytest.
+
+    Session-scoped teardown runs *after* every module-scoped ``live_server`` has
+    been stopped (module fixtures finalize first), so any surviving child is a
+    leftover from a crashed test, never a live fixture — safe to terminate.
+    POSIX-only (``pgrep`` + ``/proc``); a no-op where either is unavailable.
+    """
+    if not shutil.which("pgrep"):
+        return
+    try:
+        result = subprocess.run(
+            ["pgrep", "-P", str(os.getpid())], capture_output=True, text=True, timeout=5
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    for token in result.stdout.split():
+        if not token.isdigit():
+            continue
+        pid = int(token)
+        try:
+            cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+        except OSError:
+            continue
+        if b"hsync_server" not in cmdline and b"hsync-server" not in cmdline:
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            continue
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _reap_orphan_server_processes() -> Generator[None]:
+    """Defense-in-depth: reap orphaned ``hsync_server`` processes at session end."""
+    yield
+    _terminate_orphan_server_processes()
+
+
 @pytest.fixture(scope="module")
 def live_server() -> Generator[tuple[str, str]]:
     """Module-scoped real loopback server: yields (base_url, api_key)."""
@@ -702,6 +742,47 @@ def start_live_server():
             _discard_file(log_path)
 
     return _start
+
+
+@pytest.fixture
+def restartable_live_server():
+    """A restartable live server whose buckets/state survive ``restart()``.
+
+    Yields a callable ``restart(env_overrides=None)`` used as a context manager:
+    each call starts a **fresh** server process bound to the *same* buckets and
+    state directories as the previous call, so on-disk state persists across a
+    simulated restart, and yields ``(base_url, api_key)``. Termination and the
+    throwaway temp dir are cleaned up on exit; the shared dirs are removed at
+    fixture end.
+    """
+    import contextlib
+
+    buckets_dir = tempfile.mkdtemp(prefix="hsync_bb_restart_buckets_")
+    state_dir = tempfile.mkdtemp(prefix="hsync_bb_restart_state_")
+    shared_env = {"HSYNC_BUCKETS": buckets_dir, "HSYNC_STATE_DIR": state_dir}
+
+    @contextlib.contextmanager
+    def _restart(env_overrides: dict[str, str] | None = None):
+        env = dict(shared_env)
+        if env_overrides:
+            env.update(env_overrides)
+        # ``_start_live_server`` creates a throwaway buckets dir it expects the
+        # caller to remove; the env overrides point the server at the shared
+        # dirs above, so the throwaway one is never written to.
+        proc, base_url, throwaway_dir, log_path = _start_live_server(env)
+        try:
+            yield base_url, BB_API_KEY
+        finally:
+            _stop_proc(proc)
+            shutil.rmtree(throwaway_dir, ignore_errors=True)
+            shutil.rmtree(throwaway_dir + "_state", ignore_errors=True)
+            _discard_file(log_path)
+
+    try:
+        yield _restart
+    finally:
+        shutil.rmtree(buckets_dir, ignore_errors=True)
+        shutil.rmtree(state_dir, ignore_errors=True)
 
 
 @pytest.fixture

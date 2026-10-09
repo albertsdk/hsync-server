@@ -220,3 +220,50 @@ class TestPresence:
 
         # Then the server reports it as not found
         assert r.status_code == 404
+
+
+class TestStatePersistence:
+    """Bucket, file and tombstone state must survive a server restart."""
+
+    def test_bucket_files_and_tombstones_survive_restart(
+        self, restartable_live_server, bb_upload, bb_sample
+    ):
+        bucket = f"bb-persist-{uuid.uuid4().hex[:8]}"
+        keep = bb_sample(suffix=".bin", size=1024, prefix="keep")
+        gone = bb_sample(suffix=".bin", size=64, prefix="gone")
+        auth_cid = "bbclient0001bbcltBB10"
+
+        # Given a bucket holding one live file and one deleted (tombstoned) file
+        with restartable_live_server() as (base, api_key):
+            with httpx.Client(
+                base_url=base, headers={"Authorization": f"Bearer {api_key}"}, timeout=30.0
+            ) as c:
+                assert c.post("/api/v1/buckets", params={"bucket": bucket}).status_code == 201
+                assert bb_upload(c, bucket, keep.name, keep.payload).status_code == 201
+                assert bb_upload(c, bucket, gone.name, gone.payload).status_code == 201
+                assert (
+                    c.request(
+                        "DELETE",
+                        f"/api/v1/buckets/{bucket}/files",
+                        data={"cid": auth_cid, "filename": gone.name},
+                    ).status_code
+                    == 200
+                )
+
+        # When the server is restarted on the same storage
+        with restartable_live_server() as (base2, api_key2):
+            with httpx.Client(
+                base_url=base2, headers={"Authorization": f"Bearer {api_key2}"}, timeout=30.0
+            ) as c2:
+                # Then the bucket still exists, the live file survives with its
+                # exact bytes, and the deleted file stays gone (tombstone held)
+                assert c2.get(f"/api/v1/buckets/{bucket}").status_code == 200
+                names = {e["name"] for e in c2.get(f"/api/v1/buckets/{bucket}/files").json()}
+                assert keep.name in names, keep.ctx
+                assert gone.name not in names, gone.ctx
+
+                dl = c2.get(
+                    f"/api/v1/buckets/{bucket}/files/download", params={"filename": keep.name}
+                )
+                assert dl.status_code == 200
+                assert dl.content == keep.payload, keep.ctx

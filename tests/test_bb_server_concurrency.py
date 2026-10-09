@@ -79,6 +79,8 @@ def _download(client: httpx.Client, bucket: str, rel: str) -> httpx.Response:
 
 class TestParallelRestLoad:
     def test_parallel_upload_list_download_delete(self, live_server, bb_bucket, bb_upload):
+        # Given six parallel clients, each owning an 8-file subtree, with the
+        # expected bytes and the post-delete survivor set computed up front
         expected: dict[str, bytes] = {}
         for t in range(_THREADS):
             for i in range(_FILES_PER_THREAD):
@@ -116,8 +118,10 @@ class TestParallelRestLoad:
                 )
                 assert rd.status_code == 200, rd.text
 
+        # When all clients upload, list, download and delete concurrently
         _run_all(worker, _THREADS)
 
+        # Then the listing equals the survivors, with correct size and hash
         with _client(live_server) as client:
             listed = client.get(f"/api/v1/buckets/{bb_bucket}/files").json()
             by_path = {entry["filepath"]: entry for entry in listed}
@@ -128,6 +132,7 @@ class TestParallelRestLoad:
 
         items = list(survivors.items())
 
+        # And every surviving file downloads byte-for-byte from a fresh client
         def verify(idx: int) -> None:
             rel, data = items[idx]
             with _client(live_server) as client:
@@ -146,6 +151,7 @@ class TestConcurrentSamePathUploads:
         content detected after another writer landed it) — both are correct;
         what must never happen is a 5xx, a torn file, or a conflict copy.
         """
+        # Given identical content and six clients racing on the same path
         data = _payload(9, 9)
 
         def worker(t: int) -> int:
@@ -154,9 +160,11 @@ class TestConcurrentSamePathUploads:
                 assert r.status_code in (200, 201, 202, 409), r.text
                 return r.status_code
 
+        # When they upload it concurrently
         codes = _run_all(worker, _THREADS)
         assert any(code in (200, 201, 202) for code in codes), codes
 
+        # Then exactly one consistent file remains (never a 5xx/torn/conflict copy)
         with _client(live_server) as client:
             listed = client.get(f"/api/v1/buckets/{bb_bucket}/files").json()
             assert [entry["filepath"] for entry in listed] == ["dup.bin"], listed
@@ -171,6 +179,7 @@ class TestWsRelayUnderParallelPublishers:
         self, live_server: tuple[str, str], bb_bucket: str
     ):
         """Three publishers send concurrently; one subscriber receives all 24 events."""
+        # Given one subscriber and three publishers in the same bucket
         ws_url = ws_base(live_server)
         api_key = live_server[1]
         publisher_count = 3
@@ -186,6 +195,7 @@ class TestWsRelayUnderParallelPublishers:
                 assert auth["status"] == "ok"
                 publish_sockets.append((cid, ws))
 
+            # When the three publishers each emit 8 events concurrently
             async def publish(cid: str, ws) -> None:
                 for i in range(per_publisher):
                     await ws.send(
@@ -210,6 +220,7 @@ class TestWsRelayUnderParallelPublishers:
 
             await asyncio.gather(*(publish(cid, ws) for cid, ws in publish_sockets))
 
+            # Then the subscriber receives every (cid, filepath) event exactly once
             expected = {
                 (cid, f"load/{cid}/f{i}.bin")
                 for cid, _ws in publish_sockets

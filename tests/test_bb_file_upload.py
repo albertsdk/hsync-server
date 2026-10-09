@@ -593,3 +593,48 @@ class TestUploadFilesystemPathLimits:
         # Then the request is rejected as an invalid path and nothing is stored
         assert r.status_code == 400
         assert bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json() == []
+
+
+class TestDiskSpaceGuard:
+    def test_upload_refused_with_507_when_reserve_unreachable(self, start_live_server, bb_upload):
+        # Given a server whose free-space reserve exceeds any real disk (1 PiB)
+        with start_live_server({"HSYNC_MIN_FREE_DISK_SPACE": str(1 << 50)}) as (base, api_key):
+            with httpx.Client(
+                base_url=base, headers={"Authorization": f"Bearer {api_key}"}, timeout=15.0
+            ) as c:
+                bucket = "bbspspace"
+                assert c.post("/api/v1/buckets", params={"bucket": bucket}).status_code == 201
+
+                # When uploading any file
+                r = bb_upload(c, bucket, "x.bin", b"x")
+
+                # Then the server refuses the write with 507 before storing it
+                assert r.status_code == 507, r.text
+                assert c.get(f"/api/v1/buckets/{bucket}/files").json() == []
+
+
+class TestCompressedUploadBombGuard:
+    def test_payload_expanding_past_declared_size_is_refused(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str
+    ):
+        # Given a highly compressible payload (a decompression-bomb shape)
+        original = b"\x00" * (5 * 1024 * 1024)
+        compressed = zstd.ZstdCompressor().compress(original)
+        assert len(compressed) < len(original)
+
+        # When uploading it compressed but declaring a far smaller size
+        r = bb_upload(
+            bb_http,
+            bb_bucket,
+            "bomb.bin",
+            compressed,
+            sha256sum=_sha(original),
+            size=1024,
+            compressed="true",
+        )
+
+        # Then the server stops expansion at the declared cap and rejects it
+        assert r.status_code == 400, r.text
+
+        # And nothing is stored
+        assert bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json() == []

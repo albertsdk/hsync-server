@@ -168,3 +168,47 @@ class TestDeleteNegative:
 
         # Then the server reports the bucket as not found
         assert r.status_code == 404
+
+
+class TestDownloadRange:
+    """HTTP Range resumable-download contract (the wire the client's resume uses)."""
+
+    def test_range_download_returns_206_and_the_tail(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str, bb_sample
+    ):
+        # Given a random file uploaded to the bucket
+        sample = bb_sample(suffix=".bin", size=4096)
+        assert bb_upload(bb_http, bb_bucket, sample.name, sample.payload).status_code == 201
+        offset = len(sample.payload) // 3
+
+        # When downloading only the tail with a Range header
+        r = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download",
+            params={"filename": sample.name},
+            headers={"Range": f"bytes={offset}-"},
+        )
+
+        # Then the server answers 206 with exactly the remaining bytes
+        assert r.status_code == 206, r.text
+        assert r.headers.get("Content-Range") == (
+            f"bytes {offset}-{len(sample.payload) - 1}/{len(sample.payload)}"
+        ), sample.ctx
+        assert r.content == sample.payload[offset:], sample.ctx
+
+    def test_unsatisfiable_range_returns_416(
+        self, bb_upload, bb_http: httpx.Client, bb_bucket: str, bb_sample
+    ):
+        # Given a random file uploaded to the bucket
+        sample = bb_sample(suffix=".bin", size=2048)
+        assert bb_upload(bb_http, bb_bucket, sample.name, sample.payload).status_code == 201
+
+        # When the range starts at EOF (no byte left to serve)
+        r = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files/download",
+            params={"filename": sample.name},
+            headers={"Range": f"bytes={len(sample.payload)}-"},
+        )
+
+        # Then it is unsatisfiable: 416 with a "bytes */size" Content-Range
+        assert r.status_code == 416, r.text
+        assert r.headers.get("Content-Range") == f"bytes */{len(sample.payload)}", sample.ctx
