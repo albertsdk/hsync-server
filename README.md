@@ -12,6 +12,8 @@ all over standard HTTP/HTTPS.
 
 It scales with your setup — from a laptop or NAS on a small LAN to a VPS serving several offices — and stays entirely self-hosted: the hub, the storage and the credentials remain yours, with your files stored in their original format.
 
+> New to HSYNC? Start with the [HSYNC Ecosystem](https://github.com/albertsdk/hsync/blob/main/README.md) for an overview of the platform before running a server.
+
 > A **bucket** is a named directory on the server that holds a set of
 > synchronized files — think of it as a shared folder. You'll need the
 > [HSYNC Client](https://github.com/albertsdk/hsync-client) on each device
@@ -128,7 +130,7 @@ The table below compares HSYNC with common alternatives on five dimensions.<br>
 directly browsable on disk — no proprietary containers, block stores, or
 opaque internal formats.
 
-| Tool | Protocol | HTTP | Real-Time | Native Storage | Architecture |
+| Tool | Protocol | HTTP-Native | Real-Time Sync | Native Storage | Architecture |
 |------|----------|:---:|:---:|:---:|------|
 | **HSYNC Server** | HTTP / HTTPS | ✅ | ✅ | ✅ | Client-Server + P2P |
 | rsync | SSH or rsync daemon | ❌ | ❌ | ✅ | Client-Server |
@@ -161,7 +163,7 @@ opaque internal formats.
 
 ## Command Line Options
 
-```bash
+```text
 hsync-server [options]
 ```
 
