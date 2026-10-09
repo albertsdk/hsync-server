@@ -376,24 +376,38 @@ class TestDeleteCoverageGaps:
 
 
 class TestDownloadCoverageGaps:
-    """Cover the backup-file fallback in download."""
+    """Cover the download primary/backup selection."""
 
     @pytest.mark.asyncio
-    async def test_download_serves_backup_when_exists(
+    async def test_download_prefers_primary_over_backup(
         self, client: AsyncClient, temp_buckets_dir: str
     ):
-        """When a .backup exists (ongoing upload), the backup is served."""
+        """With both present, the primary is served (atomic publish keeps it whole)."""
         bucket_path = os.path.join(temp_buckets_dir, "dlbackup")
         os.makedirs(bucket_path)
-        original = os.path.join(bucket_path, "f.txt")
-        backup = os.path.join(bucket_path, "f.txt.backup")
-        with open(original, "w") as f:
-            f.write("old content")
-        with open(backup, "w") as f:
+        with open(os.path.join(bucket_path, "f.txt"), "w") as f:
+            f.write("current content")
+        with open(os.path.join(bucket_path, "f.txt.backup"), "w") as f:
             f.write("backup content")
 
         response = await client.get(
             "/api/v1/buckets/dlbackup/files/download", params={"filename": "f.txt"}
+        )
+        assert response.status_code == 200
+        assert response.content == b"current content"
+
+    @pytest.mark.asyncio
+    async def test_download_falls_back_to_backup_when_primary_missing(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """A missing primary falls back to the .backup snapshot."""
+        bucket_path = os.path.join(temp_buckets_dir, "dlbackup2")
+        os.makedirs(bucket_path)
+        with open(os.path.join(bucket_path, "f.txt.backup"), "w") as f:
+            f.write("backup content")
+
+        response = await client.get(
+            "/api/v1/buckets/dlbackup2/files/download", params={"filename": "f.txt"}
         )
         assert response.status_code == 200
         assert response.content == b"backup content"

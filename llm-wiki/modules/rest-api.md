@@ -106,8 +106,11 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   snapshotted to `<path>.backup` by `_backup_existing_file` (`api/files/upload.py::_backup_existing_file`) — a
   hard link (O(1), same inode) with a `copy2` fallback when the filesystem has
   no link support or a stale backup blocks the link. The publish uses an atomic
-  `replace` onto a new inode, so the snapshot never aliases the new content:
-  readers keep the complete previous version while the upload is in flight.
+  `replace` onto a new inode, so the snapshot never aliases the new content.
+  The snapshot is only a **fallback** for the download endpoint when the primary
+  is absent (see the download section below): normal downloads serve the primary,
+  which the atomic publish keeps whole, and preferring the transient backup was a
+  TOCTOU that could 500 when the uploader removed it mid-request.
 - Optional zstd payload expanded with `decompress_file_to_file`
   (`compression.py::decompress_file_to_file`, capped via `decompress_stream`) in a worker thread
   (`asyncio.to_thread`): the compressed temp file is decompressed
@@ -178,6 +181,16 @@ whose target escapes the bucket fails the confinement and is rejected (400).
 Symlinks are *replicated* structurally via the WS `symlink` event and
 `POST /symlinks`, never through this content endpoint. Missing file →
 `FileNotFoundError` (`exceptions.py::FileNotFoundError`).
+
+Readers always receive a **complete** file: the primary is served (every writer
+publishes through an atomic `replace`, so a concurrent overwrite is observed as
+the old or the new inode, never a partial one — the session returns the complete
+previous version while an upload is in flight). The transient `<path>.backup`
+snapshot is used only when the primary is absent, never preferred: picking it
+first was a TOCTOU where the uploader could remove it between the existence
+check and the stat / checksum / response and turn a benign concurrent overwrite
+into a 500. A file removed between the stat and the checksum read maps to the
+same `FileNotFoundError` (404).
 
 > **Coding contract**: the response body carries no HTTP content coding other
 > than `identity` or `Content-Encoding: zstd` (ADR 0010). The route is excluded

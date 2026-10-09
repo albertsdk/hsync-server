@@ -84,12 +84,17 @@ async def download_file(
     if file is None:
         raise InvalidPathError(details={"path": filename})
 
+    # The primary file is always complete: every writer publishes through an
+    # atomic same-directory ``replace``, so a concurrent overwrite is observed
+    # as either the old or the new inode, never a partial one — serving it
+    # already returns the complete previous version while an upload is in
+    # flight. The transient ``<path>.backup`` snapshot (created at the start of
+    # an overwrite, removed once its publish completes) is thus only a fallback
+    # for the rare case where the primary itself is absent. Preferring the
+    # backup was a TOCTOU: the uploader could remove it between the existence
+    # check and the stat / checksum / response, turning a benign concurrent
+    # overwrite into a 500.
     backup_file = f"{file}{BACKUP_SUFFIX}"
-
-    # If a backup file exists (due to ongoing upload), serve that instead
-    # This ensures clients always download a complete, valid file
-    if Path(backup_file).exists():
-        file = backup_file
 
     # Single stat in a worker thread replaces isfile() + stat() (two
     # filesystem lookups). os.path.isfile semantics are preserved exactly:
@@ -97,16 +102,28 @@ async def download_file(
     try:
         st = await asyncio.to_thread(os_stat, file)
     except OSError:
-        raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
+        if not Path(backup_file).exists():
+            raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
+        file = backup_file
+        try:
+            st = await asyncio.to_thread(os_stat, file)
+        except OSError:
+            raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
     if not stat_module.S_ISREG(st.st_mode):
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
     file_size = st.st_size
 
     # Retrieve or compute the SHA-256 checksum of the file being served,
     # so the client can verify integrity against the current server-side state.
+    # A file removed between the stat above and this read is a benign race (a
+    # concurrent delete or overwrite publish), so it maps to the same 404 the
+    # stat would have produced rather than an unhandled 500.
     sha256sum = get_sha256_hash(file)
     if sha256sum is None:
-        sha256sum = await compute_sha256_async(file)
+        try:
+            sha256sum = await compute_sha256_async(file)
+        except OSError:
+            raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
 
     checksum_header = {"X-Checksum-SHA256": sha256sum} if sha256sum else {}
 

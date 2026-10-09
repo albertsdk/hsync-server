@@ -113,6 +113,17 @@ the server-local choices not big enough for an ADR.
   previous `--only main --with build` silently installed no PyInstaller (exit
   code 0, `pyinstaller` absent on PATH) and the cross-build targets aborted;
   guarded by `tests/test_compile_script.py`.
+- **Download serves the primary; `.backup` is a fallback only.** Every writer
+  publishes through an atomic same-directory `replace`, so a download already
+  observes a complete file (the previous inode until the publish, the new one
+  after) and returns the complete previous version while an upload is in flight.
+  The transient `<path>.backup` snapshot (`api/files/upload.py::_backup_existing_file`)
+  is therefore used only when the primary is absent. Preferring it was a TOCTOU:
+  the uploader removes the backup once its publish completes, so a reader that
+  selected it could hit `FileNotFoundError` in the stat, the checksum
+  (`compute_sha256_async`) or `FileResponse` — a 500 on a benign concurrent
+  overwrite (`api/files/download.py::download_file`). The checksum read now also
+  maps a vanished file to the same 404 the stat produces.
 
 ## House rules (from `AGENTS.md`)
 
