@@ -32,7 +32,9 @@ os.environ["HSYNC_ADMIN_KEY"] = TEST_ADMIN_SECRET
 # ``HSYNC_BB_LAN`` are test opt-in flags (read by the ``test_bb_*`` modules at
 # import time) and are not ``Settings`` fields, so a shell-exported value must
 # survive to collection or the whole black-box suite silently skips.
-_SCRUB_EXEMPT_HSYNC_KEYS = frozenset({"HSYNC_ADMIN_KEY", "HSYNC_BB_SERVER", "HSYNC_BB_LAN"})
+_SCRUB_EXEMPT_HSYNC_KEYS = frozenset(
+    {"HSYNC_ADMIN_KEY", "HSYNC_BB_SERVER", "HSYNC_BB_LAN", "HSYNC_BB_SECURITY"}
+)
 
 # Scrub any HSYNC_* inherited from the developer's shell at conftest import
 # time — BEFORE the first test module is collected. Contract tests import

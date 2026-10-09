@@ -9,7 +9,11 @@ success/failure rates, and resource usage. Metrics are exposed via the
 /metrics endpoint (when prometheus_client is available).
 """
 
-from prometheus_client import Counter, Gauge, Histogram
+from fastapi import Response
+from hsync_common.protocol.rest import REST_METRICS_PATH
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
+
+from hsync_server.routers import auth_router
 
 # =============================================================================
 # Delta Transfer Metrics
@@ -122,3 +126,18 @@ def update_temp_storage(bytes_used: int) -> None:
         bytes_used: Total bytes used by temp files
     """
     hsync_delta_temp_storage_bytes.set(bytes_used)
+
+
+# =============================================================================
+# /metrics endpoint (authenticated)
+# =============================================================================
+
+
+@auth_router.get(REST_METRICS_PATH, name="Monitoring - Prometheus metrics")
+async def metrics_endpoint() -> Response:
+    """Prometheus metrics endpoint.
+
+    Authenticated (finding F-02): the endpoint was previously exposed publicly
+    by the instrumentator; it now requires a valid account token.
+    """
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

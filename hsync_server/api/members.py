@@ -129,28 +129,27 @@ async def grant_member(
     req: GrantMemberRequest,
     ctx: Annotated[AuthContext, Depends(verify_api_key)],
 ) -> JSONResponse:
-    """Grant membership to an account (owner/admin only)."""
+    """Grant membership to an account (owner/admin only).
+
+    The response is uniform whether or not the target account exists
+    (finding F-03): a missing account does not create a membership but returns
+    the same 201 body, so the endpoint is not an account-existence oracle. The
+    owner can confirm the result via the member listing.
+    """
     _check_owner_or_admin(bucket, ctx)
 
     target = _resolve_member_target(req)
-    if target is None:
-        return account_not_found_response()
+    if target is not None:
+        store = get_auth_store()
+        try:
+            store.grant_member(bucket, target, ctx.id, caller_is_admin=(ctx.role == "admin"))
+            log.info(f"Granted membership on '{bucket}' to {target.name} (by {ctx.name})")
+        except ConflictError as e:
+            return conflict_response(str(e))
 
-    store = get_auth_store()
-    try:
-        store.grant_member(bucket, target, ctx.id, caller_is_admin=(ctx.role == "admin"))
-    except ConflictError as e:
-        return conflict_response(str(e))
-
-    log.info(f"Granted membership on '{bucket}' to {target.name} (by {ctx.name})")
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
-        content={
-            "bucket": bucket,
-            "client_id": target.id,
-            "name": target.name,
-            "role": "member",
-        },
+        content={"info": "Membership request accepted", "bucket": bucket},
     )
 
 

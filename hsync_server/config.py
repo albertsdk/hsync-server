@@ -125,6 +125,11 @@ class Settings(BaseSettings):
             "body is buffered (0 = derive from max_upload_size)"
         ),
     )
+    max_buckets_per_account: int = Field(
+        default=100,
+        ge=0,
+        description=("Maximum number of buckets a single account may own (0 = unlimited)"),
+    )
 
     # Storage Configuration
     buckets_path: str = Field(
@@ -457,6 +462,11 @@ def get_trusted_proxies() -> frozenset[str]:
 def get_max_upload_size() -> int:
     """Get maximum upload size in bytes from environment (late binding)."""
     return get_settings().max_upload_size
+
+
+def get_max_buckets_per_account() -> int:
+    """Maximum buckets a single account may own (0 = unlimited; late binding)."""
+    return get_settings().max_buckets_per_account
 
 
 def get_max_request_body_size() -> int:

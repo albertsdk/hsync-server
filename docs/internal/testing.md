@@ -279,6 +279,7 @@ than unit tests.
 | `test_bb_server_concurrency.py` | Parallel REST load (upload/list/download/delete from several clients) and WebSocket relay fan-out from concurrent publishers. WS helpers shared via `tests/ws_helpers.py`. |
 | `test_bb_tombstones_status.py` | Tombstone listing, causal merge, and resumable upload‑status. |
 | `test_bb_websocket_relay.py` | WebSocket event‑relay (handshake, fan‑out, echo suppression, rejection). |
+| `test_bb_security.py` | **Opt‑in** (`HSYNC_BB_SECURITY=1`): adversarial security probes — auth bypass, path traversal/confinement, upload integrity/DoS, delta‑token binding, info disclosure, WebSocket abuse. Shared probes in `pentest/probes.py`; report in `pentest/SECURITY_FINDINGS.md`. |
 
 The concurrency module is deliberately bounded (6 threads, 8 KiB payloads) so it
 fits the CI budget; the long-running load/RSS measurement is `bench/soak.py`.
@@ -287,6 +288,23 @@ To opt in:
 ```bash
 HSYNC_BB_SERVER=1 .venv/bin/python -m pytest tests/test_bb_*.py
 ```
+
+### Security probes (`test_bb_security.py`)
+
+`test_bb_security.py` is an **adversarial** black‑box suite (penetration‑style
+probes over the public HTTP/WS surface). Because it sends deliberately hostile
+traffic, it is gated **in addition** by `HSYNC_BB_SECURITY=1` (mirrors
+`hsync-bootnode`'s `HSYNC_BB_SECURITY=1` opt‑in) and stays out of the default
+black‑box run. The probes are shared with the standalone runner
+(`pentest/run_pentest.py`) and documented in `pentest/SECURITY_FINDINGS.md`.
+
+```bash
+HSYNC_BB_SERVER=1 HSYNC_BB_SECURITY=1 \
+  .venv/bin/python -m pytest tests/test_bb_security.py -v
+```
+
+Scale knob: `HSYNC_BB_SERVER_SECURITY_QUOTA_BUCKETS` (default 5) — buckets
+created in the no‑quota probe.
 
 ## Concurrency tests
 

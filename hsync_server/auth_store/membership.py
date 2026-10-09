@@ -62,6 +62,15 @@ class MembershipMixin(AuthStoreBase):
             ).fetchone()
         return row["role"] if row else None
 
+    def count_owned_buckets(self, account_id: str) -> int:
+        """Return the number of buckets *account_id* owns (role='owner')."""
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT COUNT(*) AS n FROM bucket_members WHERE client_id = ? AND role = 'owner'",
+                (account_id,),
+            ).fetchone()
+        return int(row["n"]) if row else 0
+
     def get_share_member_ids(self, bucket: str) -> set[str]:
         """Return the non-admin member ids of *bucket*.
 

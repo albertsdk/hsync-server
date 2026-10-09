@@ -55,9 +55,10 @@ class TestMembers:
                 f"/api/v1/buckets/{bb_bucket}/members", json={"client_id": client_id}
             )
 
-            # Then it is accepted and the member appears in the listing
+            # Then it is accepted (uniform response, no account-existence oracle)
+            # and the member appears in the listing
             assert granted.status_code == 201, granted.text
-            assert granted.json()["role"] == "member"
+            assert granted.json()["info"] == "Membership request accepted"
 
             members = bb_http.get(f"/api/v1/buckets/{bb_bucket}/members")
             assert members.status_code == 200
@@ -76,15 +77,16 @@ class TestMembers:
             # Clean up the account regardless of assertion outcome
             bb_http.delete(f"/api/v1/admin/clients/{client_id}")
 
-    def test_grant_unknown_account_returns_404(self, bb_http: httpx.Client, bb_bucket: str):
+    def test_grant_unknown_account_uniform_response(self, bb_http: httpx.Client, bb_bucket: str):
         # Given a bucket
         # When granting membership to a non-existent account
         r = bb_http.post(
             f"/api/v1/buckets/{bb_bucket}/members", json={"client_id": "no-such-account"}
         )
 
-        # Then the server reports the account as not found
-        assert r.status_code == 404
+        # Then the response is uniform with the success case (no existence oracle)
+        assert r.status_code == 201
+        assert r.json()["info"] == "Membership request accepted"
 
     def test_revoke_non_member_returns_404(self, bb_http: httpx.Client, bb_bucket: str):
         # Given a bucket with no such member

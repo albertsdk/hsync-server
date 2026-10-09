@@ -283,7 +283,7 @@ async def _process_one_message(
             return False
 
         if message.get("name") not in _VALID_EVENT_NAMES:
-            log.error(f"Invalid event name: {message.get('name')}")
+            log.error(f"Invalid event name: {escape_loguru_markup(str(message.get('name')))}")
             return True
 
         src = message.get("src", None)

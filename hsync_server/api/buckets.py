@@ -22,9 +22,10 @@ from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.auth import AuthContext, require_admin, verify_api_key
+from hsync_server.auth_store import get_auth_store
 from hsync_server.bucket_provisioning import create_bucket as _create_bucket
 from hsync_server.bucket_provisioning import delete_bucket as _delete_bucket
-from hsync_server.config import get_buckets_path
+from hsync_server.config import get_buckets_path, get_max_buckets_per_account
 from hsync_server.exceptions import ConflictError
 from hsync_server.routers import auth_router
 
@@ -67,7 +68,19 @@ async def create_bucket(
     """Create a new bucket. The creator becomes the owner.
 
     Returns 409 if the bucket name is already taken (directory exists).
+    Returns 403 if the caller already owns ``max_buckets_per_account`` buckets
+    (finding F-04: per-account bucket quota).
     """
+    max_buckets = get_max_buckets_per_account()
+    if max_buckets > 0 and get_auth_store().count_owned_buckets(ctx.id) >= max_buckets:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={
+                "info": "Bucket quota exceeded for account",
+                "bucket": bucket,
+                "max_buckets_per_account": max_buckets,
+            },
+        )
     try:
         _create_bucket(bucket, owner_account_id=ctx.id, owner_name=ctx.name)
     except ConflictError:

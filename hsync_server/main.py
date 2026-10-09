@@ -118,6 +118,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs" if _settings.enable_docs else None,
     redoc_url="/redoc" if _settings.enable_docs else None,
+    openapi_url="/openapi.json" if _settings.enable_docs else None,
 )
 
 # Configure rate limiting
@@ -172,8 +173,10 @@ app.add_middleware(RequestIdMiddleware)
 # This adds X-Server-Version header to all responses and rejects incompatible clients
 app.add_middleware(VersionMiddleware)
 
-# Configure Prometheus metrics instrumentation
-# Excludes documentation and monitoring endpoints from metrics collection
+# Configure Prometheus metrics instrumentation.
+# Excludes documentation and monitoring endpoints from metrics collection.
+# The /metrics endpoint itself is served by an authenticated route in
+# ``hsync_server.metrics`` (finding F-02: it must not be public).
 Instrumentator(
     excluded_handlers=["/docs", REST_METRICS_PATH, REST_HEALTH_PATH],
-).instrument(app).expose(app, tags=["Public"], endpoint=REST_METRICS_PATH)
+).instrument(app)
