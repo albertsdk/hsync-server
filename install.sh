@@ -82,6 +82,37 @@ validate_port() {
         fail "invalid port '$1'; expected 1-65535"
 }
 
+# True when the docker command comes from the snap package. Snap confinement is
+# relevant because the "home" interface denies hidden paths under $HOME.
+docker_is_snap() {
+    local docker_path
+    docker_path="$(command -v docker 2>/dev/null)" || return 1
+    case "${docker_path}" in
+        /snap/* | */snap/*) return 0 ;;
+    esac
+    # A wrapper/symlink pointing into the snap tree (readlink without -f stays
+    # portable across GNU/BSD userlands).
+    case "$(readlink "${docker_path}" 2>/dev/null || true)" in
+        /snap/* | */snap/*) return 0 ;;
+    esac
+    return 1
+}
+
+# True when an absolute path contains a hidden component (a name starting with
+# '.'), which the snap "home" interface refuses to expose.
+path_has_hidden_component() {
+    local component
+    local IFS='/'
+    # shellcheck disable=SC2086
+    for component in ${1#/}; do
+        case "${component}" in
+            "." | "..") continue ;;
+            .*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -280,6 +311,12 @@ main() {
     printf 'Install directory: %s\n' "${INSTALL_DIR}"
     printf 'Image: ghcr.io/albertsdk/hsync-server:%s\n' "${VERSION}"
     printf 'Endpoint: https://%s:%s\n' "${endpoint_host}" "${PUBLIC_PORT}"
+
+    # Snap-packaged docker is confined and cannot read hidden paths under $HOME,
+    # so the default XDG install dir (~/.local/share/...) breaks 'docker compose'.
+    if docker_is_snap && path_has_hidden_component "${INSTALL_DIR}"; then
+        fail "docker is the snap package and ${INSTALL_DIR} is under a hidden path; the snap 'home' interface denies hidden paths in \$HOME, so 'docker compose' cannot read .env there. Re-run with a non-hidden --install-dir (e.g. --install-dir \"${HOME}/hsync-server\"), or install Docker Engine from https://docs.docker.com/engine/install/ instead of the snap."
+    fi
 
     if [[ "${DRY_RUN}" == true ]]; then
         printf 'Dry run: no files were changed.\n'

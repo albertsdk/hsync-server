@@ -19,6 +19,21 @@ directory, and verifies that the server becomes healthy.
 Docker must already be installed. The installer never invokes `sudo`, changes
 firewall rules, or installs system packages.
 
+### Docker installed as a snap
+
+The snap-packaged `docker` is confined: its `home` interface denies hidden paths
+under `$HOME`. The default install directory `~/.local/share/hsync-server` is
+hidden, so `docker compose` fails with `open .../.env: permission denied`.
+Install Docker Engine (<https://docs.docker.com/engine/install/>) instead of the
+snap, or install to a non-hidden directory:
+
+```bash
+curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh \
+  | bash -s -- --install-dir "$HOME/hsync-server"
+```
+
+The installer detects this combination and stops before writing anything.
+
 ## Install
 
 ### Quick install (one command, latest stable release)

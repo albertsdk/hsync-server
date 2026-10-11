@@ -185,6 +185,18 @@ Use a version tag instead of `latest`, e.g.
 
 ## Troubleshooting
 
+### Installer fails with "open .../.env: permission denied"
+
+```text
+open /home/USER/.local/share/hsync-server/.env: permission denied
+```
+
+The snap-packaged `docker` is confined and cannot read hidden paths under
+`$HOME`; the default install directory `~/.local/share/hsync-server` is hidden,
+so `docker compose` cannot load `.env`. Install Docker Engine instead of the
+snap, or use a non-hidden `--install-dir` — see
+[Getting Started — Docker installed as a snap](getting-started-script.md#docker-installed-as-a-snap).
+
 ### Server won't start
 
 **"Address already in use" on port 9753:**

@@ -11,9 +11,13 @@ INSTALL_SCRIPT = PROJECT_ROOT / "install.sh"
 COMPOSE_FILE = PROJECT_ROOT / "compose.yaml"
 
 
-def _write_fake_commands(tmp_path: Path) -> Path:
+def _write_fake_commands(tmp_path: Path, *, snap_docker: bool = False) -> Path:
     docker_args = tmp_path / "docker.args"
-    docker = tmp_path / "docker"
+    # A snap-packaged docker is exposed through /snap/bin; mirror that layout so
+    # the installer's snap detection sees the same path shape.
+    docker_dir = tmp_path / "snap" / "bin" if snap_docker else tmp_path
+    docker_dir.mkdir(parents=True, exist_ok=True)
+    docker = docker_dir / "docker"
     docker.write_text(
         '#!/usr/bin/env bash\nprintf \'%s\\n\' "$@" >> "$HSYNC_FAKE_DOCKER_ARGS"\nexit 0\n'
     )
@@ -40,11 +44,15 @@ def _run_installer(
     tmp_path: Path,
     *args: str,
     extra_env: dict[str, str] | None = None,
+    snap_docker: bool = False,
+    install_dir: Path | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], Path, list[str]]:
-    docker_args = _write_fake_commands(tmp_path)
-    install_dir = tmp_path / "installation"
+    docker_args = _write_fake_commands(tmp_path, snap_docker=snap_docker)
+    if install_dir is None:
+        install_dir = tmp_path / "installation"
     env = os.environ.copy()
-    env["PATH"] = f"{tmp_path}{os.pathsep}{env['PATH']}"
+    # Prepend both the plain and the snap-style bin dir; only one holds `docker`.
+    env["PATH"] = os.pathsep.join([str(tmp_path), str(tmp_path / "snap" / "bin"), env["PATH"]])
     env["HSYNC_FAKE_DOCKER_ARGS"] = str(docker_args)
     if extra_env:
         env.update(extra_env)
@@ -239,3 +247,35 @@ def test_latest_rejects_an_unexpected_tag_format(tmp_path: Path):
     assert result.returncode == 1
     assert "unexpected latest release tag" in result.stderr
     assert not install_dir.exists()
+
+
+def test_snap_docker_rejects_a_hidden_install_dir(tmp_path: Path):
+    """Snap's home interface denies hidden paths under $HOME, so a snap-packaged
+    docker cannot read .env in the default ~/.local/share install directory."""
+    hidden_dir = tmp_path / ".local" / "share" / "hsync-server"
+    result, _, recorded = _run_installer(
+        tmp_path,
+        "--no-start",
+        snap_docker=True,
+        install_dir=hidden_dir,
+    )
+
+    assert result.returncode == 1
+    assert "snap" in result.stderr
+    assert "hidden path" in result.stderr
+    assert "--install-dir" in result.stderr
+    assert not hidden_dir.exists()
+    assert recorded == []
+
+
+def test_snap_docker_allows_a_non_hidden_install_dir(tmp_path: Path):
+    non_hidden = tmp_path / "hsync-server"
+    result, _, recorded = _run_installer(
+        tmp_path,
+        "--no-start",
+        snap_docker=True,
+        install_dir=non_hidden,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "config" in recorded
