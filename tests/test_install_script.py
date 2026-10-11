@@ -55,6 +55,7 @@ def _run_installer(
     snap_docker: bool = False,
     install_dir: Path | None = None,
     config_fails: bool = False,
+    use_default_dir: bool = False,
 ) -> tuple[subprocess.CompletedProcess[str], Path, list[str]]:
     docker_args = _write_fake_commands(tmp_path, snap_docker=snap_docker, config_fails=config_fails)
     if install_dir is None:
@@ -65,8 +66,11 @@ def _run_installer(
     env["HSYNC_FAKE_DOCKER_ARGS"] = str(docker_args)
     if extra_env:
         env.update(extra_env)
+    cmd = [str(INSTALL_SCRIPT)]
+    if not use_default_dir:
+        cmd += ["--install-dir", str(install_dir)]
     result = subprocess.run(
-        [str(INSTALL_SCRIPT), "--install-dir", str(install_dir), *args],
+        cmd + list(args),
         cwd=PROJECT_ROOT,
         env=env,
         text=True,
@@ -272,9 +276,26 @@ def test_snap_docker_rejects_a_hidden_install_dir(tmp_path: Path):
     assert result.returncode == 1
     assert "snap" in result.stderr
     assert "hidden path" in result.stderr
-    assert "--install-dir" in result.stderr
+    assert "bash -s -- --install-dir" in result.stderr
     assert not hidden_dir.exists()
     assert recorded == []
+
+
+def test_snap_docker_adapts_a_default_hidden_install_dir(tmp_path: Path):
+    """With snap docker and no explicit --install-dir, the installer falls back to
+    a non-hidden default instead of failing the whole install."""
+    home = tmp_path / "home"
+    home.mkdir()
+    result, _, recorded = _run_installer(
+        tmp_path,
+        "--no-start",
+        snap_docker=True,
+        use_default_dir=True,
+        extra_env={"HOME": str(home)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (home / "hsync-server" / ".env").exists()
 
 
 def test_snap_docker_allows_a_non_hidden_install_dir(tmp_path: Path):
@@ -304,7 +325,7 @@ def test_compose_failure_hints_at_snap_hidden_paths(tmp_path: Path):
 
     assert result.returncode == 1
     assert "Warning: docker is the snap package" in result.stderr
-    assert "non-hidden --install-dir" in result.stderr
+    assert "bash -s -- --install-dir" in result.stderr
 
 
 def test_compose_failure_without_snap_adds_no_snap_hint(tmp_path: Path):
