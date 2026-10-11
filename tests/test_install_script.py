@@ -11,16 +11,24 @@ INSTALL_SCRIPT = PROJECT_ROOT / "install.sh"
 COMPOSE_FILE = PROJECT_ROOT / "compose.yaml"
 
 
-def _write_fake_commands(tmp_path: Path, *, snap_docker: bool = False) -> Path:
+def _write_fake_commands(
+    tmp_path: Path, *, snap_docker: bool = False, config_fails: bool = False
+) -> Path:
     docker_args = tmp_path / "docker.args"
     # A snap-packaged docker is exposed through /snap/bin; mirror that layout so
     # the installer's snap detection sees the same path shape.
     docker_dir = tmp_path / "snap" / "bin" if snap_docker else tmp_path
     docker_dir.mkdir(parents=True, exist_ok=True)
     docker = docker_dir / "docker"
-    docker.write_text(
-        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$@" >> "$HSYNC_FAKE_DOCKER_ARGS"\nexit 0\n'
-    )
+    docker_body = '#!/usr/bin/env bash\nprintf \'%s\\n\' "$@" >> "$HSYNC_FAKE_DOCKER_ARGS"\n'
+    if config_fails:
+        docker_body += (
+            'if [[ "$*" == *" config "* ]]; then\n'
+            "  printf 'open /.env: permission denied\\n' >&2\n"
+            "  exit 1\n"
+            "fi\n"
+        )
+    docker.write_text(docker_body + "exit 0\n")
     docker.chmod(0o755)
 
     openssl = tmp_path / "openssl"
@@ -46,8 +54,9 @@ def _run_installer(
     extra_env: dict[str, str] | None = None,
     snap_docker: bool = False,
     install_dir: Path | None = None,
+    config_fails: bool = False,
 ) -> tuple[subprocess.CompletedProcess[str], Path, list[str]]:
-    docker_args = _write_fake_commands(tmp_path, snap_docker=snap_docker)
+    docker_args = _write_fake_commands(tmp_path, snap_docker=snap_docker, config_fails=config_fails)
     if install_dir is None:
         install_dir = tmp_path / "installation"
     env = os.environ.copy()
@@ -279,3 +288,28 @@ def test_snap_docker_allows_a_non_hidden_install_dir(tmp_path: Path):
 
     assert result.returncode == 0, result.stderr
     assert "config" in recorded
+
+
+def test_compose_failure_hints_at_snap_hidden_paths(tmp_path: Path):
+    """A snap docker failure carrying the hidden-path signature gets an
+    actionable hint even where the pre-flight check did not catch it."""
+    non_hidden = tmp_path / "hsync-server"
+    result, _, _ = _run_installer(
+        tmp_path,
+        "--no-start",
+        snap_docker=True,
+        config_fails=True,
+        install_dir=non_hidden,
+    )
+
+    assert result.returncode == 1
+    assert "Warning: docker is the snap package" in result.stderr
+    assert "non-hidden --install-dir" in result.stderr
+
+
+def test_compose_failure_without_snap_adds_no_snap_hint(tmp_path: Path):
+    result, _, _ = _run_installer(tmp_path, "--no-start", config_fails=True)
+
+    assert result.returncode == 1
+    assert "permission denied" in result.stderr
+    assert "Warning: docker is the snap package" not in result.stderr

@@ -113,6 +113,33 @@ path_has_hidden_component() {
     return 1
 }
 
+# Snap docker cannot read hidden paths under $HOME. When a compose failure
+# carries that signature, append an actionable hint beyond the pre-flight check.
+warn_if_snap_hidden_path() {
+    local output="$1"
+    if ! docker_is_snap || [[ "${output}" != *"permission denied"* ]]; then
+        return 0
+    fi
+    printf '\nWarning: docker is the snap package and the snap "home" interface denies\n' >&2
+    printf 'hidden paths under $HOME, so it cannot read %s/.env.\n' "${INSTALL_DIR}" >&2
+    printf 'Fix: install Docker Engine (https://docs.docker.com/engine/install/) instead\n' >&2
+    printf 'of the snap, or re-run with a non-hidden --install-dir (e.g. --install-dir "%s").\n' \
+        "${HOME}/hsync-server" >&2
+}
+
+# 'docker compose config' reads .env client-side, so it is the first command to
+# fail when snap docker cannot reach the installation directory.
+validate_compose_config() {
+    local output
+    if output="$(docker compose --project-directory "${INSTALL_DIR}" \
+            --file "${INSTALL_DIR}/compose.yaml" config --quiet 2>&1)"; then
+        return 0
+    fi
+    printf '%s\n' "${output}" >&2
+    warn_if_snap_hidden_path "${output}"
+    fail "docker compose could not validate ${INSTALL_DIR}/compose.yaml"
+}
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -329,8 +356,7 @@ main() {
 
     umask 077
     install_files
-    docker compose --project-directory "${INSTALL_DIR}" \
-        --file "${INSTALL_DIR}/compose.yaml" config --quiet
+    validate_compose_config
 
     if [[ "${START_SERVER}" == true ]]; then
         docker compose --project-directory "${INSTALL_DIR}" \
