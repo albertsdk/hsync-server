@@ -114,3 +114,24 @@ def test_docs_latest_download_names_are_created_by_the_release() -> None:
     aliases = set(re.findall(r'\|([A-Za-z0-9._-]+)"', workflow))
     missing = sorted(n for n in names if n not in aliases)
     assert not missing, f"docs reference latest aliases the workflow does not create: {missing}"
+
+
+def test_pyinstaller_lookup_is_windows_aware() -> None:
+    """Windows venvs put console scripts under ``Scripts/`` (with a ``.exe``
+    suffix), not ``bin/``. A hardcoded ``bin/`` path makes the native Windows
+    build abort with "PyInstaller not found" although Poetry installed it
+    (the build runs ``poetry install`` then ``./compile.sh`` without activating
+    the venv, so the PATH fallback misses too).
+    """
+    script = _script()
+    assert 'if [[ "${OS_NAME}" == "windows" ]]; then' in script
+    assert 'PYINSTALLER="${VENV_DIR}/Scripts/pyinstaller.exe"' in script
+    assert 'PYINSTALLER="${VENV_DIR}/bin/pyinstaller"' in script
+
+
+def test_run_script_console_path_is_windows_aware() -> None:
+    """``run.sh`` must find the console script under ``Scripts/`` on Windows."""
+    script = (COMPILE_SH.parent / "run.sh").read_text(encoding="utf-8")
+    assert 'VENV_BIN_DIR="Scripts"' in script
+    assert 'BIN_EXT=".exe"' in script
+    assert 'readonly BIN="${SCRIPT_DIR}/.venv/${VENV_BIN_DIR}/hsync-server${BIN_EXT}"' in script

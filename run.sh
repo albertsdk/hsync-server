@@ -12,7 +12,12 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SIBLING="${SCRIPT_DIR}/../hsync-common"
-readonly BIN="${SCRIPT_DIR}/.venv/bin/hsync-server"
+# Console script path: Windows venvs use Scripts/ with a .exe suffix, POSIX bin/.
+case "$(uname -s)" in
+    MINGW*|CYGWIN*|MSYS*) readonly VENV_BIN_DIR="Scripts" BIN_EXT=".exe" ;;
+    *)                    readonly VENV_BIN_DIR="bin" BIN_EXT="" ;;
+esac
+readonly BIN="${SCRIPT_DIR}/.venv/${VENV_BIN_DIR}/hsync-server${BIN_EXT}"
 
 if [[ ! -d "${SIBLING}" ]]; then
     printf 'Error: hsync-common must be checked out as a sibling of hsync-server.\n' >&2
