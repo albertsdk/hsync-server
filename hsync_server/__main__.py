@@ -18,7 +18,7 @@ import typer
 import uvicorn
 from cryptography import x509
 from hsync_common.endpoint import parse_host_port
-from hsync_common.runtime import runtime_summary
+from hsync_common.runtime import ColorMode, runtime_summary
 from pydantic import ValidationError
 
 from hsync_server.config import (
@@ -147,14 +147,14 @@ def main(
             rich_help_panel="Server",
         ),
     ] = None,
-    no_color: Annotated[
-        bool,
+    color: Annotated[
+        ColorMode,
         typer.Option(
-            "--no-color",
-            help="Disable colored log output.",
+            "--color",
+            help="Colorize log output: auto (only on a terminal), always, never.",
             rich_help_panel="Server",
         ),
-    ] = False,
+    ] = ColorMode.AUTO,
     # -------------------------------------------------------------------------
     # SSL/TLS options
     # -------------------------------------------------------------------------
@@ -294,7 +294,7 @@ def main(
         raise typer.Exit(1) from None
 
     # Configure logging before starting the server
-    log = setup_logging(level=effective_log_level, no_color=no_color)
+    log = setup_logging(level=effective_log_level, color=color)
 
     log.info(f"HSYNC Server v{HSYNC_VERSION}")
     log.info(runtime_summary())

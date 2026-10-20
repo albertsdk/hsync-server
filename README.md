@@ -173,7 +173,7 @@ hsync-server [options]
 | `--host HOST[:PORT]` | Address to bind (`HOST[:PORT]`, e.g. `0.0.0.0:9753` or `[::1]:9753`; the port is mutually exclusive with `-p/--port`) | `0.0.0.0` |
 | `-p, --port PORT` | Server port | `9753` |
 | `--log-level LEVEL` | Log level (debug, info, warning, error, critical) | `info` |
-| `--no-color` | Disable colored log output | `false` |
+| `--color MODE` | Colorize log output: `auto` (terminal only, honors `NO_COLOR`), `always`, `never` | `auto` |
 | `--ssl` | Enable HTTPS/WSS (auto-generates certs if not provided) | disabled |
 | `--ssl-cert FILE` | Path to SSL certificate (PEM format) | auto-generated |
 | `--ssl-key FILE` | Path to SSL private key (PEM format) | auto-generated |

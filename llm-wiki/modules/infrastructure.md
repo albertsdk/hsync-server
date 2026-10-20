@@ -181,8 +181,9 @@ Timestamps are rendered in the configured IANA timezone (`get_tz`,
 on `Settings.tz`) via the tz-aware formatter built in `_build_formatters`
 (`logger.py::_build_formatters`) and passed to
 `hsync_common.logger.build_record_formatter`.
-Console colors are gated by `hsync_common.runtime.color_output_enabled`
-(`--no-color` flag, `NO_COLOR` env, stdout TTY). At startup the entry point logs
+Console colors are gated by `hsync_common.runtime.color_output_enabled` with the
+`--color` mode (`auto`: TTY + `NO_COLOR`; `always`; `never`). At startup the entry
+point logs
 `hsync_common.runtime.runtime_summary()` (`hsync_common/runtime.py::runtime_summary`) with the detected
 container runtime, cgroup memory/CPU limits and TTY state.
 Request correlation via `get_request_id`/`set_request_id` (`logger.py::get_request_id` /

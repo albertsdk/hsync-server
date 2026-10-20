@@ -41,7 +41,7 @@ from hsync_common.logger import (
     build_record_formatter,
     configure_handlers,
 )
-from hsync_common.runtime import color_output_enabled
+from hsync_common.runtime import ColorMode, color_output_enabled
 from loguru import logger
 
 from hsync_server.config import (
@@ -142,7 +142,7 @@ def _build_formatters():
 def setup_logging(
     level: str = "info",
     log_format: str | None = None,
-    no_color: bool = False,
+    color: ColorMode = ColorMode.AUTO,
     logfile: str | None = None,
 ) -> "Logger":
     """
@@ -165,7 +165,8 @@ def setup_logging(
         level: Log level string (debug, info, warning, error, critical).
         log_format: Output format ("text" or "json"). If None, reads from
                    HSYNC_LOG_FORMAT environment variable.
-        no_color: Disable colored output (default: False).
+        color: How to colorize stdout: auto (TTY only, honouring NO_COLOR),
+            always or never.
         logfile: Optional path to log file (enables rotation).
 
     Returns:
@@ -183,9 +184,8 @@ def setup_logging(
     log_file = logfile or get_log_file()
 
     is_json = log_format == "json"
-    # Colors are enabled only when --no-color is not set, the NO_COLOR env is
-    # unset, and stdout is a TTY.
-    use_colors = not is_json and color_output_enabled(no_color=no_color)
+    # Colors follow --color (auto = TTY + NO_COLOR rules).
+    use_colors = not is_json and color_output_enabled(color)
     format_colored, format_plain = _build_formatters()
     console_format = format_colored if use_colors else format_plain
 

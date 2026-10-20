@@ -11,7 +11,8 @@ every label that can appear in the server logs.
 
 Labels are colored by **semantic category** (transfer=cyan, upload/create=green,
 modify/rename=blue, delete=red, security=red, infrastructure=magenta). Color is
-applied when stdout is a TTY and `--no-color`/`NO_COLOR` is not set.
+applied according to `--color` (`auto` on a TTY, `always`, `never`) and honors
+`NO_COLOR` in `auto` mode.
 
 ## REST file operations
 
