@@ -12,8 +12,11 @@ This module provides utility functions for file operations:
 from os import listdir, rmdir, utime
 from pathlib import Path
 
+from hsync_common.path_validation import basename
 from hsync_common.time_utils import to_epoch, utc_now_epoch
 from loguru import logger as log
+
+from hsync_server.constants import HSYNCKEEP_FILENAME
 
 # Wire-supplied mtimes may not exceed now + this skew: a peer asserting
 # far-future timestamps would win every mtime-based conflict resolution on
@@ -23,9 +26,7 @@ MTIME_MAX_FUTURE_SKEW_SECONDS = 300
 
 def is_sentinel_file(filepath: str) -> bool:
     """Return True if *filepath* is a .hsynckeep sentinel file."""
-    from hsync_server.constants import HSYNCKEEP_FILENAME
-
-    return Path(filepath).name == HSYNCKEEP_FILENAME
+    return basename(filepath) == HSYNCKEEP_FILENAME
 
 
 def ensure_sentinel_in_dir(dir_path: str) -> None:
@@ -42,8 +43,6 @@ def ensure_sentinel_in_dir(dir_path: str) -> None:
         dir_path: Absolute path to the directory to check.
     """
     from hsync_common.models.file import is_hidden_file
-
-    from hsync_server.constants import HSYNCKEEP_FILENAME
 
     if not Path(dir_path).exists() or not Path(dir_path).is_dir():
         return

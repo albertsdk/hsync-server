@@ -12,6 +12,7 @@ from hsync_server.versions import (
     record_version,
     reset_cache,
     server_version_info,
+    server_version_info_for_relpath,
 )
 
 
@@ -29,6 +30,23 @@ class TestVersionStorePersistence:
         assert info is not None
         assert info["vclock"] == {"Cid123456789012345678": 1}
         assert get_version_store("photos").base_hash("a.txt") == "ab" * 32
+
+    def test_relpath_variant_matches_the_absolute_lookup(self, tmp_path):
+        bucket = tmp_path / "photos"
+        bucket.mkdir()
+        path = bucket / "a.txt"
+        path.write_text("hi")
+        record_version(
+            "photos", str(bucket), str(path), "ab" * 32, vclock={"Cid123456789012345678": 1}
+        )
+
+        absolute = server_version_info("photos", str(bucket), str(path))
+        relative = server_version_info_for_relpath("photos", "a.txt")
+        assert absolute is not None
+        assert relative is not None
+        assert relative["vclock"] == absolute["vclock"] == {"Cid123456789012345678": 1}
+        assert server_version_info_for_relpath("photos", "") is None
+        assert server_version_info_for_relpath("photos", "missing.txt") is None
 
     def test_no_sidecar_in_bucket(self, tmp_path):
         bucket = tmp_path / "photos"

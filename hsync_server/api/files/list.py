@@ -25,6 +25,7 @@ from hsync_common.models.dir import Dir, is_hidden_dir
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
 from hsync_common.models.symlink import Symlink
+from hsync_common.models.version import relpath_in_bucket
 from hsync_common.path_validation import is_safe_symlink_target
 from hsync_common.protocol.rest import (
     REST_DIRS_SUFFIX,
@@ -48,7 +49,7 @@ from hsync_server.hashes import get_sha256_hash
 from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import get_tombstone_store
-from hsync_server.versions import server_version_info
+from hsync_server.versions import server_version_info_for_relpath
 
 # Cap on the POST /tombstones body: comfortably above a full
 # ``TOMBSTONE_MAX_ENTRIES`` payload, so a hostile member cannot force the
@@ -204,7 +205,7 @@ async def get_dirs(
         dirs[:] = [d for d in dirs if not is_hidden_dir(f"{root}/{d}")]
         for name in dirs:
             full = f"{root}/{name}"
-            if Path(full).is_symlink():
+            if os.path.islink(full):
                 continue
             dir_obj = Dir.get(full)
             if dir_obj is None or dir_obj.permissions is None:
@@ -280,7 +281,7 @@ async def get_files(
             # Symlinks are emitted as symlink entries (never dereferenced).
             # A peer will recreate the link structurally from the target field,
             # and a escaping symlink is skipped entirely.
-            if Path(file_path).is_symlink():
+            if os.path.islink(file_path):
                 entry = _emit_symlink(file_path, bucket_root)
                 if entry is not None:
                     file_list.append(entry)
@@ -292,10 +293,16 @@ async def get_files(
             # requests while a big bucket is being listed.
             file_obj = await asyncio.to_thread(LocalFile.get, file, root)
             if file_obj:
-                file_data = LocalFile.from_dict(file_obj.to_dict(), bucket_root).to_dict()
-                # JOIN causal version metadata from the version store (ADR-0022).
-                abs_path = f"{bucket_root}/{file_data.get('filepath', '')}".replace("//", "/")
-                version = server_version_info(bucket, bucket_root, abs_path)
+                file_data = file_obj.to_dict()
+                # Emit the bucket-relative path directly: File.get built an
+                # absolute path, so re-decoding it through from_dict just to
+                # strip the bucket prefix added a second File + dict per entry.
+                abs_path = file_obj.filepath or ""
+                rel = relpath_in_bucket(abs_path, bucket_root)
+                file_data["filepath"] = abs_path if rel is None else rel
+                # JOIN causal version metadata from the version store (ADR-0022),
+                # reusing the relative path just resolved for the wire entry.
+                version = server_version_info_for_relpath(bucket, rel) if rel is not None else None
                 if version is not None:
                     file_data["version"] = version
                 file_list.append(file_data)
@@ -304,7 +311,7 @@ async def get_files(
         # ``dirs`` but never descends into them. Emit a symlink entry for each.
         for d in dirs:
             d_path = f"{root}/{d}"
-            if Path(d_path).is_symlink():
+            if os.path.islink(d_path):
                 entry = _emit_symlink(d_path, bucket_root)
                 if entry is not None:
                     file_list.append(entry)

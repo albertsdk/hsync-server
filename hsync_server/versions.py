@@ -45,6 +45,7 @@ __all__ = [
     "record_version",
     "reset_cache",
     "server_version_info",
+    "server_version_info_for_relpath",
 ]
 
 # Fork-safe, thread-safe per-bucket registry (shared scaffolding with
@@ -196,6 +197,18 @@ def move_version_prefix(bucket: str, bucket_dir: str, src_abs_dir: str, dst_abs_
 def server_version_info(bucket: str, bucket_dir: str, abs_path: str):
     """Return the :class:`VersionInfo` for a path, or None if unrecorded."""
     relpath = relpath_in_bucket(abs_path, bucket_dir)
+    if not relpath:
+        return None
+    return server_version_info_for_relpath(bucket, relpath)
+
+
+def server_version_info_for_relpath(bucket: str, relpath: str) -> VersionInfo | None:
+    """Return the :class:`VersionInfo` for an already-resolved relative path.
+
+    Listings already resolve each entry's bucket-relative path (to emit the
+    wire ``filepath``), so the JOIN must not recompute it: this variant skips a
+    second component split per entry on the per-listing hot path.
+    """
     if not relpath:
         return None
     with _registry.lock(bucket):
