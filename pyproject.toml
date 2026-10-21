@@ -9,7 +9,7 @@ requires-python = ">=3.12,<3.15"
 dependencies = [
     "aiofiles>=25.1.0,<26.0.0",
     "cryptography>=50.0.2,<51.0.0",
-    "fastapi>=0.143.1,<0.144.0",
+    "fastapi>=0.161.1,<0.162.0",
     "hsync-common==1.0.5",
     "loguru>=0.7.3,<0.8.0",
     "prometheus-fastapi-instrumentator>=8.1.0,<9.0.0",
@@ -42,7 +42,7 @@ pytest-cov = "^7.0.0"
 pytest-mock = "^3.15.1"
 pytest-rerunfailures = ">=16.7"
 httpx = "^0.28.1"
-ruff = "0.17.1"
+ruff = "0.17.2"
 mypy = "^2.3.1"
 pre-commit = "^4.6.2"
 
