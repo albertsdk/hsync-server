@@ -43,8 +43,6 @@ from hsync_common.models.delta import (
     sanitize_op_list,
 )
 from hsync_common.models.event import Event, EventName, is_valid_cid
-from hsync_common.models.file import File as LocalFile
-from hsync_common.models.file import invalidate_sha256_cache, is_hidden_file
 from hsync_common.models.version import relpath_in_bucket
 from hsync_common.permissions import is_valid_octal_permissions
 from hsync_common.protocol.rest import REST_DELTA_APPLY_SUFFIX, rest_bucket_template
@@ -56,6 +54,7 @@ from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import update_file_timestamp
 from hsync_server.api.files.delta._util import delta_disabled_response
 from hsync_server.api.files.upload import _flush_to_disk
+from hsync_server.api.files.version_publish import record_published_version
 from hsync_server.api.utils import (
     enforce_size_cap,
     ensure_disk_space,
@@ -83,7 +82,7 @@ from hsync_server.exceptions import (
     FileNotFoundError as HSyncFileNotFoundError,
 )
 from hsync_server.file_lock_manager import get_file_lock_manager
-from hsync_server.hashes import get_or_compute_sha256, get_sha256_hash, set_sha256_hash
+from hsync_server.hashes import get_or_compute_sha256, get_sha256_hash
 from hsync_server.metrics import (
     record_bytes_saved,
     record_delta_transfer,
@@ -91,8 +90,6 @@ from hsync_server.metrics import (
 )
 from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
 from hsync_server.routers import auth_router
-from hsync_server.tombstones import clear_deletion
-from hsync_server.versions import record_version, server_version_info
 
 
 def _unprocessable(detail: str, **extra: Any) -> JSONResponse:
@@ -373,30 +370,15 @@ async def delta_apply(
                 await set_permissions(part_path, permissions)
             replace(part_path, file_location)
             part_path = None
-            set_sha256_hash(file_location, rebuilt_sha256)
-            invalidate_sha256_cache(file_location)
-
-            clear_deletion(bucket, local_bucket, file_location)
-
-            record_version(
-                bucket,
-                local_bucket,
-                file_location,
+            src = await record_published_version(
+                bucket=bucket,
+                local_bucket=local_bucket,
+                file_location=file_location,
                 base_hash=rebuilt_sha256,
-                vclock=delta_result.record_vclock,
                 version_id=str(meta.get("version_id") or "") or None,
                 origin_cid=cid if is_valid_cid(cid) else None,
-                corrected_mtime=delta_result.record_corrected_mtime,
+                arbitration=delta_result,
             )
-
-            # File.get may recompute the SHA-256 (blocking I/O): keep it off the event loop.
-            src = (
-                None
-                if is_hidden_file(file_location)
-                else await asyncio.to_thread(LocalFile.get, file_location)
-            )
-            if src is not None:
-                src.version = server_version_info(bucket, local_bucket, file_location)
             if src:
                 manager = bucket_manager.get_manager(bucket)
                 await manager.send_message(

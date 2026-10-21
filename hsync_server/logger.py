@@ -99,11 +99,6 @@ def _transform_colored(record, message: str) -> str:
     return colorize_labels(message, use_colors=True)
 
 
-def _transform_plain(record, message: str) -> str:
-    """Return the message unchanged (no label colorizing)."""
-    return message
-
-
 # Format functions sharing the common factory; the server adds the per-request
 # correlation id as an extra field and renders timestamps in the configured
 # timezone (HSYNC_TZ, default UTC).
@@ -133,7 +128,6 @@ def _build_formatters():
     plain = build_record_formatter(
         colored=False,
         extra_fields=("request_id",),
-        message_transform=_transform_plain,
         timestamp_formatter=timestamp_formatter,
     )
     return colored, plain

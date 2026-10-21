@@ -118,8 +118,12 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   neither side is ever fully buffered in memory nor is the event loop
   stalled; the cap is the declared `size` (anti decompression-bomb) and a
   decompressed size different from `size` is rejected.
-- On success cache updated `set_sha256_hash` (`hashes.py::set_sha256_hash`) and any tombstone
-  cleared `clear_deletion` (`tombstones.py::clear_deletion`).
+- On success the post-publish bookkeeping is shared with delta apply through
+  `api/files/version_publish.py::record_published_version`: invalidate then
+  repopulate the SHA-256 cache (`hashes.py::set_sha256_hash`), clear the
+  deletion marker (`tombstones.py::clear_deletion`), record the causal version
+  and capture the published model for the WebSocket broadcast. The helper keeps
+  the cache order canonical (invalidate before set) for both endpoints.
 - Size guard `get_max_upload_size()` (`config.py::get_max_upload_size`) → `FileTooLargeError`.
 - **Same-SHA metadata branch** (`api/files/upload.py::upload_file`): when the uploaded content
   hash equals the on-disk hash, the server does NOT reject the upload — it
@@ -290,6 +294,10 @@ This prevents race conditions where multiple clients would write to the same
 `.delta.part` file simultaneously. The lock is acquired before the base file
 race check and released after the atomic rename, ensuring that the entire
 apply operation is atomic with respect to other delta applies on the same file.
+Publishing a rebuilt version reuses the same
+`api/files/version_publish.py::record_published_version` bookkeeping as the
+full-upload endpoint (cache invalidation order, tombstone clearing, causal
+version, broadcast model capture).
 
 **Caps and limits**:
 - `POST /delta/signatures` body size: max 50 MB (`_MAX_SIGNATURES_BODY_SIZE`,
@@ -316,7 +324,7 @@ transfer counts by status, bytes saved, duration by phase, block change ratios,
 active tokens gauge, temp storage gauge. The `delta_apply` success log also
 includes the wall-clock duration via `format_duration(..., subsecond=True)`.
 
-## Shared helpers (`api/utils.py`, `api/file_utils.py`)
+## Shared helpers (`api/utils.py`, `api/file_utils.py`, `api/files/version_publish.py`)
 
 - `api/utils.py`: bucket validation, `resolve_within_bucket` per-bucket
   confinement (`api/utils.py::resolve_within_bucket`), permission get/set
@@ -325,6 +333,9 @@ includes the wall-clock duration via `format_duration(..., subsecond=True)`.
 - `api/file_utils.py`: sentinel handling (`api/file_utils.py::is_sentinel_file` /
   `api/file_utils.py::ensure_sentinel_in_dir`), empty-dir cleanup (`api/file_utils.py::cleanup_empty_dir`),
   timestamp updates with far-future clamp (`api/file_utils.py::update_file_timestamp`).
+- `api/files/version_publish.py`: `record_published_version` — shared post-publish
+  bookkeeping (hash cache, deletion marker, causal version, broadcast model)
+  used by full upload and delta apply.
 
 > Validation primitives are reused from `hsync_common` (path_validation,
 > permissions); do not reimplement them here (DRY rule, `AGENTS.md`).

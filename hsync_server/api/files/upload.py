@@ -33,8 +33,7 @@ from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
 from hsync_common.format import format_bytes, format_duration
 from hsync_common.hashing import compute_sha256_async, is_sha256_hex
 from hsync_common.models.event import Event, EventName, is_valid_cid
-from hsync_common.models.file import File as LocalFile
-from hsync_common.models.file import invalidate_sha256_cache, is_hidden_file, is_partial_file
+from hsync_common.models.file import is_partial_file
 from hsync_common.models.version import relpath_in_bucket
 from hsync_common.path_validation import is_internal_name, is_valid_filename, sanitize_filename
 from hsync_common.permissions import is_valid_octal_permissions
@@ -66,8 +65,6 @@ from hsync_server.exceptions import (
     ChecksumMismatchError,
     ConflictLostError,
     FileTooLargeError,
-    InsufficientStorageError,
-    InvalidBucketNameError,
     InvalidFilenameError,
     InvalidPathError,
     InvalidPermissionFormatError,
@@ -80,9 +77,9 @@ from hsync_server.hashes import get_sha256_hash, set_sha256_hash
 from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import clear_deletion
-from hsync_server.versions import record_version, server_version_info
 
 from .permissions import apply_metadata_to_existing_file
+from .version_publish import record_published_version
 
 # Chunk size for copying the spooled upload body to its destination file.
 # 8 KiB made the copy loop event-loop-bound on large files (one await per
@@ -592,51 +589,20 @@ async def upload_file(
             if permissions:
                 await set_permissions(file_location, permissions)
 
-            # Invalidate SHA-256 cache for this file (content has changed)
-            invalidate_sha256_cache(file_location)
-
-            # Store SHA-256 hash for future duplicate detection LAST, after
-            # the timestamp/permission pass: the cache captures the
-            # (mtime_ns, size) of the *published* file, so it must be written
-            # once the final path exists AND its metadata is final — a set
-            # before the rename would be a no-op (file missing) and a set
-            # before the utime/chmod pass would store already-stale metadata
-            # (the freshness check would drop the entry on the first read).
-            set_sha256_hash(file_location, sha256sum_tmp)
-
-            # A successful upload (re-)creates the file: drop any deletion marker
-            # so peers do not delete it on their next full sync.
-            clear_deletion(bucket, local_bucket, file_location)
-
-            # Record the agreed version (merge of incoming + stored clocks, ADR-0022 §5,
-            # plus the ADR-0023 corrected mtime).
-            record_version(
-                bucket,
-                local_bucket,
-                file_location,
+            # Cache, tombstone, causal version and broadcast metadata are
+            # captured while STILL holding the per-path lock: the model must
+            # describe exactly the generation this upload published, or a
+            # later same-path upload could broadcast its content under this
+            # CID. The shared helper keeps the cache order canonical.
+            src = await record_published_version(
+                bucket=bucket,
+                local_bucket=local_bucket,
+                file_location=file_location,
                 base_hash=sha256sum_tmp,
-                vclock=result.record_vclock,
                 version_id=version_id or None,
                 origin_cid=cid if is_valid_cid(cid) else None,
-                corrected_mtime=result.record_corrected_mtime,
+                arbitration=result,
             )
-
-            # Capture the broadcast metadata while STILL holding the per-path
-            # lock: it must describe exactly the generation this upload just
-            # published — an unlocked read could interleave with a later
-            # same-path upload and broadcast its content/version under this
-            # upload's CID. The hash-on-miss inside File.get is blocking I/O,
-            # so it runs on a worker thread; the lock is already held across
-            # awaited disk I/O above (set_permissions), so this adds no new
-            # lock-hold category. Hidden files are excluded (as from the
-            # /files listing): peers syncing hidden files pick them up via
-            # their own watcher or the next full reconciliation.
-            if is_hidden_file(file_location):
-                src = None
-            else:
-                src = await asyncio.to_thread(LocalFile.get, file_location)
-                if src is not None:
-                    src.version = server_version_info(bucket, local_bucket, file_location)
 
         # Broadcast the pre-captured metadata outside the lock.
         if src:
@@ -662,20 +628,6 @@ async def upload_file(
                 },
             },
         )
-    except (
-        InvalidBucketNameError,
-        InvalidPathError,
-        InvalidFilenameError,
-        InvalidPermissionFormatError,
-        ChecksumMismatchError,
-        FileTooLargeError,
-        InsufficientStorageError,
-        SupersededError,
-        ConflictLostError,
-        ValidationError,
-    ):
-        # Re-raise custom exceptions - they'll be handled by global handler
-        raise
     except OSError as e:
         log.error(f"Upload failed for file {file.filename}: {e}", exc_info=True)
         # Restore from backup if it exists
