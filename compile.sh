@@ -514,7 +514,7 @@ build_native() {
 # Build standalone executables for Raspberry Pi OS, one per supported
 # architecture: armhf (32-bit, armv7) and arm64 (64-bit, aarch64). PyInstaller
 # cannot cross-compile, so each binary is produced by running it inside an
-# emulated python:3.12-bookworm container for the target CPU family.
+# emulated python:3.14.9-bookworm container for the target CPU family.
 #
 # Output: dist/rpi/<arch>/hsync-server
 build_rpi() {

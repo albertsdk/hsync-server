@@ -4,7 +4,7 @@
 # passes `-f hsync-server/Dockerfile`.
 
 ### Builder
-FROM python:3.13.11-alpine3.22 AS builder
+FROM python:3.14.9-alpine3.23 AS builder
 
 # Install build dependencies in a single layer
 RUN apk add --no-cache \
@@ -33,12 +33,12 @@ COPY hsync-server/pyproject.toml hsync-server/poetry.lock /project/
 COPY hsync-common /hsync-common
 
 # Install dependencies and clean cache in single layer
-RUN poetry env use python3.13 \
+RUN poetry env use python3.14 \
     && poetry install --only main --no-root \
     && rm -rf /tmp/poetry_cache
 
 ### Run Image
-FROM python:3.13.11-alpine3.22
+FROM python:3.14.9-alpine3.23
 
 WORKDIR /project/
 

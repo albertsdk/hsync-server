@@ -106,7 +106,7 @@ Six targets:
 | `deb-all` | `dist/deb/hsync-server_<ver>_{amd64,arm64,armhf}.deb` | Docker cross-build from `packaging/deb/Dockerfile.builder` under `qemu-user` binfmt |
 | `rpm` | `dist/rpm/hsync-server-<ver>-1.<dist>.<arch>.rpm` | host `.venv` + `rpmbuild`, same onedir payload staged for `/usr/lib/hsync-server` |
 | `rpm-all` | `dist/rpm/hsync-server-<ver>-1.el9.{x86_64,aarch64}.rpm` | Docker cross-build from `packaging/rpm/Dockerfile.builder` (Rocky Linux 9) under `qemu-user` binfmt |
-| `rpi` | `dist/rpi/{armhf,arm64}/hsync-server` | Docker cross-build from `packaging/rpi/Dockerfile.builder` (Debian bookworm, Python 3.12, Poetry, Rust) under `qemu-user` binfmt |
+| `rpi` | `dist/rpi/{armhf,arm64}/hsync-server` | Docker cross-build from `packaging/rpi/Dockerfile.builder` (Debian bookworm, Python 3.14.9, Poetry, Rust) under `qemu-user` binfmt |
 
 The `native`/`rpi` targets share `_onefile_pyi_flags` (`compile.sh`), a onefile
 flag set that collects the `hsync_server`/`hsync_common` submodules and pins the
