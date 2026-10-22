@@ -1,4 +1,4 @@
-.TH HSYNC-SERVER 1 "2026-10-17" "hsync-server 1.0.5" "User Commands"
+.TH HSYNC-SERVER 1 "2026-10-23" "hsync-server 1.0.5" "User Commands"
 .SH NAME
 hsync-server \- HSYNC file synchronization server
 .SH SYNOPSIS
@@ -37,11 +37,22 @@ Path to the TLS certificate file.
 .BR \-\-ssl-key " " PATH
 Path to the TLS private key file.
 .TP
+.BR \-\-ssl-cert-dir " " DIR
+Directory for auto-generated TLS certificates (default: \fI./certs\fR).
+Explicit
+.BR \-\-ssl-cert
+/
+.BR \-\-ssl-key
+paths take precedence when set.
+.TP
 .BR \-\-env-file " " PATH
 Load environment variables from PATH (one KEY=VALUE per line).
 .TP
 .BR \-\-log-level " " LEVEL
 Log level: debug, info, warning, error, critical (default info).
+.TP
+.BR \-\-color " " MODE
+Colorize log output: auto (only on a terminal), always, never (default auto).
 .SH ENVIRONMENT
 .TP
 .B HSYNC_ADMIN_KEY
