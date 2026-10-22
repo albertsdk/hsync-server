@@ -17,10 +17,13 @@ Usage:
         # Critical section: only one coroutine can execute this for the same file_path
         ...
 
-The lock manager is thread-safe and coroutine-safe. Locks are created on-demand
-and never explicitly released (they remain in the dictionary for reuse). This is
-acceptable because the number of unique file paths is bounded by the number of
-concurrent operations, which is limited by the rate limiter and connection pool.
+The registry is **bounded**. It is keyed by every distinct path that has ever
+been uploaded or delta-applied, so a never-released map grows with the whole
+file history of the server (one asyncio.Lock plus its absolute-path key per
+file, ~240 bytes each measured — hundreds of MB on a large bucket). Idle,
+unreferenced locks are evicted once the ceiling is reached instead. A lock is
+never evicted while a coroutine still references it, so two coroutines can never
+end up contending on different lock objects for the same path.
 """
 
 from __future__ import annotations
@@ -28,6 +31,15 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
+
+
+@dataclass(slots=True)
+class _LockEntry:
+    """A per-path lock plus how many coroutines have claimed it."""
+
+    lock: asyncio.Lock
+    claimants: int = 0
 
 
 class FileLockManager:
@@ -35,19 +47,43 @@ class FileLockManager:
     Singleton manager for per-file asyncio.Lock instances.
 
     Maintains a dictionary mapping file paths to Lock objects. Locks are created
-    on-demand when first acquired and remain in the dictionary for reuse. This
-    ensures that all coroutines operating on the same file path contend for the
-    same lock.
+    on-demand when first acquired and reused while claimed; idle, unreferenced
+    locks are evicted to keep the map bounded (see the module docstring).
 
     Thread-safety: The dictionary itself is protected by an asyncio.Lock
     (_dict_lock) to prevent race conditions when creating new locks. Individual
     file locks are standard asyncio.Lock instances.
     """
 
-    def __init__(self) -> None:
+    # Ceiling on retained locks. Live contention is bounded by the rate limiter
+    # and connection pool (a handful of paths at once), so this is generous
+    # headroom while capping RAM at roughly 8192 * ~240 B ≈ 2 MB.
+    DEFAULT_MAX_LOCKS = 8192
+
+    def __init__(self, max_locks: int = DEFAULT_MAX_LOCKS) -> None:
         """Initialize an empty lock dictionary and a dictionary-level lock."""
-        self._locks: dict[str, asyncio.Lock] = {}
+        # path -> _LockEntry; insertion order drives idle eviction (the oldest
+        # entry is the best eviction candidate).
+        self._locks: dict[str, _LockEntry] = {}
         self._dict_lock = asyncio.Lock()
+        self._max_locks = max_locks
+
+    def _evict_idle(self) -> None:
+        """Drop the oldest idle, unreferenced lock once the ceiling is reached.
+
+        Called with ``_dict_lock`` held. Only an entry with no claimant and not
+        currently held is dropped, so the eviction can never let two coroutines
+        contend on different lock objects for the same path.
+        """
+        if len(self._locks) < self._max_locks:
+            return
+        victim: str | None = None
+        for path, entry in self._locks.items():
+            if entry.claimants == 0 and not entry.lock.locked():
+                victim = path
+                break
+        if victim is not None:
+            del self._locks[victim]
 
     @asynccontextmanager
     async def acquire(self, file_path: str) -> AsyncIterator[None]:
@@ -71,13 +107,24 @@ class FileLockManager:
                 await do_something_with_file()
         """
         async with self._dict_lock:
-            if file_path not in self._locks:
-                self._locks[file_path] = asyncio.Lock()
-            lock = self._locks[file_path]
-
-        # Acquire the file-specific lock
-        async with lock:
-            yield
+            entry = self._locks.get(file_path)
+            if entry is None:
+                entry = _LockEntry(lock=asyncio.Lock())
+                self._locks[file_path] = entry
+            # Claim before eviction (so this entry can never be the victim) and
+            # before releasing the dict lock (so a concurrent acquire for the
+            # same path always observes the same lock object).
+            entry.claimants += 1
+            self._evict_idle()
+            lock = entry.lock
+        try:
+            async with lock:
+                yield
+        finally:
+            async with self._dict_lock:
+                current = self._locks.get(file_path)
+                if current is not None and current.lock is lock:
+                    current.claimants -= 1
 
 
 # Singleton instance

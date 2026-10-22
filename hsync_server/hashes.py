@@ -7,6 +7,10 @@ File hash management module for HSYNC Server.
 This module provides an in-memory cache for SHA-256 file checksums.
 File paths are hashed with SHA-256 for privacy/security, and the
 corresponding SHA-256 checksums are stored for quick duplicate detection.
+
+The cache is a bounded LRU (``FILE_HASHES_MAX_SIZE``): it is keyed by every
+path the server lists or accepts, so an unbounded map would grow with the whole
+file population of the host (one entry per file, ~360 bytes each measured).
 """
 
 import hashlib
@@ -19,8 +23,26 @@ from hsync_common.models.dir import is_hidden_dir
 from hsync_common.models.file import is_hidden_file
 
 # In-memory storage for file hashes
-# Maps SHA256(filepath) -> (SHA256(file_content), mtime_ns, size)
+# Maps SHA256(filepath) -> (SHA256(file_content), mtime_ns, size), ordered
+# least-recently-used first. A plain dict is used (insertion-ordered) rather
+# than OrderedDict, so the map stays a drop-in for callers/tests that rebind it.
 FILE_HASHES: dict[str, tuple[str, int, int]] = {}
+
+# Upper bound on retained entries. Without it the map grew with every distinct
+# file ever listed or uploaded (~360 B/entry), i.e. hundreds of MB on a large
+# bucket. Past the cap, the least-recently-used entry is evicted (a fresh/moved
+# file is only ever a cache miss, never an incorrect result).
+FILE_HASHES_MAX_SIZE: int = 100_000
+
+
+def _cache_sha256_hash(hashed_key: str, entry: tuple[str, int, int]) -> None:
+    """Insert/refresh *entry* as most-recently-used, evicting the LRU at the cap."""
+    # Re-insert so the key becomes most-recently-used: a plain dict assignment
+    # on an existing key would keep its old (staler) position.
+    FILE_HASHES.pop(hashed_key, None)
+    FILE_HASHES[hashed_key] = entry
+    if len(FILE_HASHES) > FILE_HASHES_MAX_SIZE:
+        del FILE_HASHES[next(iter(FILE_HASHES))]  # evict least-recently-used
 
 
 def set_sha256_hash(filepath: str, sha256sum: str) -> None:
@@ -43,7 +65,7 @@ def set_sha256_hash(filepath: str, sha256sum: str) -> None:
     except OSError:
         return
     hashed_key: str = hashlib.sha256(filepath.encode()).hexdigest()
-    FILE_HASHES[hashed_key] = (sha256sum, st.st_mtime_ns, st.st_size)
+    _cache_sha256_hash(hashed_key, (sha256sum, st.st_mtime_ns, st.st_size))
 
 
 def get_sha256_hash(filepath: str) -> str | None:
@@ -74,6 +96,9 @@ def get_sha256_hash(filepath: str) -> str | None:
     if (st.st_mtime_ns, st.st_size) != (mtime_ns, size):
         del FILE_HASHES[hashed_key]
         return None
+    # Fresh hit: mark as most-recently-used so it survives LRU eviction.
+    FILE_HASHES.pop(hashed_key, None)
+    FILE_HASHES[hashed_key] = entry
     return sha256sum
 
 

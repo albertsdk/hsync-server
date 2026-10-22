@@ -92,7 +92,7 @@ partial uploads use the `.part` suffix (common `constants.py`), and deletions le
 tombstones (`tombstones.py`). Causal versions/tombstones live in per-bucket DBs
 `get_state_dir()/server/<bucket>.db` (ADR-0025); accounts and bucket membership
 live in the global `server/auth.db` via the server-only `clients`/`bucket_members` tables
-(`auth_store/`). The SHA-256 cache is an in-memory unbounded dict, rebuilt at startup (not LRU).
+(`auth_store/`). The SHA-256 cache is an in-memory bounded LRU, rebuilt at startup.
 
 ## Build & packaging
 

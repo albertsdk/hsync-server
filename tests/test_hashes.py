@@ -132,6 +132,33 @@ class TestSHA256HashManagement:
         assert hashes.get_sha256_hash(filepath) is None
         assert len(hashes.FILE_HASHES) == 0
 
+    def test_cache_is_bounded_and_evicts_lru(self, tmp_path, monkeypatch):
+        """The cache is capped: past the cap the least-recently-used entry goes.
+
+        Regression: an unbounded map grew with every distinct file ever
+        listed/uploaded (~360 B/entry). A recently used entry must survive the
+        eviction (recency, not insertion order).
+        """
+        monkeypatch.setattr(hashes, "FILE_HASHES_MAX_SIZE", 3)
+        files = []
+        for i in range(3):
+            f = tmp_path / f"f{i}.txt"
+            f.write_text(f"content {i}")
+            files.append(str(f))
+            hashes.set_sha256_hash(str(f), f"h{i}")
+
+        # Touch f0 so it becomes the most-recently-used entry.
+        assert hashes.get_sha256_hash(files[0]) == "h0"
+
+        f3 = tmp_path / "f3.txt"
+        f3.write_text("content 3")
+        hashes.set_sha256_hash(str(f3), "h3")
+
+        assert len(hashes.FILE_HASHES) == 3
+        assert hashes.get_sha256_hash(files[1]) is None  # untouched -> evicted (LRU)
+        assert hashes.get_sha256_hash(files[0]) == "h0"  # recently used -> kept
+        assert hashes.get_sha256_hash(files[2]) == "h2"
+
 
 class TestSetSHA256Hashes:
     """Tests for set_sha256_hashes function."""

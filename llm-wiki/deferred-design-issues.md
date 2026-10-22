@@ -51,6 +51,46 @@ the server knows the original file metadata.
 
 ---
 
+## DI-03: File Listing Materialises the Whole Bucket in RAM
+
+### Current behaviour
+
+`api/files/list.py::get_files` (and `api/files/list.py::get_dirs`) walks the
+bucket, appends one dict per entry, sorts, and returns the whole list as a single
+`JSONResponse`. Nothing is paginated or streamed, and each file costs one
+`asyncio.to_thread` hop.
+
+### Why this matters (file sync domain)
+
+Measured with `tracemalloc` (Python 3.14, 4 KiB files): ~490 B/entry for the
+retained list plus its `File`/`FileDict` objects, and ~758 B/entry once the
+serialized JSON body is materialised. A bucket with 1 000 000 files therefore
+peaks at roughly 700 MB for a single listing request, and the peak is unbounded
+by construction (it grows with the bucket, not with a configured limit).
+
+The `mtime`-ascending order is a sync-optimisation guarantee
+(`api/files/list.py::get_files` — "oldest first to prioritize updating older
+files"), so it cannot simply be dropped.
+
+### Options
+
+| # | Strategy | Pros | Cons |
+|---|----------|------|------|
+| A | **Document status quo** | no change | ~700 MB peak at 1 M files |
+| B | **Pagination** (`?offset/limit` + server-side order) | peak O(limit) | wire-contract change: hsync-client + hsync-android must page; needs coordination |
+| C | **Streaming** (`StreamingResponse`) | peak O(chunk) | drops the ordering guarantee and the `Content-Length` header |
+| D | **Buffer per-entry JSON fragments** (`(mtime, json_str)`), sort, join | ~30% lower peak, byte-identical body, keeps order + `Content-Length` | still O(N); hand-rolled serialization |
+
+### Decision needed
+
+1. Choose one strategy (A, B, C, D). B and C are the only true bounds but change
+   the client-facing contract, so they require a coordinated
+   hsync-client + hsync-android change; D is contract-preserving but partial.
+2. Update `list.py` and add a peak-memory regression test at the chosen bound.
+3. Document the client-facing contract in `docs/`.
+
+---
+
 ## Reference
 
 - Full test audit: commit `debcd90` on `main`

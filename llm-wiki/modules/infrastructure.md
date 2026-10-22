@@ -90,9 +90,14 @@ Bucket membership is enforced by `check_bucket_access` (`api/authz.py::check_buc
 
 ## Hash cache (`hashes.py`)
 
-In-memory unbounded `FILE_HASHES: dict[str, tuple[str, int, int]]` (`hashes.py::FILE_HASHES`)
-mapping `sha256(filepath) -> (file_sha256, mtime_ns, size)`. **Not LRU** — no
-eviction except stale mtime/size on read. `set_sha256_hash` (`hashes.py::set_sha256_hash`) captures
+In-memory `FILE_HASHES: dict[str, tuple[str, int, int]]` (`hashes.py::FILE_HASHES`)
+mapping `sha256(filepath) -> (file_sha256, mtime_ns, size)`, bounded as an LRU:
+past `FILE_HASHES_MAX_SIZE` (`hashes.py::FILE_HASHES_MAX_SIZE`, 100 000) the
+least-recently-used entry is evicted. The map is keyed by every path the server
+lists or accepts, so an unbounded map would grow with the whole file population;
+a fresh or moved file is only ever a cache miss, never a wrong result. A fresh
+read marks the entry most-recently-used, and a stale mtime/size on read drops
+it. `set_sha256_hash` (`hashes.py::set_sha256_hash`) captures
 the current (mtime_ns, size) with the digest; `get_sha256_hash` (`hashes.py::get_sha256_hash`) serves the
 digest **only while the file's current metadata matches the captured pair** —
 a changed or vanished file drops the stale entry and returns `None`, so
@@ -222,7 +227,13 @@ confinement goes through `resolve_within_bucket` (`api/utils.py::resolve_within_
 Singleton manager for per-file `asyncio.Lock` instances used to serialize
 concurrent operations on the same file path. The `FileLockManager` class
 (`file_lock_manager.py::FileLockManager`) maintains a dictionary mapping file paths to Lock
-objects, created on-demand and reused. The `acquire` async context manager
+objects, created on-demand and reused. The registry is **bounded**
+(`file_lock_manager.py::FileLockManager.DEFAULT_MAX_LOCKS`): it is keyed by
+every path ever uploaded or delta-applied, so a never-released map would grow
+with the server's whole file history; idle, unreferenced locks are evicted
+instead, and a lock is never evicted while a coroutine still claims it
+(refcount), so two coroutines can never contend on different lock objects for
+the same path. The `acquire` async context manager
 (`file_lock_manager.py::FileLockManager.acquire`) ensures that only one coroutine can execute a
 critical section for a given file path at a time.
 

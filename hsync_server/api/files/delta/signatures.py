@@ -238,11 +238,19 @@ async def post_delta_signatures(
             message="Unsupported delta block size",
             details={"block_size": body.block_size},
         )
-    clean_sigs = sanitize_signature_list([dict(s) for s in body.signatures])
+    # ``sanitize_signature_list`` rebuilds every entry through
+    # ``sanitize_block_signature``, so it already returns fresh validated dicts:
+    # the previous ``[dict(s) for s in body.signatures]`` pre-copy duplicated the
+    # whole list for nothing (+193 B/signature measured, up to
+    # DELTA_MAX_SIGNATURES = 100_000 entries).
+    clean_sigs = sanitize_signature_list(body.signatures)
     if clean_sigs is None:
         raise ValidationError(message="Invalid delta signatures payload")
 
     sigs = [BlockSignature(**s) for s in clean_sigs]
+    # The dict list exists only to build ``sigs``: release it before matching so
+    # the peak holds the matcher's representation, not both.
+    del clean_sigs
 
     new_size = Path(file).stat().st_size
     new_sha256 = await get_or_compute_sha256(file)
