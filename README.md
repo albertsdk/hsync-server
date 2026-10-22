@@ -5,23 +5,15 @@
 # HSYNC Server
 
 **HSYNC Server** is the central hub that keeps your files in sync in real-time
-across all your devices. It stores shared folders (called **buckets**), accepts
-file changes from any device via the [HSYNC Client](https://github.com/albertsdk/hsync-client),
+across all your devices. It stores shared folders — **buckets**, each a named
+directory on the server holding a set of synchronized files — accepts file
+changes from any device via the [HSYNC Client](https://github.com/albertsdk/hsync-client),
 and instantly notifies all other connected devices so they can pull the updates —
 all over standard HTTP/HTTPS.
 
-It scales with your setup — from a laptop or NAS on a small LAN to a VPS serving several offices — and stays entirely self-hosted: the hub, the storage and the credentials remain yours, with your files stored in their original format.
+It scales with your setup — from a laptop or NAS on a small LAN to a VPS serving several offices — and stays entirely self-hosted: the hub, the storage and the credentials remain yours, with your files stored in their original format. To actually sync files, each device needs the HSYNC Client; the server is the storage and coordination hub.
 
 > New to HSYNC? Start with the [HSYNC Ecosystem](https://github.com/albertsdk/hsync/blob/main/README.md) for an overview of the platform before running a server.
-
-> A **bucket** is a named directory on the server that holds a set of
-> synchronized files — think of it as a shared folder. You'll need the
-> [HSYNC Client](https://github.com/albertsdk/hsync-client) on each device
-> to actually sync files; the server is the storage and coordination hub.
-
-> **The server is optional:** devices that share a network segment can sync
-> directly, peer-to-peer, with the client’s
-> [p2p Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/p2p-mode.md).
 
 > 👉 **Operational Advisory:** As with any automated filesystem mutation utility, administrators are strongly advised to maintain validated, independent backups prior to initial deployment in production environments.
 
@@ -33,12 +25,7 @@ It scales with your setup — from a laptop or NAS on a small LAN to a VPS servi
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-🐳-2496ED.svg)](https://github.com/albertsdk/hsync-server/pkgs/container/hsync-server)
 
-**Quick navigation:**
-- **New to HSYNC Server?** Start with [What you can do](#what-you-can-do-with-hsync-server) and the [Getting Started guide](docs/getting-started.md)
-- **Do you need the server?** See [Do you need the server?](#do-you-need-the-server) — and the client's [p2p Mode](https://github.com/albertsdk/hsync-client/blob/main/docs/p2p-mode.md) alternative
-- **Privacy & security** See [Privacy, security & openness](#privacy-security--openness)
-- **Want to contribute?** See [Contributing](CONTRIBUTING.md)
-- **Looking for detailed documentation?** Navigate to [docs/README.md](docs/README.md)
+---
 
 ## What you can do with HSYNC Server
 
@@ -146,14 +133,6 @@ opaque internal formats.
 > ³ Rclone with the `crypt` backend stores files in an opaque encrypted format; with other backends (e.g., SFTP, local) files remain in their original format.<br>
 > ⁴ Rclone's HTTP backend is read-only (download-only) and does not perform synchronization; Rclone's core operation relies on other protocols (S3, SFTP, etc.).
 
-**When to choose HSYNC Server:**
-- 🏢 **Corporate networks** — only ports 80/443 are open through the firewall
-- ☁️ **Cloud environments** — services behind load balancers or reverse proxies
-- 🔒 **Restricted infrastructures** — SSH is disabled, VPNs unavailable
-- 🌐 **Web-friendly setups** — route traffic through CDNs, WAFs, or API gateways
-- ⚡ **Real-time reactivity** — unlike traditional HTTP-based tools that rely on periodic polling, HSYNC reacts instantly to file changes using local watchdogs and event-driven WebSockets.
-- 🏠 **Self-hosted by design** — you operate the hub, the storage and the credentials: buckets are plain directories on your own filesystem and access is per-account with roles, with no third-party service in the data path.
-
 ## Privacy, security & openness
 
 - 🏠 **Private** — self-hosted by design: no vendor account and no third-party service in the data path; buckets are plain directories and access is per-account with roles.
@@ -179,6 +158,10 @@ hsync-server [options]
 | `--ssl-key FILE` | Path to SSL private key (PEM format) | auto-generated |
 | `--ssl-cert-dir DIR` | Directory for auto-generated certificates | `{project_dir}/certs` |
 | `-V, --version` | Show version | - |
+
+These are the global options. The `admin` command group (`hsync-server admin …`)
+manages accounts, buckets and TLS certificates — see
+[Roles and Permissions → CLI tools](docs/roles-and-permissions.md#cli-tools).
 
 ## Building a Standalone Binary
 
@@ -221,9 +204,13 @@ Key variables:
 | -------- | -------------- |
 | [Documentation Index](docs/README.md) | System requirements, env vars, upgrade, client examples |
 | [Getting Started](docs/getting-started.md) | Chooser for the four install methods and first connection |
+| [Roles and Permissions](docs/roles-and-permissions.md) | Accounts, roles, keys, bucket membership and CLI tools |
 | [Deployment Guide](docs/deployment.md) | Docker Compose, reverse proxy, systemd, troubleshooting |
+| [Reverse Proxy](docs/reverse-proxy.md) | nginx and Traefik reverse-proxy examples |
 | [Operations Guide](docs/operations.md) | Backup/restore, upgrade, monitoring, performance |
+| [Security Best Practices](docs/security-best-practices.md) | Hardening checklist for Internet-facing servers |
 | [API Reference](docs/api.md) | Complete REST + WebSocket API reference |
+| [Authentication](docs/authentication.md) | Account tokens, WebSocket handshake, CID registration |
 | [Architecture](docs/internal/architecture.md) | Server components and module structure |
 | [Sync Flow](docs/sync-flow.md) | Server-side sync flow: storage, events, tombstones |
 | [FAQ](docs/faq.md) | Frequently asked questions and troubleshooting |
