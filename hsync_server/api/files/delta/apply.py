@@ -225,6 +225,21 @@ async def delta_apply(
             # 1. Race check: the base file must still be what the client saw.
             # This check MUST be inside the lock to prevent TOCTOU races.
             current_base = await get_or_compute_sha256(file_location)
+            if current_base == new_sha256:
+                # Idempotent apply: a concurrent upload/apply already stored the
+                # exact desired content. Return success instead of rewriting the
+                # file (and instead of a spurious 409 when the base moved).
+                record_delta_transfer("upload", "already_applied")
+                log.info(f"Delta apply already satisfied for {path} ({new_size} bytes)")
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": "ok",
+                        "sha256": new_sha256,
+                        "size": new_size,
+                        "resolution": "already_applied",
+                    },
+                )
             if current_base != base_sha256:
                 log.info(f"Delta apply rejected (base changed): {file_location}")
 
@@ -306,6 +321,22 @@ async def delta_apply(
             local_bucket = f"{buckets_path}/{bucket}"
             delta_relpath = relpath_in_bucket(file_location, local_bucket) or ""
             delta_disk_hash = get_sha256_hash(file_location)
+            # The client sends the causal clock as a JSON *string* (same wire
+            # contract as the full upload form field). Decode it before the
+            # arbitration: parse_vclock only accepts a dict, so passing the raw
+            # string would silently yield an empty clock and mark every delta
+            # "superseded" by the stored version.
+            raw_vclock = meta.get("vclock")
+            if isinstance(raw_vclock, str) and raw_vclock:
+                try:
+                    incoming_vclock_raw = json.loads(raw_vclock)
+                except (ValueError, TypeError):
+                    incoming_vclock_raw = None
+            elif isinstance(raw_vclock, dict):
+                incoming_vclock_raw = raw_vclock
+            else:
+                incoming_vclock_raw = None
+
             raw_corrected = meta.get("corrected_mtime")
             incoming_corrected = (
                 int(clamp_incoming_corrected_mtime(float(raw_corrected)))
@@ -318,7 +349,7 @@ async def delta_apply(
                 bucket=bucket,
                 relpath=delta_relpath,
                 incoming_hash=rebuilt_sha256,
-                incoming_vclock_raw=meta.get("vclock"),
+                incoming_vclock_raw=incoming_vclock_raw,
                 incoming_version_id=str(meta.get("version_id") or ""),
                 incoming_origin_cid=cid if is_valid_cid(cid) else None,
                 disk_hash=delta_disk_hash,

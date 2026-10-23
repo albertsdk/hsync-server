@@ -150,6 +150,50 @@ class TestPostSignatures:
         assert body["delta"] is False
         assert body["reason"] == "too_many_changed_blocks"
 
+    async def test_apply_is_idempotent_when_current_matches_new(self, client, bucket_dir, tmp_path):
+        base = _base_bytes()
+        new = bytearray(base)
+        new[BLOCK : BLOCK + 32] = b"Z" * 32
+        new = bytes(new)
+        _write_base(bucket_dir, base)
+        payload = _apply_multipart(base, new, tmp_path)
+        # A concurrent upload already stored the delta's target content.
+        (bucket_dir / "docs/big.bin").write_bytes(new)
+        resp = await client.post("/api/v1/buckets/bucket1/files/delta/apply", **payload)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "ok"
+        assert body["sha256"] == sha256(new).hexdigest()
+        assert body["resolution"] == "already_applied"
+        assert (bucket_dir / "docs/big.bin").read_bytes() == new
+
+    async def test_json_string_vclock_is_decoded(self, client, bucket_dir, tmp_path):
+        """The client sends ``vclock`` as a JSON string (same wire contract as
+        the full upload form). The delta apply must decode it before the causal
+        arbitration: passing the raw string makes parse_vclock return None, the
+        incoming clock empty, and every delta look superseded by the stored
+        version (409)."""
+        from hsync_server.versions import get_version_store
+
+        base = _base_bytes()
+        new = b"changed" + base
+        rel = _write_base(bucket_dir, base)
+        cid = "TestClientABCDEFGHIJK"
+        store = get_version_store("bucket1")
+        store.record(rel, base_hash=sha256(base).hexdigest(), vclock={cid: 1})
+        store.save()
+
+        payload = _apply_multipart(base, new, tmp_path)
+        meta = json.loads(payload["data"]["metadata"])
+        meta["cid"] = cid
+        meta["vclock"] = json.dumps({cid: 2})  # wire contract: JSON string
+        payload["data"]["metadata"] = json.dumps(meta)
+
+        resp = await client.post("/api/v1/buckets/bucket1/files/delta/apply", **payload)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["sha256"] == sha256(new).hexdigest()
+        assert (bucket_dir / "docs/big.bin").read_bytes() == new
+
     async def test_missing_file_is_404(self, client, bucket_dir, tmp_path):
         sigs = _client_sigs(tmp_path, _base_bytes(), BLOCK)
         resp = await client.post(
