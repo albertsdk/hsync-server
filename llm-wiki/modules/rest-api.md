@@ -4,7 +4,7 @@ All paths are prefixed `/api/v1` from the shared SSOT
 (`hsync_common/protocol/rest.py::REST_API_PREFIX`). Endpoints attach to
 `auth_router` (Bearer key) unless noted; `public_router` for health/metrics/time.
 Human-oriented flow diagrams: `../docs/internal/architecture.md`; the machine-readable REST
-contract is the generated OpenAPI snapshot in `hsync-common` (`protocol/rest/openapi.json`).
+contract is the generated OpenAPI snapshot in `hsync-common` (`hsync_common/protocol/rest/openapi.json`).
 
 The route decorators do not hard-code literals: they use the shared path names in
 `hsync_common.protocol.rest` (`REST_*` constants, `rest_bucket_template`,
@@ -279,6 +279,14 @@ See `../docs/delta-transfer.md` for user-facing documentation.
 | `POST /buckets/{bucket}/files/delta/signatures` | `delta.signatures.post_delta_signatures` (`api/files/delta/signatures.py::post_delta_signatures`) | key | delta |
 | `POST /buckets/{bucket}/files/delta/apply` | `delta.apply.delta_apply` (`api/files/delta/apply.py::delta_apply`) | key | delta |
 | `GET /buckets/{bucket}/files/delta/data/{token}` | `delta.data.get_delta_data` (`api/files/delta/data.py::get_delta_data`) | key | delta |
+
+**Causal version & idempotence**: `delta_apply` decodes the incoming `vclock`
+JSON string (the same wire contract as the full-upload form field) before
+`arbitrate_upload`; passing the raw string made `parse_vclock` return an empty
+clock, so every delta looked `superseded` (409) once the server had a version.
+When the current file already matches the delta's target `new_sha256`, the apply
+is an idempotent 200 with `resolution: already_applied` (no rewrite and no
+spurious base-changed 409).
 
 **Concurrency**: The `delta_apply` endpoint uses a per-file lock manager
 (`file_lock_manager.py`) to serialize concurrent delta applies on the same file.
