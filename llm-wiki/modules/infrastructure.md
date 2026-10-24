@@ -167,7 +167,7 @@ past `DELTA_MAX_LITERAL_SIZE` and flags it) and then compressed file→file with
 `hsync_common.compression.compress_file_to_file`, so a multi-GB literal payload
 is never resident in RAM (it used to be one `bytes` object plus its compressed
 copy — up to ~2 GB per request). The parked payload is adopted by
-`DeltaTokenStore.issue_from_file` (`api/files/delta/tokens.py::DeltaTokenStore.issue_from_file`)
+`DeltaTokenStore.issue_from_file` (`hsync-common/hsync_common/delta/token_store.py::DeltaTokenStore.issue_from_file`)
 with an atomic `os.replace`, never a bytes write.
 Decompression: `decompress_file_to_file` (`compression.py::decompress_file_to_file`, capped streaming
 file→file, fsync'd — run it via `asyncio.to_thread`, used by uploads so
@@ -278,10 +278,10 @@ uploads for the same file are ordered (ADR-0022).
   `hsync_common/models/arbitration.py::decide_arbitration` (also used by the
   client's P2P master); this module binds it to the per-bucket version store, the
   server CID and the immediate `save()`. Returns an
-  `ArbitrationResult` (`arbitration.py::ArbitrationResult`; outcome + record clock + record corrected mtime + loser
+  `ArbitrationResult` (`hsync-common/hsync_common/models/arbitration.py::ArbitrationResult`; outcome + record clock + record corrected mtime + loser
   cid for conflict-copy naming). ADR-0023: the tie-break compares the incoming
   `corrected_mtime` with the stored one, falling back to SHA-256 when unknown
-  or tied. `conflicted_copy_name` (`arbitration.py::conflicted_copy_name`) builds the canonical `_conflicted_copy_` path.
+  or tied. `conflicted_copy_name` (`hsync-common/hsync_common/arbitration.py::conflicted_copy_name`) builds the canonical `_conflicted_copy_` path.
 - `plan_conflict_rejection` (`api/files/_conflicts.py::plan_conflict_rejection`) — the shared
   rejection plan for a lost upload: `superseded` (discard the incoming bytes,
   no copy) or `conflict_lost` (preserve them as the canonical conflicted copy),

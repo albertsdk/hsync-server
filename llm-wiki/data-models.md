@@ -74,7 +74,7 @@ defined in the common model, not here.
 ```
 
 Sentinel + cleanup logic: `api/file_utils.py` (`is_sentinel_file`
-`api/file_utils.py::is_sentinel_file`, `ensure_sentinel_in_dir`
+`hsync-common/hsync_common/models/sentinel.py::is_sentinel_file`, `ensure_sentinel_in_dir`
 `api/file_utils.py::ensure_sentinel_in_dir`, `cleanup_empty_dir`
 `api/file_utils.py::cleanup_empty_dir`). No `.hsyncfolder` marker
 is written into served buckets; the `buckets` table maps name → folder UUID.

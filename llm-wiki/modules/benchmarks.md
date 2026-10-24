@@ -58,10 +58,10 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 | `set_sha256_hash` / `get_sha256_hash(hit\|miss)` / `del_sha256_hash(hit\|miss)` | `hashes` (`hashes.py::set_sha256_hash`, `hashes.py::get_sha256_hash`, `hashes.py::del_sha256_hash`) — per-file cache + freshness check |
 | `resolve_within_bucket(hit\|escape\|no-deref)` | `api.utils.resolve_within_bucket` (`api/utils.py::resolve_within_bucket`) — per-request confinement |
 | `is_valid_bucket` | `api.utils.is_valid_bucket` (`api/utils.py::is_valid_bucket`) |
-| `is_sentinel_file(hit\|miss)` | `api.file_utils.is_sentinel_file` (`api/file_utils.py::is_sentinel_file`) |
+| `is_sentinel_file(hit\|miss)` | `api.file_utils.is_sentinel_file` (`hsync-common/hsync_common/models/sentinel.py::is_sentinel_file`) |
 | `update_file_timestamp(normal\|clamp\|missing)` | `api.file_utils.update_file_timestamp` (`api/file_utils.py::update_file_timestamp`) — mtime restore + far-future clamp |
 | `arbitrate_upload(first\|dominant\|superseded\|conflict_won\|conflict_lost)` | `arbitration.arbitrate_upload` (`arbitration.py::arbitrate_upload`) — per-upload causal gate |
-| `conflicted_copy_name` | `arbitration.conflicted_copy_name` (`arbitration.py::conflicted_copy_name`) |
+| `conflicted_copy_name` | `arbitration.conflicted_copy_name` (`hsync-common/hsync_common/arbitration.py::conflicted_copy_name`) |
 | `server_version_info(recorded\|missing)` | `versions.server_version_info` (`versions.py::server_version_info`) — per-listing version |
 | `record_version(persist)` | `versions.record_version` (`versions.py::record_version`) — per-upload record + SQLite save |
 | `try_acquire_slot(under\|global_cap\|per_ip_cap)` / `release_slot` | `api.connection_manager.BucketConnectionManager` (`api/connection_manager.py::BucketConnectionManager`) — per-WS-join DoS gate |

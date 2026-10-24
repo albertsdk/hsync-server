@@ -162,8 +162,8 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   `to_thread` wrapper over `hsync_common.permissions.apply_remote_permissions` —
   special bits (setuid/setgid/sticky) stripped, owner rwx floor for directories.
 - Wire-supplied mtimes clamped to `now + 300 s` (SSOT
-  `hsync_common/constants.py::CORRECTED_MTIME_MAX_FUTURE_SKEW`, bound locally as
-  `api/file_utils.py::MTIME_MAX_FUTURE_SKEW_SECONDS`).
+  `hsync_common/constants.py::CORRECTED_MTIME_MAX_FUTURE_SKEW`, imported in
+  `api/file_utils.py` as `MTIME_MAX_FUTURE_SKEW_SECONDS`).
 - Broadcasts an `added` event to bucket subscribers, skipping hidden files
   (see [websocket.md](websocket.md)).
 - **No path leak on errors**: error responses never expose absolute
@@ -354,7 +354,7 @@ includes the wall-clock duration via `format_duration(..., subsecond=True)`.
   thin `to_thread` wrappers over `hsync_common.permissions`), free-space guard
   (`api/utils.py::ensure_disk_space`, over `hsync_common.disk.check_free_space`
   in bytes — `Settings.min_free_disk_space` is bytes, the client's is MB).
-- `api/file_utils.py`: sentinel handling (`api/file_utils.py::is_sentinel_file` /
+- `api/file_utils.py`: sentinel handling (`hsync-common/hsync_common/models/sentinel.py::is_sentinel_file` /
   `api/file_utils.py::ensure_sentinel_in_dir`), empty-dir cleanup (`api/file_utils.py::cleanup_empty_dir`),
   timestamp updates with far-future clamp (`api/file_utils.py::update_file_timestamp`).
 - `api/files/version_publish.py`: `record_published_version` — shared post-publish
