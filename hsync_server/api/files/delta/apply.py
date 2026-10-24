@@ -37,10 +37,9 @@ from hsync_common.delta import DeltaError, apply_delta
 from hsync_common.format import format_duration
 from hsync_common.hashing import compute_sha256_async, is_sha256_hex
 from hsync_common.models.delta import (
-    OP_TYPE_COPY,
-    OP_TYPE_DATA,
     DeltaOp,
     sanitize_op_list,
+    validate_op_bounds,
 )
 from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.version import relpath_in_bucket
@@ -52,6 +51,7 @@ from loguru import logger as log
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import update_file_timestamp
+from hsync_server.api.files._conflicts import plan_conflict_rejection
 from hsync_server.api.files.delta._util import delta_disabled_response
 from hsync_server.api.files.upload import _flush_to_disk
 from hsync_server.api.files.version_publish import record_published_version
@@ -145,20 +145,12 @@ def _check_ops_bounds(
     ops: list[DeltaOp], base_size: int, literal_size: int, new_size: int
 ) -> str | None:
     """Validate op bounds and coverage; return a reason string or None."""
-    total = 0
-    for op in ops:
-        if op.type == OP_TYPE_COPY:
-            if op.offset + op.length > base_size:
-                return "copy_op_out_of_bounds"
-        elif op.type == OP_TYPE_DATA:
-            if op.data_offset + op.length > literal_size:
-                return "data_op_out_of_bounds"
-        else:
-            return "unknown_op_type"
-        total += op.length
-    if total != new_size:
-        return "ops_coverage_mismatch"
-    return None
+    return validate_op_bounds(
+        ops,
+        base_size=base_size,
+        literal_size=literal_size,
+        new_size=new_size,
+    )
 
 
 @auth_router.post(rest_bucket_template(REST_DELTA_APPLY_SUFFIX))
@@ -356,30 +348,22 @@ async def delta_apply(
                 incoming_corrected_mtime=incoming_corrected,
             )
 
-            if delta_result.outcome is ArbitrationOutcome.superseded:
-                if part_path and Path(part_path).exists():
+            rejection = plan_conflict_rejection(
+                delta_result,
+                kind="Delta upload",
+                final_path=file_location,
+                sha_prefix=rebuilt_sha256[:12],
+            )
+            if rejection is not None:
+                if rejection.conflicted_path is not None:
+                    # Preserve the incoming bytes under the FINAL path name: the
+                    # `.delta.part` artifact must never leak into the synced tree
+                    # (ADR-0021 canonical `<stem>_conflicted_copy_…`).
+                    replace(part_path, rejection.conflicted_path)
+                elif part_path and Path(part_path).exists():
                     remove(part_path)
-                raise SupersededError(
-                    message="Delta upload superseded by a newer version on the server",
-                    details={"sha256sum": rebuilt_sha256[:12]},
-                )
-            if delta_result.outcome is ArbitrationOutcome.conflict_lost:
-                ts = conflict_timestamp()
-                # Use the FINAL path (regression: the temporary `.delta.part`
-                # name would produce `<stem>.delta_conflicted_copy_….part`,
-                # an internal-artifact suffix the sync engine never lists or
-                # syncs — ADR-0021 canonical name is `<stem>_conflicted_copy_…`
-                # with the real extension).
-                conflicted = conflicted_copy_name(file_location, delta_result.loser_cid, ts)
-                replace(part_path, conflicted)
                 part_path = None
-                raise ConflictLostError(
-                    message="Delta upload lost a conflict tie-break; content preserved as conflicted copy",
-                    details={
-                        "sha256sum": rebuilt_sha256[:12],
-                        "conflicted_copy": Path(conflicted).name,
-                    },
-                )
+                raise rejection.error
 
             # 5. Publish: timestamps/permissions, atomic rename, cache, broadcast.
             resolution = delta_result.outcome.value

@@ -158,7 +158,9 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   download-only directory-permission converge.
 - Permissions applied via `set_permissions` (`api/utils.py::set_permissions`) — special bits
   (setuid/setgid/sticky) stripped (`sanitize_remote_permissions`).
-- Wire-supplied mtimes clamped to `now + 300 s` (`api/file_utils.py::MTIME_MAX_FUTURE_SKEW_SECONDS`).
+- Wire-supplied mtimes clamped to `now + 300 s` (SSOT
+  `hsync_common/constants.py::CORRECTED_MTIME_MAX_FUTURE_SKEW`, bound locally as
+  `api/file_utils.py::MTIME_MAX_FUTURE_SKEW_SECONDS`).
 - Broadcasts an `added` event to bucket subscribers, skipping hidden files
   (see [websocket.md](websocket.md)).
 - **No path leak on errors**: error responses never expose absolute
@@ -302,7 +304,9 @@ literal compression and token issuance all run on **asyncio worker threads**
 (`asyncio.to_thread`) so the event loop never blocks. Two shared caches are
 cross-thread by design: `_signature_cache` (`api/files/delta/signatures.py::_signature_cache`, TTL 300 s,
 FIFO cap 64, guarded by `_signature_cache_lock` — computed outside the lock)
-and `delta_token_store` (`api/files/delta/tokens.py::delta_token_store`, `threading.RLock` around
+and `delta_token_store` (`api/files/delta/tokens.py::delta_token_store`, a binding of
+the shared `hsync_common/delta/token_store.py::DeltaTokenStore`; its
+`threading.RLock` is held around
 issue/lookup/consume/discard/cleanup so the token-cap and storage checks are
 atomic). Regression coverage: `tests/test_concurrency_hardening.py`.
 This prevents race conditions where multiple clients would write to the same

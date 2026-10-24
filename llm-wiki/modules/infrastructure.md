@@ -63,9 +63,11 @@ Bucket membership is enforced by `check_bucket_access` (`api/authz.py::check_buc
   **ECDSA P-256**, an **unencrypted** PKCS#8 key (`0600`) in a `0700` directory,
   and a **20-year** validity (`DEFAULT_CERT_VALIDITY_DAYS =
   SERVICE_CERT_VALIDITY_DAYS`, `ssl_utils.py::DEFAULT_CERT_VALIDITY_DAYS`). `generate_self_signed_cert`
-  (`ssl_utils.py::generate_self_signed_cert`) builds on
-  `hsync_common.ssl_utils`; the certificate is authenticated by fingerprint
-  pinning, not a passphrase, so no key password is configured.
+  (`ssl_utils.py::generate_self_signed_cert`) builds the subject/SANs locally and
+  persists the pair through the shared `hsync_common.ssl_utils.write_pem_keypair`
+  (owner-only key/dir, `0o644` certificate because clients must receive it); the
+  certificate is authenticated by fingerprint pinning, not a passphrase, so no
+  key password is configured.
 - `ensure_certificates` (`ssl_utils.py::ensure_certificates`) persists a cert/key pair under `get_ssl_cert_dir()` so the
   fingerprint is stable across restarts (pinning by clients); `get_ssl_config`
   (`ssl_utils.py::get_ssl_config`) returns the uvicorn SSL kwargs gated by `get_ssl_enabled()`.
@@ -263,12 +265,22 @@ uploads for the same file are ordered (ADR-0022).
   to the DB for out-of-band edits (ADR-0022 §3.4.7); minting is shared with
   `auth_store.mint_account_id` via `constants.mint_alnum_id` (`constants.py::mint_alnum_id`; unbiased
   `secrets.choice`, validated on read with `is_valid_cid`).
-- `arbitration.py` exposes `arbitrate_upload` (`arbitration.py::arbitrate_upload`) — the shared causal arbitration
-  used by both the REST upload and the delta apply endpoint (DRY). Returns an
+- `arbitration.py` exposes `arbitrate_upload` (`arbitration.py::arbitrate_upload`) — the causal gate
+  used by both the REST upload and the delta apply endpoint (DRY). The decision
+  itself is the shared reference implementation in
+  `hsync_common/models/arbitration.py::decide_arbitration` (also used by the
+  client's P2P master); this module binds it to the per-bucket version store, the
+  server CID and the immediate `save()`. Returns an
   `ArbitrationResult` (`arbitration.py::ArbitrationResult`; outcome + record clock + record corrected mtime + loser
   cid for conflict-copy naming). ADR-0023: the tie-break compares the incoming
   `corrected_mtime` with the stored one, falling back to SHA-256 when unknown
   or tied. `conflicted_copy_name` (`arbitration.py::conflicted_copy_name`) builds the canonical `_conflicted_copy_` path.
+- `plan_conflict_rejection` (`api/files/_conflicts.py::plan_conflict_rejection`) — the shared
+  rejection plan for a lost upload: `superseded` (discard the incoming bytes,
+  no copy) or `conflict_lost` (preserve them as the canonical conflicted copy),
+  with the error payload and the final-path naming rule (never the temp
+  artifact). The upload and delta-apply endpoints execute the returned
+  move/removal with their own bookkeeping (backup copy vs `.delta.part`).
 
 ## State-DB maintenance (`state_maintenance.py`)
 

@@ -37,7 +37,11 @@ from hsync_common.models import file as file_models
 from hsync_common.models.file import File as LocalFile
 
 from hsync_server.api.files.delta import signatures as signatures_module
-from hsync_server.api.files.delta.tokens import DeltaTokenStore, delta_tmp_dir
+from hsync_server.api.files.delta.tokens import (
+    DELTA_MAX_ACTIVE_TOKENS,
+    DeltaTokenStore,
+    delta_tmp_dir,
+)
 
 _THREADS = 12
 _ROUNDS = 25
@@ -86,7 +90,11 @@ class TestSignatureCacheHardening:
 class TestDeltaTokenStoreHardening:
     @pytest.fixture
     def store(self) -> DeltaTokenStore:
-        return DeltaTokenStore(ttl=999_999)
+        return DeltaTokenStore(
+            ttl=999_999,
+            max_tokens=DELTA_MAX_ACTIVE_TOKENS,
+            tmp_dir=delta_tmp_dir,
+        )
 
     @pytest.fixture(autouse=True)
     def _clear_payload_dir(self, temp_buckets_dir):
@@ -120,14 +128,12 @@ class TestDeltaTokenStoreHardening:
         assert not store._tokens
         assert store._get_total_storage_size() == 0
 
-    def test_active_token_cap_is_atomic(self, store, monkeypatch):
+    def test_active_token_cap_is_atomic(self, store):
         """The cap check is check-then-act: only the lock keeps it exact."""
-        import hsync_server.api.files.delta.tokens as tokens_module
-
-        monkeypatch.setattr(tokens_module, "DELTA_MAX_ACTIVE_TOKENS", 8)
+        limited = DeltaTokenStore(ttl=999_999, max_tokens=8, tmp_dir=delta_tmp_dir)
 
         with ThreadPoolExecutor(max_workers=_THREADS) as pool:
-            futures = [pool.submit(self._issue, store, i) for i in range(_THREADS * 2)]
+            futures = [pool.submit(self._issue, limited, i) for i in range(_THREADS * 2)]
             results = []
             for f in futures:
                 try:
@@ -140,9 +146,9 @@ class TestDeltaTokenStoreHardening:
 
         # The serialised critical section admits exactly cap issuers.
         assert len(results) == 8
-        assert len(store._tokens) == 8
+        assert len(limited._tokens) == 8
         for tok in results:
-            store.discard(tok)
+            limited.discard(tok)
         assert not any(delta_tmp_dir().glob("delta_*.bin"))
 
     def test_cleanup_concurrent_with_issue_never_raise(self, store):

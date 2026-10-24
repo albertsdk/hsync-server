@@ -9,98 +9,46 @@ This module provides utility functions for file operations:
 - Timestamp updates
 """
 
-from os import listdir, rmdir, utime
+from os import utime
 from pathlib import Path
 
-from hsync_common.path_validation import basename
+# Receiver-side far-future mtime clamp (conflict engineering); the SSOT value
+# and rationale live in ``hsync_common.constants``.
+from hsync_common.constants import (
+    CORRECTED_MTIME_MAX_FUTURE_SKEW as MTIME_MAX_FUTURE_SKEW_SECONDS,
+)
+from hsync_common.constants import HSYNCKEEP_FILENAME
+from hsync_common.models.sentinel import (
+    ensure_sentinel,
+    is_sentinel_file,  # noqa: F401  (re-exported for server call sites)
+    remove_empty_dir,
+)
 from hsync_common.time_utils import to_epoch, utc_now_epoch
 from loguru import logger as log
 
-from hsync_server.constants import HSYNCKEEP_FILENAME
-
-# Wire-supplied mtimes may not exceed now + this skew: a peer asserting
-# far-future timestamps would win every mtime-based conflict resolution on
-# every other peer (conflict engineering).
-MTIME_MAX_FUTURE_SKEW_SECONDS = 300
-
-
-def is_sentinel_file(filepath: str) -> bool:
-    """Return True if *filepath* is a .hsynckeep sentinel file."""
-    return basename(filepath) == HSYNCKEEP_FILENAME
-
 
 def ensure_sentinel_in_dir(dir_path: str) -> None:
-    """Create a .hsynckeep sentinel if *dir_path* is an empty directory.
+    """Create a .hsynckeep sentinel if *dir_path* has no syncable entry.
 
-    After a file is deleted the parent directory may become empty.
-    Placing a sentinel preserves the directory structure during sync.
-
-    A directory is considered "empty" when it contains no syncable
-    (non-hidden) files.  An already-existing sentinel counts as
-    syncable, so a second one is never created.
-
-    Args:
-        dir_path: Absolute path to the directory to check.
+    After a file is deleted the parent directory may become empty; the marker
+    preserves the directory structure during sync. The rule itself is shared
+    (``hsync_common.models.sentinel``) so the P2P master behaves identically.
     """
-    from hsync_common.models.file import is_hidden_file
-
-    if not Path(dir_path).exists() or not Path(dir_path).is_dir():
+    if not Path(dir_path).is_dir():
         return
-
-    try:
-        entries = listdir(dir_path)
-    except OSError:
-        return
-
-    has_syncable = any(not is_hidden_file(e) for e in entries)
-    if has_syncable:
-        return
-
-    sentinel = str(Path(dir_path) / HSYNCKEEP_FILENAME)
-    if not Path(sentinel).exists():
-        try:
-            open(sentinel, "w").close()
-            log.debug(f'Created sentinel "{sentinel}"')
-        except OSError as exc:
-            log.warning(f'Cannot create sentinel "{sentinel}": {exc}')
+    if ensure_sentinel(dir_path):
+        log.debug(f'Created sentinel "{Path(dir_path) / HSYNCKEEP_FILENAME}"')
 
 
 def cleanup_empty_dir(dir_path: str, bucket_root: str | None = None) -> None:
-    """Remove *dir_path* if it is completely empty (no files at all).
+    """Remove *dir_path* if it is completely empty (no entries at all).
 
-    Called after deleting a sentinel file so that the directory does
-    not linger on disk once it has no real content.  Only removes the
-    directory if it contains zero entries (hidden or otherwise).
-
-    The bucket root directory is never removed, even when empty, to
-    prevent a malicious or legacy client from destroying a bucket by
-    deleting the ``.hsynckeep`` sentinel located at its root.
-
-    Args:
-        dir_path: Absolute path to the directory to check.
-        bucket_root: Absolute path of the bucket root that must NOT be
-            removed. When omitted no root guard is applied (legacy
-            behaviour, used by tests that operate outside of a bucket).
+    Called after deleting a sentinel file so the directory does not linger on
+    disk. The bucket root is never removed, even when empty: a peer deleting the
+    root sentinel must not destroy the sync target.
     """
-    if not Path(dir_path).exists() or not Path(dir_path).is_dir():
-        return
-
-    if bucket_root and Path(dir_path).resolve() == Path(bucket_root).resolve():
-        return
-
-    try:
-        entries = listdir(dir_path)
-    except OSError:
-        return
-
-    if entries:
-        return
-
-    try:
-        rmdir(dir_path)
+    if remove_empty_dir(dir_path, keep_root=bucket_root):
         log.debug(f'Removed empty directory "{dir_path}"')
-    except OSError as exc:
-        log.warning(f'Cannot remove directory "{dir_path}": {exc}')
 
 
 def update_file_timestamp(file_location: str, mtime: str | None = None) -> None:

@@ -7,24 +7,30 @@ Literal-payload download tokens for the delta transfer endpoints.
 When a download-delta request (POST ``/delta/signatures``) is accepted, the
 server parks the literal payload in a temp file and hands the client a
 single-use, short-lived token bound to ``(bucket, path)``; the client then
-fetches the payload via GET ``/delta/data/{token}``. Tokens live in memory
-(and payloads on disk, so multi-GB literals never sit in RAM); expired
-entries are reaped lazily on every store access.
+fetches the payload via GET ``/delta/data/{token}``.
+
+The token lifecycle (TTL, capacity caps, storage accounting, lazy expiry,
+single-use) is the shared implementation in
+:class:`hsync_common.delta.token_store.DeltaTokenStore`; this module binds it to
+the server's payload directory, caps and metrics.
 """
 
 from __future__ import annotations
 
-import os
-import threading
-import time
-import uuid
-from dataclasses import dataclass
 from pathlib import Path
 
-from loguru import logger as log
+from hsync_common.delta import DeltaTokenEntry, DeltaTokenStore
 
 from hsync_server.config import get_buckets_path, get_delta_token_ttl
 from hsync_server.metrics import update_active_tokens, update_temp_storage
+
+__all__ = [
+    "DELTA_MAX_ACTIVE_TOKENS",
+    "DELTA_MAX_TEMP_STORAGE_BYTES",
+    "DeltaTokenEntry",
+    "delta_tmp_dir",
+    "delta_token_store",
+]
 
 # Hard cap on concurrently live tokens (DoS guard).
 DELTA_MAX_ACTIVE_TOKENS = 1_000
@@ -38,16 +44,6 @@ DELTA_MAX_TEMP_STORAGE_BYTES = 10 * 1024 * 1024 * 1024  # 10 GB
 _DELTA_TMP_DIRNAME = ".delta-tokens"
 
 
-@dataclass(frozen=True)
-class DeltaTokenEntry:
-    """A parked literal payload awaiting download."""
-
-    bucket: str
-    payload_file: str  # absolute temp file holding the literal bytes
-    compressed: bool  # payload is a single zstd frame
-    created: float  # time.time() of issuance
-
-
 def delta_tmp_dir() -> Path:
     """Return (creating if needed) the directory holding literal payloads."""
     tmp = Path(get_buckets_path()) / _DELTA_TMP_DIRNAME
@@ -55,160 +51,17 @@ def delta_tmp_dir() -> Path:
     return tmp
 
 
-class DeltaTokenStore:
-    """In-memory token registry with TTL and lazy expiry."""
-
-    def __init__(self, ttl: int | None = None):
-        self._ttl = ttl
-        # The registry is cross-thread by design: ``issue`` runs on asyncio
-        # worker threads (asyncio.to_thread), while ``lookup``/``consume``/
-        # ``discard``/``cleanup`` and the post-response payload cleanup
-        # (``_delete_payload``) run on the event loop. The re-entrant lock
-        # lets public methods compose (``issue`` → ``cleanup``) without
-        # self-deadlock and makes the token-count/storage checks atomic.
-        self._lock = threading.RLock()
-        self._tokens: dict[str, DeltaTokenEntry] = {}
-        # Lazy single-value cache of the total parked payload size. Exact by
-        # construction: recomputed on the first access and invalidated at every
-        # mutation (_delete_payload / cleanup / discard), so the steady-state
-        # per-issue storage check is O(1) instead of one stat() per live token.
-        self._storage_size: int | None = None
-
-    @property
-    def ttl(self) -> int:
-        """Token time-to-live in seconds (late binding from config)."""
-        return self._ttl if self._ttl is not None else get_delta_token_ttl()
-
-    def _delete_payload(self, entry: DeltaTokenEntry) -> None:
-        """Best-effort removal of the parked payload file."""
-        with self._lock:
-            try:
-                Path(entry.payload_file).unlink(missing_ok=True)
-            except OSError as exc:
-                log.warning(f"Cannot remove delta payload {entry.payload_file}: {exc}")
-            self._storage_size = None
-
-    def cleanup(self, now: float | None = None) -> int:
-        """Drop expired tokens and their payload files; return the count."""
-        cutoff = (now if now is not None else time.time()) - self.ttl
-        with self._lock:
-            expired = [t for t, e in self._tokens.items() if e.created < cutoff]
-            for token in expired:
-                entry = self._tokens.pop(token)
-                self._delete_payload(entry)
-            return len(expired)
-
-    def issue(self, *, bucket: str, payload: bytes, compressed: bool) -> str:
-        """Park *payload* on disk and return its download token (UUID v4)."""
-        with self._lock:
-            self.cleanup()
-            if len(self._tokens) >= DELTA_MAX_ACTIVE_TOKENS:
-                raise RuntimeError("Too many active delta tokens")
-
-            # Check total temp storage size before issuing new token
-            total_storage = self._get_total_storage_size()
-            if total_storage + len(payload) > DELTA_MAX_TEMP_STORAGE_BYTES:
-                raise RuntimeError("Delta temp storage limit exceeded")
-
-            token = uuid.uuid4().hex
-            payload_file = str(delta_tmp_dir() / f"delta_{token}.bin")
-            with open(payload_file, "wb") as f:
-                f.write(payload)
-            self._register_locked(
-                token, bucket, payload_file, compressed, total_storage, len(payload)
-            )
-            return token
-
-    def issue_from_file(
-        self, *, bucket: str, payload_file: str, size: int, compressed: bool
-    ) -> str:
-        """Adopt an already-written payload file as a download token (UUID v4).
-
-        The payload is *moved* into place with ``os.replace`` instead of being
-        written from a bytes buffer, so a multi-GB literal payload produced by
-        the matcher never has to sit in RAM. ``payload_file`` must live in
-        :func:`delta_tmp_dir` (same filesystem) for the move to be atomic.
-
-        The caller owns ``payload_file``: it must remove it when this raises.
-        """
-        with self._lock:
-            self.cleanup()
-            if len(self._tokens) >= DELTA_MAX_ACTIVE_TOKENS:
-                raise RuntimeError("Too many active delta tokens")
-
-            total_storage = self._get_total_storage_size()
-            if total_storage + size > DELTA_MAX_TEMP_STORAGE_BYTES:
-                raise RuntimeError("Delta temp storage limit exceeded")
-
-            token = uuid.uuid4().hex
-            final_path = delta_tmp_dir() / f"delta_{token}.bin"
-            os.replace(payload_file, final_path)
-            self._register_locked(token, bucket, str(final_path), compressed, total_storage, size)
-            return token
-
-    def _register_locked(
-        self,
-        token: str,
-        bucket: str,
-        payload_file: str,
-        compressed: bool,
-        total_storage: int,
-        payload_size: int,
-    ) -> None:
-        """Register *token* and refresh the metrics (called with ``_lock`` held)."""
-        self._tokens[token] = DeltaTokenEntry(
-            bucket=bucket,
-            payload_file=payload_file,
-            compressed=compressed,
-            created=time.time(),
-        )
-        # The just-computed total + the new payload is the new exact size,
-        # so the cache stays valid without a rescan (O(1) update).
-        self._storage_size = total_storage + payload_size
-
-        update_active_tokens(len(self._tokens))
-        update_temp_storage(total_storage + payload_size)
-
-    def _get_total_storage_size(self) -> int:
-        """Calculate total size of all parked payload files.
-
-        The value is cached between mutations: the scan (one ``stat`` per live
-        token) runs only after an invalidation, never on every ``issue``.
-        """
-        with self._lock:
-            total = self._storage_size
-            if total is None:
-                total = 0
-                for entry in self._tokens.values():
-                    try:
-                        total += Path(entry.payload_file).stat().st_size
-                    except OSError:
-                        pass
-                self._storage_size = total
-            return total
-
-    def lookup(self, token: str) -> DeltaTokenEntry | None:
-        """Return the entry for *token*, or None when unknown."""
-        with self._lock:
-            return self._tokens.get(token)
-
-    def is_expired(self, entry: DeltaTokenEntry, now: float | None = None) -> bool:
-        """Return True when the entry is older than the configured TTL."""
-        return entry.created < (now if now is not None else time.time()) - self.ttl
-
-    def consume(self, token: str) -> DeltaTokenEntry | None:
-        """Remove and return the entry for *token* (single-use semantics)."""
-        with self._lock:
-            return self._tokens.pop(token, None)
-
-    def discard(self, token: str) -> None:
-        """Drop a token and its payload file without serving it."""
-        with self._lock:
-            entry = self._tokens.pop(token, None)
-            if entry is not None:
-                self._storage_size = None
-                self._delete_payload(entry)
+def _report_store_size(tokens: int, storage_bytes: int) -> None:
+    """Publish the registry size to the metrics gauges."""
+    update_active_tokens(tokens)
+    update_temp_storage(storage_bytes)
 
 
 # Process-wide store shared by the endpoints.
-delta_token_store = DeltaTokenStore()
+delta_token_store = DeltaTokenStore(
+    ttl=get_delta_token_ttl,
+    max_tokens=DELTA_MAX_ACTIVE_TOKENS,
+    max_storage_bytes=DELTA_MAX_TEMP_STORAGE_BYTES,
+    tmp_dir=delta_tmp_dir,
+    on_change=_report_store_size,
+)

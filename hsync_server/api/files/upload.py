@@ -46,6 +46,7 @@ from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import (
     update_file_timestamp,
 )
+from hsync_server.api.files._conflicts import plan_conflict_rejection
 from hsync_server.api.utils import (
     enforce_size_cap,
     ensure_disk_space,
@@ -63,12 +64,10 @@ from hsync_server.config import get_buckets_path, get_max_upload_size
 from hsync_server.constants import BACKUP_SUFFIX, DEFAULT_FILE_PERMISSIONS, ActionLabel
 from hsync_server.exceptions import (
     ChecksumMismatchError,
-    ConflictLostError,
     FileTooLargeError,
     InvalidFilenameError,
     InvalidPathError,
     InvalidPermissionFormatError,
-    SupersededError,
     UploadError,
     ValidationError,
 )
@@ -526,34 +525,26 @@ async def upload_file(
                 incoming_corrected_mtime=incoming_corrected,
             )
 
-            if result.outcome is ArbitrationOutcome.superseded:
-                # Stale upload (causally dominated): discard the temp file,
-                # no conflicted copy (the ancestor's data is in the winner).
-                remove(file_location_tmp)
+            rejection = plan_conflict_rejection(
+                result,
+                kind="Upload",
+                final_path=file_location,
+                sha_prefix=sha256sum_tmp[:12],
+                has_backup=bool(backup_path and Path(backup_path).exists()),
+            )
+            if rejection is not None:
+                if rejection.conflicted_path is not None:
+                    # Incoming loses the tie-break: preserve its bytes as a
+                    # conflicted copy, keep the winner on disk, reject.
+                    replace(file_location_tmp, rejection.conflicted_path)
+                elif Path(file_location_tmp).exists():
+                    # Stale upload (causally dominated): discard the temp file,
+                    # no conflicted copy (the ancestor's data is in the winner).
+                    remove(file_location_tmp)
                 file_location_tmp = None
-                if backup_path and Path(backup_path).exists():
+                if rejection.discard_backup and backup_path and Path(backup_path).exists():
                     remove(backup_path)
-                raise SupersededError(
-                    message="Upload superseded by a newer version on the server",
-                    details={"sha256sum": sha256sum_tmp[:12]},
-                )
-
-            if result.outcome is ArbitrationOutcome.conflict_lost:
-                # Incoming loses the tie-break: preserve its bytes as a
-                # conflicted copy, keep the winner on disk, reject the upload.
-                ts = conflict_timestamp()
-                conflicted = conflicted_copy_name(file_location, result.loser_cid, ts)
-                replace(file_location_tmp, conflicted)
-                file_location_tmp = None
-                if backup_path and Path(backup_path).exists():
-                    remove(backup_path)
-                raise ConflictLostError(
-                    message="Upload lost a conflict tie-break; content preserved as conflicted copy",
-                    details={
-                        "sha256sum": sha256sum_tmp[:12],
-                        "conflicted_copy": Path(conflicted).name,
-                    },
-                )
+                raise rejection.error
 
             # accepted or accepted_conflict_won: write the incoming content.
             # On accepted_conflict_won, preserve the previous (losing) content

@@ -23,7 +23,6 @@ Usage:
 """
 
 import ipaddress
-import os
 import socket
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -32,11 +31,13 @@ from typing import Any
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from hsync_common.ssl_utils import (
+    PUBLIC_CERT_FILE_MODE,
     SERVICE_CERT_VALIDITY_DAYS,
     build_self_signed_certificate,
     generate_ecdsa_private_key,
     serialize_cert_pem,
     serialize_private_key_unencrypted,
+    write_pem_keypair,
 )
 from loguru import logger as log
 
@@ -45,11 +46,6 @@ from loguru import logger as log
 # not by WebPKI, so it lives for the deployment instead of a browser-friendly
 # 398/825-day window.
 DEFAULT_CERT_VALIDITY_DAYS = SERVICE_CERT_VALIDITY_DAYS
-
-# Identity file permissions: key 0600, certificate 0644, parent directory 0700.
-_KEY_FILE_MODE = 0o600
-_CERT_FILE_MODE = 0o644
-_DIR_MODE = 0o700
 
 
 def generate_self_signed_cert(
@@ -118,21 +114,16 @@ def generate_self_signed_cert(
 
     not_valid_after = datetime.now(UTC) + timedelta(days=validity_days)
 
-    # Ensure parent directories exist; when newly created, restrict to 0700 (the
-    # private key lives here).
-    for parent in (Path(cert_path).parent, Path(key_path).parent):
-        if not parent.exists():
-            parent.mkdir(parents=True, exist_ok=True)
-            os.chmod(parent, _DIR_MODE)
-
-    # Write the private key unencrypted (PKCS#8), protected by permissions.
-    with open(key_path, "wb") as f:
-        f.write(serialize_private_key_unencrypted(private_key))
-    os.chmod(key_path, _KEY_FILE_MODE)  # Read/write only for owner
-
-    with open(cert_path, "wb") as f:
-        f.write(serialize_cert_pem(cert))
-    os.chmod(cert_path, _CERT_FILE_MODE)  # Readable by all
+    # The key is unencrypted (PKCS#8) and protected by permissions: 0o600 in a
+    # 0o700 directory, with the certificate world-readable because the server
+    # must present it to clients.
+    write_pem_keypair(
+        serialize_cert_pem(cert),
+        serialize_private_key_unencrypted(private_key),
+        cert_path,
+        key_path,
+        cert_mode=PUBLIC_CERT_FILE_MODE,
+    )
 
     log.info(f"Certificate generated: {cert_path}")
     log.info(f"Private key generated: {key_path}")

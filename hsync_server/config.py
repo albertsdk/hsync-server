@@ -13,7 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, Literal
 
-from hsync_common.constants import DELTA_TOKEN_TTL
+from hsync_common.constants import DELTA_TOKEN_TTL, SERVER_DEFAULT_PORT
 from hsync_common.env import load_env_file as _load_env_file
 from hsync_common.logger import (
     DEFAULT_LOG_COMPRESSION,
@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     )
 
     # Server Configuration
-    port: int = Field(default=9753, ge=1, le=65535, description="Server port")
+    port: int = Field(default=SERVER_DEFAULT_PORT, ge=1, le=65535, description="Server port")
     workers: int = Field(default=1, ge=1, description="Number of uvicorn workers")
     tz: str = Field(default="UTC", description="Timezone in IANA format")
     log_level: Literal["debug", "info", "warning", "error", "critical"] = Field(

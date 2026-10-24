@@ -47,6 +47,8 @@ from hsync_common.delta import (
 from hsync_common.models.delta import (
     BlockSignature,
     BlockSignatureDict,
+    delta_download_payload,
+    delta_signatures_payload,
     sanitize_signature_list,
 )
 from hsync_common.protocol.rest import (
@@ -182,12 +184,12 @@ async def get_delta_signatures(
 
     return JSONResponse(
         status_code=200,
-        content={
-            "block_size": block_size,
-            "file_size": file_size,
-            "sha256": sha256sum,
-            "signatures": sigs,
-        },
+        content=delta_signatures_payload(
+            block_size=block_size,
+            file_size=file_size,
+            sha256=sha256sum,
+            signatures=sigs,
+        ),
     )
 
 
@@ -356,16 +358,13 @@ async def post_delta_signatures(
     )
     return JSONResponse(
         status_code=200,
-        content={
-            "delta": True,
-            "block_size": body.block_size,
-            "new_sha256": new_sha256,
-            "instructions": {
-                "new_size": new_size,
-                "ops": [op.to_dict() for op in ops],
-            },
-            "data_url": rest_delta_data_path(bucket, token),
-            "data_size": literal_size,
-            "compressed": compressed,
-        },
+        content=delta_download_payload(
+            block_size=body.block_size,
+            new_sha256=new_sha256,
+            new_size=new_size,
+            ops=ops,
+            data_url=rest_delta_data_path(bucket, token),
+            data_size=literal_size,
+            compressed=compressed,
+        ),
     )
