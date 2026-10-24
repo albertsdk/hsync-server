@@ -273,7 +273,7 @@ class TestFileDiskSpace:
                 "hsync_server.api.utils.get_settings",
                 return_value=SimpleNamespace(min_free_disk_space=reserve),
             ),
-            patch("hsync_server.api.utils.disk_usage", return_value=fake_usage),
+            patch("hsync_common.disk.disk_usage", return_value=fake_usage),
         ):
             response = await client.post(
                 "/api/v1/buckets/diskbucket/files",
@@ -312,7 +312,7 @@ class TestFileDiskSpace:
                 "hsync_server.api.utils.get_settings",
                 return_value=SimpleNamespace(min_free_disk_space=reserve),
             ),
-            patch("hsync_server.api.utils.disk_usage", return_value=fake_usage),
+            patch("hsync_common.disk.disk_usage", return_value=fake_usage),
         ):
             response = await client.post(
                 "/api/v1/buckets/diskbucket2/files",

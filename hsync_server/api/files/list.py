@@ -12,9 +12,8 @@ This module provides the REST API endpoints for:
 
 import hmac
 import json
-import os
 from collections.abc import Iterator
-from os import remove, walk
+from os import remove
 from pathlib import Path
 from typing import Annotated
 
@@ -22,12 +21,16 @@ from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
 from hsync_common.hashing import is_sha256_hex
-from hsync_common.models.dir import Dir, is_hidden_dir
+from hsync_common.listing import (
+    file_entry,
+    iter_bucket_entries,
+    iter_dir_entries,
+    iter_json_array,
+    symlink_entry,
+)
 from hsync_common.models.file import File as LocalFile
-from hsync_common.models.file import is_hidden_file
 from hsync_common.models.symlink import Symlink
 from hsync_common.models.version import relpath_in_bucket
-from hsync_common.path_validation import is_safe_symlink_target
 from hsync_common.protocol.rest import (
     REST_DIRS_SUFFIX,
     REST_FILES_SUFFIX,
@@ -35,13 +38,12 @@ from hsync_common.protocol.rest import (
     REST_TOMBSTONES_SUFFIX,
     rest_bucket_template,
 )
-from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.utils import read_request_body_capped, resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
-from hsync_server.constants import BACKUP_SUFFIX, ActionLabel
+from hsync_server.constants import BACKUP_SUFFIX
 from hsync_server.exceptions import (
     BucketNotFoundError,
     InvalidPathError,
@@ -152,56 +154,7 @@ def _emit_symlink(file_path: str, bucket_root: str) -> dict | None:
         return None
     if link is None:
         return None
-    if link.target is None or not is_safe_symlink_target(file_path, link.target, bucket_root):
-        log.warning(
-            f"{ActionLabel.SECURITY} Symlink target escapes bucket, "
-            f'skipping: "{file_path}" -> "{link.target}"'
-        )
-        return None
-    rel = os.path.relpath(file_path, bucket_root)
-    entry = link.to_dict()
-    entry["filepath"] = rel
-    return entry
-
-
-def _iter_json_array(items: Iterator[dict]) -> Iterator[bytes]:
-    """Yield a JSON array body incrementally: ``[``, item, ``,``, item, ``]``.
-
-    ``StreamingResponse`` iterates this sync generator on a worker thread, so the
-    body is written as it is produced and never assembled into one ``str``/
-    ``bytes`` (the previous ``JSONResponse`` held the whole array *and* its
-    serialised copy). A producer failure truncates the array — invalid JSON — so a
-    consumer fails loudly instead of acting on a silently partial listing.
-    """
-    yield b"["
-    first = True
-    for item in items:
-        if first:
-            first = False
-        else:
-            yield b","
-        yield json.dumps(item, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    yield b"]"
-
-
-def _iter_dir_entries(bucket_root: str) -> Iterator[dict]:
-    """Yield one ``{path, permissions}`` entry per directory, in path order."""
-    for root, dirs, _files in walk(bucket_root):
-        # Skip hidden directories and keep the walk deterministic (sorted) so the
-        # stream order is stable without buffering the tree.
-        dirs[:] = sorted(d for d in dirs if not is_hidden_dir(f"{root}/{d}"))
-        for name in dirs:
-            full = f"{root}/{name}"
-            # Dir-symlinks are structural entries, never listed as directories.
-            if os.path.islink(full):
-                continue
-            dir_obj = Dir.get(full)
-            if dir_obj is None or dir_obj.permissions is None:
-                continue
-            rel = os.path.relpath(full, bucket_root)
-            if rel == ".":
-                continue
-            yield {"path": rel, "permissions": dir_obj.permissions}
+    return symlink_entry(link, file_path, bucket_root)
 
 
 def _iter_file_entries(root_dir: str, bucket_root: str, bucket: str) -> Iterator[dict]:
@@ -212,48 +165,38 @@ def _iter_file_entries(root_dir: str, bucket_root: str, bucket: str) -> Iterator
     event loop, and the listing is never materialised — peak memory is
     O(directory fanout + one entry) instead of one dict per file.
 
+    The walk, the hidden/ignored filters and the structural symlink handling
+    come from ``hsync_common.listing.iter_bucket_entries``, shared with the LAN
+    master so the two listing surfaces cannot drift. Only the causal version
+    join (server-only, ADR-0022) is added here.
+
     Order is the deterministic path order (sorted entries); the ``mtime``
     priority is applied by the consumer after it has collected the entries.
     """
-    for root, dirs, files in walk(root_dir):
-        dirs[:] = sorted(d for d in dirs if not is_hidden_dir(f"{root}/{d}"))
+    for entry_path, link in iter_bucket_entries(
+        bucket_root,
+        start_dir=root_dir,
+        skip_suffixes=(BACKUP_SUFFIX,),
+        include_dir_symlinks=True,
+    ):
+        if link is not None:
+            # Symlinks are emitted structurally (path + target), never
+            # dereferenced: a peer recreates the link, and an escaping symlink is
+            # skipped by the shared helper.
+            entry = symlink_entry(link, entry_path, bucket_root)
+            if entry is not None:
+                yield entry
+            continue
 
-        for file in sorted(files):
-            file_path = f"{root}/{file}"
-            if is_hidden_file(file_path):
-                continue
-            # Backup files (kept during upload to preserve read access).
-            if file.endswith(BACKUP_SUFFIX):
-                continue
-
-            # Symlinks are emitted as symlink entries (never dereferenced): a peer
-            # recreates the link structurally, and an escaping symlink is skipped.
-            if os.path.islink(file_path):
-                entry = _emit_symlink(file_path, bucket_root)
-                if entry is not None:
-                    yield entry
-                continue
-
-            file_obj = LocalFile.get(file, root)
-            if file_obj:
-                file_data = file_obj.to_dict()
-                abs_path = file_obj.filepath or ""
-                rel = relpath_in_bucket(abs_path, bucket_root)
-                file_data["filepath"] = abs_path if rel is None else rel
-                # JOIN causal version metadata from the version store (ADR-0022).
-                version = server_version_info_for_relpath(bucket, rel) if rel is not None else None
-                if version is not None:
-                    file_data["version"] = version
-                yield file_data
-
-        # Dir-symlink entries: os.walk (followlinks=False) lists them in ``dirs``
-        # but never descends into them.
-        for d in dirs:
-            d_path = f"{root}/{d}"
-            if os.path.islink(d_path):
-                entry = _emit_symlink(d_path, bucket_root)
-                if entry is not None:
-                    yield entry
+        file_obj = LocalFile.get(entry_path)
+        if file_obj:
+            file_data = file_entry(file_obj, bucket_root)
+            rel = relpath_in_bucket(file_obj.filepath or "", bucket_root)
+            # JOIN causal version metadata from the version store (ADR-0022).
+            version = server_version_info_for_relpath(bucket, rel) if rel is not None else None
+            if version is not None:
+                file_data["version"] = version
+            yield file_data
 
 
 @auth_router.get(rest_bucket_template(REST_DIRS_SUFFIX))
@@ -291,7 +234,7 @@ async def get_dirs(
         raise BucketNotFoundError(details={"bucket": bucket, "path": ""})
 
     return StreamingResponse(
-        _iter_json_array(_iter_dir_entries(bucket_root)),
+        iter_json_array(iter_dir_entries(bucket_root)),
         media_type="application/json",
     )
 
@@ -347,7 +290,7 @@ async def get_files(
         raise BucketNotFoundError(details={"bucket": bucket, "path": path})
 
     return StreamingResponse(
-        _iter_json_array(_iter_file_entries(dir, bucket_root, bucket)),
+        iter_json_array(_iter_file_entries(dir, bucket_root, bucket)),
         media_type="application/json",
     )
 

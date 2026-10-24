@@ -152,12 +152,15 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   an mtime preserves the cached content digest so the next same-SHA upload
   still hits the dedup skip.
 - **`GET …/dirs`** (`api/files/list.py::get_dirs`): directory metadata
-  listing `[{"path": <bucket-relative>, "permissions": <octal>}, …]`, sorted
-  by path; skips hidden dirs and dir-symlinks. Directories carry no content
+  listing `[{"path": <bucket-relative>, "permissions": <octal>}, …]` in the
+  deterministic per-directory walk order (`hsync_common/listing.py::iter_dir_entries`,
+  siblings sorted, the tree not globally sorted — the same contract as
+  `/files`); skips hidden dirs and dir-symlinks. Directories carry no content
   hash and never appear in `/files`, so this listing feeds the clients'
   download-only directory-permission converge.
-- Permissions applied via `set_permissions` (`api/utils.py::set_permissions`) — special bits
-  (setuid/setgid/sticky) stripped (`sanitize_remote_permissions`).
+- Permissions applied via `set_permissions` (`api/utils.py::set_permissions`), a
+  `to_thread` wrapper over `hsync_common.permissions.apply_remote_permissions` —
+  special bits (setuid/setgid/sticky) stripped, owner rwx floor for directories.
 - Wire-supplied mtimes clamped to `now + 300 s` (SSOT
   `hsync_common/constants.py::CORRECTED_MTIME_MAX_FUTURE_SKEW`, bound locally as
   `api/file_utils.py::MTIME_MAX_FUTURE_SKEW_SECONDS`).
@@ -227,7 +230,7 @@ when the bucket does not exist or the caller is not a member).
 ## List / upload-status / tombstones (`api/files/list.py`)
 
 The `/files` and `/dirs` listings are **streamed** (`StreamingResponse` over a
-sync generator, `api/files/list.py::_iter_json_array`): the body is a chunked JSON
+sync generator, `hsync_common/listing.py::iter_json_array`): the body is a chunked JSON
 array produced one entry at a time, so the server holds O(directory fanout + one
 entry) instead of one dict per file (previously ~0.76 KB per file, ~700 MB at
 1 M files — DI-03). The generator is iterated on a worker thread, so the per-file
@@ -348,7 +351,9 @@ includes the wall-clock duration via `format_duration(..., subsecond=True)`.
 - `api/utils.py`: bucket validation, `resolve_within_bucket` per-bucket
   confinement (`api/utils.py::resolve_within_bucket`), permission get/set
   (`api/utils.py::get_permissions` / `api/utils.py::set_permissions` / `api/utils.py::set_directory_permissions`,
-  wire values masked of special bits).
+  thin `to_thread` wrappers over `hsync_common.permissions`), free-space guard
+  (`api/utils.py::ensure_disk_space`, over `hsync_common.disk.check_free_space`
+  in bytes — `Settings.min_free_disk_space` is bytes, the client's is MB).
 - `api/file_utils.py`: sentinel handling (`api/file_utils.py::is_sentinel_file` /
   `api/file_utils.py::ensure_sentinel_in_dir`), empty-dir cleanup (`api/file_utils.py::cleanup_empty_dir`),
   timestamp updates with far-future clamp (`api/file_utils.py::update_file_timestamp`).

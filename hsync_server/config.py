@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Final, Literal
 
 from hsync_common.constants import DELTA_TOKEN_TTL, SERVER_DEFAULT_PORT
+from hsync_common.defaults import MIN_FREE_DISK_SPACE_DEFAULT
 from hsync_common.env import load_env_file as _load_env_file
+from hsync_common.format import parse_size
 from hsync_common.logger import (
     DEFAULT_LOG_COMPRESSION,
     DEFAULT_LOG_RETENTION,
@@ -176,9 +178,13 @@ class Settings(BaseSettings):
 
     # Disk Space Configuration
     min_free_disk_space: int = Field(
-        default=500 * 1024 * 1024,  # 500 MB
+        default=MIN_FREE_DISK_SPACE_DEFAULT,
         ge=0,
-        description="Minimum free disk space in bytes before accepting uploads (0 = disabled)",
+        description=(
+            "Minimum free disk space in bytes before accepting uploads; "
+            "HSYNC_MIN_FREE_DISK_SPACE also accepts a size string such as "
+            "'500MB' (0 = disabled)"
+        ),
     )
 
     # Rate Limiting Configuration
@@ -252,6 +258,29 @@ class Settings(BaseSettings):
         default=False,
         description="Enable uvicorn auto-reload (development only)",
     )
+
+    @field_validator("min_free_disk_space", mode="before")
+    @classmethod
+    def validate_min_free_disk_space(cls, v: object) -> int:
+        """Accept a size string (``"500MB"``) or a plain byte count.
+
+        The stored value is always bytes — the unit ``shutil.disk_usage``
+        reports and ``ensure_disk_space`` compares. A non-zero value without a
+        unit is rejected: ``HSYNC_MIN_FREE_DISK_SPACE=500`` must not be read as
+        500 bytes when the operator meant 500 MB. An empty value means
+        "unset" and falls back to the shared default.
+        """
+        if isinstance(v, bool):
+            raise ValueError("HSYNC_MIN_FREE_DISK_SPACE: expected a size such as '500MB'")
+        if isinstance(v, int):
+            return v
+        text = str(v).strip()
+        if not text:
+            return MIN_FREE_DISK_SPACE_DEFAULT
+        try:
+            return parse_size(text, require_unit=True)
+        except ValueError as exc:
+            raise ValueError(f"HSYNC_MIN_FREE_DISK_SPACE: {exc}") from exc
 
     @field_validator("log_level", mode="before")
     @classmethod

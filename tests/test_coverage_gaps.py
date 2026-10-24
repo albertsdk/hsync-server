@@ -280,7 +280,7 @@ class TestUploadCoverageGaps:
                 "hsync_server.api.utils.get_settings",
                 return_value=SimpleNamespace(min_free_disk_space=100),
             ),
-            patch("hsync_server.api.utils.disk_usage", side_effect=OSError("nope")),
+            patch("hsync_common.disk.disk_usage", side_effect=OSError("nope")),
         ):
             response = await client.post(
                 "/api/v1/buckets/oserrbucket/files",

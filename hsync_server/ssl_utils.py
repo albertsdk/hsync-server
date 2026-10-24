@@ -24,7 +24,6 @@ Usage:
 
 import ipaddress
 import socket
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -33,11 +32,8 @@ from cryptography.x509.oid import NameOID
 from hsync_common.ssl_utils import (
     PUBLIC_CERT_FILE_MODE,
     SERVICE_CERT_VALIDITY_DAYS,
-    build_self_signed_certificate,
-    generate_ecdsa_private_key,
-    serialize_cert_pem,
-    serialize_private_key_unencrypted,
-    write_pem_keypair,
+    ServiceIdentity,
+    create_service_identity,
 )
 from loguru import logger as log
 
@@ -46,6 +42,54 @@ from loguru import logger as log
 # not by WebPKI, so it lives for the deployment instead of a browser-friendly
 # 398/825-day window.
 DEFAULT_CERT_VALIDITY_DAYS = SERVICE_CERT_VALIDITY_DAYS
+
+
+def _identity_parameters(hostname: str) -> tuple[list[x509.NameAttribute], list[x509.GeneralName]]:
+    """Build the server identity's subject and SAN list for *hostname*.
+
+    Shared by generation and load-or-create so a rotated certificate and a
+    first-run certificate carry the same names.
+    """
+    subject_attrs = [
+        x509.NameAttribute(NameOID.COUNTRY_NAME, "IT"),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Italy"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, "Local"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "HSYNC"),
+        x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "Self-Signed"),
+        x509.NameAttribute(NameOID.COMMON_NAME, hostname),
+    ]
+
+    # Include both hostname and localhost for local development
+    san_list: list[x509.GeneralName] = [
+        x509.DNSName(hostname),
+        x509.DNSName("localhost"),
+        x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+        x509.IPAddress(ipaddress.IPv6Address("::1")),
+    ]
+
+    # Try to add local IP addresses
+    try:
+        local_ip = socket.gethostbyname(hostname)
+        san_list.append(x509.IPAddress(ipaddress.IPv4Address(local_ip)))
+    except (socket.gaierror, ValueError):
+        pass  # Hostname doesn't resolve, skip
+    return subject_attrs, san_list
+
+
+def _create_server_identity(
+    cert_path: str, key_path: str, hostname: str | None, validity_days: int
+) -> ServiceIdentity:
+    """Generate the server keypair (always regenerating) via the shared helper."""
+    resolved = hostname if hostname is not None else socket.gethostname()
+    subject_attrs, san_list = _identity_parameters(resolved)
+    return create_service_identity(
+        cert_path,
+        key_path,
+        subject_attrs=subject_attrs,
+        san_list=san_list,
+        validity_days=validity_days,
+        cert_mode=PUBLIC_CERT_FILE_MODE,
+    )
 
 
 def generate_self_signed_cert(
@@ -60,7 +104,11 @@ def generate_self_signed_cert(
     The key is ECDSA P-256 and is written unencrypted (PKCS#8) with ``0600``
     permissions in a ``0700`` directory — the SSH host-key / Syncthing model
     (ADR-0037): the identity is trusted by fingerprint pinning, so the secret is
-    protected by filesystem permissions rather than a passphrase.
+    protected by filesystem permissions rather than a passphrase. The
+    certificate is world-readable because the server must present it to clients.
+
+    Always regenerates: this is the rotation entry point. Startup uses
+    :func:`ensure_certificates`, which loads an existing pair.
 
     Args:
         cert_path: Path where the certificate will be saved.
@@ -74,61 +122,11 @@ def generate_self_signed_cert(
     Raises:
         OSError: If unable to write certificate files.
     """
-    if hostname is None:
-        hostname = socket.gethostname()
-
-    log.info(f"Generating self-signed certificate for hostname: {hostname}")
-
-    private_key = generate_ecdsa_private_key()
-
-    subject_attrs = [
-        x509.NameAttribute(NameOID.COUNTRY_NAME, "IT"),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Italy"),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, "Local"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "HSYNC"),
-        x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "Self-Signed"),
-        x509.NameAttribute(NameOID.COMMON_NAME, hostname),
-    ]
-
-    # Include both hostname and localhost for local development
-    san_list = [
-        x509.DNSName(hostname),
-        x509.DNSName("localhost"),
-        x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
-        x509.IPAddress(ipaddress.IPv6Address("::1")),
-    ]
-
-    # Try to add local IP addresses
-    try:
-        local_ip = socket.gethostbyname(hostname)
-        san_list.append(x509.IPAddress(ipaddress.IPv4Address(local_ip)))
-    except (socket.gaierror, ValueError):
-        pass  # Hostname doesn't resolve, skip
-
-    cert = build_self_signed_certificate(
-        private_key,
-        subject_attrs=subject_attrs,
-        san_list=san_list,
-        validity_days=validity_days,
-    )
-
-    not_valid_after = datetime.now(UTC) + timedelta(days=validity_days)
-
-    # The key is unencrypted (PKCS#8) and protected by permissions: 0o600 in a
-    # 0o700 directory, with the certificate world-readable because the server
-    # must present it to clients.
-    write_pem_keypair(
-        serialize_cert_pem(cert),
-        serialize_private_key_unencrypted(private_key),
-        cert_path,
-        key_path,
-        cert_mode=PUBLIC_CERT_FILE_MODE,
-    )
-
+    log.info(f"Generating self-signed certificate for hostname: {hostname or socket.gethostname()}")
+    identity = _create_server_identity(cert_path, key_path, hostname, validity_days)
     log.info(f"Certificate generated: {cert_path}")
     log.info(f"Private key generated: {key_path}")
-    log.info(f"Certificate valid until: {not_valid_after.isoformat()}")
-
+    log.info(f"Certificate valid until: {identity.not_valid_after.isoformat()}")
     return cert_path, key_path
 
 
@@ -140,6 +138,12 @@ def ensure_certificates(
 ) -> tuple[str, str]:
     """
     Ensure SSL certificates exist, generating them if necessary.
+
+    An existing pair is used as-is, without validation: the files in
+    ``HSYNC_SSL_CERT_DIR`` may be an operator-provided certificate (any key
+    type), not only one this server generated — the TLS stack validates it at
+    bind time. Generation itself is the shared
+    ``hsync_common.ssl_utils.create_service_identity``.
 
     Args:
         cert_dir: Directory where certificates are stored.

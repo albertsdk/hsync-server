@@ -159,7 +159,8 @@ control its behavior:
 
 Delta operations are bounded by the same size guards as a full transfer: a
 reconstructed file may not exceed `HSYNC_MAX_UPLOAD_SIZE`, the server must retain
-`HSYNC_MIN_FREE_DISK_SPACE` of free space, and the signature request body is
+`HSYNC_MIN_FREE_DISK_SPACE` (a size such as `500MB`) of free space, and the
+signature request body is
 capped at 50 MB. A delta that would produce a larger file is rejected and the
 client falls back to a full upload.
 

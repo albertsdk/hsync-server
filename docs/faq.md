@@ -280,6 +280,7 @@ sudo ufw allow 9753/tcp
 **Upload fails with "Insufficient disk space":**
 - The server checks `HSYNC_MIN_FREE_DISK_SPACE` before accepting uploads.
 - Free up disk space or set `HSYNC_MIN_FREE_DISK_SPACE=0` to disable the check.
+  The value is a size with an explicit unit (`HSYNC_MIN_FREE_DISK_SPACE=500MB`).
 
 **Request fails with HTTP 413 "Request body too large":**
 - The request body exceeds `HSYNC_MAX_REQUEST_BODY_SIZE` (by default

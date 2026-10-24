@@ -152,6 +152,44 @@ class TestSettings:
         with pytest.raises(ValidationError, match="greater than or equal to 0"):
             config.Settings(max_upload_size=-1)
 
+
+class TestMinFreeDiskSpaceUnit:
+    """The reserve is stored in bytes; operators write a size string."""
+
+    def test_size_string_is_parsed_to_bytes(self):
+        settings = config.Settings(min_free_disk_space="500MB")
+
+        assert settings.min_free_disk_space == 500 * 1024 * 1024
+
+    def test_fractional_and_gigabyte_forms(self):
+        assert config.Settings(min_free_disk_space="1.5GB").min_free_disk_space == int(
+            1.5 * 1024**3
+        )
+        assert config.Settings(min_free_disk_space="0").min_free_disk_space == 0
+
+    def test_plain_byte_count_still_accepted_as_int(self):
+        assert config.Settings(min_free_disk_space=1024).min_free_disk_space == 1024
+
+    def test_bare_number_string_is_rejected(self):
+        with pytest.raises(ValidationError, match="missing a unit"):
+            config.Settings(min_free_disk_space="500")
+
+    def test_unknown_unit_is_rejected(self):
+        with pytest.raises(ValidationError, match="Unknown size unit"):
+            config.Settings(min_free_disk_space="500XB")
+
+    def test_empty_value_falls_back_to_the_shared_default(self):
+        from hsync_common.defaults import MIN_FREE_DISK_SPACE_DEFAULT
+
+        assert config.Settings(min_free_disk_space="").min_free_disk_space == (
+            MIN_FREE_DISK_SPACE_DEFAULT
+        )
+
+    def test_default_matches_the_shared_ssot(self):
+        from hsync_common.defaults import MIN_FREE_DISK_SPACE_DEFAULT
+
+        assert config.Settings().min_free_disk_space == MIN_FREE_DISK_SPACE_DEFAULT
+
     def test_workers_minimum(self):
         """Test that workers must be at least 1."""
         with pytest.raises(ValidationError, match="greater than or equal to 1"):

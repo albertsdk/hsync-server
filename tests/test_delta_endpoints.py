@@ -473,7 +473,7 @@ class TestDeltaApply:
                 "hsync_server.api.utils.get_settings",
                 return_value=SimpleNamespace(min_free_disk_space=10**18),
             ),
-            patch("hsync_server.api.utils.disk_usage", return_value=MagicMock(free=0)),
+            patch("hsync_common.disk.disk_usage", return_value=MagicMock(free=0)),
         ):
             resp = await client.post("/api/v1/buckets/bucket1/files/delta/apply", **payload)
 

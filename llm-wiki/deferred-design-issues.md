@@ -55,7 +55,7 @@ the server knows the original file metadata.
 
 **Resolution**: the `/files` and `/dirs` listings are now **streamed** as a chunked
 JSON array (`StreamingResponse` over a sync generator,
-`api/files/list.py::_iter_json_array`), produced one entry at a time on a worker
+`hsync_common/listing.py::iter_json_array`), produced one entry at a time on a worker
 thread: the server holds O(directory fanout + one entry) instead of one dict per
 file. Entries are emitted in deterministic **path order**; the Python client
 (`hsync_client/sync.py::get_files_remote`) and the Android client (the

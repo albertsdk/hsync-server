@@ -7,6 +7,13 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
 
 - `Settings(BaseSettings)` (`config.py::Settings`) — pydantic-settings model; all knobs are
   `HSYNC_*` env vars. Singleton via `get_settings()` (`config.py::get_settings`).
+- `min_free_disk_space` (`config.py::Settings.min_free_disk_space`) is stored in
+  **bytes** (default `MIN_FREE_DISK_SPACE_DEFAULT`) but its env value is a size
+  string with an explicit unit — `HSYNC_MIN_FREE_DISK_SPACE=500MB` — parsed by
+  `parse_size` (`hsync_common/format.py::parse_size`) in
+  `validate_min_free_disk_space` (`config.py::Settings.validate_min_free_disk_space`).
+  A bare non-zero number is rejected (it would be silently read as bytes), an
+  empty value falls back to the shared default, and `0` disables the guard.
 - `load_env_file` (`config.py::load_env_file`) loads a dotenv before settings resolve.
 - Typed accessors (used everywhere instead of touching `Settings` directly):
   `get_port` (`config.py::get_port`), `get_workers` (`config.py::get_workers`),

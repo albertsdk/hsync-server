@@ -33,9 +33,14 @@ from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from hsync_common.clock import clamp_incoming_corrected_mtime
 from hsync_common.constants import DELTA_MAX_LITERAL_SIZE, PARTIAL_DELTA_SUFFIX
-from hsync_common.delta import DeltaError, apply_delta
+from hsync_common.delta import (
+    MISMATCH_HASH,
+    DeltaError,
+    ReconstructionMismatch,
+    reconstruct_and_verify,
+)
 from hsync_common.format import format_duration
-from hsync_common.hashing import compute_sha256_async, is_sha256_hex
+from hsync_common.hashing import is_sha256_hex
 from hsync_common.models.delta import (
     DeltaOp,
     sanitize_op_list,
@@ -285,27 +290,31 @@ async def delta_apply(
             if invalid is not None:
                 return _unprocessable(invalid)
 
-            # 3. Rebuild into a .delta.part sibling and verify the final hash.
+            # 3. Rebuild into a .delta.part sibling, verifying hash and size in
+            # the shared helper (one implementation for server, LAN master and
+            # client download).
             part_path = f"{file_location}{PARTIAL_DELTA_SUFFIX}"
 
             rebuild_start = time.time()
 
-            def _rebuild(target: str) -> int:
+            def _rebuild(target: str) -> str:
                 with open(literal_tmp, "rb") as literal_stream:
-                    return apply_delta(file_location, ops, literal_stream, target)
+                    return reconstruct_and_verify(
+                        file_location,
+                        ops,
+                        literal_stream,
+                        target,
+                        expected_sha256=new_sha256,
+                        expected_size=new_size,
+                    )
 
-            await asyncio.to_thread(_rebuild, part_path)
+            try:
+                rebuilt_sha256 = await asyncio.to_thread(_rebuild, part_path)
+            except ReconstructionMismatch as mismatch:
+                details = dict(mismatch.details)
+                reason = str(details.pop("reason", MISMATCH_HASH))
+                return _unprocessable(reason, **details)
             rebuild_duration = time.time() - rebuild_start
-
-            rebuilt_sha256 = await compute_sha256_async(part_path)
-            if rebuilt_sha256 != new_sha256:
-                return _unprocessable(
-                    "reconstructed_file_hash_mismatch",
-                    expected_sha256=new_sha256,
-                    actual_sha256=rebuilt_sha256,
-                )
-            if Path(part_path).stat().st_size != new_size:
-                return _unprocessable("reconstructed_file_size_mismatch")
 
             # 4. Causal arbitration: compare the rebuilt version against the
             # stored one (same contract as full upload, ADR-0022).

@@ -405,7 +405,8 @@ automatically. Configure rotation with:
   a request over that cap is rejected with `413` as soon as it is detected,
   before it can fill disk.
 - **Disk space**: The server checks `HSYNC_MIN_FREE_DISK_SPACE` before accepting
-  uploads and rejects them if disk space is too low.
+  uploads and rejects them if disk space is too low. The value is a size with an
+  explicit unit (`HSYNC_MIN_FREE_DISK_SPACE=500MB`; `0` disables the check).
 
 ### Network bandwidth
 
