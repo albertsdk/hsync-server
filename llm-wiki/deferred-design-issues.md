@@ -88,11 +88,3 @@ files"), so it cannot simply be dropped.
    hsync-client + hsync-android change; D is contract-preserving but partial.
 2. Update `list.py` and add a peak-memory regression test at the chosen bound.
 3. Document the client-facing contract in `docs/`.
-
----
-
-## Reference
-
-- Full test audit: commit `debcd90` on `main`
-- Implemented fixes (Problems 1, 2, 3, 5, 7): same commit
-- ADR template: `../../hsync-common/docs/internal/adr/`

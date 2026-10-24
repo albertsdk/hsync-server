@@ -60,8 +60,9 @@ the server-local choices not big enough for an ADR.
   image to `ghcr.io/albertsdk/hsync-server`,   tagged with the version and
   `latest`, then publishes the version-stamped `install.sh`, `compose.yaml`,
   `SHA256SUMS`, the Linux native binaries (`linux-amd64`/`linux-arm64`) and the
-  `.deb` packages (`amd64`/`arm64`/`armhf`) as GitHub release assets — the same
-  asset set as `hsync-bootnode`. Build context is the repo root with
+  `.deb` packages (`amd64`/`arm64`/`armhf`) and `.rpm` packages
+  (`x86_64`/`aarch64`) as GitHub release assets — the same asset set as
+  `hsync-bootnode`. Build context is the repo root with
   `../hsync-common` checked out alongside, matching `docker.sh`/`Dockerfile`.
   `install.sh` generates local secrets and deploys that pinned image; the
   container image remains the primary distribution (a standalone executable is
@@ -81,30 +82,32 @@ the server-local choices not big enough for an ADR.
 - **Uniform `run.sh` (clone-and-run)**: a thin wrapper (`run.sh`) that checks the
   sibling `../hsync-common`, creates the in-project `.venv` via Poetry (main
   group only) and execs `hsync-server` — the mirror of `hsync-bootnode/run.sh`.
-  The four installation methods are one page per method
-  (`docs/getting-started-<script|docker|deb|source>.md`) behind a link-only
+  The five installation methods are one page per method
+  (`docs/getting-started-<script|docker|deb|rpm|source>.md`) behind a link-only
   chooser (`docs/getting-started.md`), kept identical in shape to the bootnode.
 - **Standalone binary build** (`compile.sh`, targets `native`/`rpi`): a PyInstaller
   onefile freeze mirroring the client/bootnode build scripts. `native` uses the
   host virtualenv's Poetry `build` group; `rpi` cross-builds armhf/arm64 in
-  Docker from `packaging/rpi/Dockerfile.builder` (Python 3.12, Poetry, and the
+  Docker from `packaging/rpi/Dockerfile.builder` (Python 3.14.9, Poetry, and the
   Rust toolchain needed for the armhf `cryptography` source build) under
   `qemu-user` binfmt. The frozen binary speaks the same CLI/protocol as
   `python -m hsync_server`; the container image stays the primary distribution.
-- **Debian packaging** (`compile.sh`, targets `deb`/`deb-all`): a `--onedir`
-  PyInstaller freeze staged as a `.deb`, reusing the packaging machinery of
-  hsync-client/hsync-bootnode (`packaging/deb/`, `_semver_to_debian`,
-  `_finalize_deb_stage`, `_inject_shlib_depends` via `dpkg-shlibdeps`). The
+- **Debian and RPM packaging** (`compile.sh`, targets `deb`/`deb-all` and
+  `rpm`/`rpm-all`): a `--onedir` PyInstaller freeze staged as a `.deb`/`.rpm`,
+  reusing the packaging machinery of hsync-client/hsync-bootnode
+  (`packaging/deb/`, `_semver_to_debian`, `_finalize_deb_stage`,
+  `_inject_shlib_depends` via `dpkg-shlibdeps`; `packaging/rpm/` reuses the same
+  payload plus `_semver_to_rpm`/`_arch_to_rpm`). The
   package installs under `/usr/lib/hsync-server` (with `/usr/bin/hsync-server`),
   `hsync-server.service`, a `/etc/hsync-server/hsync-server.conf` conffile and a
   dedicated `_hsync-server` user; the unit is registered but not enabled, and
   `HSYNC_ADMIN_KEY` is left for the operator to set. `deb-all` cross-builds
-  amd64/arm64/armhf inside Docker. Not yet wired into the release workflow (the
-  `.deb` is a local build artifact for now).
+  amd64/arm64/armhf and `rpm-all` cross-builds x86_64/aarch64 inside Docker;
+  both are built and published by the release workflow.
   The cross-build image pins its build inputs: the privileged `qemu-user-static`
   binfmt image is pulled by digest and Rust is installed from a SHA256-verified,
   version-pinned `rustup-init` rather than piping a remote script to a shell.
-  The builder base is the official multi-arch `python:3.12-bookworm` image
+  The builder base is the official multi-arch `python:3.14.9-bookworm` image
   (prebuilt CPython), so the arm64 build no longer compiles CPython under
   qemu-user (where host qemu-aarch64 7.2.0 segfaults).
 - **Container builds install the `build` group explicitly** (`rpi`/`deb-all`):

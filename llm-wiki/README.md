@@ -46,15 +46,16 @@ utilities.
 - Persistence: files under `get_buckets_path()` (`config.py::get_buckets_path`);
   causal versions/tombstones in per-bucket DBs `get_state_dir()/server/<bucket>.db`
   (ADR-0025, `config.py::get_state_dir`). SHA-256 cache is in-memory.
-- Standalone builds: `compile.sh` (targets `native`, `deb`, `deb-all`, `rpi`);
+- Standalone builds: `compile.sh` (targets `native`, `deb`, `deb-all`, `rpm`,
+  `rpm-all`, `rpi`);
   the Raspberry Pi cross-build image is `packaging/rpi/Dockerfile.builder`, the
   Debian packaging tree is `packaging/deb/`. See
   [architecture.md](architecture.md#build--packaging).
 - Distribution: `install.sh` (Docker Compose installer), `compose.yaml`,
   `Dockerfile`, `docker.sh` (source image build/lifecycle) and `run.sh`
-  (uniform clone-and-run). The release publishes the GHCR image, the `.deb`
-  packages and the Linux native binaries (see `decisions.md`). The four install
-  methods are one page each under `docs/getting-started-<method>.md`.
+  (uniform clone-and-run). The release publishes the GHCR image, the `.deb` and
+  `.rpm` packages and the Linux native binaries (see `decisions.md`). The five
+  install methods are one page each under `docs/getting-started-<method>.md`.
 
 ## Conventions used in this wiki
 

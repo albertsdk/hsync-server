@@ -62,8 +62,7 @@ first.
 
 ## Event handlers (`api/events_handlers/`)
 
-`event_handlers.py` is a thin re-export shim (`api/events_handlers/event_handlers.py`); real logic is
-in `events_handlers/handlers.py`:
+The handlers live in `events_handlers/handlers.py`:
 
 | Event (`EventName`) | Handler | Location |
 | ------------------- | ------- | -------- |
@@ -116,4 +115,4 @@ tree mutation lock shared with upload — a documented follow-up.
 
 > Human-readable WS sequence diagram (WebSocket Event Flow): `../docs/internal/architecture.md`.
 > The machine-readable WS contract is the generated schema in `hsync-common`
-> (`protocol/ws/ws-schema.json`).
+> (`hsync_common/protocol/ws/ws-schema.json`).
