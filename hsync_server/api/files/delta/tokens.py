@@ -14,6 +14,7 @@ entries are reaped lazily on every store access.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 import uuid
@@ -113,20 +114,60 @@ class DeltaTokenStore:
             payload_file = str(delta_tmp_dir() / f"delta_{token}.bin")
             with open(payload_file, "wb") as f:
                 f.write(payload)
-            self._tokens[token] = DeltaTokenEntry(
-                bucket=bucket,
-                payload_file=payload_file,
-                compressed=compressed,
-                created=time.time(),
+            self._register_locked(
+                token, bucket, payload_file, compressed, total_storage, len(payload)
             )
-            # The just-computed total + the new payload is the new exact size,
-            # so the cache stays valid without a rescan (O(1) update).
-            self._storage_size = total_storage + len(payload)
-
-            update_active_tokens(len(self._tokens))
-            update_temp_storage(total_storage + len(payload))
-
             return token
+
+    def issue_from_file(
+        self, *, bucket: str, payload_file: str, size: int, compressed: bool
+    ) -> str:
+        """Adopt an already-written payload file as a download token (UUID v4).
+
+        The payload is *moved* into place with ``os.replace`` instead of being
+        written from a bytes buffer, so a multi-GB literal payload produced by
+        the matcher never has to sit in RAM. ``payload_file`` must live in
+        :func:`delta_tmp_dir` (same filesystem) for the move to be atomic.
+
+        The caller owns ``payload_file``: it must remove it when this raises.
+        """
+        with self._lock:
+            self.cleanup()
+            if len(self._tokens) >= DELTA_MAX_ACTIVE_TOKENS:
+                raise RuntimeError("Too many active delta tokens")
+
+            total_storage = self._get_total_storage_size()
+            if total_storage + size > DELTA_MAX_TEMP_STORAGE_BYTES:
+                raise RuntimeError("Delta temp storage limit exceeded")
+
+            token = uuid.uuid4().hex
+            final_path = delta_tmp_dir() / f"delta_{token}.bin"
+            os.replace(payload_file, final_path)
+            self._register_locked(token, bucket, str(final_path), compressed, total_storage, size)
+            return token
+
+    def _register_locked(
+        self,
+        token: str,
+        bucket: str,
+        payload_file: str,
+        compressed: bool,
+        total_storage: int,
+        payload_size: int,
+    ) -> None:
+        """Register *token* and refresh the metrics (called with ``_lock`` held)."""
+        self._tokens[token] = DeltaTokenEntry(
+            bucket=bucket,
+            payload_file=payload_file,
+            compressed=compressed,
+            created=time.time(),
+        )
+        # The just-computed total + the new payload is the new exact size,
+        # so the cache stays valid without a rescan (O(1) update).
+        self._storage_size = total_storage + payload_size
+
+        update_active_tokens(len(self._tokens))
+        update_temp_storage(total_storage + payload_size)
 
     def _get_total_storage_size(self) -> int:
         """Calculate total size of all parked payload files.

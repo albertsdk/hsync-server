@@ -21,13 +21,14 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Annotated
 
 from aiofiles.ospath import isfile
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
-from hsync_common.compression import compress_data
+from hsync_common.compression import compress_file_to_file
 from hsync_common.constants import (
     DELTA_BLOCK_SIZE_LARGE,
     DELTA_BLOCK_SIZE_MEDIUM,
@@ -36,9 +37,10 @@ from hsync_common.constants import (
     DELTA_MAX_LITERAL_SIZE,
 )
 from hsync_common.delta import (
+    BoundedLiteralSink,
     changed_block_ratio,
     compute_signatures,
-    find_matches_file,
+    find_matches_file_to_sink,
     is_delta_worthwhile,
     optimal_block_size,
 )
@@ -57,7 +59,7 @@ from pydantic import BaseModel, Field
 
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.files.delta._util import delta_disabled_response
-from hsync_server.api.files.delta.tokens import delta_token_store
+from hsync_server.api.files.delta.tokens import delta_tmp_dir, delta_token_store
 from hsync_server.api.utils import read_request_body_capped, resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import COMPRESSION_LEVEL, should_compress
@@ -189,19 +191,10 @@ async def get_delta_signatures(
     )
 
 
-def _compress_literals(literals: bytes) -> bytes:
-    """Compress the delta literal payload for the response body.
-
-    Runs on an ``asyncio.to_thread`` worker: ``compress_data`` keeps one
-    compressor per worker thread (hsync-common), so concurrent signature
-    requests never touch the same instance. A module-level
-    ``ZstdCompressor`` is forbidden here — concurrent ``compress()`` on a
-    shared instance corrupts the payload and segfaults the interpreter
-    (python-zstandard 0.25.0).
-    """
-    return compress_data(literals, level=COMPRESSION_LEVEL)
-
-
+# Cap-driven abort: once the literal payload would exceed DELTA_MAX_LITERAL_SIZE
+# the delta is refused anyway, so ``BoundedLiteralSink`` (hsync-common) stops the
+# match instead of growing the temp file (and burning CPU) on a transfer that is
+# not worth doing.
 @auth_router.post(rest_bucket_template(REST_DELTA_SIGNATURES_SUFFIX))
 @limiter.limit(RATE_LIMIT_DELTA)
 async def post_delta_signatures(
@@ -255,13 +248,32 @@ async def post_delta_signatures(
     new_size = Path(file).stat().st_size
     new_sha256 = await get_or_compute_sha256(file)
 
+    literal_path = delta_tmp_dir() / f"delta_literals_{uuid.uuid4().hex}.bin"
     match_start = time.time()
 
-    def _match() -> tuple[list, bytes]:
-        return find_matches_file(file, sigs, body.block_size)
+    def _match() -> tuple[list, int, bool]:
+        # The literals stream straight to the temp file (never a RAM buffer) and
+        # the data-op offsets come from the bounded sink, which reports the true
+        # payload size and whether the cap was hit.
+        with open(literal_path, "wb") as sink_file:
+            sink = BoundedLiteralSink(sink_file, DELTA_MAX_LITERAL_SIZE)
+            ops = find_matches_file_to_sink(file, sigs, body.block_size, sink)
+        return ops, sink.total, sink.over_limit
 
-    ops, literals = await asyncio.to_thread(_match)
+    ops, literal_size, capped = await asyncio.to_thread(_match)
     match_duration = time.time() - match_start
+
+    if capped:
+        literal_path.unlink(missing_ok=True)
+        log.info(f"Delta not worthwhile for {body.path}: literal_payload_too_large")
+
+        record_delta_transfer("download", "rejected")
+        record_transfer_duration("download", "total", time.time() - start_time)
+
+        return JSONResponse(
+            status_code=200,
+            content={"delta": False, "reason": "literal_payload_too_large"},
+        )
 
     # The base file size as seen by the client: covered span of its signatures.
     base_size = max((s.offset + s.length for s in sigs), default=0)
@@ -270,20 +282,24 @@ async def post_delta_signatures(
     # Record change ratio metric
     record_change_ratio("download", ratio)
 
-    if not is_delta_worthwhile(ops, base_size, len(literals), body.block_size):
-        reason = (
-            "literal_payload_too_large"
-            if len(literals) > DELTA_MAX_LITERAL_SIZE
-            else "too_many_changed_blocks"
+    if not is_delta_worthwhile(ops, base_size, literal_size, body.block_size):
+        # Only the change-ratio branch can trigger here: the literal cap is
+        # enforced by the bounded sink while the match runs.
+        literal_path.unlink(missing_ok=True)
+        log.info(
+            f"Delta not worthwhile for {body.path}: too_many_changed_blocks (ratio={ratio:.2f})"
         )
-        log.info(f"Delta not worthwhile for {body.path}: {reason} (ratio={ratio:.2f})")
 
         record_delta_transfer("download", "rejected")
         record_transfer_duration("download", "total", time.time() - start_time)
 
         return JSONResponse(
             status_code=200,
-            content={"delta": False, "reason": reason, "changed_percentage": round(ratio, 4)},
+            content={
+                "delta": False,
+                "reason": "too_many_changed_blocks",
+                "changed_percentage": round(ratio, 4),
+            },
         )
 
     # Optionally compress the literal payload (served with Content-Encoding).
@@ -291,29 +307,52 @@ async def post_delta_signatures(
     # a new instance (with its expensive table/context construction) is never
     # needed per request.
     compressed = False
-    payload = literals
-    if literals and get_compression_enabled() and should_compress(body.path, len(literals)):
-        payload = await asyncio.to_thread(_compress_literals, literals)
+    payload_path = literal_path
+    if literal_size and get_compression_enabled() and should_compress(body.path, literal_size):
+        # Second pass: the sink must hold raw literals (the data ops reference
+        # its offsets), so compression streams the temp file into a new one
+        # instead of materialising a bytes copy of it.
+        compressed_path = delta_tmp_dir() / f"delta_literals_{uuid.uuid4().hex}.zst"
+        try:
+            await asyncio.to_thread(
+                compress_file_to_file,
+                str(literal_path),
+                str(compressed_path),
+                level=COMPRESSION_LEVEL,
+            )
+        except Exception:
+            literal_path.unlink(missing_ok=True)
+            compressed_path.unlink(missing_ok=True)
+            raise
+        literal_path.unlink(missing_ok=True)
+        payload_path = compressed_path
         compressed = True
 
-    token = await asyncio.to_thread(
-        delta_token_store.issue,
-        bucket=bucket,
-        payload=payload,
-        compressed=compressed,
-    )
+    try:
+        # The payload is adopted by moving the temp file into place (same
+        # directory, so os.replace is atomic): it is never read into RAM.
+        token = await asyncio.to_thread(
+            delta_token_store.issue_from_file,
+            bucket=bucket,
+            payload_file=str(payload_path),
+            size=literal_size,
+            compressed=compressed,
+        )
+    except Exception:
+        payload_path.unlink(missing_ok=True)
+        raise
 
     # Record successful transfer and bytes saved
     record_delta_transfer("download", "success")
     record_transfer_duration("download", "match", match_duration)
     record_transfer_duration("download", "total", time.time() - start_time)
     # Bytes saved = original size - literal size (what we're actually sending)
-    bytes_saved = max(0, new_size - len(literals))
+    bytes_saved = max(0, new_size - literal_size)
     record_bytes_saved("download", bytes_saved)
 
     log.info(
         f"Delta download prepared for {body.path}: {len(ops)} ops, "
-        f"{len(literals)} literal bytes (ratio={ratio:.2f})"
+        f"{literal_size} literal bytes (ratio={ratio:.2f})"
     )
     return JSONResponse(
         status_code=200,
@@ -326,7 +365,7 @@ async def post_delta_signatures(
                 "ops": [op.to_dict() for op in ops],
             },
             "data_url": rest_delta_data_path(bucket, token),
-            "data_size": len(literals),
+            "data_size": literal_size,
             "compressed": compressed,
         },
     )

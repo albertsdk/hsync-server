@@ -51,7 +51,27 @@ the server knows the original file metadata.
 
 ---
 
-## DI-03: File Listing Materialises the Whole Bucket in RAM
+## DI-03: File Listing Materialises the Whole Bucket in RAM — **CLOSED (2026-10-23)**
+
+**Resolution**: the `/files` and `/dirs` listings are now **streamed** as a chunked
+JSON array (`StreamingResponse` over a sync generator,
+`api/files/list.py::_iter_json_array`), produced one entry at a time on a worker
+thread: the server holds O(directory fanout + one entry) instead of one dict per
+file. Entries are emitted in deterministic **path order**; the Python client
+(`hsync_client/sync.py::get_files_remote`) and the Android client (the
+`SyncRepository.fetchRemoteFilesOrThrow` and `P2PSync.fetchRemoteFileList`
+mappers) collect the whole array and sort by `mtime` to keep the oldest-first
+priority. A failure mid-walk truncates the array (invalid JSON), so a consumer
+fails loudly rather than acting on a partial listing. The P2P masters
+(`hsync_client/p2p_server.py::_handle_list_files` and the Android
+`P2PServer.handleListFiles`) stream the same shape (chunked; Ktor/aiohttp frame
+it natively, the stdlib transport writes the chunked framing). Options B and C
+below were rejected in favour of streaming (no cursor state, no inter-page gaps,
+no client parser change since the body is still a valid JSON array). The listing
+peak-memory regression is pinned by
+`tests/test_memory_bounds.py::TestListingStreaming`.
+
+### Original behaviour (pre-resolution, kept for history)
 
 ### Current behaviour
 

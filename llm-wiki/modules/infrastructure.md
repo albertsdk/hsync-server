@@ -152,9 +152,14 @@ writes and the finalizing `close()` all run on the pool; the single-frame header
 embeds the uncompressed size so one-shot client/Android decompression still
 works, and memory is bounded to one batch per transfer. Construction costs
 ~1.1 us at level 3 (`bench/bench_compression.py`), negligible against the
->= 10 KB streams this path serves. The one-shot delta-literal path
-(`api/files/delta/signatures.py::_compress_literals`) uses
-`hsync_common.compression.compress_data`, whose instances are thread-local.
+>= 10 KB streams this path serves. The delta-literal payload is matched straight
+into a temp file (`hsync_common.delta::BoundedLiteralSink`, which stops writing
+past `DELTA_MAX_LITERAL_SIZE` and flags it) and then compressed file→file with
+`hsync_common.compression.compress_file_to_file`, so a multi-GB literal payload
+is never resident in RAM (it used to be one `bytes` object plus its compressed
+copy — up to ~2 GB per request). The parked payload is adopted by
+`DeltaTokenStore.issue_from_file` (`api/files/delta/tokens.py::DeltaTokenStore.issue_from_file`)
+with an atomic `os.replace`, never a bytes write.
 Decompression: `decompress_file_to_file` (`compression.py::decompress_file_to_file`, capped streaming
 file→file, fsync'd — run it via `asyncio.to_thread`, used by uploads so
 neither the payload nor the event loop is blocked) plus the

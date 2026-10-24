@@ -5,20 +5,21 @@
 File listing and upload status endpoints for HSYNC Server.
 
 This module provides the REST API endpoints for:
-- Listing files in a bucket with sorting
+- Listing files in a bucket (streamed, path-ordered)
+- Listing directory permissions for a bucket (streamed)
 - Getting upload status for resumable uploads
 """
 
-import asyncio
 import hmac
 import json
 import os
+from collections.abc import Iterator
 from os import remove, walk
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
 from hsync_common.hashing import is_sha256_hex
 from hsync_common.models.dir import Dir, is_hidden_dir
@@ -163,13 +164,105 @@ def _emit_symlink(file_path: str, bucket_root: str) -> dict | None:
     return entry
 
 
+def _iter_json_array(items: Iterator[dict]) -> Iterator[bytes]:
+    """Yield a JSON array body incrementally: ``[``, item, ``,``, item, ``]``.
+
+    ``StreamingResponse`` iterates this sync generator on a worker thread, so the
+    body is written as it is produced and never assembled into one ``str``/
+    ``bytes`` (the previous ``JSONResponse`` held the whole array *and* its
+    serialised copy). A producer failure truncates the array — invalid JSON — so a
+    consumer fails loudly instead of acting on a silently partial listing.
+    """
+    yield b"["
+    first = True
+    for item in items:
+        if first:
+            first = False
+        else:
+            yield b","
+        yield json.dumps(item, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    yield b"]"
+
+
+def _iter_dir_entries(bucket_root: str) -> Iterator[dict]:
+    """Yield one ``{path, permissions}`` entry per directory, in path order."""
+    for root, dirs, _files in walk(bucket_root):
+        # Skip hidden directories and keep the walk deterministic (sorted) so the
+        # stream order is stable without buffering the tree.
+        dirs[:] = sorted(d for d in dirs if not is_hidden_dir(f"{root}/{d}"))
+        for name in dirs:
+            full = f"{root}/{name}"
+            # Dir-symlinks are structural entries, never listed as directories.
+            if os.path.islink(full):
+                continue
+            dir_obj = Dir.get(full)
+            if dir_obj is None or dir_obj.permissions is None:
+                continue
+            rel = os.path.relpath(full, bucket_root)
+            if rel == ".":
+                continue
+            yield {"path": rel, "permissions": dir_obj.permissions}
+
+
+def _iter_file_entries(root_dir: str, bucket_root: str, bucket: str) -> Iterator[dict]:
+    """Yield one file metadata dict per listing entry, in path order.
+
+    Runs as a sync generator, so ``StreamingResponse`` iterates it on a worker
+    thread: ``LocalFile.get`` (stat + SHA-256 on a cold cache) never blocks the
+    event loop, and the listing is never materialised — peak memory is
+    O(directory fanout + one entry) instead of one dict per file.
+
+    Order is the deterministic path order (sorted entries); the ``mtime``
+    priority is applied by the consumer after it has collected the entries.
+    """
+    for root, dirs, files in walk(root_dir):
+        dirs[:] = sorted(d for d in dirs if not is_hidden_dir(f"{root}/{d}"))
+
+        for file in sorted(files):
+            file_path = f"{root}/{file}"
+            if is_hidden_file(file_path):
+                continue
+            # Backup files (kept during upload to preserve read access).
+            if file.endswith(BACKUP_SUFFIX):
+                continue
+
+            # Symlinks are emitted as symlink entries (never dereferenced): a peer
+            # recreates the link structurally, and an escaping symlink is skipped.
+            if os.path.islink(file_path):
+                entry = _emit_symlink(file_path, bucket_root)
+                if entry is not None:
+                    yield entry
+                continue
+
+            file_obj = LocalFile.get(file, root)
+            if file_obj:
+                file_data = file_obj.to_dict()
+                abs_path = file_obj.filepath or ""
+                rel = relpath_in_bucket(abs_path, bucket_root)
+                file_data["filepath"] = abs_path if rel is None else rel
+                # JOIN causal version metadata from the version store (ADR-0022).
+                version = server_version_info_for_relpath(bucket, rel) if rel is not None else None
+                if version is not None:
+                    file_data["version"] = version
+                yield file_data
+
+        # Dir-symlink entries: os.walk (followlinks=False) lists them in ``dirs``
+        # but never descends into them.
+        for d in dirs:
+            d_path = f"{root}/{d}"
+            if os.path.islink(d_path):
+                entry = _emit_symlink(d_path, bucket_root)
+                if entry is not None:
+                    yield entry
+
+
 @auth_router.get(rest_bucket_template(REST_DIRS_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def get_dirs(
     request: Request,  # Required by rate limiter
     bucket: str,
     ctx: Annotated[AuthContext, Depends(verify_api_key)],
-) -> JSONResponse:
+) -> StreamingResponse:
     """
     List directory metadata (path + permissions) in a bucket.
 
@@ -183,8 +276,8 @@ async def get_dirs(
         bucket: Name of the bucket to list.
 
     Returns:
-        JSON response with a list of ``{"path": <bucket-relative>,
-        "permissions": <octal>}`` entries, sorted by path for determinism.
+        Streamed JSON array (chunked) of ``{"path": <bucket-relative>,
+        "permissions": <octal>}`` entries, in deterministic path order.
 
     Raises:
         InvalidBucketNameError: If bucket name is invalid.
@@ -197,26 +290,10 @@ async def get_dirs(
     if not Path(bucket_root).exists():
         raise BucketNotFoundError(details={"bucket": bucket, "path": ""})
 
-    entries: list[dict] = []
-    for root, dirs, _files in walk(bucket_root):
-        # Skip hidden directories and never descend into dir-symlinks
-        # (followlinks=False keeps them out of the walk already; they are
-        # symlink entries, not directories, for sync purposes).
-        dirs[:] = [d for d in dirs if not is_hidden_dir(f"{root}/{d}")]
-        for name in dirs:
-            full = f"{root}/{name}"
-            if os.path.islink(full):
-                continue
-            dir_obj = Dir.get(full)
-            if dir_obj is None or dir_obj.permissions is None:
-                continue
-            rel = os.path.relpath(full, bucket_root)
-            if rel == ".":
-                continue
-            entries.append({"path": rel, "permissions": dir_obj.permissions})
-
-    entries.sort(key=lambda x: x.get("path", ""))
-    return JSONResponse(status_code=200, content=entries)
+    return StreamingResponse(
+        _iter_json_array(_iter_dir_entries(bucket_root)),
+        media_type="application/json",
+    )
 
 
 @auth_router.get(rest_bucket_template(REST_FILES_SUFFIX))
@@ -226,20 +303,22 @@ async def get_files(
     bucket: str,
     ctx: Annotated[AuthContext, Depends(verify_api_key)],
     path: str | None = None,
-) -> JSONResponse:
+) -> StreamingResponse:
     """
     List all files in a bucket or subdirectory.
 
-    Recursively walks the directory tree and returns metadata for
-    all non-hidden files, sorted by mtime ascending (oldest first)
-    to prioritize updating older files.
+    Recursively walks the directory tree and streams metadata for all
+    non-hidden files as a JSON array, in deterministic path order. The array is
+    produced incrementally (chunked), so the server holds O(directory fanout +
+    one entry) rather than one dict per file; consumers collect the whole array
+    and apply the ``mtime`` priority locally.
 
     Args:
         bucket: Name of the bucket to list files from.
         path: Optional subdirectory path within the bucket.
 
     Returns:
-        JSON response with list of file metadata dictionaries.
+        Streamed JSON array of file metadata dictionaries.
 
     Raises:
         InvalidBucketNameError: If bucket name is invalid.
@@ -261,67 +340,15 @@ async def get_files(
     # verbatim ABSOLUTE path, which peers then reject as unsafe.
     bucket_root = str(Path(f"{buckets_path}/{bucket}").resolve())
 
+    # Validate existence *before* the first byte: once the stream starts the
+    # status is already sent, so a missing bucket must fail as a normal HTTP
+    # error here.
     if not Path(dir).exists():
         raise BucketNotFoundError(details={"bucket": bucket, "path": path})
 
-    file_list = []
-    for root, dirs, files in walk(dir):
-        # Skip hidden directories using is_hidden_dir
-        dirs[:] = [d for d in dirs if not is_hidden_dir(f"{root}/{d}")]
-
-        for file in files:
-            file_path = f"{root}/{file}"
-            # Skip hidden files using is_hidden_file
-            if is_hidden_file(file_path):
-                continue
-            # Skip backup files (used during upload to maintain read access)
-            if file.endswith(BACKUP_SUFFIX):
-                continue
-
-            # Symlinks are emitted as symlink entries (never dereferenced).
-            # A peer will recreate the link structurally from the target field,
-            # and a escaping symlink is skipped entirely.
-            if os.path.islink(file_path):
-                entry = _emit_symlink(file_path, bucket_root)
-                if entry is not None:
-                    file_list.append(entry)
-                continue
-
-            # Get file info and normalize path relative to bucket. File.get
-            # recomputes the SHA-256 on a cache miss (blocking I/O + CPU), so
-            # run it on a worker thread: the event loop keeps serving other
-            # requests while a big bucket is being listed.
-            file_obj = await asyncio.to_thread(LocalFile.get, file, root)
-            if file_obj:
-                file_data = file_obj.to_dict()
-                # Emit the bucket-relative path directly: File.get built an
-                # absolute path, so re-decoding it through from_dict just to
-                # strip the bucket prefix added a second File + dict per entry.
-                abs_path = file_obj.filepath or ""
-                rel = relpath_in_bucket(abs_path, bucket_root)
-                file_data["filepath"] = abs_path if rel is None else rel
-                # JOIN causal version metadata from the version store (ADR-0022),
-                # reusing the relative path just resolved for the wire entry.
-                version = server_version_info_for_relpath(bucket, rel) if rel is not None else None
-                if version is not None:
-                    file_data["version"] = version
-                file_list.append(file_data)
-
-        # Emit dir-symlink entries: os.walk (followlinks=False) lists them in
-        # ``dirs`` but never descends into them. Emit a symlink entry for each.
-        for d in dirs:
-            d_path = f"{root}/{d}"
-            if os.path.islink(d_path):
-                entry = _emit_symlink(d_path, bucket_root)
-                if entry is not None:
-                    file_list.append(entry)
-
-    # Sort by mtime ascending (oldest first) to prioritize updating older files
-    file_list.sort(key=lambda x: x.get("mtime", 0))
-
-    return JSONResponse(
-        status_code=200,
-        content=file_list,
+    return StreamingResponse(
+        _iter_json_array(_iter_file_entries(dir, bucket_root, bucket)),
+        media_type="application/json",
     )
 
 

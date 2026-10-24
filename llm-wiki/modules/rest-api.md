@@ -224,11 +224,17 @@ when the bucket does not exist or the caller is not a member).
 
 ## List / upload-status / tombstones (`api/files/list.py`)
 
-The `/files` listing resolves per-file metadata (`File.get`, `hsync_common/models/file.py::File.get`)
-on **asyncio worker threads** (`asyncio.to_thread`): a cache-miss recomputes
-the SHA-256 (blocking I/O + CPU), so the per-file hashing no longer blocks the
-loop. The directory walk itself, hidden/symlink checks and the per-entry
-version-store join still run on the loop (bounded, no hashing).
+The `/files` and `/dirs` listings are **streamed** (`StreamingResponse` over a
+sync generator, `api/files/list.py::_iter_json_array`): the body is a chunked JSON
+array produced one entry at a time, so the server holds O(directory fanout + one
+entry) instead of one dict per file (previously ~0.76 KB per file, ~700 MB at
+1 M files — DI-03). The generator is iterated on a worker thread, so the per-file
+metadata read (`File.get`, `hsync_common/models/file.py::File.get`: stat + blocking
+SHA-256 on a cache miss) neither blocks the loop nor needs a per-file
+`asyncio.to_thread` hop. Entries are emitted in deterministic **path order**; a
+consumer collects the whole array and applies the `mtime` (oldest-first) priority
+locally. A failure mid-walk truncates the array (invalid JSON), so a consumer
+fails loudly instead of acting on a partial listing.
 
 `File.get` offloads elsewhere, and where the flow stays on the loop **on
 purpose**: upload (`upload.py`) and delta apply (`apply.py`) capture their
@@ -241,12 +247,13 @@ same-path upload could mix generations into the tombstone/event metadata —
 correctness over loop-freedom.
 
 
-- `get_files` (`api/files/list.py::get_files`) walks the bucket, skips hidden/sentinel/`.part`
-  files (`is_hidden_file`, `is_hidden_dir`, `PARTIAL_DOWNLOAD_SUFFIX`), skips
-  file-symlinks whose target escapes the bucket (`is_safe_symlink_target`,
-  so `secret -> /etc/passwd` never leaks its hash/metadata through the
-  listing), attaches cached hashes (`get_sha256_hash`, `hashes.py::get_sha256_hash`),
-  returns `File` dicts.
+- `get_files` (`api/files/list.py::get_files`) streams the bucket walk, skipping
+  hidden/sentinel/`.part` files (`is_hidden_file`, `is_hidden_dir`,
+  `PARTIAL_DOWNLOAD_SUFFIX`) and file-symlinks whose target escapes the bucket
+  (`is_safe_symlink_target`, so `secret -> /etc/passwd` never leaks its
+  hash/metadata through the listing), attaching cached hashes
+  (`get_sha256_hash`, `hashes.py::get_sha256_hash`) and the version-store join,
+  in path order.
 - `get_upload_status` (`api/files/list.py::get_upload_status`) reports existing `.part` size for resume.
   **p2p parity**: the same endpoint is now served by p2p masters — Python
   (`hsync_client/p2p_server.py::_handle_upload_status`) and Android

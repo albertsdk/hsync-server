@@ -247,24 +247,28 @@ class TestSha256CacheHardening:
 class TestDeltaLiteralCompressionHardening:
     """Delta literal compression must never go through a shared zstd instance.
 
-    The endpoint compresses literals with ``compress_data`` on an
-    ``asyncio.to_thread`` worker, whose instances are thread-local: two
-    concurrent signature requests can never call ``compress()`` on one
-    instance at the same time (which corrupts the payload and can segfault
-    the interpreter). The production helper is hammered here so a shared
-    instance fails loudly instead of poisoning streams.
+    The endpoint streams the literal payload to a temp file and compresses it
+    with ``compress_file_to_file`` (hsync-common, whose compressor instances are
+    thread-local) on an ``asyncio.to_thread`` worker, so two concurrent signature
+    requests can never drive one instance at the same time (which corrupts the
+    frame and can segfault the interpreter). The production helper is hammered
+    here so a shared instance fails loudly instead of poisoning streams.
     """
 
-    def test_concurrent_literal_compression_roundtrips(self):
-        from hsync_common.compression import decompress_data
-
-        from hsync_server.api.files.delta import signatures as signatures_module
+    def test_concurrent_literal_compression_roundtrips(self, tmp_path):
+        from hsync_common.compression import compress_file_to_file, decompress_data
 
         payloads = [bytes([(i * 37) % 256]) * 200_000 for i in range(_THREADS)]
 
-        with ThreadPoolExecutor(max_workers=_THREADS) as pool:
-            futures = [pool.submit(signatures_module._compress_literals, p) for p in payloads]
-            compressed = [f.result() for f in futures]
+        def _roundtrip(index: int) -> bytes:
+            src = tmp_path / f"literals-{index}.bin"
+            dst = tmp_path / f"literals-{index}.zst"
+            src.write_bytes(payloads[index])
+            compress_file_to_file(str(src), str(dst))
+            return dst.read_bytes()
 
-        for payload, frame in zip(payloads, compressed, strict=True):
+        with ThreadPoolExecutor(max_workers=_THREADS) as pool:
+            frames = [f.result() for f in [pool.submit(_roundtrip, i) for i in range(_THREADS)]]
+
+        for payload, frame in zip(payloads, frames, strict=True):
             assert decompress_data(frame, max_output_size=len(payload) + 1) == payload
