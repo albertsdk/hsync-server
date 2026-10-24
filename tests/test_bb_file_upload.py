@@ -597,8 +597,10 @@ class TestUploadFilesystemPathLimits:
 
 class TestDiskSpaceGuard:
     def test_upload_refused_with_507_when_reserve_unreachable(self, start_live_server, bb_upload):
-        # Given a server whose free-space reserve exceeds any real disk (1 PiB)
-        with start_live_server({"HSYNC_MIN_FREE_DISK_SPACE": str(1 << 50)}) as (base, api_key):
+        # Given a server whose free-space reserve exceeds any real disk (1 PiB).
+        # The value carries a unit: operator-facing settings reject a bare byte
+        # count so `500` cannot be silently read as 500 bytes.
+        with start_live_server({"HSYNC_MIN_FREE_DISK_SPACE": "1024TB"}) as (base, api_key):
             with httpx.Client(
                 base_url=base, headers={"Authorization": f"Bearer {api_key}"}, timeout=15.0
             ) as c:
