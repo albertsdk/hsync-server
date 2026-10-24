@@ -24,8 +24,8 @@ client mirrors cannot drift.
 | `GET /buckets/{bucket}/files/upload-status` | `files/list.get_upload_status` (`api/files/list.py::get_upload_status`) | key | default |
 | `GET /buckets/{bucket}/tombstones` | `files/list.get_tombstones` (`api/files/list.py::get_tombstones`) | key | default |
 | `POST /buckets/{bucket}/files` | `files/upload.upload_file` (`api/files/upload.py::upload_file`) | key | upload |
-| `GET /files/download` | `files/download.download_file` (`api/files/download.py::download_file`) | key | download |
-| `DELETE /files` | `files/delete.delete_file` (`api/files/delete.py::delete_file`) | key | default |
+| `GET /buckets/{bucket}/files/download` | `files/download.download_file` (`api/files/download.py::download_file`) | key | download |
+| `DELETE /buckets/{bucket}/files` | `files/delete.delete_file` (`api/files/delete.py::delete_file`) | key | default |
 | `POST /buckets/{bucket}/tombstones` | `files/list.post_tombstones` (`api/files/list.py::post_tombstones`) | key | default |
 | `GET /buckets/{bucket}/presence` | `presence.get_presence` (`api/presence.py::get_presence`) | key | default |
 | `GET /health` | `health.root` (`api/health.py::root`) | none | — |
