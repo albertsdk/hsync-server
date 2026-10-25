@@ -260,3 +260,33 @@ class TestFileDelete:
         )
 
         assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_delete_failure_does_not_leak_filesystem_path(
+        self, client: AsyncClient, temp_buckets_dir: str, monkeypatch
+    ):
+        """An OSError message (absolute path) stays server-side."""
+        bucket_path = os.path.join(temp_buckets_dir, "deletebucket3")
+        os.makedirs(bucket_path)
+        file_path = os.path.join(bucket_path, "x.txt")
+        with open(file_path, "w") as f:
+            f.write("x")
+
+        secret_path = "/var/lib/hsync-server/buckets/private/secret.txt"
+
+        def boom(_path):
+            raise OSError(f"Permission denied: '{secret_path}'")
+
+        monkeypatch.setattr("os.remove", boom)
+
+        response = await client.request(
+            "DELETE",
+            "/api/v1/buckets/deletebucket3/files",
+            data={"cid": "TestClientX1234567890", "filename": "x.txt"},
+        )
+
+        assert response.status_code == 500
+        assert secret_path not in response.text
+        details = response.json()["details"]
+        assert "error" not in details
+        assert details["reason"] == "OSError"

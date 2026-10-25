@@ -31,6 +31,7 @@ from fastapi import WebSocket
 from hsync_common.models.event import Event
 from loguru import logger as log
 
+from hsync_server.auth import account_is_live
 from hsync_server.auth_store import get_auth_store
 from hsync_server.config import get_ws_max_connections, get_ws_max_connections_per_ip
 from hsync_server.constants import ActionLabel
@@ -39,12 +40,25 @@ from hsync_server.constants import ActionLabel
 # may garbage-collect a task before it runs (and the close would be lost).
 _CLOSE_TASKS: set[asyncio.Task[None]] = set()
 
+# A recipient that stops reading (full TCP send buffer) would otherwise block
+# the whole fan-out at ``send_json``: the broadcast is awaited by the sender's
+# message loop, so one stalled member could freeze every other member.
+_WS_SEND_TIMEOUT_S = 5.0
+
 
 def fire_and_forget(coro: Coroutine[Any, Any, None]) -> None:
     """Schedule *coro* on the loop and retain it until it completes."""
     task = asyncio.ensure_future(coro)
     _CLOSE_TASKS.add(task)
     task.add_done_callback(_CLOSE_TASKS.discard)
+
+
+async def _safe_close(websocket: WebSocket, code: int, reason: str) -> None:
+    """Close a socket, swallowing errors on an already-broken connection."""
+    try:
+        await websocket.close(code=code, reason=reason)
+    except Exception:
+        pass
 
 
 @dataclass
@@ -104,9 +118,11 @@ class ConnectionManager:
         for cid, entry in tuple(self.active_connections.items()):
             if skip_cid is not None and cid == skip_cid:
                 continue
-            # Re-check recipient access before delivering.
+            # Re-check recipient access before delivering: status, key expiry
+            # and generation (a rotated/revoked token must stop receiving even
+            # before the socket is explicitly closed).
             account = store.get_account(entry.account_id)
-            if account is None or account.status != "active":
+            if account is None or not account_is_live(account, entry.key_generation):
                 self._drop_if_current(cid, entry.websocket)
                 continue
             if not store.has_access(
@@ -115,10 +131,13 @@ class ConnectionManager:
                 self._drop_if_current(cid, entry.websocket)
                 continue
             try:
-                await entry.websocket.send_json(payload)
+                await asyncio.wait_for(
+                    entry.websocket.send_json(payload), timeout=_WS_SEND_TIMEOUT_S
+                )
             except Exception as e:
-                log.warning(f"{ActionLabel.WS} Dropping dead connection for {cid}: {e}")
+                log.warning(f"{ActionLabel.WS} Dropping dead/slow connection for {cid}: {e}")
                 self._drop_if_current(cid, entry.websocket)
+                fire_and_forget(_safe_close(entry.websocket, 1011, "Slow consumer"))
 
     async def send_message(self, event: Event) -> None:
         """Broadcast an event to all connected clients except the sender.

@@ -54,9 +54,11 @@ async def get_delta_data(
     if delta_token_store.is_expired(entry):
         delta_token_store.discard(token)
         return JSONResponse(status_code=410, content={"detail": "token_expired"})
-    # The token is bound to the bucket it was issued for: a token minted for
-    # bucket A must never serve payloads through bucket B's URL.
-    if entry.bucket != bucket:
+    # The token is a capability bound to the issuing account and bucket: a
+    # token minted for bucket A / account X must never serve payloads through
+    # bucket B or for account Y (a leaked URL is not transferable). Entries
+    # without an account id come from producers that have no account identity.
+    if entry.bucket != bucket or (entry.account_id and entry.account_id != ctx.id):
         return JSONResponse(status_code=404, content={"detail": "token_not_found"})
 
     # Single-use: the entry leaves the registry before streaming starts.

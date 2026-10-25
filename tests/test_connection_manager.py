@@ -87,6 +87,8 @@ class TestConnectionManager:
         mock_acct = MagicMock()
         mock_acct.status = "active"
         mock_acct.role = "admin"
+        mock_acct.key_generation = 1
+        mock_acct.key_expires_at = None
         mock_store.get_account.return_value = mock_acct
         mock_store.has_access.return_value = True
 
@@ -122,6 +124,8 @@ class TestConnectionManager:
         mock_acct = MagicMock()
         mock_acct.status = "active"
         mock_acct.role = "admin"
+        mock_acct.key_generation = 1
+        mock_acct.key_expires_at = None
         mock_store.get_account.return_value = mock_acct
         mock_store.has_access.return_value = True
 
@@ -133,6 +137,73 @@ class TestConnectionManager:
         # client2 and client3 should receive the message
         ws2.send_json.assert_called_once()
         ws3.send_json.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_slow_consumer_is_dropped(self, manager, monkeypatch):
+        """A recipient that never drains the socket is dropped on send timeout."""
+        import asyncio as _asyncio
+
+        from hsync_server.api import connection_manager as cm
+
+        monkeypatch.setattr(cm, "_WS_SEND_TIMEOUT_S", 0.05)
+
+        async def never_returns(_payload):
+            await _asyncio.sleep(60)
+
+        slow = AsyncMock()
+        slow.send_json.side_effect = never_returns
+        slow.close = AsyncMock()
+
+        manager.active_connections = {
+            "sender": _entry(AsyncMock()),
+            "slow": _entry(slow),
+        }
+
+        mock_store = MagicMock()
+        mock_acct = MagicMock(status="active", role="admin", key_generation=1, key_expires_at=None)
+        mock_store.get_account.return_value = mock_acct
+        mock_store.has_access.return_value = True
+
+        file = File(
+            filepath="/buckets/test/test.txt", size=100, sha256sum="abc", permissions="-rw-r--r--"
+        )
+        event = Event(
+            cid="sender", localpath="/buckets/test", bucket="test", name=EventName.added, src=file
+        )
+
+        with patch("hsync_server.api.connection_manager.get_auth_store", return_value=mock_store):
+            await manager.send_message(event)
+            await _asyncio.sleep(0)
+
+        assert "slow" not in manager.active_connections
+        slow.send_json.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stale_key_generation_recipient_is_dropped(self, manager):
+        """A rotated token stops receiving broadcasts before the socket closes."""
+        ws = AsyncMock()
+        manager.active_connections = {
+            "sender": _entry(AsyncMock()),
+            "stale": _entry(ws, gen=1),
+        }
+
+        mock_store = MagicMock()
+        mock_acct = MagicMock(status="active", role="admin", key_generation=2, key_expires_at=None)
+        mock_store.get_account.return_value = mock_acct
+        mock_store.has_access.return_value = True
+
+        file = File(
+            filepath="/buckets/test/test.txt", size=100, sha256sum="abc", permissions="-rw-r--r--"
+        )
+        event = Event(
+            cid="sender", localpath="/buckets/test", bucket="test", name=EventName.added, src=file
+        )
+
+        with patch("hsync_server.api.connection_manager.get_auth_store", return_value=mock_store):
+            await manager.send_message(event)
+
+        assert "stale" not in manager.active_connections
+        ws.send_json.assert_not_called()
 
 
 class TestBucketConnectionManager:

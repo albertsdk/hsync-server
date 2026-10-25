@@ -49,6 +49,11 @@ server {
 > **Note**: The `proxy_read_timeout 86400s` (24 hours) is important for long-lived
 > WebSocket connections. Without it, nginx may close idle connections prematurely.
 
+> **Client IPs**: `$proxy_add_x_forwarded_for` appends the real peer, and the
+> server trusts only the rightmost hop that is not a configured proxy, so a
+> forged header prefix cannot spoof the address. Add this proxy's IP to
+> `HSYNC_TRUSTED_PROXIES` so per-IP rate limits and logs show the client IP.
+
 ## Traefik
 
 ```yaml

@@ -103,13 +103,19 @@ sudo ufw enable
 
 ### Trusted proxies
 
-If your reverse proxy is on a different host, configure `HSYNC_TRUSTED_PROXIES`
-with the proxy's IP address or subnet so the server correctly resolves client
-IPs from `X-Forwarded-For` headers:
+If your reverse proxy is on a different host, list the proxy's exact IP in
+`HSYNC_TRUSTED_PROXIES` (comma-separated; CIDR ranges are not expanded). The
+server then reads `X-Forwarded-For` and uses the **rightmost hop that is not
+itself a trusted proxy** — the address your proxy appended — so a client cannot
+spoof its IP by sending a forged header prefix:
 
 ```dotenv
-HSYNC_TRUSTED_PROXIES=10.0.0.5,172.16.0.0/12
+HSYNC_TRUSTED_PROXIES=10.0.0.5,10.0.0.6
 ```
+
+Keep every proxy in the chain in the list. With a single proxy, prefer
+overwriting the header (`proxy_set_header X-Forwarded-For $remote_addr`) as
+defence in depth.
 
 ---
 

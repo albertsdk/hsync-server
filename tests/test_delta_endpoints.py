@@ -18,6 +18,7 @@ from hsync_common.delta import (
     optimal_block_size,
 )
 from hsync_common.models.delta import BlockSignature, DeltaOp
+from httpx import ASGITransport, AsyncClient
 
 from hsync_server.api.files.delta.tokens import delta_token_store
 
@@ -278,6 +279,30 @@ class TestGetDeltaData:
         other_url = body["data_url"].replace("/buckets/bucket1/", "/buckets/bucket2/")
         resp = await client.get(other_url)
         assert resp.status_code == 404
+
+    async def test_token_is_bound_to_issuing_account(self, client, test_app, bucket_dir, tmp_path):
+        """A leaked data URL is not spendable by another member of the bucket."""
+        from hsync_server.auth_store import BOOTSTRAP_ADMIN_ID, get_auth_store
+
+        base = _base_bytes()
+        new = b"HEAD" + base
+        body = await _prepare_delta(client, bucket_dir, tmp_path, base, new)
+
+        store = get_auth_store()
+        other_id, other_token = store.create_account("delta-intruder", "client", None)
+        other_account = store.get_account(other_id)
+        assert other_account is not None
+        store.grant_member("bucket1", other_account, BOOTSTRAP_ADMIN_ID, caller_is_admin=True)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app),
+            base_url="http://test",
+            headers={"Authorization": f"Bearer {other_token}"},
+        ) as other_client:
+            resp = await other_client.get(body["data_url"])
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "token_not_found"
 
     async def test_token_is_single_use(self, client, bucket_dir, tmp_path):
         base = _base_bytes()

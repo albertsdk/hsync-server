@@ -339,6 +339,7 @@ async def post_delta_signatures(
             payload_file=str(payload_path),
             size=literal_size,
             compressed=compressed,
+            account_id=ctx.id,
         )
     except Exception:
         payload_path.unlink(missing_ok=True)

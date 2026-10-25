@@ -24,6 +24,7 @@ Format: "<number>/<period>" where period is: second, minute, hour, day
 Examples: "100/minute", "1000/hour", "10/second"
 """
 
+import ipaddress
 import re
 import time
 
@@ -68,6 +69,41 @@ RATE_LIMIT_DELTA: str = get_rate_limit_delta()
 TRUSTED_PROXIES: frozenset[str] = get_trusted_proxies()
 
 
+def _rightmost_untrusted_hop(forwarded_for: str, trusted: frozenset[str]) -> str | None:
+    """Return the closest client IP that was not added by a trusted proxy.
+
+    Reverse proxies append the peer they saw, so the rightmost entries are the
+    most trustworthy. Walking right-to-left and skipping trusted proxies avoids
+    trusting a client-supplied prefix (``X-Forwarded-For: 1.2.3.4`` forwarded
+    verbatim by ``$proxy_add_x_forwarded_for``). A malformed chain is ignored
+    entirely rather than used as a rate-limit key.
+    """
+    hops = [hop.strip() for hop in forwarded_for.split(",") if hop.strip()]
+    for hop in reversed(hops):
+        if hop in trusted:
+            continue
+        try:
+            ipaddress.ip_address(hop)
+        except ValueError:
+            return None
+        return hop
+    return None
+
+
+def resolve_client_ip(peer: str | None, forwarded_for: str | None) -> str:
+    """Resolve a client IP when there is no Starlette ``Request`` (WebSocket).
+
+    Applies the same trusted-proxy rule as :func:`get_client_ip`: the header is
+    only consulted when the direct peer is a configured proxy, and the
+    rightmost untrusted hop is used.
+    """
+    if peer and peer in TRUSTED_PROXIES and forwarded_for:
+        hop = _rightmost_untrusted_hop(forwarded_for, TRUSTED_PROXIES)
+        if hop is not None:
+            return hop
+    return peer or "unknown"
+
+
 def get_client_ip(request: Request) -> str:
     """
     Extract client IP address from request.
@@ -88,11 +124,12 @@ def get_client_ip(request: Request) -> str:
     if client_host and client_host in TRUSTED_PROXIES:
         forwarded_for = request.headers.get("X-Forwarded-For")
         if forwarded_for:
-            # Take the first IP in the chain (original client)
-            return forwarded_for.split(",")[0].strip()
+            hop = _rightmost_untrusted_hop(forwarded_for, TRUSTED_PROXIES)
+            if hop is not None:
+                return hop
 
     # Fall back to direct client address
-    return get_remote_address(request)
+    return client_host or get_remote_address(request)
 
 
 limiter = Limiter(

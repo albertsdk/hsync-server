@@ -183,7 +183,7 @@ per-operation:
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | `GET` | `/health` | Health check (empty `200 OK`) | No |
-| `GET` | `/metrics` | Prometheus metrics | No |
+| `GET` | `/metrics` | Prometheus metrics | Yes (any account) |
 | `GET` | `/api/v1/time` | Server timestamp for client clock sync | No |
 
 ## Request/Response Examples

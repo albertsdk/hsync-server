@@ -138,9 +138,9 @@ endpoints:
 
 | Router | Prefix | Auth | Endpoints |
 |--------|--------|------|-----------|
-| `auth_router` | `/api/v1` | Requires `Authorization: Bearer <account_token>` | Buckets, files, tombstones, delta transfer, membership |
+| `auth_router` | `/api/v1` | Requires `Authorization: Bearer <account_token>` | Buckets, files, tombstones, delta transfer, membership, `/metrics` |
 | `admin_router` | `/api/v1/admin` | Requires `admin` role | Account CRUD, bucket inventory |
-| `public_router` | (root) | None | `/health`, `/metrics`, `/api/v1/time`, WebSocket events |
+| `public_router` | (root) | None | `/health`, `/api/v1/time`, WebSocket events |
 
 The `auth_router` dependency chain enforces account-token validation on every
 request. The `admin_router` adds the `admin`-role check on top. The

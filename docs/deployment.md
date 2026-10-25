@@ -402,7 +402,8 @@ sudo lsof -i :9753
 Common causes:
 - `HSYNC_ADMIN_KEY` malformed — must be exactly 64 lowercase hex characters
   (generate with `openssl rand -hex 32`). When unset, the server generates a
-  secret itself and prints the admin token once; it does not require the
+  secret itself: the token goes to stderr on a TTY, otherwise to
+  `<state_dir>/bootstrap_admin_token` (mode 0600). It does not require the
   variable to start.
 - Volume permissions — `./docker.sh` and the Compose template run the
   container as the invoking user's UID/GID (`HSYNC_UID`/`HSYNC_GID`), so the

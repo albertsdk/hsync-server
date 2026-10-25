@@ -118,7 +118,7 @@ def delete_bucket(bucket: str, *, delete_files: bool = True) -> str:
             log.error(f"Failed to delete bucket {bucket}: {e}", exc_info=True)
             raise DeleteError(
                 message=f"Failed to delete bucket: {bucket}",
-                details={"bucket": bucket, "error": str(e)},
+                details={"bucket": bucket, "reason": type(e).__name__},
             ) from None
     else:
         store.delete_bucket_db(bucket)

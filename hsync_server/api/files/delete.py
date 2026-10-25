@@ -153,5 +153,5 @@ async def delete_file(
         log.error(f"Failed to delete file {file}: {e}", exc_info=True)
         raise DeleteError(
             message=f"Failed to delete file: {filename}",
-            details={"bucket": bucket, "filename": filename, "error": str(e)},
+            details={"bucket": bucket, "filename": filename, "reason": type(e).__name__},
         )

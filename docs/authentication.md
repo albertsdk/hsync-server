@@ -29,7 +29,11 @@ On first start (empty account store), an admin account is created:
 - If `HSYNC_ADMIN_KEY` (64 lowercase hex) is set in the environment: used
   silently as the admin secret. Ideal for CI/deploy automation.
 - If absent: a secret is generated and the full token `hs_<id>_<secret>` is
-  printed once to stdout with a warning. **It is not recoverable.**
+  delivered once. On an interactive terminal it is printed to stderr; when
+  stderr is not a TTY (systemd/journald, container log drivers) it is written to
+  `<state_dir>/bootstrap_admin_token` with mode `0600`, so it never reaches a
+  captured log stream. **It is not recoverable**: move it to your secret store
+  and delete the file.
 
 The admin account has `name=admin`, `id=HsyncAdminBootstrap01`, `role=admin`.
 

@@ -101,6 +101,22 @@ class TestRequestIdMiddleware:
         parsed = uuid.UUID(request_id)
         assert str(parsed) == request_id
 
+    def test_markup_in_request_id_is_replaced(self, client):
+        """A client value with loguru markup is not trusted nor reflected."""
+        response = client.get("/test", headers={"X-Request-ID": "<red>spoof</red>"})
+
+        request_id = response.headers["X-Request-ID"]
+        assert request_id != "<red>spoof</red>"
+        uuid.UUID(request_id)
+
+    def test_overlong_request_id_is_replaced(self, client):
+        """Overlong correlation ids are discarded."""
+        response = client.get("/test", headers={"X-Request-ID": "a" * 200})
+
+        request_id = response.headers["X-Request-ID"]
+        assert request_id != "a" * 200
+        uuid.UUID(request_id)
+
 
 class TestRequestIdMiddlewareWithErrors:
     """Tests for RequestIdMiddleware error handling."""

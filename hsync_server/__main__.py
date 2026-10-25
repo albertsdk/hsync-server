@@ -83,6 +83,19 @@ def _exit_account_not_found() -> NoReturn:
     _fail("account not found")
 
 
+def _require_valid_bucket(bucket: str) -> None:
+    """Reject a malformed bucket name before any path or DB use.
+
+    ``bucket_create``/``bucket_delete`` validate through the provisioning
+    layer; the membership commands operate directly on the store and the
+    filesystem, so they validate here too.
+    """
+    from hsync_common.path_validation import is_valid_bucket_name
+
+    if not is_valid_bucket_name(bucket):
+        _fail(f"invalid bucket name: {bucket!r}")
+
+
 def _resolve_bind_host_port(host: str | None, port: int | None) -> tuple[str, int | None]:
     """Resolve the bind address/port from ``--host``/``--port``.
 
@@ -421,9 +434,12 @@ def tls_fingerprint(
 ) -> None:
     """Print the server certificate's SHA-256 fingerprint for out-of-band verification.
 
-    Clients pin this value (``hsync trust server add``) when they use a self-signed
-    server certificate. The fingerprint is stable across restarts (the certificate
-    is persisted), so it is safe to distribute out of band.
+    This reads the **persisted certificate file**. A running server keeps serving
+    the certificate it loaded at startup until it is restarted, so this is not a
+    "served" check: after rotating, restart the service and verify what clients
+    actually see with ``hsync trust server fingerprint <host>``. The fingerprint
+    is stable across restarts (the certificate is persisted), so it is safe to
+    distribute out of band.
     """
     from hsync_common.ssl_utils import fingerprint_from_der
 
@@ -454,11 +470,20 @@ def tls_rotate(
 ) -> None:
     """Regenerate the server TLS certificate and key, and print the new fingerprint.
 
-    The certificate is self-signed and validated by fingerprint pinning, so after
-    rotating, point clients at the new fingerprint (accept both the old and the
-    new value during the rotation window — see the client trust documentation).
+    The certificate is self-signed and validated by fingerprint pinning. The
+    running server keeps serving the **previously loaded** certificate until it
+    is restarted (uvicorn reads ``ssl_certfile`` once at bind), so after rotating:
+
+    1. give clients both the old and the new fingerprint (rotation window);
+    2. restart the service;
+    3. verify the **served** certificate from a client
+       (``hsync trust server fingerprint <host>``), not the file.
     """
-    from hsync_common.ssl_utils import fingerprint_from_der
+    from hsync_common.ssl_utils import (
+        compute_cert_fingerprint,
+        load_pem_certificate_and_key,
+        verify_keypair_matches,
+    )
 
     from hsync_server.config import get_ssl_certfile, get_ssl_enabled, get_ssl_keyfile
     from hsync_server.ssl_utils import generate_self_signed_cert
@@ -472,9 +497,22 @@ def tls_rotate(
         )
     cert_path, key_path = _server_identity_paths()
     generate_self_signed_cert(str(cert_path), str(key_path), hostname=hostname)
-    der = ssl.PEM_cert_to_DER_cert(cert_path.read_text(encoding="ascii"))
+    # Re-read what was written: a half-completed rotation (key without its
+    # certificate, or a mismatched pair) must fail here instead of being announced
+    # with a fingerprint the server cannot serve.
+    try:
+        certificate, private_key = load_pem_certificate_and_key(cert_path, key_path)
+        verify_keypair_matches(certificate, private_key, who="server TLS certificate")
+    except (OSError, ValueError) as exc:
+        _fail(f"rotated certificate failed verification: {exc}")
+    fingerprint = compute_cert_fingerprint(certificate)
     typer.echo(f"Certificate rotated: {cert_path}")
-    typer.echo(f"New fingerprint: sha256:{fingerprint_from_der(der)}")
+    typer.echo(f"New fingerprint: sha256:{fingerprint}")
+    typer.echo(
+        "Restart the service to serve the new certificate, then verify it from a client "
+        "with 'hsync trust server fingerprint <host>'.",
+        err=True,
+    )
 
 
 def _resolve_account_id(name: str | None, account_id: str | None) -> str:
@@ -727,6 +765,7 @@ def bucket_grant(
     client: Annotated[str, typer.Option("--client", help="Account name or id.")],
 ) -> None:
     """Grant membership to an account on a bucket."""
+    _require_valid_bucket(bucket)
     from hsync_server.auth_store import (
         BOOTSTRAP_ADMIN_ID,
         ConflictError,
@@ -750,6 +789,7 @@ def bucket_revoke(
     client: Annotated[str, typer.Option("--client", help="Account name or id.")],
 ) -> None:
     """Revoke membership from a bucket."""
+    _require_valid_bucket(bucket)
     from hsync_server.auth_store import (
         BOOTSTRAP_ADMIN_ID,
         ConflictError,
@@ -773,6 +813,7 @@ def bucket_set_owner(
     client: Annotated[str, typer.Option("--client", help="Account name or id.")],
 ) -> None:
     """Set or transfer bucket ownership."""
+    _require_valid_bucket(bucket)
     from pathlib import Path
 
     from hsync_server.auth_store import (

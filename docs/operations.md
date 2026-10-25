@@ -12,6 +12,7 @@ upgrade procedures, monitoring, and performance guidelines.
 
 - [Persistent Data](#persistent-data)
 - [Backup and Restore](#backup-and-restore)
+- [Certificate rotation](#certificate-rotation)
 - [Upgrade Guide](#upgrade-guide)
 - [Monitoring](#monitoring)
 - [Performance and Limits](#performance-and-limits)
@@ -210,6 +211,77 @@ If you lose the entire server (hardware failure, VM destroyed):
    address requires a certificate rotation and renewed client trust.
 
 ---
+
+## Certificate rotation
+
+The server's TLS trust is established one of two ways. Pick the row that matches
+your deployment — do **not** mix them.
+
+### Reverse proxy (recommended for production)
+
+Production deployments terminate HTTPS at a reverse proxy
+([Reverse Proxy Configuration](reverse-proxy.md)); the server itself speaks plain
+HTTP behind it and has **no certificate to rotate**. Rotation is the proxy's job
+and is transparent to HSYNC clients, which validate the public chain (`chain`
+policy, no pin):
+
+```bash
+# Nginx + certbot
+sudo certbot renew && sudo systemctl reload nginx
+```
+
+Traefik and Caddy renew and reload automatically. Nothing in HSYNC changes, and
+clients keep working without re-trusting anything.
+
+### Built-in self-signed TLS (LAN / small deployments)
+
+With `--ssl-cert-dir`, the server owns a self-signed certificate that clients
+authenticate by **pinning its SHA-256 fingerprint**. The certificate is
+long-lived (20 years), so rotation is a deliberate operation — after a suspected
+key compromise, or to replace an expiring certificate:
+
+1. **Announce the current fingerprint** and give clients **both** the old and
+   the new one during the window:
+   - Python client: pass `--server-fingerprint` twice (or set
+     `HSYNC_SERVER_FINGERPRINT`), or `hsync trust server add <host> <new>` as a
+     second accepted value;
+   - Android: add the new fingerprint to the host's entry under *Trusted keys*
+     (the old one stays until you remove it).
+2. **Rotate** the certificate on the server host:
+
+   ```bash
+   hsync-server admin tls rotate
+   ```
+
+   It prints the new fingerprint and re-reads/verifies the pair it wrote.
+3. **Restart the service.** `admin tls rotate` writes the files; a running
+   server keeps serving the certificate it loaded at startup (uvicorn reads
+   `ssl_certfile` once at bind) and there is no hot reload.
+
+   ```bash
+   sudo systemctl restart hsync-server      # or: docker compose restart server
+   ```
+4. **Verify the *served* certificate**, not the file — from a client:
+
+   ```bash
+   hsync trust server fingerprint <host>
+   ```
+
+   Compare it with the value printed in step 2. `hsync-server admin tls
+   fingerprint` reads the persisted file and therefore cannot detect a missed
+   restart.
+5. **Retire the old fingerprint** once every client has connected with the new
+   one (`hsync trust server remove <host> <old>`; remove the old row on Android).
+
+> **Rotation is one-way.** The old keypair is replaced atomically and is not
+> kept; a wrong rotation is recovered by rotating again and re-pinning, not by
+> reverting. Back up `<data>/certs` (see
+> [Backup and Restore](#backup-and-restore)) if you need to be able to restore
+> the previous identity instead.
+>
+> `admin tls rotate` refuses to run when the certificate is provided explicitly
+> with `HSYNC_SSL_CERTFILE`/`HSYNC_SSL_KEYFILE`: rotate that certificate with
+> whatever issued it.
 
 ## Upgrade Guide
 

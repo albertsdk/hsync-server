@@ -10,8 +10,11 @@ versions, tombstones, and accounts live in SQLite: one DB per bucket
 `app = FastAPI(...)` (`main.py::app`) with a `lifespan` (`main.py::lifespan`) that
 bootstraps the admin account (via `auth_store.bootstrap_admin`) and preloads the
 SHA-256 cache via `set_sha256_hashes` (`main.py::lifespan` → `hashes.py::set_sha256_hashes`).
-Entry points: `main` Typer CLI (`__main__.py::main`) and `run` (`__main__.py::run`);
-console invocation goes through `__main__.py`.
+Without `HSYNC_ADMIN_KEY`, `auth_store/accounts.py::AuthStore.bootstrap_admin`
+delivers the generated token on stderr only for a TTY; otherwise it writes
+`<state_dir>/bootstrap_admin_token` (mode 0600), so it never reaches a captured
+log stream. Entry points: `main` Typer CLI (`__main__.py::main`) and `run`
+(`__main__.py::run`); console invocation goes through `__main__.py`.
 
 ## Middleware stack (outermost → innermost)
 
@@ -21,7 +24,7 @@ Added in `main.py` (order matters — last added runs first):
 | ----- | ---------- | -------- | ---- |
 | 1 | `VersionMiddleware` | `middleware.py::VersionMiddleware` | hard-fail 426 on REST protocol mismatch; rejects a malformed `X-Client-Name` with 400 (shared `is_valid_client_name` SSOT); stamps `X-Server-Version`/`X-Protocol-Version` |
 | 2 | `RequestIdMiddleware` | `middleware.py::RequestIdMiddleware` | per-request id for tracing (`logger.py::get_request_id` context) |
-| 3 | `CORSMiddleware` (optional) | `main.py::app` | gated by `get_cors_enabled()` (`config.py::get_cors_enabled`) |
+| 3 | `CORSMiddleware` (optional) | `main.py::configure_cors` | only with a non-empty explicit origin list (`config.py::get_cors_origins`); never wildcard + credentials (`allow_credentials=False`) |
 | 4 | `TransferAwareGZipMiddleware` | `middleware.py::TransferAwareGZipMiddleware` | gzip on responses > 1000 B, **except** the transfer payload paths (`…/files/download`, `…/files/delta/data/{token}`), whose coding is the sync protocol's own (identity \| zstd) and must reach clients byte-identical |
 | 5 | `SlowAPIMiddleware` | `main.py::app` | global rate limiting (`rate_limiter.py`) |
 

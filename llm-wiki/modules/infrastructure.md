@@ -57,8 +57,11 @@ Bucket membership is enforced by `check_bucket_access` (`api/authz.py::check_buc
 
 - slowapi `limiter` + `rate_limit_exceeded_handler` (`rate_limiter.py::rate_limit_exceeded_handler`), wired in
   `main.py::app`.
-- Client IP resolution honoring trusted proxies: `get_client_ip` (`rate_limiter.py::get_client_ip`),
-  `TRUSTED_PROXIES` (`rate_limiter.py::TRUSTED_PROXIES` ← `config.get_trusted_proxies` `config.py::get_trusted_proxies`).
+- Client IP resolution honoring trusted proxies: `get_client_ip` (`rate_limiter.py::get_client_ip`)
+  and `resolve_client_ip` (`rate_limiter.py::resolve_client_ip`, WebSocket slots) use the
+  rightmost untrusted `X-Forwarded-For` hop (`rate_limiter.py::_rightmost_untrusted_hop`), so a
+  client-supplied prefix cannot spoof the IP; `TRUSTED_PROXIES` (`rate_limiter.py::TRUSTED_PROXIES`
+  ← `config.get_trusted_proxies` `config.py::get_trusted_proxies`).
 - Limits: `config.py::get_rate_limit_default` / `::get_rate_limit_upload` /
   `::get_rate_limit_download` / `::get_rate_limit_ws_messages`.
 - WS message budget: `TokenBucket` (`rate_limiter.py::TokenBucket`), `create_ws_message_bucket` (`rate_limiter.py::create_ws_message_bucket`),
@@ -92,10 +95,18 @@ Bucket membership is enforced by `check_bucket_access` (`api/authz.py::check_buc
   `get_ssl_certfile()` (explicit) or `get_ssl_cert_dir()/server.crt`, and exits
   non-zero when TLS is disabled or the certificate is missing.
 - `hsync-server admin tls rotate [--hostname NAME]` regenerates the persisted
-  cert/key and prints the new fingerprint (the auto-generated identity only — an
-  explicit `HSYNC_SSL_CERTFILE`/`HSYNC_SSL_KEYFILE` is refused). Startup logs a
-  warning when the served certificate is within `_CERT_EXPIRY_WARN_DAYS` (30,
-  `__main__.py::_CERT_EXPIRY_WARN_DAYS`) of expiry.
+  cert/key, then **re-reads the pair it wrote**, verifies it with
+  `hsync_common.ssl_utils.verify_keypair_matches` (`__main__.py::tls_rotate`) and
+  prints the fingerprint derived from the re-parsed certificate (the
+  auto-generated identity only — an explicit
+  `HSYNC_SSL_CERTFILE`/`HSYNC_SSL_KEYFILE` is refused). Rotation is **explicit,
+  not hot**: the command writes the files, but a running server keeps serving the
+  certificate loaded at bind, so the operator must restart and then verify the
+  *served* fingerprint (`hsync trust server fingerprint <host>`); both the
+  command output and `docs/operations.md` state this. `admin tls fingerprint`
+  reads the persisted **file** and is therefore not a served-certificate check.
+  Startup logs a warning when the served certificate is within
+  `_CERT_EXPIRY_WARN_DAYS` (30, `__main__.py::_CERT_EXPIRY_WARN_DAYS`) of expiry.
 
 ## Hash cache (`hashes.py`)
 

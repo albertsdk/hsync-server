@@ -91,7 +91,9 @@ flowchart LR
 - **Behind a reverse proxy** (recommended for Internet-facing servers): the proxy
   terminates HTTPS and forwards to the server over the internal network, so the
   server listens on plain HTTP with `HSYNC_SSL_ENABLED=false`. Set
-  `HSYNC_TRUSTED_PROXIES` so `X-Forwarded-For` is trusted for per-IP rate limits.
+  `HSYNC_TRUSTED_PROXIES` so `X-Forwarded-For` is trusted for per-IP rate limits;
+  the rightmost hop that is not itself a trusted proxy is used, so a
+  client-supplied prefix cannot spoof the address.
 - **Built-in TLS** (trusted private LAN): with `HSYNC_SSL_ENABLED=true` the server
   terminates HTTPS/WSS itself using a persistent self-signed certificate, whose
   fingerprint stays stable across restarts for client TOFU pinning.

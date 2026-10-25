@@ -95,16 +95,36 @@ class AccountsMixin(AuthStoreBase):
 
             if generated:
                 token = f"{TOKEN_PREFIX}{BOOTSTRAP_ADMIN_ID}_{secret}"
-                # Print to stderr directly (not through logger) so the
-                # one-time token doesn't persist in log files.
+                # The generated token is a full admin credential: never let it
+                # reach a captured log stream. Interactive terminals get it on
+                # stderr; daemons (systemd/journald, container log drivers) get
+                # a 0600 file under the state dir instead.
+                import os
                 import sys
 
-                print(
-                    f"\n*** Bootstrap admin account created. ***\n"
-                    f"Token (save now, not recoverable): {token}\n",
-                    file=sys.stderr,
-                )
-                log.warning("Bootstrap admin account created; token printed to stderr.")
+                from hsync_server.config import get_state_dir
+
+                if sys.stderr.isatty():
+                    print(
+                        f"\n*** Bootstrap admin account created. ***\n"
+                        f"Token (save now, not recoverable): {token}\n",
+                        file=sys.stderr,
+                    )
+                    log.warning("Bootstrap admin account created; token printed to stderr.")
+                else:
+                    token_file = Path(get_state_dir()) / "bootstrap_admin_token"
+                    fd = os.open(
+                        token_file,
+                        os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0),
+                        0o600,
+                    )
+                    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                        handle.write(token + "\n")
+                    os.chmod(token_file, 0o600)
+                    log.warning(
+                        "Bootstrap admin account created; token written to "
+                        f"{token_file} (mode 0600). Save it and delete the file."
+                    )
                 return token
             log.info("Bootstrap admin account created from HSYNC_ADMIN_KEY.")
             return None

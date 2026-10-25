@@ -124,14 +124,14 @@ production one; copy the relevant file to `dev.env` / `prod.env` and customize i
 | `HSYNC_MAX_UPLOAD_SIZE` | `10737418240` (10 GiB) | Maximum upload size in bytes (`0` = unlimited, which also disables the request-body cap below unless it is set explicitly) |
 | `HSYNC_MAX_REQUEST_BODY_SIZE` | `0` (auto) | Hard cap in bytes on any HTTP request body, enforced before it is buffered. `0` derives `HSYNC_MAX_UPLOAD_SIZE` + 64 MiB |
 | `HSYNC_MIN_FREE_DISK_SPACE` | `500MB` | Minimum free disk before rejecting uploads, as a size with an explicit unit (`500MB`, `2GB`; a bare number is rejected; `0` = disabled) |
-| `HSYNC_CORS_ENABLED` | `false` | Enable CORS headers |
-| `HSYNC_CORS_ORIGINS` | — | Allowed CORS origins (comma-separated) |
+| `HSYNC_CORS_ENABLED` | `false` | Enable CORS headers (requires a non-empty `HSYNC_CORS_ORIGINS`; credentials are never combined with a wildcard) |
+| `HSYNC_CORS_ORIGINS` | — | Explicit allowed CORS origins (comma-separated); required when CORS is enabled |
 | `HSYNC_RATE_LIMIT_DEFAULT` | `500/minute` | Default per-IP rate limit |
 | `HSYNC_RATE_LIMIT_UPLOAD` | `200/minute` | Upload endpoint rate limit |
 | `HSYNC_RATE_LIMIT_DOWNLOAD` | `1000/minute` | Download endpoint rate limit |
 | `HSYNC_RATE_LIMIT_ADMIN` | `20/minute` | Admin endpoint rate limit |
 | `HSYNC_RATE_LIMIT_WS_MESSAGES` | `10/second` | WebSocket message rate limit |
-| `HSYNC_TRUSTED_PROXIES` | — | Comma-separated reverse-proxy IPs for `X-Forwarded-For` |
+| `HSYNC_TRUSTED_PROXIES` | — | Comma-separated reverse-proxy IPs; `X-Forwarded-For` uses the rightmost untrusted hop |
 | `HSYNC_WS_HEARTBEAT_INTERVAL` | `30` | WebSocket heartbeat interval (seconds) |
 | `HSYNC_WS_HEARTBEAT_TIMEOUT` | `10` | WebSocket heartbeat timeout (seconds) |
 | `HSYNC_WS_AUTH_TIMEOUT` | `10` | WebSocket authentication timeout (seconds) |

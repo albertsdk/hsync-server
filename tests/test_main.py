@@ -6,9 +6,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
+from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
 from hsync_server import __main__ as cli
+from hsync_server import main as app_main
 from hsync_server.constants import HSYNC_VERSION
 
 runner = CliRunner()
@@ -212,6 +214,96 @@ class TestAdminBucketCli:
         assert result.exit_code == 1
         assert "Error:" in result.output
 
+    def test_bucket_grant_rejects_invalid_name(self):
+        """Membership commands validate the bucket before touching the DB."""
+        result = runner.invoke(
+            cli.app,
+            ["admin", "bucket", "grant", "--bucket", "../etc", "--client", "admin"],
+        )
+        assert result.exit_code == 1
+        assert "invalid bucket name" in result.output
+
+    def test_bucket_revoke_rejects_invalid_name(self):
+        result = runner.invoke(
+            cli.app,
+            ["admin", "bucket", "revoke", "--bucket", "../etc", "--client", "admin"],
+        )
+        assert result.exit_code == 1
+        assert "invalid bucket name" in result.output
+
+    def test_bucket_set_owner_rejects_invalid_name(self):
+        """set-owner must not use an unvalidated name as a filesystem path."""
+        result = runner.invoke(
+            cli.app,
+            ["admin", "bucket", "set-owner", "--bucket", "../etc", "--client", "admin"],
+        )
+        assert result.exit_code == 1
+        assert "invalid bucket name" in result.output
+
+
+class TestCorsConfiguration:
+    """CORS is only attached for an explicit allow-list, without credentials."""
+
+    @staticmethod
+    def _app(origins: list[str]) -> FastAPI:
+        app = FastAPI()
+        app_main.configure_cors(app, enabled=True, origins=origins)
+
+        @app.get("/x")
+        async def _x():
+            return {"ok": True}
+
+        return app
+
+    def test_preflight_allows_configured_origin_and_patch(self):
+        client = TestClient(self._app(["https://app.example"]))
+        response = client.options(
+            "/x",
+            headers={
+                "Origin": "https://app.example",
+                "Access-Control-Request-Method": "PATCH",
+                "Access-Control-Request-Headers": "authorization,x-protocol-version",
+            },
+        )
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == "https://app.example"
+        assert "access-control-allow-credentials" not in response.headers
+        assert "PATCH" in response.headers["access-control-allow-methods"]
+
+    def test_preflight_rejects_unknown_origin(self):
+        client = TestClient(self._app(["https://app.example"]))
+        response = client.options(
+            "/x",
+            headers={
+                "Origin": "https://evil.example",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert response.status_code == 400
+
+    def test_enabled_without_origins_adds_no_cors(self):
+        app = FastAPI()
+        app_main.configure_cors(app, enabled=True, origins=[])
+
+        @app.get("/x")
+        async def _x():
+            return {"ok": True}
+
+        response = TestClient(app).get("/x", headers={"Origin": "https://evil.example"})
+        assert response.status_code == 200
+        assert "access-control-allow-origin" not in response.headers
+
+    def test_disabled_adds_no_cors(self):
+        app = FastAPI()
+        app_main.configure_cors(app, enabled=False, origins=["https://app.example"])
+
+        @app.get("/x")
+        async def _x():
+            return {"ok": True}
+
+        response = TestClient(app).get("/x", headers={"Origin": "https://app.example"})
+        assert "access-control-allow-origin" not in response.headers
+
 
 class TestNoRealRepoStateIsolation:
     def test_real_state_lies_outside_tmp_fixtures(self, tmp_path):
@@ -326,6 +418,23 @@ class TestTlsFingerprint:
         result = runner.invoke(cli.app, ["admin", "tls", "rotate"])
         assert result.exit_code == 0, result.output
         assert "New fingerprint: sha256:" in result.output
+
+        # The command reports a verified, freshly parsed pair: the printed
+        # fingerprint must be the one on disk and the key must match its cert.
+        from hsync_common.ssl_utils import (
+            compute_cert_fingerprint,
+            load_pem_certificate_and_key,
+            verify_keypair_matches,
+        )
+
+        certificate, private_key = load_pem_certificate_and_key(
+            tmp_path / "server.crt", tmp_path / "server.key"
+        )
+        verify_keypair_matches(certificate, private_key, who="server TLS certificate")
+        assert f"sha256:{compute_cert_fingerprint(certificate)}" in result.output
+        # A running server keeps serving the certificate loaded at startup, so the
+        # command must state the apply step.
+        assert "Restart the service" in result.output
 
         after = runner.invoke(cli.app, ["admin", "tls", "fingerprint"])
         assert after.exit_code == 0, after.output

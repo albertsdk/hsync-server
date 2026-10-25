@@ -30,6 +30,11 @@ from .constants import (
 )
 from .logger import set_request_id
 
+# Accepted incoming correlation IDs: a narrow charset prevents log markup
+# injection and header abuse through a client-controlled value. Anything else
+# is replaced by a freshly generated UUID.
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
     """
@@ -51,8 +56,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        request_id = request.headers.get("X-Request-ID")
-        if not request_id:
+        request_id = request.headers.get("X-Request-ID", "")
+        if not _REQUEST_ID_RE.fullmatch(request_id):
             request_id = str(uuid.uuid4())
 
         # Store on request state so exception handlers can retrieve it

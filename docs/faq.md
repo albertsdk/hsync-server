@@ -183,6 +183,20 @@ Use a version tag instead of `latest`, e.g.
 `ghcr.io/albertsdk/hsync-server:v1.0.0`. See
 [Getting Started](getting-started.md).
 
+### How do I rotate the TLS certificate?
+
+With a reverse proxy (recommended for production) rotation is the proxy's job
+(`certbot renew` + `systemctl reload nginx`, or Traefik/Caddy automatic ACME):
+clients validate the public chain and nothing changes on the HSYNC side.
+
+With the built-in self-signed TLS the certificate is pinned, so rotation is an
+ordered operation: give clients both fingerprints, run
+`hsync-server admin tls rotate`, **restart the service** (there is no hot
+reload), then verify the **served** certificate with
+`hsync trust server fingerprint <host>` before retiring the old pin. The full
+procedure is in
+[Operations → Certificate rotation](operations.md#certificate-rotation).
+
 ## Troubleshooting
 
 ### Installer fails with "open .../.env: permission denied"
@@ -215,8 +229,9 @@ docker logs hsync-server
 ```
 Common causes:
 - `HSYNC_ADMIN_KEY` malformed — must be exactly 64 lowercase hex characters
-  (generate with `openssl rand -hex 32`). If unset, the server generates and
-  prints a one-time admin token instead.
+  (generate with `openssl rand -hex 32`). If unset, the server generates a
+  one-time admin token instead (stderr on a TTY, otherwise
+  `<state_dir>/bootstrap_admin_token`, mode 0600).
 - Data directory permissions — the container runs as the configured user
   (`HSYNC_UID`/`HSYNC_GID`, defaulting to the invoking user) and must be able
   to write to the bind-mounted data directory.

@@ -40,7 +40,12 @@ from .config import (
     get_max_request_body_size,
     get_settings,
 )
-from .constants import HEADER_CLIENT_NAME, HEADER_CLIENT_VERSION, HSYNC_VERSION
+from .constants import (
+    HEADER_CLIENT_NAME,
+    HEADER_CLIENT_VERSION,
+    HEADER_PROTOCOL_VERSION,
+    HSYNC_VERSION,
+)
 from .error_handlers import register_exception_handlers
 from .hashes import set_sha256_hashes
 from .middleware import (
@@ -109,6 +114,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         vacuum_on_shutdown()
 
 
+def configure_cors(app: FastAPI, *, enabled: bool, origins: list[str]) -> None:
+    """Attach CORS middleware only for an explicit origin allow-list.
+
+    A wildcard is never combined with credentials: the API authenticates with a
+    Bearer token, so ``allow_credentials`` is not needed, and silently
+    reflecting any Origin would let a hostile page read authenticated
+    responses. Enabling CORS without origins is therefore a no-op (with a
+    warning), not an implicit wildcard.
+    """
+    if not enabled:
+        return
+    if not origins:
+        log.warning("CORS enabled without HSYNC_CORS_ORIGINS: CORS disabled")
+        return
+    log.info(f"CORS enabled for origins: {origins}")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,  # never "*"
+        allow_credentials=False,  # auth is Bearer, not cookie-based
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            HEADER_CLIENT_NAME,
+            HEADER_CLIENT_VERSION,
+            HEADER_PROTOCOL_VERSION,
+        ],
+    )
+
+
 # API docs (Swagger UI / ReDoc) are disabled by default in production;
 # set HSYNC_ENABLE_DOCS=true for development.
 _settings = get_settings()
@@ -153,17 +188,8 @@ if _max_body_size <= 0:
     )
 app.add_middleware(MaxRequestSizeMiddleware, max_size=_max_body_size)
 
-# Add CORS middleware if enabled (for web frontend compatibility)
-if get_cors_enabled():
-    cors_origins = get_cors_origins()
-    log.info(f"CORS enabled for origins: {cors_origins or ['*']}")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=cors_origins or ["*"],
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", HEADER_CLIENT_NAME, HEADER_CLIENT_VERSION],
-    )
+# Add CORS middleware only for an explicit origin allow-list (see helper).
+configure_cors(app, enabled=get_cors_enabled(), origins=get_cors_origins())
 
 # Add Request ID middleware for distributed tracing
 # This must be added after other middleware to ensure request_id is set first

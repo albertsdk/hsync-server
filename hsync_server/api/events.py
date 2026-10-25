@@ -71,7 +71,11 @@ from hsync_server.config import (
     get_ws_heartbeat_timeout,
 )
 from hsync_server.constants import HSYNC_VERSION, WS_MSG_TYPE_AUTH, ActionLabel
-from hsync_server.rate_limiter import TokenBucket, create_ws_message_bucket
+from hsync_server.rate_limiter import (
+    TokenBucket,
+    create_ws_message_bucket,
+    resolve_client_ip,
+)
 from hsync_server.routers import public_router
 
 _VALID_EVENT_NAMES = frozenset(e.value for e in EventName)
@@ -444,7 +448,10 @@ async def ws_events(websocket: WebSocket, bucket: str, cid: str) -> None:
             await websocket.close(code=4000, reason="Invalid bucket name")
             return
 
-        client_ip = websocket.client.host if websocket.client else "unknown"
+        client_ip = resolve_client_ip(
+            websocket.client.host if websocket.client else None,
+            websocket.headers.get("x-forwarded-for"),
+        )
         if not bucket_manager.try_acquire_slot(client_ip):
             log.warning(
                 f"{ActionLabel.WS} Connection limit reached, rejecting {cid} from {client_ip}"
