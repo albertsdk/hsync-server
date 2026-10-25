@@ -514,14 +514,33 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
                 )
 
 
+# Live-server startup attempts. The port is reserved with a short-lived probe
+# socket that must be closed before the server can bind it, so an outgoing
+# connection can still take the port in that window; the server then exits with
+# EADDRINUSE and the attempt is retried on a fresh port.
+_START_ATTEMPTS = 3
+_BIND_CONFLICT_MARKERS = ("address already in use", "errno 98", "eaddrinuse")
+
+
 def _free_port() -> int:
-    """Reserve and release an ephemeral loopback port for the server to bind."""
+    """Reserve and release an ephemeral port for the server's wildcard bind.
+
+    The probe binds ``0.0.0.0`` — what ``hsync_server`` binds by default — not
+    loopback: an ephemeral port free on ``127.0.0.1`` can already be taken on
+    another local address, in which case the server's wildcard bind fails.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        sock.bind(("127.0.0.1", 0))
+        sock.bind(("0.0.0.0", 0))
         return sock.getsockname()[1]
     finally:
         sock.close()
+
+
+def _is_bind_conflict(log_tail: str) -> bool:
+    """True when *log_tail* shows the bind failing because the port is taken."""
+    lowered = log_tail.lower()
+    return any(marker in lowered for marker in _BIND_CONFLICT_MARKERS)
 
 
 def _log_tail(log_path: str, limit: int = 8192) -> str:
@@ -587,6 +606,9 @@ def _start_live_server(
     termination and cleanup (of both the buckets dir and the log file).
     Raises ``RuntimeError`` if the server does not become healthy.
 
+    A start that loses the port race (EADDRINUSE, see :data:`_START_ATTEMPTS`)
+    is retried on a fresh port before the failure is reported.
+
     When *env_overrides* contains ``HSYNC_SSL_ENABLED=True`` the server is
     started with TLS and the readiness probe uses ``https://`` with
     ``verify=False`` (self-signed cert).
@@ -598,7 +620,6 @@ def _start_live_server(
     suite with no per-test timeout to catch it.
     """
     buckets_dir = tempfile.mkdtemp(prefix="hsync_bb_buckets_")
-    port = _free_port()
     # Scrub pre-existing HSYNC_* variables so the developer's own configuration
     # can never leak into the test server, then apply the test overrides.
     env = {k: v for k, v in os.environ.items() if not k.startswith("HSYNC_")}
@@ -631,33 +652,52 @@ def _start_live_server(
         env_overrides and env_overrides.get("HSYNC_SSL_ENABLED", "").lower() in ("true", "1", "yes")
     )
     scheme = "https" if use_ssl else "http"
-    base_url = f"{scheme}://127.0.0.1:{port}"
 
-    log_fd, log_path = tempfile.mkstemp(prefix="hsync_bb_server_", suffix=".log")
-    log_file = os.fdopen(log_fd, "wb")
-    try:
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "hsync_server", "--port", str(port), "--log-level", "warning"],
-            env=env,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-        )
-    finally:
-        # The subprocess holds its own duplicate of the fd; the parent's copy
-        # must be closed so the log can be read and removed later.
-        log_file.close()
+    last_error: RuntimeError | None = None
+    for _attempt in range(_START_ATTEMPTS):
+        port = _free_port()
+        base_url = f"{scheme}://127.0.0.1:{port}"
 
-    try:
-        _wait_for_server_ready(proc, base_url, log_path, verify=not use_ssl)
-    except RuntimeError:
-        # Clean up resources on failure — the caller won't see them.
-        _stop_proc(proc)
-        shutil.rmtree(buckets_dir, ignore_errors=True)
-        shutil.rmtree(buckets_dir + "_state", ignore_errors=True)
-        _discard_file(log_path)
-        raise
+        log_fd, log_path = tempfile.mkstemp(prefix="hsync_bb_server_", suffix=".log")
+        log_file = os.fdopen(log_fd, "wb")
+        try:
+            proc = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "hsync_server",
+                    "--port",
+                    str(port),
+                    "--log-level",
+                    "warning",
+                ],
+                env=env,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+            )
+        finally:
+            # The subprocess holds its own duplicate of the fd; the parent's copy
+            # must be closed so the log can be read and removed later.
+            log_file.close()
 
-    return proc, base_url, buckets_dir, log_path
+        try:
+            _wait_for_server_ready(proc, base_url, log_path, verify=not use_ssl)
+        except RuntimeError as exc:
+            last_error = exc
+            _stop_proc(proc)
+            _discard_file(log_path)
+            # The message carries the log tail, so the discarded file loses
+            # nothing. A bind conflict is a lost port race, not a server defect:
+            # retry on a fresh port. Any other startup failure is reported now.
+            if not _is_bind_conflict(str(exc)):
+                break
+            continue
+        return proc, base_url, buckets_dir, log_path
+
+    # No attempt could start: release the caller-owned resources and report.
+    shutil.rmtree(buckets_dir, ignore_errors=True)
+    shutil.rmtree(buckets_dir + "_state", ignore_errors=True)
+    raise last_error or RuntimeError("hsync-server did not start")
 
 
 def _stop_proc(proc: subprocess.Popen) -> None:
