@@ -82,7 +82,7 @@ and causal version fields `vclock` (JSON-encoded vector clock), `version_id`
 modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
 - Filename validated/sanitized (`is_valid_filename`/`sanitize_filename` from
   `hsync_common.path_validation`); internal engine names
-  (`.hsyncignore`/`.hsyncfolder`/legacy `.hsyncstate`/`.hsynctombstones`, `*.part`) rejected with
+  (`.hsyncignore`/`.hsyncfolder`/`.hsyncstate`/`.hsynctombstones`, `*.part`) rejected with
   `InvalidFilenameError`; `cid` format checked with `is_valid_cid`.
 - `sha256sum` is a **required** form field and must be a well-formed 64-hex
   digest (`is_sha256_hex`): the received bytes must hash to it
@@ -109,8 +109,8 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   `replace` onto a new inode, so the snapshot never aliases the new content.
   The snapshot is only a **fallback** for the download endpoint when the primary
   is absent (see the download section below): normal downloads serve the primary,
-  which the atomic publish keeps whole, and preferring the transient backup was a
-  TOCTOU that could 500 when the uploader removed it mid-request.
+  which the atomic publish keeps whole, and preferring the transient backup would
+  be a TOCTOU that can 500 when the uploader removes it mid-request.
 - Optional zstd payload expanded with `decompress_file_to_file`
   (`compression.py::decompress_file_to_file`, capped via `decompress_stream`) in a worker thread
   (`asyncio.to_thread`): the compressed temp file is decompressed
@@ -132,8 +132,8 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   applies the new mode (`set_permissions`, sanitized) and re-broadcasts a
   `modified` event to the other connected clients, responding
   `200 {"info": "Permissions updated"}` (no byte rewrite, no version bump).
-  Identical content with no metadata change keeps the legacy
-  `409 File already present`. The metadata apply + `modified` re-broadcast is
+  Identical content with no metadata change keeps the
+  `409 File already present` response. The metadata apply + `modified` re-broadcast is
   the shared `apply_metadata_to_existing_file` helper
   (`api/files/permissions.py::apply_metadata_to_existing_file`), also used by the dedicated `PATCH` endpoint.
 - **`PATCH …/files/permissions`** (`api/files/permissions.py::patch_file_permissions`):
@@ -170,7 +170,7 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   filesystem paths. The 409 "file already present" returns a bucket-relative
   path; `UploadError.details` carries only the exception type name (not
   `str(e)`, which typically embeds absolute paths); the resume-missing-partial
-  error no longer includes the `partial_file` field. Full diagnostics remain
+  error carries no `partial_file` field. Full diagnostics remain
   in the server log (`log.error(..., exc_info=True)`).
 - **Duration logging**: the `[UPLOAD]` success log includes the wall-clock
   duration via `format_duration(..., subsecond=True)` — e.g.
@@ -196,10 +196,10 @@ publishes through an atomic `replace`, so a concurrent overwrite is observed as
 the old or the new inode, never a partial one — the session returns the complete
 previous version while an upload is in flight). The transient `<path>.backup`
 snapshot is used only when the primary is absent, never preferred: picking it
-first was a TOCTOU where the uploader could remove it between the existence
-check and the stat / checksum / response and turn a benign concurrent overwrite
-into a 500. A file removed between the stat and the checksum read maps to the
-same `FileNotFoundError` (404).
+first would be a TOCTOU, because the uploader can remove it between the
+existence check and the stat / checksum / response and turn a benign concurrent
+overwrite into a 500. A file removed between the stat and the checksum read
+maps to the same `FileNotFoundError` (404).
 
 > **Coding contract**: the response body carries no HTTP content coding other
 > than `identity` or `Content-Encoding: zstd` (ADR 0010). The route is excluded
@@ -232,7 +232,7 @@ when the bucket does not exist or the caller is not a member).
 The `/files` and `/dirs` listings are **streamed** (`StreamingResponse` over a
 sync generator, `hsync_common/listing.py::iter_json_array`): the body is a chunked JSON
 array produced one entry at a time, so the server holds O(directory fanout + one
-entry) instead of one dict per file (previously ~0.76 KB per file, ~700 MB at
+entry) instead of one dict per file (~0.76 KB per file, ~700 MB at
 1 M files — DI-03). The generator is iterated on a worker thread, so the per-file
 metadata read (`File.get`, `hsync_common/models/file.py::File.get`: stat + blocking
 SHA-256 on a cache miss) neither blocks the loop nor needs a per-file
@@ -260,7 +260,7 @@ correctness over loop-freedom.
   (`get_sha256_hash`, `hashes.py::get_sha256_hash`) and the version-store join,
   in path order.
 - `get_upload_status` (`api/files/list.py::get_upload_status`) reports existing `.part` size for resume.
-  **p2p parity**: the same endpoint is now served by p2p masters — Python
+  **p2p parity**: the same endpoint is served by p2p masters too — Python
   (`hsync_client/p2p_server.py::_handle_upload_status`) and Android
   (`P2PServer.kt`, `handleUploadStatus`) — so the client resume logic works
   uniformly in both server mode and P2P mode.
@@ -294,8 +294,8 @@ See `../docs/delta-transfer.md` for user-facing documentation.
 
 **Causal version & idempotence**: `delta_apply` decodes the incoming `vclock`
 JSON string (the same wire contract as the full-upload form field) before
-`arbitrate_upload`; passing the raw string made `parse_vclock` return an empty
-clock, so every delta looked `superseded` (409) once the server had a version.
+`arbitrate_upload`; passing the raw string makes `parse_vclock` return an empty
+clock, so every delta looks `superseded` (409) once the server has a version.
 When the current file already matches the delta's target `new_sha256`, the apply
 is an idempotent 200 with `resolution: already_applied` (no rewrite and no
 spurious base-changed 409).

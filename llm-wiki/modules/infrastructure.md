@@ -165,8 +165,8 @@ works, and memory is bounded to one batch per transfer. Construction costs
 into a temp file (`hsync_common.delta::BoundedLiteralSink`, which stops writing
 past `DELTA_MAX_LITERAL_SIZE` and flags it) and then compressed file→file with
 `hsync_common.compression.compress_file_to_file`, so a multi-GB literal payload
-is never resident in RAM (it used to be one `bytes` object plus its compressed
-copy — up to ~2 GB per request). The parked payload is adopted by
+is never resident in RAM (one `bytes` object plus its compressed
+copy would be up to ~2 GB per request). The parked payload is adopted by
 `DeltaTokenStore.issue_from_file` (`hsync-common/hsync_common/delta/token_store.py::DeltaTokenStore.issue_from_file`)
 with an atomic `os.replace`, never a bytes write.
 Decompression: `decompress_file_to_file` (`compression.py::decompress_file_to_file`, capped streaming
@@ -233,7 +233,7 @@ WS event `handlers.py`).
 All primitives come straight from `hsync_common.path_validation`
 (`is_valid_filename`, `sanitize_filename`, `validate_remote_relpath`,
 `resolve_within`, `is_internal_name`) — the server does not duplicate or wrap
-them (the old `path_validation.py` shim has been removed). Per-bucket
+them and keeps no local `path_validation.py`. Per-bucket
 confinement goes through `resolve_within_bucket` (`api/utils.py::resolve_within_bucket`).
 
 ## File lock manager (`file_lock_manager.py`)

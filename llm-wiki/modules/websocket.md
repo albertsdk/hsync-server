@@ -110,7 +110,7 @@ the descendant walk + hashing (`_record_tombstones_for_tree`,
 `api/events_handlers/handlers.py::_record_tombstones_for_tree`) and the `rmtree`
 run **synchronously on the loop on purpose**: offloading them would let an
 upload publish a new descendant mid-walk that the `rmtree` then removes without
-a tombstone (a resurrection regression). Full loop-freedom here needs a bucket/
+a tombstone (a resurrection risk). Full loop-freedom here needs a bucket/
 tree mutation lock shared with upload — a documented follow-up.
 
 > Human-readable WS sequence diagram (WebSocket Event Flow): `../docs/internal/architecture.md`.
