@@ -1,6 +1,6 @@
 [project]
 name = "hsync-server"
-version = "1.0.8"
+version = "1.0.9"
 description = "HSYNC File Server"
 authors = [{name = "Alberto Basso", email = "17047798+albertsdk@users.noreply.github.com"}]
 license = "BSD-3-Clause"
@@ -10,7 +10,7 @@ dependencies = [
     "aiofiles>=25.1.0,<26.0.0",
     "cryptography>=50.0.2,<51.0.0",
     "fastapi>=0.161.1,<0.162.0",
-    "hsync-common==1.0.8",
+    "hsync-common==1.0.9",
     "loguru>=0.7.3,<0.8.0",
     "prometheus-fastapi-instrumentator>=8.1.0,<9.0.0",
     "pydantic-settings>=2.12.0,<3.0.0",
