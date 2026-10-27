@@ -131,6 +131,13 @@ def _tls_server(tmp_path_factory, bucket: str):
         _discard_file(log_path)
 
 
+# Subcommands the server-side tooling relies on. The check is a subset test on
+# purpose: the client owns its CLI surface (SSOT), so a subcommand *added* there
+# must never fail a sibling repository's interop suite, while a removed or
+# renamed one still does.
+REQUIRED_CLIENT_SUBCOMMANDS = {"p2p", "server", "state", "trust", "derive-group-key"}
+
+
 class TestClientCliCapabilities:
     def test_client_capabilities_json_is_parseable(self):
         """The real client CLI emits a capabilities document the server-side
@@ -147,11 +154,12 @@ class TestClientCliCapabilities:
 
         doc = json.loads(result.stdout)
         assert "subcommands" in doc, doc
-        assert doc["subcommands"] == ["p2p", "server", "state", "trust"], doc["subcommands"]
+        advertised = set(doc["subcommands"])
+        assert advertised >= REQUIRED_CLIENT_SUBCOMMANDS, REQUIRED_CLIENT_SUBCOMMANDS - advertised
         assert "cli_options" in doc, doc
         cli_options = doc["cli_options"]
         assert isinstance(cli_options, dict), cli_options
-        assert set(cli_options) == {"p2p", "server", "state", "trust"}, cli_options
+        assert set(cli_options) >= REQUIRED_CLIENT_SUBCOMMANDS, cli_options
         # Every supported CLI surface is advertised; the conflict model is part
         # of the protocol capability set shared with the server (SSOT in
         # hsync-common). Sanity-check a few stable well-known flags.
