@@ -227,6 +227,7 @@ def fast_scrypt(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
         ("hsync_server.api.files.list", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.files.permissions", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.files.delete", "get_buckets_path", lambda: buckets),
+        ("hsync_server.api.files.rename", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.files.download", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.files.delta.apply", "get_buckets_path", lambda: buckets),
         ("hsync_server.api.files.delta.tokens", "get_buckets_path", lambda: buckets),
@@ -335,6 +336,7 @@ def test_app() -> Generator[FastAPI]:
         get_upload_status,
         patch_file_permissions,
         post_delta_signatures,
+        rename_file,
         upload_file,
     )
 
@@ -362,6 +364,7 @@ def test_app() -> Generator[FastAPI]:
     test_auth_router.add_api_route(
         "/api/v1/buckets/{bucket}/files", delete_file, methods=["DELETE"]
     )
+    test_auth_router.add_api_route("/api/v1/buckets/{bucket}/files", rename_file, methods=["PATCH"])
     test_auth_router.add_api_route(
         "/api/v1/buckets/{bucket}/tombstones", get_tombstones, methods=["GET"]
     )

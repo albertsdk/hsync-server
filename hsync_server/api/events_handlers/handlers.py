@@ -12,7 +12,7 @@ This module provides handler functions for different event types:
 - handle_symlink_event: Create or update symbolic links
 """
 
-from os import remove, rename, unlink, walk
+from os import remove, rename, unlink
 from os import symlink as os_symlink
 from pathlib import Path
 from shutil import rmtree
@@ -36,7 +36,12 @@ from hsync_server.api.file_utils import (
 from hsync_server.api.utils import set_directory_permissions
 from hsync_server.constants import ActionLabel
 from hsync_server.hashes import del_sha256_hash
-from hsync_server.tombstones import clear_deletion, clear_deletion_tree, record_path_deletion
+from hsync_server.tombstones import (
+    clear_deletion,
+    clear_deletion_tree,
+    record_deletion_tree,
+    record_path_deletion,
+)
 from hsync_server.versions import clear_version, move_version, move_version_prefix
 
 # ---------------------------------------------------------------------------
@@ -138,35 +143,6 @@ async def handle_modified_event(
     )
 
 
-def _record_tombstones_for_tree(dir_path: str, bucket_dir: str, bucket: str, cid: str) -> int:
-    """Mint causal tombstones for every file under *dir_path*.
-
-    A recursive ``deleted`` event for a directory replaces one delete event
-    per descendant, so the descendants' deletion markers must be recorded
-    here — the per-file branch of :func:`handle_deleted_event` never runs for
-    them. Mirrors that branch exactly: inherit the stored version clock, tick
-    by the deleting peer, drop the version entry; sentinels are per-peer
-    helpers and are never minted. Best-effort by contract: a failure to
-    record a marker must never abort the ``rmtree``.
-    """
-    recorded = 0
-    for root, _dirs, files in walk(dir_path):
-        for name in files:
-            child = str(Path(root) / name)
-            try:
-                child_obj = File.get(child)
-                sha256sum = child_obj.sha256sum if child_obj else None
-            except OSError:
-                sha256sum = None
-            try:
-                if record_path_deletion(bucket, bucket_dir, child, sha256sum=sha256sum, cid=cid):
-                    clear_version(bucket, bucket_dir, child)
-                    recorded += 1
-            except Exception as e:  # pragma: no cover - best-effort bookkeeping
-                log.debug(f"Could not record tombstone for {child}: {e}")
-    return recorded
-
-
 async def handle_deleted_event(
     src: dict[str, Any] | None,
     bucket_dir: str,
@@ -205,7 +181,7 @@ async def handle_deleted_event(
                 # that the rmtree then removes without a tombstone — a
                 # resurrection regression. Full loop-freedom requires a
                 # shared bucket/tree mutation lock (documented follow-up).
-                _record_tombstones_for_tree(dir_obj.path, bucket_dir, bucket, cid)
+                record_deletion_tree(bucket, bucket_dir, dir_obj.path, cid=cid)
                 log.info(f'{ActionLabel.DELETE} Deleted dir "{dir_obj.path}" (CID: {cid})')
                 rmtree(dir_obj.path, ignore_errors=False)
             return Event(cid, bucket_dir, bucket, EventName.deleted, dir_obj)

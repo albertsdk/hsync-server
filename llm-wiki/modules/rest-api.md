@@ -26,6 +26,7 @@ client mirrors cannot drift.
 | `POST /buckets/{bucket}/files` | `files/upload.upload_file` (`api/files/upload.py::upload_file`) | key | upload |
 | `GET /buckets/{bucket}/files/download` | `files/download.download_file` (`api/files/download.py::download_file`) | key | download |
 | `DELETE /buckets/{bucket}/files` | `files/delete.delete_file` (`api/files/delete.py::delete_file`) | key | default |
+| `PATCH /buckets/{bucket}/files` | `files/rename.rename_file` (`api/files/rename.py::rename_file`) | key | default |
 | `POST /buckets/{bucket}/tombstones` | `files/list.post_tombstones` (`api/files/list.py::post_tombstones`) | key | default |
 | `GET /buckets/{bucket}/presence` | `presence.get_presence` (`api/presence.py::get_presence`) | key | default |
 | `GET /health` | `health.root` (`api/health.py::root`) | none | — |
@@ -269,6 +270,40 @@ correctness over loop-freedom.
   client-side deletions into the same store. Its body is streamed with a 50 MB
   cap (`read_request_body_capped`, `api/utils.py::read_request_body_capped`) so a hostile member cannot
   buffer an unbounded body; an oversized body is a 400.
+
+## Rename (`api/files/rename.py::rename_file`)
+
+`PATCH …/files?src=&dst=&cid=[&expected_sha256&mtime&permissions]` — the
+zero-byte move a peer uses when it renamed a file while it was offline
+(ADR-0044). The same contract is served by the p2p master
+(`hsync-client`'s `p2p_server._handle_rename`), so one request shape covers both
+transports.
+
+- Both endpoints go through `resolve_within_bucket(..., resolve_final=False)`
+  (untrusted, bucket-confined, final component never dereferenced). A symlink
+  source is refused with 400: links replicate structurally through
+  `POST /symlinks`, never as a move.
+- `dst` must not exist (409, never an overwrite) and an `expected_sha256` that
+  no longer matches the source is a 409 — the caller then falls back to a normal
+  upload. The whole check+move runs without an `await` in between, so on the
+  single event loop it is atomic with respect to other requests (same reasoning
+  as the delete endpoint).
+- Causal bookkeeping mirrors the live `renamed` handler
+  (`api/events_handlers/handlers.py::handle_renamed_event`): a tombstone is
+  recorded for the source **before** the move
+  (`tombstones.py::record_path_deletion`; a directory mints one per descendant
+  through `tombstones.py::record_deletion_tree`, which the delete handler shares),
+  then `versions.py::move_version` / `versions.py::move_version_prefix` carry the
+  stored clock to the destination unchanged (a rename is not an edit) and
+  `clear_deletion` / `clear_deletion_tree` drop stale destination markers.
+- The response is `{info, file, version}` — the destination listing entry plus
+  the carried `VersionInfo` the caller records as its new merge base (a rename
+  never ticks a clock). Metadata (`mtime`, sanitized `permissions`) is applied so
+  the move converges what an upload would have carried, and the SHA-256 cache is
+  primed for the new path instead of re-hashing the moved file.
+- A `renamed` event goes to every connected peer (originator CID attached), so
+  online peers apply a local move; offline peers pair the resulting
+  delete+download on the client side.
 
 ## Delete (`api/files/delete.py::delete_file`)
 

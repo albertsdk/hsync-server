@@ -17,18 +17,21 @@ from os import walk
 from pathlib import Path
 
 from hsync_common.models.event import is_valid_cid
+from hsync_common.models.file import File
 from hsync_common.models.tombstone import TombstoneStore, relpath_in_bucket
+from loguru import logger as log
 
 from hsync_server.api.file_utils import is_sentinel_file
 from hsync_server.config import get_tombstone_ttl_days
 from hsync_server.store_registry import PerBucketStores, bucket_state_identity
-from hsync_server.versions import get_version_store
+from hsync_server.versions import clear_version, get_version_store
 
 __all__ = [
     "clear_deletion",
     "clear_deletion_tree",
     "get_tombstone_store",
     "record_deletion",
+    "record_deletion_tree",
     "record_path_deletion",
     "reset_cache",
 ]
@@ -113,6 +116,49 @@ def clear_deletion_tree(bucket: str, bucket_dir: str, abs_dir: str) -> None:
     for root, _dirs, files in walk(abs_dir):
         for name in files:
             clear_deletion(bucket, bucket_dir, str(Path(root) / name))
+
+
+def record_deletion_tree(
+    bucket: str,
+    bucket_dir: str,
+    abs_dir: str,
+    *,
+    cid: str | None = None,
+    clear_versions: bool = True,
+) -> int:
+    """Mint a causal tombstone for every file under *abs_dir*; return the count.
+
+    A recursive directory operation replaces one event per descendant, so the
+    descendants' markers must be recorded here — the single-path
+    :func:`record_path_deletion` never runs for them. Directories carry no
+    tombstones, sentinels are per-peer and never minted, and each call inherits
+    the stored version clock exactly like a single-path deletion (ADR-0003).
+
+    ``clear_versions`` distinguishes the two callers: a deletion drops each
+    file's version entry (a re-created path starts fresh), while a rename must
+    keep them — ownership moves to the destination through
+    :func:`hsync_server.versions.move_version_prefix`.
+
+    Best-effort by contract: a failure to record one marker must never abort
+    the surrounding filesystem operation.
+    """
+    recorded = 0
+    for root, _dirs, files in walk(abs_dir):
+        for name in files:
+            child = str(Path(root) / name)
+            try:
+                child_obj = File.get(child)
+                sha256sum = child_obj.sha256sum if child_obj else None
+            except OSError:
+                sha256sum = None
+            try:
+                if record_path_deletion(bucket, bucket_dir, child, sha256sum=sha256sum, cid=cid):
+                    if clear_versions:
+                        clear_version(bucket, bucket_dir, child)
+                    recorded += 1
+            except Exception as e:  # pragma: no cover - best-effort bookkeeping
+                log.debug(f"Could not record tombstone for {child}: {e}")
+    return recorded
 
 
 def reset_cache() -> None:

@@ -30,6 +30,7 @@ from hsync_server.api.files.permissions import (
     apply_metadata_to_existing_file,
     patch_file_permissions,
 )
+from hsync_server.api.files.rename import rename_file
 from hsync_server.api.files.symlinks import create_symlink
 from hsync_server.api.files.upload import upload_file
 
@@ -48,5 +49,6 @@ __all__ = [
     "patch_file_permissions",
     "post_delta_signatures",
     "post_tombstones",
+    "rename_file",
     "upload_file",
 ]

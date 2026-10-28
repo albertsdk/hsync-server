@@ -25,6 +25,7 @@ graph LR
             UF["POST .../buckets/:bucket/files"]
             DF["GET .../files/download"]
             RF["DELETE .../files"]
+            MV["PATCH .../files"]
             US["GET .../files/upload-status"]
             SL["POST .../buckets/:bucket/symlinks"]
         end
@@ -102,6 +103,7 @@ lifecycle.
 | `GET` | `/api/v1/buckets/{bucket}/files/download?filename={path}` | Download a file | 1000/min |
 | `GET` | `/api/v1/buckets/{bucket}/files/upload-status?filename={path}` | Check resumable-upload status (offset) | 500/min |
 | `PATCH` | `/api/v1/buckets/{bucket}/files/permissions?filename={path}&permissions={octal}` | Update a file's permissions only (no content upload) | 500/min |
+| `PATCH` | `/api/v1/buckets/{bucket}/files?src={path}&dst={path}` | Move/rename a file or directory (no content upload) | 500/min |
 | `GET` | `/api/v1/buckets/{bucket}/dirs` | List directory permissions in the bucket | 500/min |
 | `DELETE` | `/api/v1/buckets/{bucket}/files` | Delete a file | 500/min |
 
@@ -109,6 +111,36 @@ lifecycle.
 > zstd-compressed (`Content-Encoding: zstd`) when the file is eligible. The body
 > is never gzip-compressed, so a client that advertises gzip still receives the
 > original bytes and length, and byte-range resume stays exact.
+
+#### Moving a file (`PATCH …/files`)
+
+A peer that renamed a file while it was not connected to the server holds the
+old path in the server's listing and the new one locally, with the same content.
+This endpoint moves the server's copy instead of forcing a delete plus a full
+re-upload; it is the same contract the p2p master exposes, so one request shape
+serves both transports.
+
+Query parameters:
+
+| Parameter | Meaning |
+|-----------|---------|
+| `src` | Bucket-relative path of the existing entry (required) |
+| `dst` | Bucket-relative destination; must not exist (required) |
+| `cid` | Originator client id, used to attribute the broadcast |
+| `expected_sha256` | Optional guard: the move is refused unless the current content still hashes to this value |
+| `mtime`, `permissions` | Optional local metadata applied to the destination, so the move converges what an upload would have carried |
+
+Responses: `200` with `{info, file, version}` (the destination entry and the
+causal version the caller must record as its new merge base), `404` when the
+source is missing, `409` when the destination exists or the checksum guard
+fails, `400` for an unsafe path or a symlink (links replicate as links, not by
+move).
+
+The move is causal, not merely physical: the vacated path gets a deletion marker
+(so peers that were offline do not resurrect it), the destination's stale
+markers are dropped, and the stored version clock travels unchanged to the new
+path — a rename is not a content edit. Connected peers receive a `renamed` event
+and apply it as a local move.
 
 ### Presence
 

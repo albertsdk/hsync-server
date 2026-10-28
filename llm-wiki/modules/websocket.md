@@ -106,8 +106,9 @@ and treats this bookkeeping as best-effort so it never aborts the broadcast;
 `handle_deleted_event` records a tombstone (`tombstones.py::record_deletion`) so the deletion
 propagates and survives peer reconciliation; uploads of the same path later clear
 it (`clear_deletion`, `tombstones.py::clear_deletion`). For a recursive directory `deleted`,
-the descendant walk + hashing (`_record_tombstones_for_tree`,
-`api/events_handlers/handlers.py::_record_tombstones_for_tree`) and the `rmtree`
+the descendant walk + hashing (`record_deletion_tree`,
+`tombstones.py::record_deletion_tree`, shared with the
+rename endpoint) and the `rmtree`
 run **synchronously on the loop on purpose**: offloading them would let an
 upload publish a new descendant mid-walk that the `rmtree` then removes without
 a tombstone (a resurrection risk). Full loop-freedom here needs a bucket/
