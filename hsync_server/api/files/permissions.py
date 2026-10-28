@@ -12,6 +12,7 @@ WITHOUT any file payload crossing the wire. Clients use it for pure metadata
 convergence (no bytes are re-read or re-sent).
 """
 
+import hmac
 import json
 from pathlib import Path
 from typing import Annotated
@@ -19,6 +20,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from hsync_common.constants import MTIME_PROPAGATION_TOLERANCE_SECONDS
+from hsync_common.hashing import compute_sha256_async, is_sha256_hex
 from hsync_common.models.event import Event, EventName, is_valid_cid
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
@@ -39,6 +41,7 @@ from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
 from hsync_server.constants import ActionLabel
 from hsync_server.exceptions import (
+    ConflictError,
     InvalidFilenameError,
     InvalidPathError,
     InvalidPermissionFormatError,
@@ -147,16 +150,18 @@ async def patch_file_permissions(
     mtime: int = 0,
     vclock: str = "",
     version_id: str = "",
+    expected_sha256: str = "",
 ) -> JSONResponse:
     """
     Apply a content-unchanged metadata change to an existing file (no payload).
 
     Optimized branch of the upload same-SHA path: the client declares the
     filename (bucket-relative), the expected permissions, an optional corrected
-    ``mtime`` and its CID; the server sanitizes/applies what diverges and
-    re-broadcasts a ``modified`` event to the other connected clients. No file
-    bytes cross the wire. Both a chmod and a plain ``touch`` (same content,
-    newer mtime) converge through this route.
+    ``mtime``, the content hash it believes the path still holds and its CID;
+    the server sanitizes/applies what diverges and re-broadcasts a ``modified``
+    event to the other connected clients. No file bytes cross the wire. Both a
+    chmod and a plain ``touch`` (same content, newer mtime) converge through
+    this route.
 
     Args:
         bucket: Target bucket name.
@@ -167,6 +172,10 @@ async def patch_file_permissions(
         mtime: Corrected Unix mtime to propagate (0 = leave unchanged).
         vclock: JSON-encoded effective vector clock of the sender ("" = none).
         version_id: Effective version id of the sender ("" = none).
+        expected_sha256: Optional guard. The caller only reached this branch
+            because its content matched the listing; when the path no longer
+            holds that content a concurrent write happened, so the metadata is
+            NOT applied and the caller falls back to the ordinary upload path.
 
     Returns:
         JSON response: 200 on metadata updated, 404 when the file does
@@ -177,7 +186,8 @@ async def patch_file_permissions(
         InvalidPathError: If path escapes the bucket.
         InvalidPermissionFormatError: If permission format is invalid.
         InvalidFilenameError: If the basename is forbidden or reserved.
-        ValidationError: If the declared CID is malformed.
+        ValidationError: If the declared CID or checksum is malformed.
+        ConflictError: If the path's content no longer matches the declaration.
     """
     check_bucket_access(bucket, ctx)
 
@@ -217,6 +227,27 @@ async def patch_file_permissions(
                 "file": f"{bucket}/{filename}",
             },
         )
+
+    if expected_sha256:
+        # The caller reached this branch because its content matched the
+        # listing; if the path no longer holds that content (a concurrent
+        # upload), applying the mode/mtime would touch bytes nobody saw. The
+        # 409 makes the caller fall back to the ordinary upload path, which
+        # resolves the content first.
+        if not is_sha256_hex(expected_sha256):
+            raise ValidationError(
+                message="Invalid expected_sha256",
+                details={"filename": filename},
+            )
+        current_sha = get_sha256_hash(file_location)
+        if not current_sha:
+            # Cold cache: hash off the loop rather than on it.
+            current_sha = await compute_sha256_async(file_location)
+        if not current_sha or not hmac.compare_digest(current_sha, expected_sha256.lower()):
+            raise ConflictError(
+                message="File content changed; metadata not applied",
+                details={"bucket": bucket, "filename": filename},
+            )
 
     changed = await apply_metadata_to_existing_file(
         bucket=bucket,

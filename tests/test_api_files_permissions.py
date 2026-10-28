@@ -231,6 +231,68 @@ class TestPatchFilePermissions:
         assert response.status_code == 200
         assert oct(Path(nested).stat().st_mode & 0o777) == "0o640"
 
+    @pytest.mark.asyncio
+    async def test_patch_applies_when_the_content_guard_matches(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """The metadata fast path is safe only while the content is unchanged."""
+        bucket_path = os.path.join(temp_buckets_dir, "permguard1")
+        os.makedirs(bucket_path)
+        content = b"guarded"
+        await _upload(client, "permguard1", "guarded.bin", content)
+
+        response = await client.patch(
+            "/api/v1/buckets/permguard1/files/permissions",
+            params={
+                "filename": "guarded.bin",
+                "permissions": "640",
+                "expected_sha256": hashlib.sha256(content).hexdigest(),
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert oct(Path(bucket_path, "guarded.bin").stat().st_mode & 0o777) == "0o640"
+
+    @pytest.mark.asyncio
+    async def test_patch_refuses_a_stale_content_guard(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """A concurrent write wins: the caller must re-upload instead."""
+        bucket_path = os.path.join(temp_buckets_dir, "permguard2")
+        os.makedirs(bucket_path)
+        await _upload(client, "permguard2", "changed.bin", b"new content")
+
+        response = await client.patch(
+            "/api/v1/buckets/permguard2/files/permissions",
+            params={
+                "filename": "changed.bin",
+                "permissions": "640",
+                "expected_sha256": hashlib.sha256(b"what the peer saw").hexdigest(),
+            },
+        )
+
+        assert response.status_code == 409
+        assert oct(Path(bucket_path, "changed.bin").stat().st_mode & 0o777) != "0o640"
+
+    @pytest.mark.asyncio
+    async def test_patch_rejects_a_malformed_content_guard(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        bucket_path = os.path.join(temp_buckets_dir, "permguard3")
+        os.makedirs(bucket_path)
+        await _upload(client, "permguard3", "bad.bin", b"bytes")
+
+        response = await client.patch(
+            "/api/v1/buckets/permguard3/files/permissions",
+            params={
+                "filename": "bad.bin",
+                "permissions": "640",
+                "expected_sha256": "not-a-digest",
+            },
+        )
+
+        assert response.status_code == 400
+
 
 class TestListDirs:
     """GET /api/v1/buckets/{bucket}/dirs behaviour."""
