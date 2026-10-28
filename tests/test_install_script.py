@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -11,25 +12,74 @@ INSTALL_SCRIPT = PROJECT_ROOT / "install.sh"
 COMPOSE_FILE = PROJECT_ROOT / "compose.yaml"
 
 
+def _restricted_bin(tmp_path: Path) -> Path:
+    """A minimal PATH dir without docker, so a real docker on the runner cannot
+    leak into the "docker missing" preflight tests."""
+    bin_dir = tmp_path / "restricted-bin"
+    bin_dir.mkdir(exist_ok=True)
+    for name in (
+        "bash",
+        "sh",
+        "uname",
+        "readlink",
+        "id",
+        "date",
+        "sleep",
+        "mkdir",
+        "chmod",
+        "mv",
+        "rm",
+        "cp",
+        "grep",
+        "openssl",
+    ):
+        real = shutil.which(name)
+        if real is not None:
+            (bin_dir / name).symlink_to(real)
+    return bin_dir
+
+
 def _write_fake_commands(
-    tmp_path: Path, *, snap_docker: bool = False, config_fails: bool = False
+    tmp_path: Path,
+    *,
+    snap_docker: bool = False,
+    config_fails: bool = False,
+    with_docker: bool = True,
+    compose_version_fails: bool = False,
+    compose_v1: bool = False,
+    daemon_message: str | None = None,
 ) -> Path:
     docker_args = tmp_path / "docker.args"
     # A snap-packaged docker is exposed through /snap/bin; mirror that layout so
     # the installer's snap detection sees the same path shape.
     docker_dir = tmp_path / "snap" / "bin" if snap_docker else tmp_path
     docker_dir.mkdir(parents=True, exist_ok=True)
-    docker = docker_dir / "docker"
-    docker_body = '#!/usr/bin/env bash\nprintf \'%s\\n\' "$@" >> "$HSYNC_FAKE_DOCKER_ARGS"\n'
-    if config_fails:
-        docker_body += (
-            'if [[ "$*" == *" config "* ]]; then\n'
-            "  printf 'open /.env: permission denied\\n' >&2\n"
-            "  exit 1\n"
-            "fi\n"
-        )
-    docker.write_text(docker_body + "exit 0\n")
-    docker.chmod(0o755)
+    if with_docker:
+        docker = docker_dir / "docker"
+        docker_body = '#!/usr/bin/env bash\nprintf \'%s\\n\' "$@" >> "$HSYNC_FAKE_DOCKER_ARGS"\n'
+        if compose_version_fails:
+            docker_body += 'if [[ "$1" == "compose" && "$2" == "version" ]]; then\n  exit 1\nfi\n'
+        if daemon_message is not None:
+            docker_body += (
+                'if [[ "$1" == "info" ]]; then\n'
+                "  printf '%s\\n' \"${HSYNC_FAKE_DOCKER_INFO:-}\" >&2\n"
+                "  exit 1\n"
+                "fi\n"
+            )
+        if config_fails:
+            docker_body += (
+                'if [[ "$*" == *" config "* ]]; then\n'
+                "  printf 'open /.env: permission denied\\n' >&2\n"
+                "  exit 1\n"
+                "fi\n"
+            )
+        docker.write_text(docker_body + "exit 0\n")
+        docker.chmod(0o755)
+
+    if compose_v1:
+        compose_v1_bin = tmp_path / "docker-compose"
+        compose_v1_bin.write_text("#!/usr/bin/env bash\nexit 0\n")
+        compose_v1_bin.chmod(0o755)
 
     openssl = tmp_path / "openssl"
     openssl.write_text("#!/usr/bin/env bash\nprintf '0123456789abcdef%.0s' {1..4}\nprintf '\\n'\n")
@@ -56,14 +106,31 @@ def _run_installer(
     install_dir: Path | None = None,
     config_fails: bool = False,
     use_default_dir: bool = False,
+    with_docker: bool = True,
+    compose_version_fails: bool = False,
+    compose_v1: bool = False,
+    daemon_message: str | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], Path, list[str]]:
-    docker_args = _write_fake_commands(tmp_path, snap_docker=snap_docker, config_fails=config_fails)
+    docker_args = _write_fake_commands(
+        tmp_path,
+        snap_docker=snap_docker,
+        config_fails=config_fails,
+        with_docker=with_docker,
+        compose_version_fails=compose_version_fails,
+        compose_v1=compose_v1,
+        daemon_message=daemon_message,
+    )
     if install_dir is None:
         install_dir = tmp_path / "installation"
     env = os.environ.copy()
-    # Prepend both the plain and the snap-style bin dir; only one holds `docker`.
-    env["PATH"] = os.pathsep.join([str(tmp_path), str(tmp_path / "snap" / "bin"), env["PATH"]])
+    if with_docker:
+        # Prepend both the plain and the snap-style bin dir; only one holds `docker`.
+        env["PATH"] = os.pathsep.join([str(tmp_path), str(tmp_path / "snap" / "bin"), env["PATH"]])
+    else:
+        env["PATH"] = str(_restricted_bin(tmp_path))
     env["HSYNC_FAKE_DOCKER_ARGS"] = str(docker_args)
+    if daemon_message is not None:
+        env["HSYNC_FAKE_DOCKER_INFO"] = daemon_message
     if extra_env:
         env.update(extra_env)
     cmd = [str(INSTALL_SCRIPT)]
@@ -334,3 +401,63 @@ def test_compose_failure_without_snap_adds_no_snap_hint(tmp_path: Path):
     assert result.returncode == 1
     assert "permission denied" in result.stderr
     assert "Warning: docker is the snap package" not in result.stderr
+
+
+# --- Prerequisite guidance ---------------------------------------------------
+
+
+def test_dry_run_works_without_docker(tmp_path: Path):
+    result, install_dir, _ = _run_installer(tmp_path, "--dry-run", with_docker=False)
+
+    assert result.returncode == 0, result.stderr
+    assert "Dry run" in result.stdout
+    assert not install_dir.exists()
+
+
+def test_missing_docker_prints_install_guidance(tmp_path: Path):
+    result, install_dir, _ = _run_installer(tmp_path, "--no-start", with_docker=False)
+
+    assert result.returncode == 1
+    assert "required command not found: docker" in result.stderr
+    assert "docs.docker.com" in result.stderr
+    assert not install_dir.exists()
+
+
+def test_docker_compose_v2_missing_prints_guidance(tmp_path: Path):
+    result, install_dir, _ = _run_installer(tmp_path, "--no-start", compose_version_fails=True)
+
+    assert result.returncode == 1
+    assert "Docker Compose v2 is required" in result.stderr
+    assert "docs.docker.com/compose/install" in result.stderr
+    assert not install_dir.exists()
+
+
+def test_docker_compose_v1_only_is_called_out(tmp_path: Path):
+    result, _, _ = _run_installer(
+        tmp_path, "--no-start", compose_version_fails=True, compose_v1=True
+    )
+
+    assert result.returncode == 1
+    assert "Compose v1" in result.stderr
+
+
+def test_docker_daemon_unreachable_prints_start_guidance(tmp_path: Path):
+    result, install_dir, _ = _run_installer(
+        tmp_path,
+        daemon_message="Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
+    )
+
+    assert result.returncode == 1
+    assert "Cannot reach the Docker daemon" in result.stderr
+    assert not install_dir.exists()
+
+
+def test_docker_permission_denied_prints_group_guidance(tmp_path: Path):
+    result, install_dir, _ = _run_installer(
+        tmp_path,
+        daemon_message="permission denied while trying to connect to the Docker daemon socket",
+    )
+
+    assert result.returncode == 1
+    assert "usermod -aG docker" in result.stderr
+    assert not install_dir.exists()

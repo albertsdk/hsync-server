@@ -16,8 +16,12 @@ directory, and verifies that the server becomes healthy.
 - OpenSSL
 - `curl` and `sha256sum` for the verified download shown below
 
-Docker must already be installed. The installer never invokes `sudo`, changes
-firewall rules, or installs system packages.
+Docker must already be installed. If it is missing — or the Compose v2 plugin is
+missing, or the daemon is not running — the installer stops before writing anything
+and prints the install commands for your platform together with the official Docker
+docs. It never installs Docker and never invokes `sudo`; it only prints the commands
+for you to run. See the
+[FAQ](faq.md#installer-fails-with-required-command-not-found-docker).
 
 ### Docker installed as a snap
 

@@ -128,6 +128,17 @@ the server-local choices not big enough for an ADR.
   (`compute_sha256_async`) or `FileResponse` — a 500 on a benign concurrent
   overwrite (`api/files/download.py::download_file`). The checksum read now also
   maps a vanished file to the same 404 the stat produces.
+- **`install.sh` prints prerequisite guidance instead of a bare failure.**
+  Missing prerequisites keep the existing final error lines
+  (`required command not found: docker`, `Docker Compose v2 is required`) but
+  first print per-distro install commands and the canonical Docker docs URLs
+  (family from `/etc/os-release`, OS from `uname`); the daemon check
+  (`docker info`, bounded by `timeout`/`gtimeout`) runs only when starting, so
+  `--no-start` stays client-side, and other missing tools (`openssl`/`tar`/
+  `curl`) get a one-line hint. Guidance is printed, never executed, so the
+  "never installs Docker / never runs sudo" contract holds; it is duplicated in
+  `hsync-bootnode/install.sh` because each `install.sh` ships as a standalone
+  release asset (`tests/test_install_script.py` covers it).
 
 ## House rules (from `AGENTS.md`)
 

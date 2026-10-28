@@ -211,6 +211,29 @@ so `docker compose` cannot load `.env`. Install Docker Engine instead of the
 snap, or use a non-hidden `--install-dir` — see
 [Getting Started — Docker installed as a snap](getting-started-script.md#docker-installed-as-a-snap).
 
+### Installer fails with "required command not found: docker"
+
+```text
+Error: required command not found: docker
+```
+
+The server runs as a container, so the installer needs Docker Engine (or Docker
+Desktop) and the Compose v2 plugin before doing anything. It never installs Docker
+itself: it prints the install commands for your platform (Debian/Ubuntu,
+Fedora/RHEL, Arch, openSUSE, Alpine, macOS) and the official docs, then stops
+without writing anything.
+
+Install Docker, make sure the daemon is running
+(`sudo systemctl enable --now docker`) and your user is in the `docker` group
+(`sudo usermod -aG docker "$USER"`, then log out and back in), and re-run the same
+command. If the failure is `Error: Docker Compose v2 is required`, the Compose v2
+plugin is missing — Docker Compose v1 (`docker-compose`) is not supported.
+
+Prefer not to run Docker? Use the Debian package
+([getting-started-deb.md](getting-started-deb.md)) or run from source
+([getting-started-source.md](getting-started-source.md)). See also
+[Getting Started — Prerequisites](getting-started-script.md#prerequisites).
+
 ### Server won't start
 
 **"Address already in use" on port 9753:**
