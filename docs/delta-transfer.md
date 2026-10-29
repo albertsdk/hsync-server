@@ -179,7 +179,7 @@ export HSYNC_DELTA_ENABLED=false
 ## Capability negotiation
 
 Delta transfer is advertised as a **capability token** (`delta`) in the REST
-handshake and as a **TXT record key** (`delta=true`) in LAN mDNS discovery.
+handshake and as a **TXT record key** (`delta=true`) in LAN mDNS rendezvous.
 Peers only attempt delta transfer when **both** sides support it.
 
 If a peer does not advertise the `delta` capability, all transfers fall back to

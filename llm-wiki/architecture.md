@@ -5,14 +5,14 @@ real-time event fan-out. Bucket **bytes** are directories on disk; causal
 versions, tombstones, and accounts live in SQLite: one DB per bucket
 (`server/<bucket>.db`) plus a global `auth.db` (ADR-0025).
 
-## Bootstrap (`main.py`)
+## Rendezvous (`main.py`)
 
 `app = FastAPI(...)` (`main.py::app`) with a `lifespan` (`main.py::lifespan`) that
-bootstraps the admin account (via `auth_store.bootstrap_admin`) and preloads the
+rendezvouss the admin account (via `auth_store.rendezvous_admin`) and preloads the
 SHA-256 cache via `set_sha256_hashes` (`main.py::lifespan` → `hashes.py::set_sha256_hashes`).
-Without `HSYNC_ADMIN_KEY`, `auth_store/accounts.py::AuthStore.bootstrap_admin`
+Without `HSYNC_ADMIN_KEY`, `auth_store/accounts.py::AuthStore.rendezvous_admin`
 delivers the generated token on stderr only for a TTY; otherwise it writes
-`<state_dir>/bootstrap_admin_token` (mode 0600), so it never reaches a captured
+`<state_dir>/rendezvous_admin_token` (mode 0600), so it never reaches a captured
 log stream. Entry points: `main` Typer CLI (`__main__.py::main`) and `run`
 (`__main__.py::run`); console invocation goes through `__main__.py`.
 

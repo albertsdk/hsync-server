@@ -8,7 +8,7 @@ readonly REPO="albertsdk/hsync-server"
 readonly IMAGE_REPO="ghcr.io/albertsdk/hsync-server"
 # The Sigstore identity this installer trusts: the release workflow that signs
 # the image, authenticated through GitHub Actions OIDC. The server signs on tag
-# pushes only, so the identity is narrower than the bootnode's.
+# pushes only, so the identity is narrower than the rendezvous's.
 readonly COSIGN_IDENTITY_REGEXP='^https://github\.com/albertsdk/hsync-server/\.github/workflows/release\.yml@refs/tags/.*$'
 readonly COSIGN_OIDC_ISSUER="https://token.actions.githubusercontent.com"
 

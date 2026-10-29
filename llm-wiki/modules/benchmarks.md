@@ -115,7 +115,7 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
   `hsync_common`). This is the irreducible floor without dropping those
   dependencies.
 * **Lifespan is small on top** — spawn → `GET /health` 200 ≈ 1.1 s with empty
-  buckets; the bootstrap + empty preload + synchronous VACUUM add ~200–300 ms.
+  buckets; the rendezvous + empty preload + synchronous VACUUM add ~200–300 ms.
 * **Hash preload scales with data** — with `--files 5000` readiness rises to
   ≈ 1.3 s, i.e. `set_sha256_hashes` (`hashes.py::set_sha256_hashes`) adds ~200 ms for 5000 files (linear).
 * **Decision: preload is NOT removed.** The preload is a pure freshness-checked

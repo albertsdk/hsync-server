@@ -140,7 +140,7 @@ ${BOLD}Environment Variables:${RESET}
     HSYNC_PORT        Server port (default: 9753)
     HSYNC_LOG_LEVEL   Log level: debug, info, warning, error (default: info)
     HSYNC_WORKERS     Number of workers (default: 1)
-    HSYNC_ADMIN_KEY   Bootstrap admin secret (64 lowercase hex characters)
+    HSYNC_ADMIN_KEY   Rendezvous admin secret (64 lowercase hex characters)
     HSYNC_TZ          Timezone in IANA format (default: UTC)
     HSYNC_VERSION     Image tag version (default: 1.0.0)
     HSYNC_DATA_DIR    Host data directory (default: ./hsync-data)

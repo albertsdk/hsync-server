@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2025 Alberto Basso
 
-"""Bootstrap admin token delivery.
+"""Rendezvous admin token delivery.
 
 The generated token is a full admin credential: it must never be written to a
 captured stream (systemd journal, container log driver). Interactive terminals
@@ -31,10 +31,10 @@ def test_generated_token_is_written_to_0600_file_when_not_a_tty(tmp_path, monkey
     monkeypatch.setattr("hsync_server.config.get_state_dir", lambda: str(state_dir))
     monkeypatch.setattr("sys.stderr", io.StringIO())  # isatty() -> False
 
-    token = _store(tmp_path).bootstrap_admin(None)
+    token = _store(tmp_path).rendezvous_admin(None)
 
     assert token is not None
-    token_file = state_dir / "bootstrap_admin_token"
+    token_file = state_dir / "rendezvous_admin_token"
     assert token_file.read_text(encoding="utf-8").strip() == token
     assert stat.S_IMODE(token_file.stat().st_mode) == 0o600
 
@@ -46,8 +46,8 @@ def test_generated_token_is_printed_on_a_tty(tmp_path, monkeypatch):
     stderr = _TtyStderr()
     monkeypatch.setattr("sys.stderr", stderr)
 
-    token = _store(tmp_path).bootstrap_admin(None)
+    token = _store(tmp_path).rendezvous_admin(None)
 
     assert token is not None
     assert token in stderr.getvalue()
-    assert not (state_dir / "bootstrap_admin_token").exists()
+    assert not (state_dir / "rendezvous_admin_token").exists()

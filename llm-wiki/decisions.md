@@ -63,7 +63,7 @@ the server-local choices not big enough for an ADR.
   `SHA256SUMS`, the Linux native binaries (`linux-amd64`/`linux-arm64`) and the
   `.deb` packages (`amd64`/`arm64`/`armhf`) and `.rpm` packages
   (`x86_64`/`aarch64`) as GitHub release assets — the same asset set as
-  `hsync-bootnode`. Build context is the repo root with
+  `hsync-rendezvous`. Build context is the repo root with
   `../hsync-common` checked out alongside, matching `docker.sh`/`Dockerfile`.
   `install.sh` generates local secrets and deploys that pinned image; the
   container image remains the primary distribution (a standalone executable is
@@ -92,15 +92,15 @@ the server-local choices not big enough for an ADR.
   persisted as `HSYNC_IMAGE` on install **and** on re-run). A failure prints
   cosign's own diagnostics and, when `cosign_major_version` < 3, names the
   upgrade — current releases use the v3 bundle format that a v2 binary cannot
-  read. Mirrors `hsync-bootnode` decision 74.
+  read. Mirrors `hsync-rendezvous` decision 74.
 - **Uniform `run.sh` (clone-and-run)**: a thin wrapper (`run.sh`) that checks the
   sibling `../hsync-common`, creates the in-project `.venv` via Poetry (main
-  group only) and execs `hsync-server` — the mirror of `hsync-bootnode/run.sh`.
+  group only) and execs `hsync-server` — the mirror of `hsync-rendezvous/run.sh`.
   The five installation methods are one page per method
   (`docs/getting-started-<script|docker|deb|rpm|source>.md`) behind a link-only
-  chooser (`docs/getting-started.md`), kept identical in shape to the bootnode.
+  chooser (`docs/getting-started.md`), kept identical in shape to the rendezvous.
 - **Standalone binary build** (`compile.sh`, targets `native`/`rpi`): a PyInstaller
-  onefile freeze mirroring the client/bootnode build scripts. `native` uses the
+  onefile freeze mirroring the client/rendezvous build scripts. `native` uses the
   host virtualenv's Poetry `build` group; `rpi` cross-builds armhf/arm64 in
   Docker from `packaging/rpi/Dockerfile.builder` (Python 3.14.9, Poetry, and the
   Rust toolchain needed for the armhf `cryptography` source build) under
@@ -108,7 +108,7 @@ the server-local choices not big enough for an ADR.
   `python -m hsync_server`; the container image stays the primary distribution.
 - **Debian and RPM packaging** (`compile.sh`, targets `deb`/`deb-all` and
   `rpm`/`rpm-all`): a `--onedir` PyInstaller freeze staged as a `.deb`/`.rpm`,
-  reusing the packaging machinery of hsync-client/hsync-bootnode
+  reusing the packaging machinery of hsync-client/hsync-rendezvous
   (`packaging/deb/`, `_semver_to_debian`, `_finalize_deb_stage`,
   `_inject_shlib_depends` via `dpkg-shlibdeps`; `packaging/rpm/` reuses the same
   payload plus `_semver_to_rpm`/`_arch_to_rpm`). The
@@ -150,7 +150,7 @@ the server-local choices not big enough for an ADR.
   `--no-start` stays client-side, and other missing tools (`openssl`/`tar`/
   `curl`) get a one-line hint. Guidance is printed, never executed, so the
   "never installs Docker / never runs sudo" contract holds; it is duplicated in
-  `hsync-bootnode/install.sh` because each `install.sh` ships as a standalone
+  `hsync-rendezvous/install.sh` because each `install.sh` ships as a standalone
   release asset (`tests/test_install_script.py` covers it).
 
 ## House rules (from `AGENTS.md`)

@@ -23,8 +23,8 @@ from hsync_server.constants import ACCOUNT_ID_ALPHABET, ACCOUNT_ID_LEN, mint_aln
 __all__ = [
     "ACCOUNT_ID_ALPHABET",
     "ACCOUNT_ID_LEN",
-    "BOOTSTRAP_ADMIN_ID",
-    "BOOTSTRAP_ADMIN_NAME",
+    "RENDEZVOUS_ADMIN_ID",
+    "RENDEZVOUS_ADMIN_NAME",
     "KEY_PREFIX_LEN",
     "LAST_USED_THROTTLE",
     "SALT_LEN",
@@ -62,9 +62,9 @@ SALT_LEN = 16
 # scrypt requires ~128*N*r bytes; with N=2^17, r=8 → ~128 MB.
 SCRYPT_MAXMEM = int(os.environ.get("HSYNC_SCRYPT_MAXMEM", str(256 * 1024 * 1024)))
 
-# Bootstrap
-BOOTSTRAP_ADMIN_ID = "HsyncAdminBootstrap01"
-BOOTSTRAP_ADMIN_NAME = "admin"
+# Rendezvous
+RENDEZVOUS_ADMIN_ID = "HsyncAdminRendezvous01"
+RENDEZVOUS_ADMIN_NAME = "admin"
 
 # Name validation
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -79,11 +79,11 @@ _SCRYPT_PHC_PARTS = 5
 def mint_account_id() -> str:
     """Generate a 21-char alphanumeric account id (same style as ``get_server_cid``).
 
-    The reserved bootstrap id ``BOOTSTRAP_ADMIN_ID`` is never minted here.
+    The reserved rendezvous id ``RENDEZVOUS_ADMIN_ID`` is never minted here.
     """
     while True:
         cid = mint_alnum_id()
-        if cid != BOOTSTRAP_ADMIN_ID:
+        if cid != RENDEZVOUS_ADMIN_ID:
             return cid
 
 

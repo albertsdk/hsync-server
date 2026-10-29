@@ -14,7 +14,7 @@ managed host prefer the [installer script](getting-started-script.md) or the
 - Poetry
 - The `hsync-common` repository checked out as a sibling of `hsync-server`
   (a path dependency of the project)
-- OpenSSL (to generate the bootstrap secret shown below)
+- OpenSSL (to generate the rendezvous secret shown below)
 
 ## Install and run
 
@@ -47,7 +47,7 @@ export HSYNC_ADMIN_KEY="$(openssl rand -hex 32)"
 - Bucket data is stored under `buckets/` and the causal-state database under
   `state/`, both under the project root.
 - On the **first start** the certificate is generated in `certs/`; with
-  `HSYNC_ADMIN_KEY` set, the bootstrap account is created silently.
+  `HSYNC_ADMIN_KEY` set, the rendezvous account is created silently.
 
 Set the secrets **before the first start**. Verify it is healthy in another
 terminal:

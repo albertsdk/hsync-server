@@ -34,7 +34,7 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
   knobs).
 - Validation sets: `VALID_LOG_LEVELS` (`config.py::VALID_LOG_LEVELS`), `VALID_LOG_FORMATS` (`config.py::VALID_LOG_FORMATS`).
 - Admin-key validity (64 lowercase hex) enforced by a field_validator at load
-  time; the `lifespan` bootstraps the admin account (`main.py::lifespan`). A leftover
+  time; the `lifespan` rendezvouss the admin account (`main.py::lifespan`). A leftover
   `HSYNC_API_KEY` in the environment fails startup with a migration message.
 - Delta transfer config that **takes effect**: `delta_enabled` (default
   `true`), `delta_token_ttl` (300s), `rate_limit_delta` ("100/minute").

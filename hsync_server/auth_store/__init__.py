@@ -3,7 +3,7 @@
 
 """Server-only account and membership store backed by ``state DB``.
 
-This package is the single DRY path for REST, WS, CLI and bootstrap auth
+This package is the single DRY path for REST, WS, CLI and rendezvous auth
 state.  The implementation is split by responsibility:
 
 * ``credentials`` — id/secret minting, token parsing, scrypt hashing (pure)
@@ -19,7 +19,7 @@ here, so ``from hsync_server.auth_store import <name>`` keeps working unchanged.
 
 Consumers: ``hsync_server.auth`` (verify + AuthContext), ``hsync_server.api``
 (buckets, admin, members, events), ``hsync_server.__main__`` (CLI admin),
-``hsync_server.main`` (lifespan bootstrap).
+``hsync_server.main`` (lifespan rendezvous).
 """
 
 from hsync_server.exceptions import ConflictError, ForbiddenError
@@ -30,10 +30,10 @@ from .credentials import (
     _DUMMY_PHC,
     ACCOUNT_ID_ALPHABET,
     ACCOUNT_ID_LEN,
-    BOOTSTRAP_ADMIN_ID,
-    BOOTSTRAP_ADMIN_NAME,
     KEY_PREFIX_LEN,
     LAST_USED_THROTTLE,
+    RENDEZVOUS_ADMIN_ID,
+    RENDEZVOUS_ADMIN_NAME,
     SALT_LEN,
     SCRYPT_DKLEN,
     SCRYPT_N,
@@ -58,8 +58,8 @@ from .store import AuthStore, get_auth_store, reset_auth_cache
 __all__ = [
     "ACCOUNT_ID_ALPHABET",
     "ACCOUNT_ID_LEN",
-    "BOOTSTRAP_ADMIN_ID",
-    "BOOTSTRAP_ADMIN_NAME",
+    "RENDEZVOUS_ADMIN_ID",
+    "RENDEZVOUS_ADMIN_NAME",
     "KEY_PREFIX_LEN",
     "LAST_USED_THROTTLE",
     "SALT_LEN",

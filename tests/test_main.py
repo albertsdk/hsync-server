@@ -137,7 +137,7 @@ class TestVersionAndEnvFile:
 class TestAdminBucketCli:
     def test_bucket_create_creates_directory_and_owner(self):
         """`admin bucket create` creates the bucket dir and assigns the owner."""
-        from hsync_server.auth_store import BOOTSTRAP_ADMIN_ID, get_auth_store
+        from hsync_server.auth_store import RENDEZVOUS_ADMIN_ID, get_auth_store
         from hsync_server.config import get_buckets_path
 
         result = runner.invoke(cli.app, ["admin", "bucket", "create", "--bucket", "photos"])
@@ -148,7 +148,7 @@ class TestAdminBucketCli:
 
         assert (Path(get_buckets_path()) / "photos").is_dir()
         store = get_auth_store()
-        assert store.get_owner("photos").id == BOOTSTRAP_ADMIN_ID  # type: ignore[union-attr]
+        assert store.get_owner("photos").id == RENDEZVOUS_ADMIN_ID  # type: ignore[union-attr]
 
     def test_bucket_create_duplicate_fails(self):
         """Creating an existing bucket fails with exit code 1."""
@@ -192,7 +192,7 @@ class TestAdminBucketCli:
             store._begin()
             store.conn.execute(
                 "INSERT INTO bucket_members (bucket, client_id, role) VALUES (?, ?, 'owner')",
-                ("ghostbucket", "HsyncAdminBootstrap01"),
+                ("ghostbucket", "HsyncAdminRendezvous01"),
             )
             store._commit()
 
@@ -337,7 +337,7 @@ class TestFastApiApplication:
     async def test_lifespan_preloads_hashes_from_configured_bucket_path(
         self, tmp_path, monkeypatch
     ):
-        """Lifespan bootstraps admin and preloads hashes from the configured bucket path."""
+        """Lifespan rendezvouss admin and preloads hashes from the configured bucket path."""
         from hsync_common.models.sqlstore import reset_state_db_cache
 
         from hsync_server import main as app_main

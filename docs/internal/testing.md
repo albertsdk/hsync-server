@@ -103,7 +103,7 @@ tests/
 
 | Fixture | Scope | Purpose |
 |---------|-------|---------|
-| `fast_scrypt` (autouse) | function | Low-cost scrypt params, isolated temp `state/` and `buckets/` dirs (monkeypatched per module), cache resets, admin bootstrap |
+| `fast_scrypt` (autouse) | function | Low-cost scrypt params, isolated temp `state/` and `buckets/` dirs (monkeypatched per module), cache resets, admin rendezvous |
 | `no_tests_touch_real_repo_state` (autouse) | function | Fails any test that mutates the repository's real `state/server/` DBs or creates/removes dirs under the real `buckets/` |
 | `deterministic_cli_output` (autouse) | function | Forced plain, uncolored CLI output (CI-safe assertions) |
 | `_prevent_os_environ_leakage` (autouse) | function | Removes env vars added by a test on teardown |
@@ -152,7 +152,7 @@ The suite enforces isolation at **three independent levels**:
    `state/` and `buckets/` dirs: `get_state_dir` and `get_buckets_path` are
    monkeypatched in every module that binds them at import time (the list in
    `conftest.py` is the single place to extend when a new module imports those
-   helpers), followed by cache resets and admin bootstrap.
+   helpers), followed by cache resets and admin rendezvous.
 2. **Black-box harness** — the live server runs as a **subprocess** whose
    environment is scrubbed of every `HSYNC_*` variable and re-pointed to
    `tempfile.mkdtemp` directories (`conftest.py:_start_live_server`).
@@ -168,7 +168,7 @@ The suite enforces isolation at **three independent levels**:
 Configuration is isolated separately by **`_scrub_hsync_env` (autouse)**: every
 in-process test runs with the developer's `HSYNC_*` variables removed (only
 `HSYNC_ADMIN_KEY` survives — the conftest sets it at import time for the
-bootstrap admin), so `Settings()` default-value assertions are hermetic and
+rendezvous admin), so `Settings()` default-value assertions are hermetic and
 independent of the execution environment; `monkeypatch.delenv` restores them on
 teardown. This mirrors the same fixture in `hsync-client`'s conftest. Note it
 covers per-test reads only: the rate limiter captures `HSYNC_RATE_LIMIT_*` at
@@ -294,7 +294,7 @@ HSYNC_BB_SERVER=1 .venv/bin/python -m pytest tests/test_bb_*.py
 `test_bb_security.py` is an **adversarial** black‑box suite (penetration‑style
 probes over the public HTTP/WS surface). Because it sends deliberately hostile
 traffic, it is gated **in addition** by `HSYNC_BB_SECURITY=1` (mirrors
-`hsync-bootnode`'s `HSYNC_BB_SECURITY=1` opt‑in) and stays out of the default
+`hsync-rendezvous`'s `HSYNC_BB_SECURITY=1` opt‑in) and stays out of the default
 black‑box run. The probes are shared with the standalone runner
 (`pentest/run_pentest.py`) and documented in `pentest/SECURITY_FINDINGS.md`.
 

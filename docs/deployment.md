@@ -403,7 +403,7 @@ Common causes:
 - `HSYNC_ADMIN_KEY` malformed — must be exactly 64 lowercase hex characters
   (generate with `openssl rand -hex 32`). When unset, the server generates a
   secret itself: the token goes to stderr on a TTY, otherwise to
-  `<state_dir>/bootstrap_admin_token` (mode 0600). It does not require the
+  `<state_dir>/rendezvous_admin_token` (mode 0600). It does not require the
   variable to start.
 - Volume permissions — `./docker.sh` and the Compose template run the
   container as the invoking user's UID/GID (`HSYNC_UID`/`HSYNC_GID`), so the
@@ -433,7 +433,7 @@ sudo ufw allow 9753/tcp
 **Authentication failure (`401` / WS close `4003`):**
 - The client must present a valid account token (`hs_<id>_<secret>`) via its
   `HSYNC_API_KEY` environment variable. `HSYNC_ADMIN_KEY` is a server-side
-  bootstrap secret only — never set it on clients.
+  rendezvous secret only — never set it on clients.
 - Issue tokens with `hsync-server admin client add --name <name> --role client`
   (see [Roles and Permissions → CLI Tools](roles-and-permissions.md#cli-tools)).
 - Check the server logs for authentication failures.

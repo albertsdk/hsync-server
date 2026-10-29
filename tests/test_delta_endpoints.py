@@ -282,7 +282,7 @@ class TestGetDeltaData:
 
     async def test_token_is_bound_to_issuing_account(self, client, test_app, bucket_dir, tmp_path):
         """A leaked data URL is not spendable by another member of the bucket."""
-        from hsync_server.auth_store import BOOTSTRAP_ADMIN_ID, get_auth_store
+        from hsync_server.auth_store import RENDEZVOUS_ADMIN_ID, get_auth_store
 
         base = _base_bytes()
         new = b"HEAD" + base
@@ -292,7 +292,7 @@ class TestGetDeltaData:
         other_id, other_token = store.create_account("delta-intruder", "client", None)
         other_account = store.get_account(other_id)
         assert other_account is not None
-        store.grant_member("bucket1", other_account, BOOTSTRAP_ADMIN_ID, caller_is_admin=True)
+        store.grant_member("bucket1", other_account, RENDEZVOUS_ADMIN_ID, caller_is_admin=True)
 
         async with AsyncClient(
             transport=ASGITransport(app=test_app),

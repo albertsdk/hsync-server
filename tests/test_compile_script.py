@@ -60,7 +60,7 @@ def test_every_container_build_installs_the_build_group() -> None:
 def test_container_workdir_is_the_poetry_project_root() -> None:
     """The relative artifact paths need the project to sit at the repo root.
 
-    hsync-bootnode hit the opposite case: its Poetry project lives in ``python/``,
+    hsync-rendezvous hit the opposite case: its Poetry project lives in ``python/``,
     so the container workdir was one level below the repository root and the
     relative ``build/deb-all/...`` distpath landed in ``python/build/``. If this
     project ever moves into a subdirectory, the container workdir must be

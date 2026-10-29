@@ -21,14 +21,14 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 # Set test configuration before importing app.
-# HSYNC_ADMIN_KEY is the bootstrap admin secret (64 hex). The Bearer token is
-# hs_HsyncAdminBootstrap01_<secret> (constructed below as TEST_TOKEN).
+# HSYNC_ADMIN_KEY is the rendezvous admin secret (64 hex). The Bearer token is
+# hs_HsyncAdminRendezvous01_<secret> (constructed below as TEST_TOKEN).
 TEST_ADMIN_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-TEST_TOKEN = f"hs_HsyncAdminBootstrap01_{TEST_ADMIN_SECRET}"
+TEST_TOKEN = f"hs_HsyncAdminRendezvous01_{TEST_ADMIN_SECRET}"
 os.environ["HSYNC_ADMIN_KEY"] = TEST_ADMIN_SECRET
 
 # ``HSYNC_*`` keys the import-time scrub must NOT delete. ``HSYNC_ADMIN_KEY``
-# is set above for the bootstrap admin account; ``HSYNC_BB_SERVER`` /
+# is set above for the rendezvous admin account; ``HSYNC_BB_SERVER`` /
 # ``HSYNC_BB_LAN`` are test opt-in flags (read by the ``test_bb_*`` modules at
 # import time) and are not ``Settings`` fields, so a shell-exported value must
 # survive to collection or the whole black-box suite silently skips.
@@ -82,7 +82,7 @@ def _scrub_hsync_env(monkeypatch: pytest.MonkeyPatch) -> None:
     or directly) still work because they run after this scrub.
 
     ``HSYNC_ADMIN_KEY`` is excluded: the conftest sets it at import time for
-    the bootstrap admin account, so it must survive the scrub.
+    the rendezvous admin account, so it must survive the scrub.
     """
     for key in [k for k in os.environ if k.startswith("HSYNC_") and k != "HSYNC_ADMIN_KEY"]:
         monkeypatch.delenv(key)
@@ -176,9 +176,9 @@ def deterministic_cli_output(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def fast_scrypt(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
-    """Use low scrypt parameters, isolate state dir, and bootstrap admin.
+    """Use low scrypt parameters, isolate state dir, and rendezvous admin.
 
-    Combines scrypt patching, state dir isolation, and admin bootstrap into a
+    Combines scrypt patching, state dir isolation, and admin rendezvous into a
     single fixture to ensure correct ordering.
     """
     import secrets as _secrets
@@ -263,9 +263,9 @@ def fast_scrypt(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
 
     _get_settings.cache_clear()
 
-    # --- Bootstrap admin ---
+    # --- Rendezvous admin ---
     store = auth_store.get_auth_store()
-    store.bootstrap_admin(TEST_ADMIN_SECRET)
+    store.rendezvous_admin(TEST_ADMIN_SECRET)
 
 
 @pytest.fixture()
@@ -435,9 +435,9 @@ async def client_no_auth(test_app: FastAPI, temp_buckets_dir: str) -> AsyncGener
 # =============================================================================
 
 # A fixed admin secret (64 hex) for every black-box run. The Bearer token is
-# hs_HsyncAdminBootstrap01_<secret>.
+# hs_HsyncAdminRendezvous01_<secret>.
 BB_ADMIN_SECRET = "bb0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd"
-BB_API_KEY = f"hs_HsyncAdminBootstrap01_{BB_ADMIN_SECRET}"  # full Bearer token
+BB_API_KEY = f"hs_HsyncAdminRendezvous01_{BB_ADMIN_SECRET}"  # full Bearer token
 BB_CLIENT_CID = "TestClientX1234567890"  # exactly 21 alphanumeric chars per CID_PATTERN
 # A second, distinct client id so black-box tests can author *concurrent*
 # causal histories (two different counters on the same path).

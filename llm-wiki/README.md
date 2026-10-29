@@ -14,7 +14,7 @@ utilities.
 
 | Doc | Scope |
 | --- | ----- |
-| [architecture.md](architecture.md) | App bootstrap, middleware stack, routers, layering, request lifecycle |
+| [architecture.md](architecture.md) | App rendezvous, middleware stack, routers, layering, request lifecycle |
 | [modules/rest-api.md](modules/rest-api.md) | REST endpoints: buckets, files (upload/download/list/delete), tombstones, health |
 | [modules/websocket.md](modules/websocket.md) | WS handshake, event handlers, connection manager, broadcasting |
 | [modules/infrastructure.md](modules/infrastructure.md) | config/Settings, rate limiting, SSL, hashes, compression, errors, logging |

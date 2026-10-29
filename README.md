@@ -177,14 +177,14 @@ See the [Environment Variables table](docs/README.md#environment-variables) in
 the documentation for the complete list with defaults and descriptions.
 
 Clients authenticate with per-account tokens (`hs_<id>_<secret>`); see
-[Authentication](docs/authentication.md) for the auth flow and the bootstrap
+[Authentication](docs/authentication.md) for the auth flow and the rendezvous
 admin account.
 
 Key variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HSYNC_ADMIN_KEY` | Bootstrap admin secret (64 hex chars). If unset, the server generates one and prints the admin account token once at startup | auto-generated |
+| `HSYNC_ADMIN_KEY` | Rendezvous admin secret (64 hex chars). If unset, the server generates one and prints the admin account token once at startup | auto-generated |
 | `HSYNC_PORT` | Server port | `9753` |
 | `HSYNC_LOG_LEVEL` | Log level | `info` |
 | `HSYNC_BUCKETS` | Directory for bucket data storage | `<app>/buckets` (absolute, resolved at startup) |
@@ -225,7 +225,7 @@ The other components of the HSYNC ecosystem:
 - [HSYNC Main](https://github.com/albertsdk/hsync/blob/main/README.md) — Umbrella repository and project overview.
 - [HSYNC Desktop](https://github.com/albertsdk/hsync-desktop/blob/main/README.md) — Desktop GUI front-end.
 - [HSYNC Client](https://github.com/albertsdk/hsync-client/blob/main/README.md) — Reference client agent: the `hsync` CLI and its sync engine.
-- [HSYNC Bootnode](https://github.com/albertsdk/hsync-bootnode/blob/main/README.md) — Optional Internet discovery node for P2P.
+- [HSYNC Rendezvous](https://github.com/albertsdk/hsync-rendezvous/blob/main/README.md) — Optional Internet rendezvous node for P2P.
 - [HSYNC Common](https://github.com/albertsdk/hsync-common/blob/main/README.md) — Shared library: data models, protocol, delta transfer, hashing.
 - [HSYNC Android](https://github.com/albertsdk/hsync-android/blob/main/README.md) — Android client app. *(in development)*
 

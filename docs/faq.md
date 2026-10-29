@@ -278,7 +278,7 @@ Common causes:
 - `HSYNC_ADMIN_KEY` malformed — must be exactly 64 lowercase hex characters
   (generate with `openssl rand -hex 32`). If unset, the server generates a
   one-time admin token instead (stderr on a TTY, otherwise
-  `<state_dir>/bootstrap_admin_token`, mode 0600).
+  `<state_dir>/rendezvous_admin_token`, mode 0600).
 - Data directory permissions — the container runs as the configured user
   (`HSYNC_UID`/`HSYNC_GID`, defaulting to the invoking user) and must be able
   to write to the bind-mounted data directory.

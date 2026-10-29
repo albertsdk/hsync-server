@@ -28,7 +28,7 @@ with a role and bucket memberships. See
 
 ### Generate a strong admin secret
 
-The bootstrap admin secret (`HSYNC_ADMIN_KEY`) must be exactly 64 lowercase hex
+The rendezvous admin secret (`HSYNC_ADMIN_KEY`) must be exactly 64 lowercase hex
 characters:
 
 ```bash

@@ -109,27 +109,27 @@ class TestTokenParsing:
     def test_valid_token_parsed(self):
         from hsync_server.auth_store import parse_token
 
-        result = parse_token("hs_HsyncAdminBootstrap01_" + "0" * 64)
+        result = parse_token("hs_HsyncAdminRendezvous01_" + "0" * 64)
         assert result is not None
-        assert result[0] == "HsyncAdminBootstrap01"
+        assert result[0] == "HsyncAdminRendezvous01"
         assert result[1] == "0" * 64
 
     def test_invalid_prefix_rejected(self):
         from hsync_server.auth_store import parse_token
 
-        assert parse_token("xx_HsyncAdminBootstrap01_" + "0" * 64) is None
+        assert parse_token("xx_HsyncAdminRendezvous01_" + "0" * 64) is None
 
     def test_missing_secret_rejected(self):
         from hsync_server.auth_store import parse_token
 
-        assert parse_token("hs_HsyncAdminBootstrap01") is None
+        assert parse_token("hs_HsyncAdminRendezvous01") is None
 
     def test_short_secret_rejected(self):
         from hsync_server.auth_store import parse_token
 
-        assert parse_token("hs_HsyncAdminBootstrap01_short") is None
+        assert parse_token("hs_HsyncAdminRendezvous01_short") is None
 
     def test_non_hex_secret_rejected(self):
         from hsync_server.auth_store import parse_token
 
-        assert parse_token("hs_HsyncAdminBootstrap01_" + "g" * 64) is None
+        assert parse_token("hs_HsyncAdminRendezvous01_" + "g" * 64) is None

@@ -32,7 +32,7 @@ def bucket_state_identity(bucket: str) -> tuple[str, str]:
     """Return ``(db_path, folder_id)`` for *bucket*'s shared state DB.
 
     Resolves the per-bucket DB path and ensures its folder UUID exists (minting
-    it on first use). :mod:`versions` and :mod:`tombstones` both bootstrap their
+    it on first use). :mod:`versions` and :mod:`tombstones` both rendezvous their
     stores from this pair, so the identity resolution lives in one place.
     """
     db_path = get_state_db_path(bucket)

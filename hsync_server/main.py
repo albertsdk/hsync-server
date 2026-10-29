@@ -66,7 +66,7 @@ from .state_maintenance import (
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
-    Bootstrap admin account, warm up server state.
+    Rendezvous admin account, warm up server state.
 
     Resolved during application startup (after env files have been loaded
     by the entry point) instead of at module-import time so that values
@@ -74,14 +74,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     start = time.time()
 
-    # Bootstrap the admin account (creates one if the table is empty).
+    # Rendezvous the admin account (creates one if the table is empty).
     from .config import get_admin_key
 
     env_secret = get_admin_key()
     store = get_auth_store()
-    # The bootstrap returns its generated token only when a secret was minted;
-    # the warning with the token is already logged inside bootstrap_admin.
-    store.bootstrap_admin(env_secret)
+    # The rendezvous returns its generated token only when a secret was minted;
+    # the warning with the token is already logged inside rendezvous_admin.
+    store.rendezvous_admin(env_secret)
 
     # Log account status (no secrets).
     accounts = store.list_accounts()

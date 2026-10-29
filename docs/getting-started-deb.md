@@ -35,7 +35,7 @@ the `amd64`, `arm64` and `armhf` packages inside Docker.
 ## Configure before the first start
 
 The package never enables the service automatically. Edit the conffile as
-root: set the bootstrap admin secret and enable TLS so real clients can
+root: set the rendezvous admin secret and enable TLS so real clients can
 authenticate.
 
 ```bash

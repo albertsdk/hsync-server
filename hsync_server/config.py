@@ -109,7 +109,7 @@ class Settings(BaseSettings):
     # Authentication
     admin_key: SecretStr | None = Field(
         default=None,
-        description="Secret for the bootstrap admin account (64 hex chars). "
+        description="Secret for the rendezvous admin account (64 hex chars). "
         "If absent, the server generates one and prints it once at startup.",
     )
 
@@ -351,7 +351,7 @@ class Settings(BaseSettings):
             raise ValueError(
                 "HSYNC_API_KEY is no longer used. The server now uses per-account "
                 "tokens (hs_<id>_<secret>). Set HSYNC_ADMIN_KEY (64 hex) for the "
-                "bootstrap admin secret, or leave it unset to auto-generate. "
+                "rendezvous admin secret, or leave it unset to auto-generate. "
                 "Client-side HSYNC_API_KEY remains valid (it holds the account token)."
             )
         return self
@@ -417,9 +417,9 @@ def get_log_file() -> str:
 
 
 def get_admin_key() -> str | None:
-    """Get the bootstrap admin secret from environment (late binding).
+    """Get the rendezvous admin secret from environment (late binding).
 
-    Returns ``None`` if not set.  Consumed only during bootstrap (§9).
+    Returns ``None`` if not set.  Consumed only during rendezvous (§9).
     """
     settings = get_settings()
     if settings.admin_key is None:
