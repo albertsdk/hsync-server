@@ -532,12 +532,14 @@ def _resolve_account_id(name: str | None, account_id: str | None) -> str:
 def _resolve_client_target(client: str):
     """Resolve a --client value (account id or name) to an account.
 
-    A 21-char alphanumeric value is treated as an id, anything else as a name.
+    A value with the standard id length (``ACCOUNT_ID_LEN``) or the reserved
+    22-char ``RENDEZVOUS_ADMIN_ID`` is treated as an id, anything else as a
+    name.
     """
-    from hsync_server.auth_store import TargetNotFoundError, get_auth_store
+    from hsync_server.auth_store import RENDEZVOUS_ADMIN_ID, TargetNotFoundError, get_auth_store
 
     store = get_auth_store()
-    is_id = len(client) == ACCOUNT_ID_LEN and client.isalnum()
+    is_id = client == RENDEZVOUS_ADMIN_ID or (len(client) == ACCOUNT_ID_LEN and client.isalnum())
     try:
         return store.resolve_target(client if is_id else None, None if is_id else client)
     except TargetNotFoundError:

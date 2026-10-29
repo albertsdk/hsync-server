@@ -47,8 +47,9 @@ KEY_PREFIX_LEN = 8  # first 8 hex chars of the active secret
 
 # Precompiled account-id pattern derived from the SSOT alphabet: one C-level
 # fullmatch replaces the 21-iteration Python generator that parse_token ran on
-# the per-request auth hot path. The id length is already pinned by
-# ACCOUNT_ID_LEN (the separator check above), so the pattern is equivalent.
+# the per-request auth hot path. The id length is pinned by ACCOUNT_ID_LEN
+# (regular accounts); the reserved 22-char RENDEZVOUS_ADMIN_ID is special-cased
+# in parse_token, so the pattern itself stays on the standard length.
 _ACCOUNT_ID_RE = re.compile(f"^[{re.escape(ACCOUNT_ID_ALPHABET)}]{{{ACCOUNT_ID_LEN}}}$")
 
 # scrypt parameters (named, not magic numbers; overridable for tests via env).
@@ -93,22 +94,26 @@ def mint_secret() -> str:
 
 
 def parse_token(token: str) -> tuple[str, str] | None:
-    """Parse ``hs_<account_id 21 alnum>_<secret 64 hex>`` → ``(id, secret)``.
+    """Parse ``hs_<account_id>_<secret 64 hex>`` → ``(id, secret)``.
 
-    Returns ``None`` if the format is invalid.  The caller must run a dummy
-    scrypt on the failure path to keep timing uniform.
+    Standard account ids are 21 alnum chars (``ACCOUNT_ID_LEN``); the reserved
+    rendezvous admin id (``RENDEZVOUS_ADMIN_ID``) is 22 chars and is accepted
+    as the single length exception — it is never minted for regular accounts,
+    so no other 22-char id is valid.  Returns ``None`` if the format is
+    invalid.  The caller must run a dummy scrypt on the failure path to keep
+    timing uniform.
     """
     if not token.startswith(TOKEN_PREFIX):
         return None
     rest = token.removeprefix(TOKEN_PREFIX)
     sep = rest.find("_")
-    if sep != ACCOUNT_ID_LEN:
+    if sep != ACCOUNT_ID_LEN and sep != len(RENDEZVOUS_ADMIN_ID):
         return None
     account_id = rest[:sep]
     secret = rest[sep + 1 :]
     if len(secret) != SECRET_HEX_LEN:
         return None
-    if not _ACCOUNT_ID_RE.fullmatch(account_id):
+    if account_id != RENDEZVOUS_ADMIN_ID and not _ACCOUNT_ID_RE.fullmatch(account_id):
         return None
     # Length is already validated above (== SECRET_HEX_LEN), so the precompiled
     # {64} pattern is equivalent to the ad-hoc `[0-9a-f]+` fullmatch compiled
