@@ -56,12 +56,13 @@ def _raw_client_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if not k.startswith("HSYNC_")}
 
 
-def _server_host_port(base_url: str) -> tuple[str, int]:
-    """Split a live-server base URL into the bare host + port the client
-    ``server`` subcommand expects (``hsync server HOSTNAME --port N``)."""
+def _server_url(base_url: str) -> str:
+    """Turn a live-server base URL into the bare ``HOST:PORT`` the client
+    ``server`` subcommand accepts via ``--server-url`` (normalized to
+    ``https://``)."""
     parts = urlsplit(base_url)
     assert parts.hostname is not None, f"unexpected base_url: {base_url}"
-    return parts.hostname, parts.port or 9753
+    return f"{parts.hostname}:{parts.port or 9753}"
 
 
 @contextlib.contextmanager
@@ -192,16 +193,14 @@ class TestClientUploadArbitrationE2E:
         # Client env: hsync-client still reads HSYNC_API_KEY and sends its value
         # verbatim as the Bearer token (the full hs_HsyncAdminRendezvous01_<secret>).
         env["HSYNC_API_KEY"] = api_key
-        host, port = _server_host_port(base_url)
         result = subprocess.run(
             [
                 sys.executable,
                 "-m",
                 "hsync_client",
                 "server",
-                host,
-                "--port",
-                str(port),
+                "--server-url",
+                _server_url(base_url),
                 "-b",
                 bucket,
                 "-p",
@@ -252,16 +251,14 @@ class TestTwoClientSyncE2E:
         """One-shot sync of *path* against the server; returns the CLI result."""
         env = _raw_client_env()
         env["HSYNC_API_KEY"] = api_key
-        host, port = _server_host_port(base_url)
         return subprocess.run(
             [
                 sys.executable,
                 "-m",
                 "hsync_client",
                 "server",
-                host,
-                "--port",
-                str(port),
+                "--server-url",
+                _server_url(base_url),
                 "-b",
                 bucket,
                 "-p",
