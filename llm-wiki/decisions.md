@@ -80,6 +80,19 @@ the server-local choices not big enough for an ADR.
   tag in `.env` — the floating GHCR `:latest` tag is deliberately not written
   to `.env`, so a plain `docker compose pull` never upgrades implicitly
   (`install.sh`, `resolve_latest_version`).
+- **`install.sh` verifies the image signature before writing anything**: the
+  release `image` job signs the pushed digest keyless with Sigstore/cosign
+  (`id-token: write`, `cosign-installer`, `cosign sign --yes …@<digest>`) and
+  `install.sh` runs `cosign verify` against the release workflow's OIDC identity
+  (`--certificate-identity-regexp` limited to `refs/tags/…`, because the server
+  signs on tag pushes only) as a **preflight**, before `umask`/`install_files`:
+  a missing `cosign` or a refused signature therefore leaves no
+  `.env`/`compose.yaml` behind. `--no-verify` opts out explicitly and
+  `--image-digest sha256:<hex>` pins an exact image (`image_reference`,
+  persisted as `HSYNC_IMAGE` on install **and** on re-run). A failure prints
+  cosign's own diagnostics and, when `cosign_major_version` < 3, names the
+  upgrade — current releases use the v3 bundle format that a v2 binary cannot
+  read. Mirrors `hsync-bootnode` decision 74.
 - **Uniform `run.sh` (clone-and-run)**: a thin wrapper (`run.sh`) that checks the
   sibling `../hsync-common`, creates the in-project `.venv` via Poetry (main
   group only) and execs `hsync-server` — the mirror of `hsync-bootnode/run.sh`.

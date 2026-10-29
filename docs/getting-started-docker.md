@@ -14,6 +14,8 @@ the one-command installer instead, see
 - <img src="assets/os/linux.svg" alt="Linux" width="16" height="16"> <img src="assets/os/apple.svg" alt="macOS" width="16" height="16"> Linux or macOS with Docker Engine or Docker Desktop running
 - Docker Compose v2 (`docker compose version`)
 - OpenSSL (to generate the admin secret)
+- `cosign` (to verify the released image signature; see
+  [Install cosign](getting-started-script.md#install-cosign))
 
 ## Install
 
@@ -31,10 +33,14 @@ HSYNC_ADMIN_KEY=ADMIN_SECRET_64_HEX
 HSYNC_SSL_ENABLED=true
 ```
 
-Protect and validate the configuration, then start it:
+Protect and validate the configuration, then verify and start it:
 
 ```bash
 chmod 600 .env compose.yaml
+cosign verify \
+  --certificate-identity-regexp '^https://github\.com/albertsdk/hsync-server/\.github/workflows/release\.yml@refs/tags/.*$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  "ghcr.io/albertsdk/hsync-server:v1.0.0"
 docker compose config --quiet
 docker compose pull
 docker compose up -d --wait

@@ -51,7 +51,8 @@ utilities.
   the Raspberry Pi cross-build image is `packaging/rpi/Dockerfile.builder`, the
   Debian packaging tree is `packaging/deb/`. See
   [architecture.md](architecture.md#build--packaging).
-- Distribution: `install.sh` (Docker Compose installer), `compose.yaml`,
+- Distribution: `install.sh` (Docker Compose installer: verifies the image's
+  Sigstore signature before writing any file), `compose.yaml`,
   `Dockerfile`, `docker.sh` (source image build/lifecycle) and `run.sh`
   (uniform clone-and-run). The release publishes the GHCR image, the `.deb` and
   `.rpm` packages and the Linux native binaries (see `decisions.md`). The five

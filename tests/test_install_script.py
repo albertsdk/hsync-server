@@ -31,6 +31,8 @@ def _restricted_bin(tmp_path: Path) -> Path:
         "rm",
         "cp",
         "grep",
+        "cat",
+        "sed",
         "openssl",
     ):
         real = shutil.which(name)
@@ -48,6 +50,10 @@ def _write_fake_commands(
     compose_version_fails: bool = False,
     compose_v1: bool = False,
     daemon_message: str | None = None,
+    with_cosign: bool = True,
+    cosign_exit: int = 0,
+    cosign_version: str = "v3.1.4",
+    uname_stub: tuple[str, str] | None = None,
 ) -> Path:
     docker_args = tmp_path / "docker.args"
     # A snap-packaged docker is exposed through /snap/bin; mirror that layout so
@@ -95,6 +101,32 @@ def _write_fake_commands(
         '"${HSYNC_FAKE_LATEST_TAG:-v9.9.9}"\n'
     )
     curl.chmod(0o755)
+
+    if with_cosign:
+        cosign = tmp_path / "cosign"
+        cosign.write_text(
+            "#!/usr/bin/env bash\n"
+            f'printf \'%s\\n\' "$@" >> "{tmp_path / "cosign.args"}"\n'
+            'if [[ "$1" == "version" ]]; then\n'
+            f'  printf "GitVersion:    {cosign_version}\\n"\n'
+            "  exit 0\n"
+            "fi\n"
+            f"exit {cosign_exit}\n"
+        )
+        cosign.chmod(0o755)
+
+    if uname_stub is not None:
+        uname_os, uname_arch = uname_stub
+        uname = tmp_path / "uname"
+        uname.write_text(
+            "#!/usr/bin/env bash\n"
+            'case "$1" in\n'
+            f'  -s) printf "%s\\n" "{uname_os}" ;;\n'
+            f'  -m) printf "%s\\n" "{uname_arch}" ;;\n'
+            '  *) printf "unknown\\n" ;;\n'
+            "esac\n"
+        )
+        uname.chmod(0o755)
     return docker_args
 
 
@@ -110,6 +142,10 @@ def _run_installer(
     compose_version_fails: bool = False,
     compose_v1: bool = False,
     daemon_message: str | None = None,
+    with_cosign: bool = True,
+    cosign_exit: int = 0,
+    cosign_version: str = "v3.1.4",
+    uname_stub: tuple[str, str] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], Path, list[str]]:
     docker_args = _write_fake_commands(
         tmp_path,
@@ -119,13 +155,20 @@ def _run_installer(
         compose_version_fails=compose_version_fails,
         compose_v1=compose_v1,
         daemon_message=daemon_message,
+        with_cosign=with_cosign,
+        cosign_exit=cosign_exit,
+        cosign_version=cosign_version,
+        uname_stub=uname_stub,
     )
     if install_dir is None:
         install_dir = tmp_path / "installation"
     env = os.environ.copy()
     if with_docker:
         # Prepend both the plain and the snap-style bin dir; only one holds `docker`.
-        env["PATH"] = os.pathsep.join([str(tmp_path), str(tmp_path / "snap" / "bin"), env["PATH"]])
+        # Without a fake cosign the tail of PATH is the restricted set, so a real
+        # cosign on the runner cannot mask the "verifier missing" path.
+        tail = env["PATH"] if with_cosign else str(_restricted_bin(tmp_path))
+        env["PATH"] = os.pathsep.join([str(tmp_path), str(tmp_path / "snap" / "bin"), tail])
     else:
         env["PATH"] = str(_restricted_bin(tmp_path))
     env["HSYNC_FAKE_DOCKER_ARGS"] = str(docker_args)
@@ -461,3 +504,105 @@ def test_docker_permission_denied_prints_group_guidance(tmp_path: Path):
     assert result.returncode == 1
     assert "usermod -aG docker" in result.stderr
     assert not install_dir.exists()
+
+
+# --- Image signature verification --------------------------------------------
+
+
+def test_default_run_verifies_the_image(tmp_path: Path):
+    result, install_dir, _ = _run_installer(tmp_path, "--no-start")
+
+    assert result.returncode == 0, result.stderr
+    assert "Verifying the container image signature" in result.stdout
+    logged = (tmp_path / "cosign.args").read_text()
+    assert "verify" in logged
+    assert "ghcr.io/albertsdk/hsync-server:v1.0.0" in logged
+    assert "--certificate-oidc-issuer" in logged
+    assert "https://token.actions.githubusercontent.com" in logged
+    assert (install_dir / ".env").exists()
+
+
+def test_missing_cosign_prints_install_guidance_and_writes_nothing(tmp_path: Path):
+    result, install_dir, _ = _run_installer(
+        tmp_path, "--no-start", with_cosign=False, uname_stub=("Linux", "x86_64")
+    )
+
+    assert result.returncode != 0
+    assert "required command not found: cosign" in result.stderr
+    assert "cosign-linux-amd64" in result.stderr
+    assert "bash -s -- --no-verify" in result.stderr
+    # The verifier is a preflight, so the installation directory is never created.
+    assert not install_dir.exists()
+
+
+def test_no_verify_skips_verification(tmp_path: Path):
+    result, install_dir, _ = _run_installer(
+        tmp_path, "--no-start", "--no-verify", with_cosign=False
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "verification is disabled" in result.stderr
+    assert (install_dir / ".env").exists()
+
+
+def test_failed_verification_fails_closed(tmp_path: Path):
+    result, install_dir, _ = _run_installer(tmp_path, "--no-start", cosign_exit=1)
+
+    assert result.returncode != 0
+    assert "signature verification failed" in result.stderr
+    assert not install_dir.exists()
+
+
+def test_failed_verification_with_an_old_cosign_points_at_the_upgrade(tmp_path: Path):
+    result, _, _ = _run_installer(tmp_path, "--no-start", cosign_exit=1, cosign_version="v2.4.1")
+
+    assert result.returncode != 0
+    assert "cosign 2.x cannot verify the v3 bundle signature" in result.stderr
+
+
+def test_image_digest_pins_the_exact_reference(tmp_path: Path):
+    digest = "sha256:" + "b" * 64
+    result, install_dir, _ = _run_installer(tmp_path, "--no-start", "--image-digest", digest)
+
+    assert result.returncode == 0, result.stderr
+    env_file = (install_dir / ".env").read_text()
+    assert f"HSYNC_IMAGE=ghcr.io/albertsdk/hsync-server@{digest}" in env_file
+    assert f"ghcr.io/albertsdk/hsync-server@{digest}" in (tmp_path / "cosign.args").read_text()
+
+
+def test_image_digest_survives_a_rerun(tmp_path: Path):
+    digest = "sha256:" + "c" * 64
+    first, install_dir, _ = _run_installer(tmp_path, "--no-start", "--image-digest", digest)
+    second, _, _ = _run_installer(tmp_path, "--no-start", "--image-digest", digest)
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert (
+        f"HSYNC_IMAGE=ghcr.io/albertsdk/hsync-server@{digest}" in (install_dir / ".env").read_text()
+    )
+
+
+def test_invalid_digest_is_rejected_before_writing(tmp_path: Path):
+    result, install_dir, _ = _run_installer(tmp_path, "--no-start", "--image-digest", "sha256:zz")
+
+    assert result.returncode != 0
+    assert "invalid --image-digest" in result.stderr
+    assert not install_dir.exists()
+
+
+def test_help_documents_the_verification_flags(tmp_path: Path):
+    result, _, _ = _run_installer(tmp_path, "--help")
+
+    assert result.returncode == 0
+    assert "--no-verify" in result.stdout
+    assert "--image-digest" in result.stdout
+    assert "cosign" in result.stdout
+
+
+def test_release_workflow_signs_the_image():
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text()
+
+    assert "id-token: write" in workflow
+    assert "sigstore/cosign-installer" in workflow
+    assert "cosign sign --yes" in workflow
+    assert "steps.build.outputs.digest" in workflow

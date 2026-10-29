@@ -15,6 +15,10 @@ directory, and verifies that the server becomes healthy.
 - Docker Compose v2 (`docker compose version`)
 - OpenSSL
 - `curl` and `sha256sum` for the verified download shown below
+- `cosign` on `PATH` — the installer verifies the container image's Sigstore
+  signature before starting the server. When it is missing, the installer prints
+  the install command for your platform and stops before writing any file; see
+  [Install cosign](#install-cosign). `--no-verify` skips the check.
 
 Docker must already be installed. If it is missing — or the Compose v2 plugin is
 missing, or the daemon is not running — the installer stops before writing anything
@@ -78,6 +82,66 @@ The default installation:
   `<install-dir>/hsync-data` (back it up; restore it to migrate);
 - generates the bootstrap admin secret locally without printing it.
 
+### Verify the container image
+
+Before starting the server, the installer verifies the released image's
+**Sigstore (cosign) signature** — keyless, signed by the release workflow — and
+refuses to start an image whose signature does not match. The check runs before
+any file is written, so a missing `cosign` leaves no partial installation
+behind. To pin an exact image instead of a mutable tag:
+
+```bash
+./install.sh --image-digest sha256:<64-hex-digest>
+```
+
+#### Install cosign
+
+Releases are signed with the **cosign v3** bundle format: use the latest
+`cosign`, because a v2 binary reports that the image carries no signature.
+
+The official prebuilt binary works on any Linux distribution. The asset name
+ends with the CPU: `amd64` on x86-64, `arm64` on ARM64, `arm` on 32-bit ARM.
+
+```bash
+curl -fsSLo /tmp/cosign \
+  "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64"
+sudo install -m 0755 /tmp/cosign /usr/local/bin/cosign
+cosign version
+```
+
+Arch Linux and Alpine ship `cosign` as a package:
+
+```bash
+sudo pacman -S cosign
+```
+
+```bash
+sudo apk add cosign
+```
+
+On macOS, install it with Homebrew:
+
+```bash
+brew install cosign
+```
+
+#### Skip the verification
+
+If you cannot install `cosign`, `--no-verify` skips the check (the image is then
+trusted on the registry reference alone). With the one-line install the option
+goes after `bash -s --`:
+
+```bash
+curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh \
+  | bash -s -- --no-verify
+```
+
+With a downloaded copy of the script, pass the flag directly:
+
+```bash
+./install.sh --no-verify
+```
+
 ### LAN setup
 
 To connect from other devices on a private LAN, provide the server's concrete
@@ -98,7 +162,8 @@ To install a **specific version** instead of the latest stable one, download the
 installer from that release (replace `latest/download` with `download/vX.Y.Z`)
 or pass the version explicitly: `./install.sh --version v1.0.0`. Conversely,
 `--version latest` resolves and pins the latest stable release automatically.
-Run `./install.sh --help` for version, port and install-directory options.
+Run `./install.sh --help` for version, port, install-directory and
+image-verification options.
 
 ## Verify the server is healthy
 

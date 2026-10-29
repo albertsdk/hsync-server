@@ -324,6 +324,10 @@ the resolved `vX.Y.Z` image in `.env`:
 ./install.sh --install-dir "$HOME/.local/share/hsync-server" --version latest
 ```
 
+An upgrade run verifies the image signature exactly like a fresh install (see
+[Verify the container image](getting-started-script.md#verify-the-container-image));
+on a host without `cosign`, pass `--no-verify`.
+
 ### Manual Docker Compose
 
 ```bash
