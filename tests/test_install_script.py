@@ -529,7 +529,13 @@ def test_missing_cosign_prints_install_guidance_and_writes_nothing(tmp_path: Pat
 
     assert result.returncode != 0
     assert "required command not found: cosign" in result.stderr
-    assert "cosign-linux-amd64" in result.stderr
+    # The concrete command follows the host distro family (debian/rhel/suse print
+    # the official binary, Arch/Alpine their package), so accept any of them.
+    assert (
+        "cosign-linux-amd64" in result.stderr
+        or "sudo pacman -S cosign" in result.stderr
+        or "sudo apk add cosign" in result.stderr
+    )
     assert "bash -s -- --no-verify" in result.stderr
     # The verifier is a preflight, so the installation directory is never created.
     assert not install_dir.exists()
