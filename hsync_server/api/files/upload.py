@@ -75,7 +75,11 @@ from hsync_server.file_lock_manager import get_file_lock_manager
 from hsync_server.hashes import get_sha256_hash, set_sha256_hash
 from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
-from hsync_server.tombstones import clear_deletion
+from hsync_server.tombstones import (
+    clear_deletion,
+    deletion_marker_snapshot,
+    destination_mutation_since,
+)
 
 from .permissions import apply_metadata_to_existing_file
 from .version_publish import record_published_version
@@ -286,6 +290,14 @@ async def upload_file(
 
         # Define file paths
         file_location = f"{file_directory}/{file.filename}"
+        # The destination is snapshotted before the body streams: if it is
+        # deleted, renamed away or recreated while the upload runs, the final
+        # move must not commit over it (same contract as the P2P master gate).
+        bucket_root = f"{buckets_path}/{bucket}"
+        dest_existed = Path(file_location).exists()
+        dest_marker = deletion_marker_snapshot(bucket, bucket_root, file_location)
+
+        partial_file_path = f"{file_location}{PARTIAL_DOWNLOAD_SUFFIX}"
         partial_file_path = f"{file_location}{PARTIAL_DOWNLOAD_SUFFIX}"
 
         # Skip upload if identical file already exists (same SHA-256). A
@@ -567,6 +579,18 @@ async def upload_file(
                 )
             elif backup_path and Path(backup_path).exists():
                 remove(backup_path)
+
+            if destination_mutation_since(
+                bucket,
+                bucket_root,
+                file_location,
+                dest_existed,
+                dest_marker,
+            ):
+                log.info(
+                    f'Upload rejected (destination changed): "{_wire_relpath(bucket, path, file.filename)}"'
+                )
+                return JSONResponse(status_code=409, content={"detail": "destination_changed"})
 
             # Atomically move file to final destination (same-filesystem rename)
             replace(file_location_tmp, file_location)

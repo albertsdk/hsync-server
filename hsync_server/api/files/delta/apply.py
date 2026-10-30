@@ -95,6 +95,7 @@ from hsync_server.metrics import (
 )
 from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
 from hsync_server.routers import auth_router
+from hsync_server.tombstones import deletion_marker_snapshot, destination_mutation_since
 
 
 def _unprocessable(detail: str, **extra: Any) -> JSONResponse:
@@ -195,6 +196,14 @@ async def delta_apply(
         if not await isfile(file_location):
             raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": path})
 
+        # The destination is snapshotted before the body streams: if it is
+        # deleted, renamed away or recreated while the delta runs, the final
+        # move must not commit over it (same contract as the client/P2P gates).
+        bucket_root = f"{get_buckets_path()}/{bucket}"
+        dest_existed = Path(file_location).exists()
+        dest_marker = deletion_marker_snapshot(bucket, bucket_root, file_location)
+
+        meta = _parse_metadata(metadata)
         meta = _parse_metadata(metadata)
         base_sha256, new_sha256, new_size, ops = _validate_instructions(meta)
 
@@ -392,6 +401,11 @@ async def delta_apply(
             update_file_timestamp(part_path, str(meta.get("mtime") or ""))
             if permissions:
                 await set_permissions(part_path, permissions)
+            if destination_mutation_since(
+                bucket, bucket_root, file_location, dest_existed, dest_marker
+            ):
+                log.info(f"Delta apply rejected (destination changed): {file_location}")
+                return JSONResponse(status_code=409, content={"detail": "destination_changed"})
             replace(part_path, file_location)
             part_path = None
             src = await record_published_version(

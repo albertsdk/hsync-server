@@ -376,6 +376,37 @@ class TestDeltaApply:
         resp = await client.post("/api/v1/buckets/bucket1/files/delta/apply", **payload)
         assert resp.status_code == 404
 
+    async def test_destination_deleted_mid_apply_is_409(
+        self, client, bucket_dir, tmp_path, monkeypatch
+    ):
+        """A destination deleted mid-apply is not resurrected by the commit."""
+        base = _base_bytes()
+        new = bytearray(base)
+        new[BLOCK : BLOCK + 32] = b"Q" * 32
+        new += b"tail-growth"
+        _write_base(bucket_dir, base)
+        target = bucket_dir / "docs/big.bin"
+        payload = _apply_multipart(base, bytes(new), tmp_path)
+
+        from hsync_server.api.files.delta import apply as delta_apply_module
+        from hsync_server.tombstones import record_deletion
+
+        real_reconstruct = delta_apply_module.reconstruct_and_verify
+
+        def _rebuilt_then_remove(*args, **kwargs):
+            result = real_reconstruct(*args, **kwargs)
+            # The destination disappears while the apply runs.
+            target.unlink()
+            record_deletion("bucket1", str(bucket_dir), str(target), origin_cid="testcid")
+            return result
+
+        monkeypatch.setattr(delta_apply_module, "reconstruct_and_verify", _rebuilt_then_remove)
+
+        resp = await client.post("/api/v1/buckets/bucket1/files/delta/apply", **payload)
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == "destination_changed"
+        assert not target.exists()
+
     async def test_ops_out_of_bounds_is_422(self, client, bucket_dir, tmp_path):
         base = _base_bytes()
         new = base + b"extra"

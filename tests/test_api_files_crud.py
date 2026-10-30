@@ -5,6 +5,7 @@ Integration tests for file operations API.
 import hashlib
 import io
 import os
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
@@ -83,6 +84,46 @@ class TestFileUpload:
 
         expected_path = os.path.join(temp_buckets_dir, "newbucket", "subdir", "test.txt")
         assert os.path.exists(expected_path)
+
+    @pytest.mark.asyncio
+    async def test_upload_does_not_resurrect_a_destination_deleted_mid_upload(
+        self, client: AsyncClient, temp_buckets_dir: str, monkeypatch
+    ):
+        """A destination removed mid-upload is not re-created by the commit."""
+        bucket_name = "racebucket"
+        bucket_path = Path(temp_buckets_dir) / bucket_name
+        bucket_path.mkdir()
+        target = bucket_path / "test.txt"
+        target.write_bytes(b"old content")
+        content = b"new content"
+
+        from hsync_server.api.files import upload as upload_module
+        from hsync_server.tombstones import record_deletion
+
+        real_arbitrate = upload_module.arbitrate_upload
+
+        def _arbitrate_then_remove(*args, **kwargs):
+            result = real_arbitrate(*args, **kwargs)
+            # The destination disappears while the upload is being processed.
+            target.unlink()
+            record_deletion(bucket_name, str(bucket_path), str(target), origin_cid="testcid")
+            return result
+
+        monkeypatch.setattr(upload_module, "arbitrate_upload", _arbitrate_then_remove)
+
+        response = await client.post(
+            f"/api/v1/buckets/{bucket_name}/files",
+            files={"file": ("test.txt", io.BytesIO(content), "text/plain")},
+            data={
+                "cid": "TestClientX1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(content).hexdigest(),
+            },
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"] == "destination_changed"
+        assert not target.exists()
 
 
 class TestFileDownload:

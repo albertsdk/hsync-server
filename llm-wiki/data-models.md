@@ -56,11 +56,22 @@ Server-side façade over the common `TombstoneStore`:
 | `get_tombstone_store` | `tombstones.py::get_tombstone_store` | load/cache the per-bucket store (`buckets` table → folder UUID) |
 | `record_deletion` | `tombstones.py::record_deletion` | add a tombstone on delete/`deleted` event |
 | `clear_deletion` | `tombstones.py::clear_deletion` | drop a tombstone when the path is re-uploaded |
+| `deletion_marker_snapshot` | `tombstones.py::deletion_marker_snapshot` | opaque `(version_id, vclock)` snapshot of a path's marker (`None` when absent); changes on every mint/clear |
+| `destination_mutation_since` | `tombstones.py::destination_mutation_since` | commit gate: true when *abs_path* was removed or replaced since a snapshot — presence check for delete/rename-away, marker comparison for delete-and-recreate |
 | `reset_cache` | `tombstones.py::reset_cache` | test/lifecycle hook |
 
 TTL bound: `get_tombstone_ttl_days()` (`config.py::get_tombstone_ttl_days`) → store `prune()`. Causal
 merge semantics (vector-clock dominance + content tie-break) and hashed keys are
 defined in the common model, not here.
+
+The two helpers above implement the **pre-commit destination re-validation**
+shared with the client's P2P master: `api/files/upload.py::upload_file` and
+`api/files/delta/apply.py::delta_apply` snapshot the destination
+(`existed_at_start` + marker) before the body streams and re-check it right
+before the atomic `replace`. A destination deleted, renamed away or
+deleted-and-recreated while the body ran is answered `409 destination_changed`
+and the temp artifact is discarded — the commit can never resurrect a removed
+name or clobber a recreated file.
 
 ## On-disk layout
 

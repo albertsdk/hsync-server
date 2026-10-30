@@ -96,6 +96,13 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   `conflict_lost` (409, incoming loses tie-break, bytes preserved as
   conflicted copy). The chronological tie-break (ADR-0023) uses the
   corrected mtimes: higher wins, missing/tie falls back to SHA-256.
+- **Destination re-validation** (upload and delta apply): the destination is
+  snapshotted (`existed_at_start` + tombstone marker, `tombstones.deletion_marker_snapshot`)
+  before the body streams and re-checked right before the atomic commit
+  (`tombstones.destination_mutation_since`). A destination deleted, renamed away
+  or deleted-and-recreated while the body ran is answered `409 destination_changed`
+  and the temp artifact is discarded — the commit never resurrects a removed
+  name or clobbers a recreated file.
 - Compressed uploads are **not resumable**: `compressed=true` with
   `offset > 0` is rejected up-front (the resumable path never decompresses).
 - Subdir path and filename confined to the bucket via `resolve_within_bucket`

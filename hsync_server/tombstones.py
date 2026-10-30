@@ -29,6 +29,8 @@ from hsync_server.versions import clear_version, get_version_store
 __all__ = [
     "clear_deletion",
     "clear_deletion_tree",
+    "deletion_marker_snapshot",
+    "destination_mutation_since",
     "get_tombstone_store",
     "record_deletion",
     "record_deletion_tree",
@@ -205,3 +207,44 @@ def record_path_deletion(
         prev_vclock=stored["vclock"] if stored else None,
     )
     return True
+
+
+def deletion_marker_snapshot(
+    bucket: str,
+    bucket_dir: str,
+    abs_path: str,
+) -> tuple[str, tuple[tuple[str, int], ...]] | None:
+    """Opaque snapshot of the deletion marker for *abs_path* (None when absent).
+
+    Every mint, merge and clear changes the marker's ``(version_id, vclock)``,
+    so holding the snapshot across an operation and comparing it afterwards
+    detects that the path was deleted, renamed away or re-created while the
+    operation ran (same contract as the client helper of the same name).
+    """
+    relpath = relpath_in_bucket(abs_path, bucket_dir)
+    if not relpath:
+        return None
+    with _registry.lock(bucket):
+        entry = get_tombstone_store(bucket).get(relpath)
+    if entry is None:
+        return None
+    return (entry["version_id"], tuple(sorted(entry["vclock"].items())))
+
+
+def destination_mutation_since(
+    bucket: str,
+    bucket_dir: str,
+    abs_path: str,
+    existed_at_start: bool,
+    marker_snapshot: tuple[str, tuple[tuple[str, int], ...]] | None,
+) -> bool:
+    """True when *abs_path* was removed or replaced since the snapshot was taken.
+
+    The destination changed under a transfer that is about to commit over it: a
+    delete or rename-away is caught by the presence check (the case even a run
+    without a watcher can see), any deletion-marker change — including a
+    delete-and-recreate — by the snapshot comparison.
+    """
+    if existed_at_start and not Path(abs_path).exists():
+        return True
+    return deletion_marker_snapshot(bucket, bucket_dir, abs_path) != marker_snapshot
