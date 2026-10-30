@@ -72,5 +72,7 @@ listing peak-memory bound is pinned by
 `tests/test_memory_bounds.py::TestListingStreaming`.
 
 **Bound**: the per-request peak is O(directory fanout + one entry) instead of
-O(bucket); one retained dict per file costs ~490 B/entry (~700 MB at 1 M files).
-The listing contract is documented in [modules/rest-api.md](modules/rest-api.md).
+O(bucket); the exact per-entry allocator figure is intentionally not pinned
+(`tests/test_memory_bounds.py::TestListingStreaming` verifies the bound, not a
+byte count). The listing contract is documented in
+[modules/rest-api.md](modules/rest-api.md).

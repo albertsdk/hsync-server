@@ -2,7 +2,8 @@
 
 All paths are prefixed `/api/v1` from the shared SSOT
 (`hsync_common/protocol/rest.py::REST_API_PREFIX`). Endpoints attach to
-`auth_router` (Bearer key) unless noted; `public_router` for health/metrics/time.
+`auth_router` (Bearer key) unless noted; `public_router` serves health/time and
+the WebSocket endpoint only.
 Human-oriented flow diagrams: `../docs/internal/architecture.md`; the machine-readable REST
 contract is the generated OpenAPI snapshot in `hsync-common` (`hsync_common/protocol/rest/openapi.json`).
 
@@ -19,19 +20,40 @@ client mirrors cannot drift.
 | ------------- | ------- | ---- | ---------- |
 | `GET /buckets/{bucket}` | `buckets.get_bucket` (`api/buckets.py::get_bucket`) | key | default |
 | `POST /buckets` | `buckets.create_bucket` (`api/buckets.py::create_bucket`) | key | default |
-| `DELETE /buckets/{bucket}` | `buckets.delete_bucket` (`api/buckets.py::delete_bucket`) | key | default |
+| `DELETE /buckets/{bucket}` | `buckets.delete_bucket` (`api/buckets.py::delete_bucket`) | admin | default |
 | `GET /buckets/{bucket}/files` | `files/list.get_files` (`api/files/list.py::get_files`) | key | default |
 | `GET /buckets/{bucket}/files/upload-status` | `files/list.get_upload_status` (`api/files/list.py::get_upload_status`) | key | default |
+| `GET /buckets/{bucket}/dirs` | `files/list.get_dirs` (`api/files/list.py::get_dirs`) | key | default |
 | `GET /buckets/{bucket}/tombstones` | `files/list.get_tombstones` (`api/files/list.py::get_tombstones`) | key | default |
+| `POST /buckets/{bucket}/tombstones` | `files/list.post_tombstones` (`api/files/list.py::post_tombstones`) | key | default |
 | `POST /buckets/{bucket}/files` | `files/upload.upload_file` (`api/files/upload.py::upload_file`) | key | upload |
 | `GET /buckets/{bucket}/files/download` | `files/download.download_file` (`api/files/download.py::download_file`) | key | download |
-| `DELETE /buckets/{bucket}/files` | `files/delete.delete_file` (`api/files/delete.py::delete_file`) | key | default |
 | `PATCH /buckets/{bucket}/files` | `files/rename.rename_file` (`api/files/rename.py::rename_file`) | key | default |
-| `POST /buckets/{bucket}/tombstones` | `files/list.post_tombstones` (`api/files/list.py::post_tombstones`) | key | default |
+| `PATCH /buckets/{bucket}/files/permissions` | `files/permissions.patch_file_permissions` (`api/files/permissions.py::patch_file_permissions`) | key | default |
+| `POST /buckets/{bucket}/symlinks` | `files/symlinks.create_symlink` (`api/files/symlinks.py::create_symlink`) | key | default |
+| `DELETE /buckets/{bucket}/files` | `files/delete.delete_file` (`api/files/delete.py::delete_file`) | key | default |
+| `GET /buckets/{bucket}/members` | `members.list_members` (`api/members.py::list_members`) | key (owner/admin) | default |
+| `POST /buckets/{bucket}/members` | `members.grant_member` (`api/members.py::grant_member`) | key (owner/admin) | default |
+| `DELETE /buckets/{bucket}/members/{client_id}` | `members.revoke_member` (`api/members.py::revoke_member`) | key (owner/admin) | default |
+| `POST /buckets/{bucket}/owner` | `members.transfer_or_reclaim_owner` (`api/members.py::transfer_or_reclaim_owner`) | key (owner/admin) | default |
 | `GET /buckets/{bucket}/presence` | `presence.get_presence` (`api/presence.py::get_presence`) | key | default |
+| `GET /buckets/{bucket}/files/delta/signatures` | `files/delta.signatures.get_delta_signatures` (`api/files/delta/signatures.py::get_delta_signatures`) | key | delta |
+| `POST /buckets/{bucket}/files/delta/signatures` | `files/delta.signatures.post_delta_signatures` (`api/files/delta/signatures.py::post_delta_signatures`) | key | delta |
+| `POST /buckets/{bucket}/files/delta/apply` | `files/delta.apply.delta_apply` (`api/files/delta/apply.py::delta_apply`) | key | delta |
+| `GET /buckets/{bucket}/files/delta/data/{token}` | `files/delta.data.get_delta_data` (`api/files/delta/data.py::get_delta_data`) | key | delta |
+| `GET /api/v1/admin/clients` | `admin.list_clients` (`api/admin.py::list_clients`) | admin | admin |
+| `POST /api/v1/admin/clients` | `admin.create_client` (`api/admin.py::create_client`) | admin | admin |
+| `POST /api/v1/admin/clients/{client_id}/rotate-key` | `admin.rotate_key` (`api/admin.py::rotate_key`) | admin | admin |
+| `PATCH /api/v1/admin/clients/{client_id}/expiry` | `admin.set_expiry` (`api/admin.py::set_expiry`) | admin | admin |
+| `POST /api/v1/admin/clients/{client_id}/disable` | `admin.disable_client` (`api/admin.py::disable_client`) | admin | admin |
+| `POST /api/v1/admin/clients/{client_id}/enable` | `admin.enable_client` (`api/admin.py::enable_client`) | admin | admin |
+| `DELETE /api/v1/admin/clients/{client_id}` | `admin.delete_client` (`api/admin.py::delete_client`) | admin | admin |
+| `GET /api/v1/admin/buckets` | `admin.list_all_buckets` (`api/admin.py::list_all_buckets`) | admin | admin |
+| `POST /api/v1/admin/buckets` | `admin.create_bucket_on_behalf` (`api/admin.py::create_bucket_on_behalf`) | admin | admin |
 | `GET /health` | `health.root` (`api/health.py::root`) | none | — |
 | `GET /api/v1/time` | `health.get_time` (`api/health.py::get_time`) | none | — |
-| `GET /metrics` | Prometheus (`main.py::app`) | none | — |
+| `GET /metrics` | `metrics.metrics_endpoint` (`metrics.py::metrics_endpoint`) | key | — |
+| `WS /buckets/{bucket}/events/{cid}` | `events.ws_events` (`api/events.py::ws_events`) | key (auth frame) | — |
 
 `GET /health` accepts an optional `size` query param (bounded to
 `HEALTH_MAX_PROBE_BYTES`, `api/health.py::HEALTH_MAX_PROBE_BYTES`): it returns that many NUL bytes so
@@ -39,12 +61,16 @@ the client's autotune can measure throughput (`measure_bandwidth_active`).
 Default (no `size`) is the empty 200 readiness probe.
 
 Rate-limit values: `config.py::get_rate_limit_default` /
-`config.py::get_rate_limit_upload` / `config.py::get_rate_limit_download`.
+`config.py::get_rate_limit_upload` / `config.py::get_rate_limit_download` /
+`config.py::get_rate_limit_admin` / `config.py::get_rate_limit_delta`.
 
 ## Buckets (`api/buckets.py` + `bucket_provisioning.py`)
 
 - Name validation via `is_valid_bucket_name` (shared SSOT,
   `hsync_common.path_validation`) → `InvalidBucketNameError`.
+- Per-account bucket quota: `create_bucket` refuses with 403 when the caller
+  already owns `get_max_buckets_per_account` (`config.py::get_max_buckets_per_account`);
+  `0` = unlimited.
 - Filesystem + ownership logic lives in `bucket_provisioning.py`, the single
   path shared by the REST endpoint AND the local admin CLI
   (`admin bucket create` / `admin bucket delete`, `__main__.py`):
@@ -240,8 +266,8 @@ when the bucket does not exist or the caller is not a member).
 The `/files` and `/dirs` listings are **streamed** (`StreamingResponse` over a
 sync generator, `hsync_common/listing.py::iter_json_array`): the body is a chunked JSON
 array produced one entry at a time, so the server holds O(directory fanout + one
-entry) instead of one dict per file (~0.76 KB per file, ~700 MB at
-1 M files — DI-03). The generator is iterated on a worker thread, so the per-file
+entry) instead of one dict per file (see DI-03 in
+[deferred-design-issues.md](deferred-design-issues.md)). The generator is iterated on a worker thread, so the per-file
 metadata read (`File.get`, `hsync_common/models/file.py::File.get`: stat + blocking
 SHA-256 on a cache miss) neither blocks the loop nor needs a per-file
 `asyncio.to_thread` hop. Entries are emitted in deterministic **path order**; a

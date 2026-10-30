@@ -165,8 +165,8 @@ in p2p Mode the same direction needs no shared key.
 
 ### How do I monitor the server?
 
-`GET /health` returns an empty `200 OK` for liveness probes and `GET /metrics`
-exposes Prometheus metrics (both unauthenticated). See
+`GET /health` returns an empty `200 OK` for liveness probes (unauthenticated);
+`GET /metrics` exposes Prometheus metrics to any authenticated account. See
 [API → Monitoring & Sync](api.md#monitoring--sync).
 
 ### How do I manage buckets?

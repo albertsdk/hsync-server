@@ -25,10 +25,13 @@ Added in `main.py` (order matters — last added runs first):
 | 1 | `VersionMiddleware` | `middleware.py::VersionMiddleware` | hard-fail 426 on REST protocol mismatch; rejects a malformed `X-Client-Name` with 400 (shared `is_valid_client_name` SSOT); stamps `X-Server-Version`/`X-Protocol-Version` |
 | 2 | `RequestIdMiddleware` | `middleware.py::RequestIdMiddleware` | per-request id for tracing (`logger.py::get_request_id` context) |
 | 3 | `CORSMiddleware` (optional) | `main.py::configure_cors` | only with a non-empty explicit origin list (`config.py::get_cors_origins`); never wildcard + credentials (`allow_credentials=False`) |
-| 4 | `TransferAwareGZipMiddleware` | `middleware.py::TransferAwareGZipMiddleware` | gzip on responses > 1000 B, **except** the transfer payload paths (`…/files/download`, `…/files/delta/data/{token}`), whose coding is the sync protocol's own (identity \| zstd) and must reach clients byte-identical |
-| 5 | `SlowAPIMiddleware` | `main.py::app` | global rate limiting (`rate_limiter.py`) |
+| 4 | `MaxRequestSizeMiddleware` | `middleware.py::MaxRequestSizeMiddleware` | 413 at the ASGI boundary on any HTTP body over `get_max_request_body_size()`, before parsing and before auth |
+| 5 | `TransferAwareGZipMiddleware` | `middleware.py::TransferAwareGZipMiddleware` | gzip on responses > 1000 B, **except** the transfer payload paths (`…/files/download`, `…/files/delta/data/{token}`), whose coding is the sync protocol's own (identity \| zstd) and must reach clients byte-identical |
+| 6 | `SlowAPIMiddleware` | `main.py::app` | global rate limiting (`rate_limiter.py`) |
 
-Prometheus metrics exposed at `/metrics` via `Instrumentator` (`main.py::app`).
+Prometheus metrics are served by the authenticated `/metrics` route
+(`metrics.py::metrics_endpoint`) and instrumented via `Instrumentator`
+(`main.py::app`).
 
 ## Routers (`routers.py`)
 
@@ -36,7 +39,7 @@ Prometheus metrics exposed at `/metrics` via `Instrumentator` (`main.py::app`).
 | ------ | ---- | -------- |
 | `auth_router` | account token via `Depends(verify_api_key)` | `routers.py::auth_router` |
 | `admin_router` | account token + `admin` role | `api/admin.py::admin_router` |
-| `public_router` | none (health, metrics, time, WS) | `routers.py::public_router` |
+| `public_router` | none (health, time, WS) | `routers.py::public_router` |
 
 `verify_api_key` (`auth.py`) extracts the Bearer token and verifies it against
 the account store (`auth_store/`): scrypt hash check with a KDF cache, then a

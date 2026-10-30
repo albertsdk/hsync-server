@@ -170,11 +170,12 @@ sequenceDiagram
 ### How it works
 
 1. **Before upload**, the client checks the upload status endpoint. The server
-   returns either `{"status": "resumable", "offset": N}` (bytes already
-   received) or `{"offset": 0}` (no partial upload exists).
+   returns a JSON object with a `status` field: `"resumable"` with the byte
+   `offset` already received, `"new"` when no usable partial exists (`offset`:
+   0), or `"complete"` when the file already exists with the same checksum.
 
 2. **During upload**, the server writes incoming bytes to a partial file
-   (`.hsyncpart` suffix) alongside the target path. If the connection drops,
+   (`.part` suffix) alongside the target path. If the connection drops,
    the partial file preserves the received bytes.
 
 3. **On completion**, the partial file is atomically renamed to the target
@@ -195,11 +196,13 @@ sequenceDiagram
 
 ## Health and monitoring
 
-The server exposes unauthenticated endpoints for operational monitoring:
+The server exposes two unauthenticated endpoints for operational monitoring:
 
 - `GET /health` — returns empty `200 OK` (liveness probe)
-- `GET /metrics` — Prometheus metrics
 - `GET /api/v1/time` — server timestamp for client clock-sync
+
+`GET /metrics` (Prometheus metrics) requires a valid account token in the
+`Authorization: Bearer ...` header — it is not public.
 
 ## See also
 

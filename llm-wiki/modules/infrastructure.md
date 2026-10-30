@@ -143,8 +143,8 @@ Delta transfer operations expose Prometheus metrics for monitoring:
 - `hsync_delta_temp_storage_bytes` (`metrics.py::hsync_delta_temp_storage_bytes`): Gauge for total bytes used by temp files
 
 Metrics are recorded in the delta endpoints (`signatures.py`, `apply.py`, `data.py`,
-`tokens.py`) and exposed via the `/metrics` endpoint (when prometheus_client is
-available). Helper functions: `record_delta_transfer` (`metrics.py::record_delta_transfer`), `record_bytes_saved`
+`tokens.py`) and exposed via the authenticated `/metrics` route
+(`metrics.py::metrics_endpoint` — any valid account token, not public). Helper functions: `record_delta_transfer` (`metrics.py::record_delta_transfer`), `record_bytes_saved`
 (`metrics.py::record_bytes_saved`), `record_transfer_duration` (`metrics.py::record_transfer_duration`), `record_change_ratio`
 (`metrics.py::record_change_ratio`), `update_active_tokens` (`metrics.py::update_active_tokens`), `update_temp_storage`
 (`metrics.py::update_temp_storage`).

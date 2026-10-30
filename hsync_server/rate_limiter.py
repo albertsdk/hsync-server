@@ -11,8 +11,9 @@ Default limits (configurable via environment variables):
 - HSYNC_RATE_LIMIT_DEFAULT: 500/minute per IP (general API)
 - HSYNC_RATE_LIMIT_UPLOAD: 200/minute per IP (file uploads)
 - HSYNC_RATE_LIMIT_DOWNLOAD: 1000/minute per IP (file downloads)
-- HSYNC_RATE_LIMIT_WEBSOCKET: 50/minute per IP (WebSocket connections)
 - HSYNC_RATE_LIMIT_WS_MESSAGES: 10/second per connection (WebSocket events)
+WS connection admission itself is bounded by HSYNC_WS_MAX_CONNECTIONS /
+HSYNC_WS_MAX_CONNECTIONS_PER_IP (see config.py), not by slowapi.
 
 Reverse-proxy handling:
 - HSYNC_TRUSTED_PROXIES: comma-separated list of trusted reverse-proxy IPs.

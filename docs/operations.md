@@ -372,12 +372,15 @@ health checks.
 ### Prometheus metrics
 
 ```bash
-curl http://localhost:9753/metrics
+curl http://localhost:9753/metrics \
+  -H "Authorization: Bearer YOUR_ACCOUNT_TOKEN"
 ```
 
-The `/metrics` endpoint exposes standard FastAPI metrics (request count, latency,
-response size) via `prometheus-fastapi-instrumentator`. Integrate with your
-existing Prometheus + Grafana stack.
+The `/metrics` endpoint requires a valid account token (any authenticated
+account) and exposes standard FastAPI metrics (request count, latency, response
+size) via `prometheus-fastapi-instrumentator`, plus the delta-transfer metrics
+below. Integrate with your existing Prometheus + Grafana stack, sending the
+token as a bearer credential in the scrape configuration.
 
 ### Delta Transfer Metrics
 

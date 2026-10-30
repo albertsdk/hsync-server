@@ -22,9 +22,9 @@ developers working on the HSYNC Server codebase.
 Synced file bytes are plain files on disk. Causal metadata is SQLite
 (`<state_dir>/server/`: versions, tombstones, accounts, membership).
 
-- **SHA-256 cache**: in-memory `FILE_HASHES` dict in `hashes.py` (not
-  persisted, **not** LRU). Rebuilt at startup; stale on mtime/size mismatch;
-  unbounded for the process lifetime.
+- **SHA-256 cache**: in-memory bounded LRU `FILE_HASHES` in `hashes.py`
+  (`hashes.py::FILE_HASHES_MAX_SIZE`, 100 000 entries). Rebuilt at startup;
+  stale on mtime/size mismatch; LRU-evicted past the cap.
 - **Tombstones / versions**: SQLite tables via `tombstones.py` / `versions.py`,
   not per-bucket JSON files.
 
@@ -114,7 +114,7 @@ graph LR
 | WebSocket | `api/events.py` | WebSocket endpoint, auth, and message dispatch |
 | Event handlers | `api/events_handlers/` | Business logic for each WebSocket event type |
 | Bucket management | `api/buckets.py` | Bucket CRUD endpoints |
-| Health | `api/health.py` | `/health`, `/metrics`, `/api/v1/time` |
+| Health | `api/health.py` | `/health`, `/api/v1/time` |
 | Connection mgr | `api/connection_manager.py` | Per-bucket WebSocket connection tracking |
 | File listing | `api/files/list.py` | File listing + tombstone endpoints |
 | File upload | `api/files/upload.py` | Upload with resumable support |
@@ -124,7 +124,7 @@ graph LR
 | Utilities | `api/utils.py` | Request helpers |
 | File utilities | `api/file_utils.py` | Path safety, disk space checks |
 | File locks | `file_lock_manager.py` | Per-file asyncio lock manager for concurrent operations |
-| Metrics | `metrics.py` | Prometheus metrics for delta transfer operations |
+| Metrics | `metrics.py` | Prometheus metrics for delta transfer operations (served at the authenticated `/metrics` route) |
 | Logging | `logger.py` | Loguru configuration, intercept handler, rotation |
 | Exceptions | `exceptions.py` | Custom exception hierarchy (`HSyncError` base) |
 | Constants | `constants.py` | Server-side constants |
@@ -144,8 +144,9 @@ endpoints:
 
 The `auth_router` dependency chain enforces account-token validation on every
 request. The `admin_router` adds the `admin`-role check on top. The
-`public_router` carries no auth dependency, making health checks and metrics
-accessible to load balancers and monitoring tools without credentials.
+`public_router` carries no auth dependency, making health checks and time sync
+accessible to load balancers without credentials; `/metrics` lives on
+`auth_router` and requires a valid account token.
 
 ```python
 # Simplified wiring from main.py

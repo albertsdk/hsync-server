@@ -34,10 +34,10 @@ together with the buckets directory.
 
 Additional process-local metadata:
 
-- **SHA-256 cache**: an in-memory `dict` (not persisted, **not** LRU). It is
-  rebuilt at startup by walking the buckets tree and grows with every hashed
-  path for the life of the process. Stale entries are dropped when mtime/size
-  no longer match; there is no size cap.
+- **SHA-256 cache**: an in-memory **bounded LRU** (max 100 000 entries). It is
+  rebuilt at startup by walking the buckets tree; stale entries are dropped
+  when mtime/size no longer match, and past the cap the least-recently-used
+  entry is evicted.
 - **Tombstones / versions**: SQLite tables in per-bucket DBs, not per-bucket
   JSON files. Tombstone TTL (default 90 days) only garbage-collects markers.
 
@@ -116,13 +116,14 @@ production one; copy the relevant file to `dev.env` / `prod.env` and customize i
 |----------|---------|-------------|
 | `HSYNC_PORT` | `9753` | Server listen port |
 | `HSYNC_WORKERS` | `1` | Number of worker processes (must be `1` — WebSocket state is not shared) |
-| `HSYNC_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error` |
+| `HSYNC_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error`, `critical` |
 | `HSYNC_TZ` | `UTC` | Timezone (IANA format, e.g. `Europe/Rome`) used to render log timestamps |
 | `HSYNC_BUCKETS` | `<app>/buckets` (absolute) | Directory for bucket data storage (relative values are resolved against the process CWD) |
 | `HSYNC_STATE_DIR` | `<app>/state` (absolute) | Directory for the per-bucket state DBs and the global auth DB |
 | `HSYNC_ADMIN_KEY` | *(optional)* | Rendezvous admin secret (64 hex). If unset, the server generates and prints a one-time admin token. |
 | `HSYNC_MAX_UPLOAD_SIZE` | `10737418240` (10 GiB) | Maximum upload size in bytes (`0` = unlimited, which also disables the request-body cap below unless it is set explicitly) |
 | `HSYNC_MAX_REQUEST_BODY_SIZE` | `0` (auto) | Hard cap in bytes on any HTTP request body, enforced before it is buffered. `0` derives `HSYNC_MAX_UPLOAD_SIZE` + 64 MiB |
+| `HSYNC_MAX_BUCKETS_PER_ACCOUNT` | `100` | Maximum buckets a single account may own (`0` = unlimited); exceeded → `403` on `POST /buckets` |
 | `HSYNC_MIN_FREE_DISK_SPACE` | `500MB` | Minimum free disk before rejecting uploads, as a size with an explicit unit (`500MB`, `2GB`; a bare number is rejected; `0` = disabled) |
 | `HSYNC_CORS_ENABLED` | `false` | Enable CORS headers (requires a non-empty `HSYNC_CORS_ORIGINS`; credentials are never combined with a wildcard) |
 | `HSYNC_CORS_ORIGINS` | — | Explicit allowed CORS origins (comma-separated); required when CORS is enabled |
@@ -141,7 +142,7 @@ production one; copy the relevant file to `dev.env` / `prod.env` and customize i
 | `HSYNC_SSL_ENABLED` | `false` (app default) | Enable HTTPS/WSS with auto-generated self-signed certs. The shipped `dev.env.example` and `prod.env.example` profiles set it to `true`, so the Docker quickstart serves **https** on this port |
 | `HSYNC_SSL_CERTFILE` | — | Custom SSL certificate path (auto-generated if not set) |
 | `HSYNC_SSL_KEYFILE` | — | Custom SSL private key path (auto-generated if not set) |
-| `HSYNC_SSL_CERT_DIR` | `./certs` | Directory for auto-generated certificates |
+| `HSYNC_SSL_CERT_DIR` | `<app>/certs` | Directory for auto-generated certificates |
 | `HSYNC_LOG_FILE` | — | Path to log file (enables file logging) |
 | `HSYNC_LOG_FORMAT` | `text` | Log format: `text` or `json` |
 | `HSYNC_LOG_ROTATION` | `10 MB` | Log rotation threshold |

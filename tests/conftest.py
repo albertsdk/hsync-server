@@ -639,7 +639,6 @@ def _start_live_server(
             "HSYNC_RATE_LIMIT_UPLOAD": "1000000/minute",
             "HSYNC_RATE_LIMIT_DOWNLOAD": "1000000/minute",
             "HSYNC_RATE_LIMIT_DELTA": "1000000/minute",
-            "HSYNC_RATE_LIMIT_WEBSOCKET": "1000000/minute",
             "HSYNC_RATE_LIMIT_WS_MESSAGES": "1000000/second",
             "HSYNC_WS_AUTH_TIMEOUT": "5",
             "HSYNC_WS_HEARTBEAT_INTERVAL": "5",

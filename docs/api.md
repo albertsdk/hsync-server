@@ -8,7 +8,6 @@ This document provides a complete reference for the HSYNC Server REST and WebSoc
 graph LR
     subgraph Public["① Public Endpoints"]
         H["GET /health"]
-        M["GET /metrics"]
         T["GET /api/v1/time"]
         WS["WS .../buckets/:bucket/events/:cid"]
     end
@@ -33,6 +32,10 @@ graph LR
         subgraph Tombstones["⑤ Tombstones"]
             GT["GET .../buckets/:bucket/tombstones"]
             PT["POST .../buckets/:bucket/tombstones"]
+        end
+
+        subgraph Monitoring["⑥ Monitoring"]
+            MET["GET /metrics (any account with a valid token)"]
         end
     end
 ```
@@ -62,7 +65,11 @@ require the `admin` role.
 |--------|----------|-------------|------------|
 | `GET` | `/api/v1/buckets/{bucket}` | Get bucket information | 500/min |
 | `POST` | `/api/v1/buckets?bucket={name}` | Create a new bucket | 500/min |
-| `DELETE` | `/api/v1/buckets/{bucket}` | Delete a bucket | 500/min |
+| `DELETE` | `/api/v1/buckets/{bucket}` | Delete a bucket (admin only) | 500/min |
+
+`POST /buckets` returns `409` when the bucket name already exists, and `403`
+when the caller already owns `HSYNC_MAX_BUCKETS_PER_ACCOUNT` buckets (default
+`100`; `0` = unlimited).
 
 ### Membership and Ownership
 
