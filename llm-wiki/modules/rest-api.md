@@ -267,7 +267,7 @@ The `/files` and `/dirs` listings are **streamed** (`StreamingResponse` over a
 sync generator, `hsync_common/listing.py::iter_json_array`): the body is a chunked JSON
 array produced one entry at a time, so the server holds O(directory fanout + one
 entry) instead of one dict per file (see DI-03 in
-[deferred-design-issues.md](deferred-design-issues.md)). The generator is iterated on a worker thread, so the per-file
+[deferred-design-issues.md](../deferred-design-issues.md)). The generator is iterated on a worker thread, so the per-file
 metadata read (`File.get`, `hsync_common/models/file.py::File.get`: stat + blocking
 SHA-256 on a cache miss) neither blocks the loop nor needs a per-file
 `asyncio.to_thread` hop. Entries are emitted in deterministic **path order**; a
