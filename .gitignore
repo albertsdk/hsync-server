@@ -76,5 +76,8 @@ Thumbs.db
 .mypy_cache
 .ruff_cache
 
+# AI Agents
+AGENTS.md
+
 # HSYNC
 .hsynckeep
