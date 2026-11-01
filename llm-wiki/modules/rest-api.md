@@ -136,6 +136,14 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
 - Resumable: `offset > 0` appends to a `.part` file; full write flushed via
   `_flush_to_disk` → `fsync` (`api/files/upload.py::_flush_to_disk`). In-flight temp files are
   dot-prefixed (`.hsync-upload-*`), so they never appear in `/files` listings.
+  The append phase is **serialized per path** (`FileLockManager.acquire` on the
+  `.part` path; the arbitration lock below keys the final path, so the two never
+  collide). When the `.part` holds a different size than the offset the peer
+  probed — a duplicate writer appended bytes, or the `.part` is gone because the
+  completing writer renamed it — the server keeps the `.part`, never writes the
+  client's body, and answers `202` with the **true** offset
+  (`api/files/upload.py::_resync_upload_response`, mirroring the P2P master):
+  the client re-probes `upload-status` and resumes (or restarts).
 - **Overwrite backup**: when the target already exists, its previous content is
   snapshotted to `<path>.backup` by `_backup_existing_file` (`api/files/upload.py::_backup_existing_file`) — a
   hard link (O(1), same inode) with a `copy2` fallback when the filesystem has

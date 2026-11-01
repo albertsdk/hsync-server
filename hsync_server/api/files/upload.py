@@ -151,6 +151,25 @@ def _partial_upload_response(total_bytes: int, size: int) -> JSONResponse:
     )
 
 
+def _resync_upload_response(offset: int, size: int) -> JSONResponse:
+    """202 response for a preflight offset that no longer matches the .part.
+
+    Mirrors the P2P master's resync contract: the .part has a different size
+    than the offset the client probed (a duplicate writer appended bytes, or
+    the .part is gone because the completing writer renamed it). The client's
+    body is never written; the peer re-probes ``upload-status`` and resumes
+    from the reported offset.
+    """
+    return JSONResponse(
+        status_code=202,
+        content={
+            "info": "Partial upload offset resync",
+            "offset": offset,
+            "remaining": max(0, size - offset),
+        },
+    )
+
+
 @auth_router.post(rest_bucket_template(REST_FILES_SUFFIX))
 @limiter.limit(RATE_LIMIT_UPLOAD)
 async def upload_file(
@@ -366,40 +385,49 @@ async def upload_file(
         fused_sha = None if is_compressed else hashlib.sha256()
 
         if is_resumable:
-            # Client-input errors (missing file, wrong offset) are 400,
-            # not 500 — the client must correct its request.
-            if not Path(partial_file_path).exists():
-                raise ValidationError(
-                    message="Cannot resume: partial file not found",
-                    details={"offset": offset},
-                )
-            current_size = Path(partial_file_path).stat().st_size
-            if current_size != offset:
-                raise ValidationError(
-                    message=f"Offset mismatch: expected {current_size}, got {offset}",
-                    details={"expected_offset": current_size, "provided_offset": offset},
-                )
+            # Serialize the append phase per path: two concurrent uploads of the
+            # same destination (a duplicate watcher + full-sync trigger, or a
+            # retry racing the initial sync) must not append to the same .part at
+            # once — the second writer's preflight offset would go stale
+            # mid-request and the file would be corrupted. The arbitration lock
+            # below uses the final path as its key, so holding this lock on the
+            # .part path cannot self-deadlock.
+            async with get_file_lock_manager().acquire(partial_file_path):
+                tmp_exists = Path(partial_file_path).exists()
+                current_size = Path(partial_file_path).stat().st_size if tmp_exists else 0
+                if current_size != offset:
+                    # The .part holds a different size than the offset the peer
+                    # probed: a duplicate writer appended bytes, or the .part is
+                    # gone (the peer that completed the upload already renamed
+                    # it). The server keeps the .part, never writes the client's
+                    # body, and answers 202 with the true offset so the peer
+                    # re-probes and resumes (or restarts).
+                    log.warning(
+                        f"Upload offset resync for {file.filename}: "
+                        f"local .part has {current_size} bytes, client offset {offset}"
+                    )
+                    return _resync_upload_response(current_size, size)
 
-            total_bytes = offset
-            # Fused checksum (resume): ingest the already-received prefix so
-            # the digest covers the complete file. Compressed uploads are
-            # never resumable (rejected above), so fused_sha is set here.
-            assert fused_sha is not None
-            async with aiofiles.open(partial_file_path, "rb") as prefix:
-                while prefix_chunk := await prefix.read(_UPLOAD_COPY_CHUNK):
-                    fused_sha.update(prefix_chunk)
-            async with aiofiles.open(partial_file_path, "ab") as f:
-                while chunk := await file.read(_UPLOAD_COPY_CHUNK):
-                    total_bytes += len(chunk)
-                    enforce_size_cap(total_bytes, max_upload_size)
-                    await f.write(chunk)
-                    fused_sha.update(chunk)
-                # Ensure appended data reaches physical storage
-                await _flush_to_disk(f)
+                total_bytes = offset
+                # Fused checksum (resume): ingest the already-received prefix so
+                # the digest covers the complete file. Compressed uploads are
+                # never resumable (rejected above), so fused_sha is set here.
+                assert fused_sha is not None
+                async with aiofiles.open(partial_file_path, "rb") as prefix:
+                    while prefix_chunk := await prefix.read(_UPLOAD_COPY_CHUNK):
+                        fused_sha.update(prefix_chunk)
+                async with aiofiles.open(partial_file_path, "ab") as f:
+                    while chunk := await file.read(_UPLOAD_COPY_CHUNK):
+                        total_bytes += len(chunk)
+                        enforce_size_cap(total_bytes, max_upload_size)
+                        await f.write(chunk)
+                        fused_sha.update(chunk)
+                    # Ensure appended data reaches physical storage
+                    await _flush_to_disk(f)
 
-            if size > 0 and total_bytes < size:
-                # Partial upload - more chunks expected
-                return _partial_upload_response(total_bytes, size)
+                if size > 0 and total_bytes < size:
+                    # Partial upload - more chunks expected
+                    return _partial_upload_response(total_bytes, size)
 
             # Upload complete - verify and finalize
             file_location_tmp = partial_file_path

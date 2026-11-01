@@ -249,7 +249,16 @@ class TestResumableUpload:
             assert f.read() == b"AAAAABBBBB"
 
     @pytest.mark.asyncio
-    async def test_resume_offset_mismatch(self, client: AsyncClient, temp_buckets_dir):
+    async def test_resume_offset_mismatch_returns_202_with_true_offset(
+        self, client: AsyncClient, temp_buckets_dir
+    ):
+        """A diverged .part is answered with its true offset (resync).
+
+        When the .part grew past the offset the peer probed (a duplicate
+        uploader appended bytes), the server keeps the .part, never writes the
+        client's body, and answers 202 with the true offset so the peer
+        re-probes and resumes.
+        """
         bucket_path = os.path.join(temp_buckets_dir, "mismatchbucket")
         os.makedirs(bucket_path)
         with open(os.path.join(bucket_path, "m.txt.part"), "wb") as f:
@@ -266,10 +275,26 @@ class TestResumableUpload:
                 "sha256sum": hashlib.sha256(b"BB").hexdigest(),
             },
         )
-        assert response.status_code == 400
+        assert response.status_code == 202, response.text
+        body = response.json()
+        assert body["offset"] == 5
+        assert body["remaining"] == 15
+        # The .part survives (and keeps its bytes) for the follow-up resume.
+        part_file = os.path.join(bucket_path, "m.txt.part")
+        assert os.path.exists(part_file)
+        with open(part_file, "rb") as f:
+            assert f.read() == b"AAAAA"
 
     @pytest.mark.asyncio
-    async def test_resume_without_partial_file(self, client: AsyncClient, temp_buckets_dir):
+    async def test_resume_without_partial_file_returns_202_offset_zero(
+        self, client: AsyncClient, temp_buckets_dir
+    ):
+        """A stale resume offset with no .part is a 202 offset 0, not a 400.
+
+        The .part is gone (the completing writer renamed it, or a first chunk
+        never arrived): the peer re-probes upload-status and restarts. The
+        response must still not embed the absolute partial-file path.
+        """
         os.makedirs(os.path.join(temp_buckets_dir, "nopartbucket"))
         response = await client.post(
             "/api/v1/buckets/nopartbucket/files",
@@ -282,9 +307,11 @@ class TestResumableUpload:
                 "sha256sum": hashlib.sha256(b"BB").hexdigest(),
             },
         )
-        assert response.status_code == 400
-        # Error details must never embed the absolute partial-file path.
+        assert response.status_code == 202, response.text
         body = response.json()
+        assert body["offset"] == 0
+        assert body["remaining"] == 20
+        # Error details must never embed the absolute partial-file path.
         body_str = str(body)
         assert temp_buckets_dir not in body_str
         assert "partial_file" not in body_str
