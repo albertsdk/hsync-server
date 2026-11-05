@@ -15,7 +15,6 @@ This module provides the REST API endpoint for file upload with:
 import asyncio
 import hashlib
 import hmac
-import json
 from os import fsync, link, remove, replace
 from os.path import samefile
 from pathlib import Path
@@ -32,9 +31,10 @@ from hsync_common.clock import clamp_incoming_corrected_mtime
 from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
 from hsync_common.format import format_bytes, format_duration
 from hsync_common.hashing import compute_sha256_async, is_sha256_hex
-from hsync_common.models.event import Event, EventName, is_valid_cid
+from hsync_common.ids import is_valid_cid
+from hsync_common.models.event import Event, EventName
 from hsync_common.models.file import is_partial_file
-from hsync_common.models.version import relpath_in_bucket
+from hsync_common.models.version import decode_wire_vclock, relpath_in_bucket
 from hsync_common.path_validation import is_internal_name, is_valid_filename, sanitize_filename
 from hsync_common.permissions import is_valid_octal_permissions
 from hsync_common.protocol.rest import REST_FILES_SUFFIX, rest_bucket_template
@@ -535,10 +535,7 @@ async def upload_file(
 
         # Parse the incoming causal vector clock (JSON form field; malformed ⇒
         # empty clock, handled natively by the arbitration matrix).
-        try:
-            incoming_vclock_raw = json.loads(vclock) if vclock else None
-        except (ValueError, TypeError):
-            incoming_vclock_raw = None
+        incoming_vclock_raw = decode_wire_vclock(vclock)
 
         local_bucket = f"{buckets_path}/{bucket}"
         # The per-path lock serializes the arbitration critical section: read

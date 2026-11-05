@@ -13,7 +13,6 @@ convergence (no bytes are re-read or re-sent).
 """
 
 import hmac
-import json
 from pathlib import Path
 from typing import Annotated
 
@@ -21,9 +20,11 @@ from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from hsync_common.constants import MTIME_PROPAGATION_TOLERANCE_SECONDS
 from hsync_common.hashing import compute_sha256_async, is_sha256_hex
-from hsync_common.models.event import Event, EventName, is_valid_cid
+from hsync_common.ids import is_valid_cid
+from hsync_common.models.event import Event, EventName
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
+from hsync_common.models.version import decode_wire_vclock
 from hsync_common.path_validation import is_internal_name, is_valid_filename, sanitize_filename
 from hsync_common.permissions import is_valid_octal_permissions, sanitize_remote_permissions
 from hsync_common.protocol.rest import REST_FILES_PERMISSIONS_SUFFIX, rest_bucket_template
@@ -207,10 +208,7 @@ async def patch_file_permissions(
 
     parsed_vclock: dict[str, int] | None = None
     if vclock:
-        try:
-            raw_vclock = json.loads(vclock)
-        except (ValueError, TypeError):
-            raise ValidationError(message="Invalid vclock JSON", details={"vclock": vclock})
+        raw_vclock = decode_wire_vclock(vclock)
         if not isinstance(raw_vclock, dict):
             raise ValidationError(message="Invalid vclock JSON", details={"vclock": vclock})
         parsed_vclock = {

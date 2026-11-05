@@ -16,9 +16,15 @@ from __future__ import annotations
 from os import walk
 from pathlib import Path
 
-from hsync_common.models.event import is_valid_cid
+from hsync_common.ids import is_valid_cid
 from hsync_common.models.file import File
-from hsync_common.models.tombstone import TombstoneStore, relpath_in_bucket
+from hsync_common.models.tombstone import (
+    MarkerSnapshot,
+    TombstoneStore,
+    destination_mutated,
+    marker_snapshot,
+    relpath_in_bucket,
+)
 from loguru import logger as log
 
 from hsync_server.api.file_utils import is_sentinel_file
@@ -213,22 +219,20 @@ def deletion_marker_snapshot(
     bucket: str,
     bucket_dir: str,
     abs_path: str,
-) -> tuple[str, tuple[tuple[str, int], ...]] | None:
+) -> MarkerSnapshot | None:
     """Opaque snapshot of the deletion marker for *abs_path* (None when absent).
 
-    Every mint, merge and clear changes the marker's ``(version_id, vclock)``,
-    so holding the snapshot across an operation and comparing it afterwards
-    detects that the path was deleted, renamed away or re-created while the
-    operation ran (same contract as the client helper of the same name).
+    Delegates the snapshot shape and semantics to the shared
+    ``hsync_common.models.tombstone.marker_snapshot``; only the per-bucket store
+    lookup (under the registry lock) is local.
     """
     relpath = relpath_in_bucket(abs_path, bucket_dir)
-    if not relpath:
-        return None
-    with _registry.lock(bucket):
-        entry = get_tombstone_store(bucket).get(relpath)
-    if entry is None:
-        return None
-    return (entry["version_id"], tuple(sorted(entry["vclock"].items())))
+
+    def _lookup(rel: str):
+        with _registry.lock(bucket):
+            return get_tombstone_store(bucket).get(rel)
+
+    return marker_snapshot(relpath, _lookup)
 
 
 def destination_mutation_since(
@@ -236,15 +240,17 @@ def destination_mutation_since(
     bucket_dir: str,
     abs_path: str,
     existed_at_start: bool,
-    marker_snapshot: tuple[str, tuple[tuple[str, int], ...]] | None,
+    marker_snapshot: MarkerSnapshot | None,
 ) -> bool:
     """True when *abs_path* was removed or replaced since the snapshot was taken.
 
-    The destination changed under a transfer that is about to commit over it: a
-    delete or rename-away is caught by the presence check (the case even a run
-    without a watcher can see), any deletion-marker change — including a
-    delete-and-recreate — by the snapshot comparison.
+    Delegates to ``hsync_common.models.tombstone.destination_mutated`` (the
+    presence check plus the marker comparison) so the client and server guards
+    cannot drift.
     """
-    if existed_at_start and not Path(abs_path).exists():
-        return True
-    return deletion_marker_snapshot(bucket, bucket_dir, abs_path) != marker_snapshot
+    return destination_mutated(
+        abs_path,
+        existed_at_start,
+        marker_snapshot,
+        lambda path: deletion_marker_snapshot(bucket, bucket_dir, path),
+    )

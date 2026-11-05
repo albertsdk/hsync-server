@@ -41,13 +41,14 @@ from hsync_common.delta import (
 )
 from hsync_common.format import format_duration
 from hsync_common.hashing import is_sha256_hex
+from hsync_common.ids import is_valid_cid
 from hsync_common.models.delta import (
     DeltaOp,
     sanitize_op_list,
     validate_op_bounds,
 )
-from hsync_common.models.event import Event, EventName, is_valid_cid
-from hsync_common.models.version import relpath_in_bucket
+from hsync_common.models.event import Event, EventName
+from hsync_common.models.version import decode_wire_vclock, relpath_in_bucket
 from hsync_common.permissions import is_valid_octal_permissions
 from hsync_common.protocol.rest import REST_DELTA_APPLY_SUFFIX, rest_bucket_template
 from hsync_common.time_utils import conflict_timestamp
@@ -337,15 +338,7 @@ async def delta_apply(
             # string would silently yield an empty clock and mark every delta
             # "superseded" by the stored version.
             raw_vclock = meta.get("vclock")
-            if isinstance(raw_vclock, str) and raw_vclock:
-                try:
-                    incoming_vclock_raw = json.loads(raw_vclock)
-                except (ValueError, TypeError):
-                    incoming_vclock_raw = None
-            elif isinstance(raw_vclock, dict):
-                incoming_vclock_raw = raw_vclock
-            else:
-                incoming_vclock_raw = None
+            incoming_vclock_raw = decode_wire_vclock(raw_vclock)
 
             raw_corrected = meta.get("corrected_mtime")
             incoming_corrected = (

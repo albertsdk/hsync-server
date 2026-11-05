@@ -30,7 +30,8 @@ from json import JSONDecodeError, loads
 from pathlib import Path
 
 from fastapi import WebSocket, WebSocketDisconnect
-from hsync_common.models.event import Event, EventName, is_valid_cid
+from hsync_common.ids import is_valid_cid
+from hsync_common.models.event import Event, EventName
 from hsync_common.path_validation import validate_remote_relpath, wire_relpaths
 from hsync_common.protocol.handshake import (
     PROTOCOL_VERSION_WS,

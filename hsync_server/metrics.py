@@ -10,8 +10,8 @@ success/failure rates, and resource usage. Metrics are exposed via the
 """
 
 from fastapi import Response
-from hsync_common.protocol.rest import REST_METRICS_PATH
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
+from hsync_common.protocol.rest import PROMETHEUS_CONTENT_TYPE, REST_METRICS_PATH
+from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
 from hsync_server.routers import auth_router
 
@@ -140,4 +140,4 @@ async def metrics_endpoint() -> Response:
     Authenticated: the endpoint was previously exposed publicly
     by the instrumentator; it now requires a valid account token.
     """
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    return Response(generate_latest(), media_type=PROMETHEUS_CONTENT_TYPE)

@@ -8,8 +8,6 @@ This module contains all magic numbers and constant values used
 throughout the application, making them easy to find and modify.
 """
 
-import secrets
-
 # =============================================================================
 # Application Info
 # =============================================================================
@@ -24,6 +22,7 @@ from hsync_common.constants import (  # noqa: F401
     HSYNCKEEP_FILENAME,
     is_valid_client_name,
 )
+from hsync_common.ids import CID_ALPHABET, mint_cid
 from hsync_common.labels import ActionLabel  # noqa: F401
 from hsync_common.protocol.handshake import PROTOCOL_VERSION_REST  # noqa: F401
 
@@ -44,17 +43,19 @@ BACKUP_SUFFIX = ".backup"
 # =============================================================================
 
 # Canonical alphanumeric id alphabet — same shape as the wire CID ([A-Za-z0-9]).
-ACCOUNT_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+# The alphabet and the mint are the hsync-common SSOT (``models.event``) so the
+# server account id and the client CID cannot diverge.
+ACCOUNT_ID_ALPHABET = CID_ALPHABET
 ACCOUNT_ID_LEN = 21
 
 
-def mint_alnum_id(length: int = ACCOUNT_ID_LEN, alphabet: str = ACCOUNT_ID_ALPHABET) -> str:
+def mint_alnum_id(length: int = ACCOUNT_ID_LEN) -> str:
     """Mint a cryptographically random alphanumeric id of *length* characters.
 
-    Uses ``secrets.choice`` (unbiased) — the previous ``b // 4 % len(alphabet)``
-    byte-mapping introduced a modulo bias because 64 does not divide 62.
+    Delegates to the shared :func:`hsync_common.models.event.mint_cid` (unbiased
+    ``secrets.choice`` over the canonical 62-character alphabet).
     """
-    return "".join(secrets.choice(alphabet) for _ in range(length))
+    return mint_cid(length)
 
 
 # =============================================================================

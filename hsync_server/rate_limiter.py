@@ -27,9 +27,9 @@ Examples: "100/minute", "1000/hour", "10/second"
 
 import ipaddress
 import re
-import time
 
 from fastapi import Request
+from hsync_common.ratelimit import TokenBucket as _SharedTokenBucket
 from loguru import logger as log
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -228,46 +228,34 @@ def _parse_ws_rate(rate_str: str) -> tuple[float, int]:
     return rate, burst
 
 
-class TokenBucket:
-    """
-    Token bucket rate limiter for WebSocket messages.
+class TokenBucket(_SharedTokenBucket):
+    """WebSocket message bucket: ``rate`` tokens/s with a ``burst`` capacity.
 
-    Tokens refill continuously at the configured rate. Each message event
-    consumes one token. When the bucket is empty, messages are dropped.
-
-    Uses time.monotonic() which is immune to system clock changes.
+    Thin policy wrapper over :class:`hsync_common.ratelimit.TokenBucket`, so the
+    lazy refill/consume algorithm has a single definition. Each message event
+    consumes one token; when the bucket is empty, messages are dropped.
     """
 
     def __init__(self, rate: float, burst: int):
-        """
-        Initialize token bucket.
+        super().__init__(capacity=float(burst), refill=float(rate), window=1.0)
 
-        Args:
-            rate: Token refill rate in tokens per second.
-            burst: Maximum token capacity (allows short bursts).
-        """
-        self.rate = rate
-        self.burst = burst
-        self.tokens = float(burst)
-        self.last_refill = time.monotonic()
+    # Read-only view of the underlying bucket, kept for tests/benchmark tooling
+    # that assert on the policy and the current token level.
+    @property
+    def rate(self) -> float:
+        return self._rate
 
-    def acquire(self) -> bool:
-        """
-        Try to consume one token.
+    @property
+    def burst(self) -> float:
+        return self._capacity
 
-        Returns:
-            True if token was consumed, False if rate limited.
-        """
-        now = time.monotonic()
-        elapsed = now - self.last_refill
-        self.tokens = min(float(self.burst), self.tokens + elapsed * self.rate)
-        self.last_refill = now
+    @property
+    def tokens(self) -> float:
+        return self._tokens
 
-        if self.tokens >= 1.0:
-            self.tokens -= 1.0
-            return True
-
-        return False
+    @property
+    def last_refill(self) -> float:
+        return self._stamp
 
 
 def create_ws_message_bucket() -> TokenBucket:

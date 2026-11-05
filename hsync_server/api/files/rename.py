@@ -28,9 +28,10 @@ from typing import Annotated
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from hsync_common.hashing import is_sha256_hex
+from hsync_common.ids import is_valid_cid
 from hsync_common.listing import file_entry
 from hsync_common.models.dir import Dir
-from hsync_common.models.event import Event, EventName, is_valid_cid
+from hsync_common.models.event import Event, EventName
 from hsync_common.models.file import File, invalidate_sha256_cache
 from hsync_common.models.version import relpath_in_bucket
 from hsync_common.permissions import is_valid_octal_permissions

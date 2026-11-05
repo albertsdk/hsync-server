@@ -29,7 +29,7 @@ from os import walk
 from os.path import relpath
 from pathlib import Path
 
-from hsync_common.models.event import is_valid_cid
+from hsync_common.ids import is_valid_cid
 from hsync_common.models.version import FileVersion, SyncStateStore, VersionInfo, relpath_in_bucket
 
 from hsync_server.config import get_state_dir
