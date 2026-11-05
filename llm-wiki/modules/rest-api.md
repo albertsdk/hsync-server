@@ -1,11 +1,11 @@
 # HSYNC Server — REST API (`api/`)
 
 All paths are prefixed `/api/v1` from the shared SSOT
-(`hsync_common/protocol/rest.py::REST_API_PREFIX`). Endpoints attach to
+(`hsync-common/hsync_common/protocol/rest.py::REST_API_PREFIX`). Endpoints attach to
 `auth_router` (Bearer key) unless noted; `public_router` serves health/time and
 the WebSocket endpoint only.
 Human-oriented flow diagrams: `../docs/internal/architecture.md`; the machine-readable REST
-contract is the generated OpenAPI snapshot in `hsync-common` (`hsync_common/protocol/rest/openapi.json`).
+contract is the generated OpenAPI snapshot in `hsync-common` (`hsync-common/hsync_common/protocol/rest/openapi.json`).
 
 The route decorators do not hard-code literals: they use the shared path names in
 `hsync_common.protocol.rest` (`REST_*` constants, `rest_bucket_template`,
@@ -195,7 +195,7 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   still hits the dedup skip.
 - **`GET …/dirs`** (`api/files/list.py::get_dirs`): directory metadata
   listing `[{"path": <bucket-relative>, "permissions": <octal>}, …]` in the
-  deterministic per-directory walk order (`hsync_common/listing.py::iter_dir_entries`,
+  deterministic per-directory walk order (`hsync-common/hsync_common/listing.py::iter_dir_entries`,
   siblings sorted, the tree not globally sorted — the same contract as
   `/files`); skips hidden dirs and dir-symlinks. Directories carry no content
   hash and never appear in `/files`, so this listing feeds the clients'
@@ -204,7 +204,7 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   `to_thread` wrapper over `hsync_common.permissions.apply_remote_permissions` —
   special bits (setuid/setgid/sticky) stripped, owner rwx floor for directories.
 - Wire-supplied mtimes clamped to `now + 300 s` (SSOT
-  `hsync_common/constants.py::CORRECTED_MTIME_MAX_FUTURE_SKEW`, imported in
+  `hsync-common/hsync_common/constants.py::CORRECTED_MTIME_MAX_FUTURE_SKEW`, imported in
   `api/file_utils.py` as `MTIME_MAX_FUTURE_SKEW_SECONDS`).
 - Broadcasts an `added` event to bucket subscribers, skipping hidden files
   (see [websocket.md](websocket.md)).
@@ -272,11 +272,11 @@ when the bucket does not exist or the caller is not a member).
 ## List / upload-status / tombstones (`api/files/list.py`)
 
 The `/files` and `/dirs` listings are **streamed** (`StreamingResponse` over a
-sync generator, `hsync_common/listing.py::iter_json_array`): the body is a chunked JSON
+sync generator, `hsync-common/hsync_common/listing.py::iter_json_array`): the body is a chunked JSON
 array produced one entry at a time, so the server holds O(directory fanout + one
 entry) instead of one dict per file (see DI-03 in
 [deferred-design-issues.md](../deferred-design-issues.md)). The generator is iterated on a worker thread, so the per-file
-metadata read (`File.get`, `hsync_common/models/file.py::File.get`: stat + blocking
+metadata read (`File.get`, `hsync-common/hsync_common/models/file.py::File.get`: stat + blocking
 SHA-256 on a cache miss) neither blocks the loop nor needs a per-file
 `asyncio.to_thread` hop. Entries are emitted in deterministic **path order**; a
 consumer collects the whole array and applies the `mtime` (oldest-first) priority
@@ -303,7 +303,7 @@ correctness over loop-freedom.
   in path order.
 - `get_upload_status` (`api/files/list.py::get_upload_status`) reports existing `.part` size for resume.
   **p2p parity**: the same endpoint is served by p2p masters too — Python
-  (`hsync_client/p2p_server.py::_handle_upload_status`) and Android
+  (`hsync-client/hsync_client/p2p_server.py::_handle_upload_status`) and Android
   (`P2PServer.kt`, `handleUploadStatus`) — so the client resume logic works
   uniformly in both server mode and P2P mode.
 - `get_tombstones` (`api/files/list.py::get_tombstones`) returns the bucket's tombstone entries from
@@ -384,7 +384,7 @@ literal compression and token issuance all run on **asyncio worker threads**
 cross-thread by design: `_signature_cache` (`api/files/delta/signatures.py::_signature_cache`, TTL 300 s,
 FIFO cap 64, guarded by `_signature_cache_lock` — computed outside the lock)
 and `delta_token_store` (`api/files/delta/tokens.py::delta_token_store`, a binding of
-the shared `hsync_common/delta/token_store.py::DeltaTokenStore`; its
+the shared `hsync-common/hsync_common/delta/token_store.py::DeltaTokenStore`; its
 `threading.RLock` is held around
 issue/lookup/consume/discard/cleanup so the token-cap and storage checks are
 atomic). Regression coverage: `tests/test_concurrency_hardening.py`.

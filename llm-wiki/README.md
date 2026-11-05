@@ -10,6 +10,12 @@ utilities.
 > `internal/architecture.md`). This wiki is the **first search surface**:
 > start here, follow the `path::symbol` references to reach code directly.
 
+**Source references.** Local paths are relative to this repository root and use
+`path/to/file.ext::Symbol`. Cross-repo references are relative to the `hsync/`
+workspace root and start with the sibling repo directory (`hsync-common/…`,
+`hsync-client/…`, `hsync-server/…`, `hsync-rendezvous/…`, `hsync-desktop/…`);
+they are code spans, not hyperlinks.
+
 ## Map
 
 | Doc | Scope |
@@ -28,13 +34,13 @@ utilities.
 - Package root: `hsync_server/`.
 - ASGI app object: `app` (`main.py::app`) (FastAPI, lifespan-managed).
 - Version SSOT: `HSYNC_VERSION` re-exported from `hsync_common.constants`
-  (`hsync_common/constants.py::HSYNC_VERSION`); wire header names (`HEADER_*`) and
+  (`hsync-common/hsync_common/constants.py::HSYNC_VERSION`); wire header names (`HEADER_*`) and
   the `X-Client-Name` validator (`is_valid_client_name`) are re-exported from the
-  same SSOT (`hsync_common/constants.py::HEADER_CLIENT_NAME`,
-  `hsync_common/constants.py::is_valid_client_name`); `CONTENT_TYPE_OCTET_STREAM`
-  at `hsync_common/constants.py::CONTENT_TYPE_OCTET_STREAM`.
+  same SSOT (`hsync-common/hsync_common/constants.py::HEADER_CLIENT_NAME`,
+  `hsync-common/hsync_common/constants.py::is_valid_client_name`); `CONTENT_TYPE_OCTET_STREAM`
+  at `hsync-common/hsync_common/constants.py::CONTENT_TYPE_OCTET_STREAM`.
 - API prefix: `/api/v1` from the shared SSOT
-  (`hsync_common/protocol/rest.py::REST_API_PREFIX`), applied per route via the
+  (`hsync-common/hsync_common/protocol/rest.py::REST_API_PREFIX`), applied per route via the
   `rest_*` helpers (e.g. `api/buckets.py::get_bucket`); admin sub-router at
   `api/admin.py::admin_router`.
 - Protocol versions enforced from common SSOT (`hsync_common.protocol.handshake`):

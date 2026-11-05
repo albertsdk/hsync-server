@@ -10,7 +10,7 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
 - `min_free_disk_space` (`config.py::Settings.min_free_disk_space`) is stored in
   **bytes** (default `MIN_FREE_DISK_SPACE_DEFAULT`) but its env value is a size
   string with an explicit unit — `HSYNC_MIN_FREE_DISK_SPACE=500MB` — parsed by
-  `parse_size` (`hsync_common/format.py::parse_size`) in
+  `parse_size` (`hsync-common/hsync_common/format.py::parse_size`) in
   `validate_min_free_disk_space` (`config.py::Settings.validate_min_free_disk_space`).
   A bare non-zero number is rejected (it would be silently read as bytes), an
   empty value falls back to the shared default, and `0` disables the guard.
@@ -214,7 +214,7 @@ on `Settings.tz`) via the tz-aware formatter built in `_build_formatters`
 Console colors are gated by `hsync_common.runtime.color_output_enabled` with the
 `--color` mode (`auto`: TTY + `NO_COLOR`; `always`; `never`). At startup the entry
 point logs
-`hsync_common.runtime.runtime_summary()` (`hsync_common/runtime.py::runtime_summary`) with the detected
+`hsync_common.runtime.runtime_summary()` (`hsync-common/hsync_common/runtime.py::runtime_summary`) with the detected
 container runtime, cgroup memory/CPU limits and TTY state.
 Request correlation via `get_request_id`/`set_request_id` (`logger.py::get_request_id` /
 `logger.py::set_request_id`), set by
@@ -231,7 +231,7 @@ per-endpoint checks being too late. `0` disables the cap.
 
 **Action-label colorization**: the server has no project-local label table.
 `ActionLabel` is re-exported from `hsync_common.labels`
-(`hsync_common/labels.py::ActionLabel`), and the formatter's `message_transform`
+(`hsync-common/hsync_common/labels.py::ActionLabel`), and the formatter's `message_transform`
 calls `hsync_common.labels.colorize_labels` (via `logger.py::_transform_colored`) so the server's
 log lines are colorized identically to the client's. REST/WS handlers emit
 labels via `ActionLabel.*` (e.g. `[UPLOAD]`/`[DOWNLOAD]` in `api/files/`,
@@ -286,7 +286,7 @@ uploads for the same file are ordered (ADR-0022).
 - `arbitration.py` exposes `arbitrate_upload` (`arbitration.py::arbitrate_upload`) — the causal gate
   used by both the REST upload and the delta apply endpoint (DRY). The decision
   itself is the shared reference implementation in
-  `hsync_common/models/arbitration.py::decide_arbitration` (also used by the
+  `hsync-common/hsync_common/models/arbitration.py::decide_arbitration` (also used by the
   client's P2P master); this module binds it to the per-bucket version store, the
   server CID and the immediate `save()`. Returns an
   `ArbitrationResult` (`hsync-common/hsync_common/models/arbitration.py::ArbitrationResult`; outcome + record clock + record corrected mtime + loser

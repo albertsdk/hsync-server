@@ -72,7 +72,7 @@ The handlers live in `events_handlers/handlers.py`:
 | `renamed` | `handle_renamed_event` | `api/events_handlers/handlers.py::handle_renamed_event` |
 | `symlink` | `handle_symlink_event` | `api/events_handlers/handlers.py::handle_symlink_event` |
 
-`EventName` comes from `hsync_common/models/event.py::EventName` (imported in `api/events.py`). Each handler
+`EventName` comes from `hsync-common/hsync_common/models/event.py::EventName` (imported in `api/events.py`). Each handler
 mutates the bucket on disk, keeps the hash cache / tombstones consistent, then the
 event is rebroadcast. `renamed` additionally carries the causal version entries
 across the rename (`versions.py::move_version` / `versions.py::move_version_prefix`), drops any stale
@@ -116,4 +116,4 @@ tree mutation lock shared with upload — a documented follow-up.
 
 > Human-readable WS sequence diagram (WebSocket Event Flow): `../docs/internal/architecture.md`.
 > The machine-readable WS contract is the generated schema in `hsync-common`
-> (`hsync_common/protocol/ws/ws-schema.json`).
+> (`hsync-common/hsync_common/protocol/ws/ws-schema.json`).

@@ -55,15 +55,15 @@ the server knows the original file metadata.
 
 **Resolution**: the `/files` and `/dirs` listings are **streamed** as a chunked
 JSON array (`StreamingResponse` over a sync generator,
-`hsync_common/listing.py::iter_json_array`), produced one entry at a time on a worker
+`hsync-common/hsync_common/listing.py::iter_json_array`), produced one entry at a time on a worker
 thread: the server holds O(directory fanout + one entry) instead of one dict per
 file. Entries are emitted in deterministic **path order**; the Python client
-(`hsync_client/sync.py::get_files_remote`) and the Android client (the
+(`hsync-client/hsync_client/sync.py::get_files_remote`) and the Android client (the
 `SyncRepository.fetchRemoteFilesOrThrow` and `P2PSync.fetchRemoteFileList`
 mappers) collect the whole array and sort by `mtime` to keep the oldest-first
 priority. A failure mid-walk truncates the array (invalid JSON), so a consumer
 fails loudly rather than acting on a partial listing. The P2P masters
-(`hsync_client/p2p_server.py::_handle_list_files` and the Android
+(`hsync-client/hsync_client/p2p_server.py::_handle_list_files` and the Android
 `P2PServer.handleListFiles`) stream the same shape (chunked; Ktor/aiohttp frame
 it natively, the stdlib transport writes the chunked framing). Streaming rules
 out both pagination (cursor state, inter-page gaps) and a `Content-Length`
