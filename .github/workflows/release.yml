@@ -100,7 +100,7 @@ jobs:
           token: ${{ secrets.HSYNC_COMMON_PAT }}
       - uses: actions/setup-python@v7
         with: { python-version: "3.14.9" }
-      - run: pipx install poetry
+      - run: pipx install poetry==2.4.1
       - name: Build native binary
         working-directory: hsync-server
         run: |
