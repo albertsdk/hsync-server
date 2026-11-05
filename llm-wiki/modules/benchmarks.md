@@ -54,7 +54,7 @@ or written (mirroring the test suite's `no_tests_touch_real_repo_state`).
 | `auth_cache_key(sha256)` | `auth._cache_key` (`auth.py::_cache_key`) — SHA-256(token) KDF cache key |
 | `get_client_ip(trusted+xff\|direct)` | `rate_limiter.get_client_ip` (`rate_limiter.py::get_client_ip`) — trusted-proxy gate |
 | `parse_ws_rate(10/second)` | `rate_limiter._parse_ws_rate` (`rate_limiter.py::_parse_ws_rate`) |
-| `token_bucket.acquire(hit\|drained)` | `rate_limiter.TokenBucket.acquire` (`rate_limiter.py::TokenBucket.acquire`) — per-WS-message budget |
+| `token_bucket.acquire(hit\|drained)` | `rate_limiter.TokenBucket.acquire` (shared impl `hsync_common/ratelimit.py::TokenBucket.acquire`) — per-WS-message budget |
 | `set_sha256_hash` / `get_sha256_hash(hit\|miss)` / `del_sha256_hash(hit\|miss)` | `hashes` (`hashes.py::set_sha256_hash`, `hashes.py::get_sha256_hash`, `hashes.py::del_sha256_hash`) — per-file cache + freshness check |
 | `resolve_within_bucket(hit\|escape\|no-deref)` | `api.utils.resolve_within_bucket` (`api/utils.py::resolve_within_bucket`) — per-request confinement |
 | `is_valid_bucket` | `api.utils.is_valid_bucket` (`api/utils.py::is_valid_bucket`) |
