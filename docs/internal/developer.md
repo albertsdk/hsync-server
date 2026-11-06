@@ -23,7 +23,7 @@ Synced file bytes are plain files on disk. Causal metadata is SQLite
 (`<state_dir>/server/`: versions, tombstones, accounts, membership).
 
 - **SHA-256 cache**: in-memory bounded LRU `FILE_HASHES` in `hashes.py`
-  (`hashes.py::FILE_HASHES_MAX_SIZE`, 100 000 entries). Rebuilt at startup;
+  (`hsync_server/hashes.py::FILE_HASHES_MAX_SIZE`, 100 000 entries). Rebuilt at startup;
   stale on mtime/size mismatch; LRU-evicted past the cap.
 - **Tombstones / versions**: SQLite tables via `tombstones.py` / `versions.py`,
   not per-bucket JSON files.

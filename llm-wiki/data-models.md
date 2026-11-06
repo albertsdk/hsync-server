@@ -18,10 +18,10 @@ process-local state and the installation SQLite store.
 
 | State | Location | Lifetime | Persistence |
 | ----- | -------- | -------- | ----------- |
-| SHA-256 cache `FILE_HASHES` | `hashes.py` | process memory (bounded LRU, `hashes.py::FILE_HASHES_MAX_SIZE`) | rebuilt at startup from disk (`set_sha256_hashes`); LRU-evicted past the cap |
+| SHA-256 cache `FILE_HASHES` | `hashes.py` | process memory (bounded LRU, `hsync_server/hashes.py::FILE_HASHES_MAX_SIZE`) | rebuilt at startup from disk (`set_sha256_hashes`); LRU-evicted past the cap |
 | Delta signature cache `_signature_cache` | `api/files/delta/signatures.py` | process memory (TTL 300 s, FIFO cap 64, `Lock`-guarded) | none (recomputed on demand) |
 | Delta literal-payload tokens `delta_token_store` | `api/files/delta/tokens.py` | process memory (`RLock`-guarded) + payload temp files | none (TTL-reaped) |
-| Per-bucket WS pools | `api/connection_manager.py::bucket_manager` | process memory | none (live connections) |
+| Per-bucket WS pools | `hsync_server/api/connection_manager.py::bucket_manager` | process memory | none (live connections) |
 | Tombstone stores (per bucket) | `tombstones.py` cache | process memory + SQLite | per-bucket DB `server/<bucket>.db` (`tombstones` table) |
 | Version stores (per bucket) | `versions.py` cache | process memory + SQLite | per-bucket DB `server/<bucket>.db` (`versions` table) |
 | Accounts + membership | `auth_store/` | SQLite | global `server/auth.db` (`clients`, `bucket_members` tables) |
@@ -44,7 +44,7 @@ common `sqlstore` schema):
 - **`bucket_members`** — PK `(bucket, client_id)`, `role` (`owner`/`member`);
   partial UNIQUE index enforces exactly one owner per bucket.
 
-`AuthStore` (`auth_store/store.py::AuthStore`) is the single source of truth for account CRUD,
+`AuthStore` (`hsync_server/auth_store/store.py::AuthStore`) is the single source of truth for account CRUD,
 membership, transfer/reclaim, cascade delete, and the last-admin invariant.
 
 ## Tombstones (`tombstones.py`)
@@ -53,20 +53,20 @@ Server-side façade over the common `TombstoneStore`:
 
 | Function | Location | Role |
 | -------- | -------- | ---- |
-| `get_tombstone_store` | `tombstones.py::get_tombstone_store` | load/cache the per-bucket store (`buckets` table → folder UUID) |
-| `record_deletion` | `tombstones.py::record_deletion` | add a tombstone on delete/`deleted` event |
-| `clear_deletion` | `tombstones.py::clear_deletion` | drop a tombstone when the path is re-uploaded |
-| `deletion_marker_snapshot` | `tombstones.py::deletion_marker_snapshot` | opaque `(version_id, vclock)` snapshot of a path's marker (`None` when absent); changes on every mint/clear |
-| `destination_mutation_since` | `tombstones.py::destination_mutation_since` | commit gate: true when *abs_path* was removed or replaced since a snapshot — presence check for delete/rename-away, marker comparison for delete-and-recreate |
-| `reset_cache` | `tombstones.py::reset_cache` | test/lifecycle hook |
+| `get_tombstone_store` | `hsync_server/tombstones.py::get_tombstone_store` | load/cache the per-bucket store (`buckets` table → folder UUID) |
+| `record_deletion` | `hsync_server/tombstones.py::record_deletion` | add a tombstone on delete/`deleted` event |
+| `clear_deletion` | `hsync_server/tombstones.py::clear_deletion` | drop a tombstone when the path is re-uploaded |
+| `deletion_marker_snapshot` | `hsync_server/tombstones.py::deletion_marker_snapshot` | opaque `(version_id, vclock)` snapshot of a path's marker (`None` when absent); changes on every mint/clear |
+| `destination_mutation_since` | `hsync_server/tombstones.py::destination_mutation_since` | commit gate: true when *abs_path* was removed or replaced since a snapshot — presence check for delete/rename-away, marker comparison for delete-and-recreate |
+| `reset_cache` | `hsync_server/tombstones.py::reset_cache` | test/lifecycle hook |
 
-TTL bound: `get_tombstone_ttl_days()` (`config.py::get_tombstone_ttl_days`) → store `prune()`. Causal
+TTL bound: `get_tombstone_ttl_days()` (`hsync_server/config.py::get_tombstone_ttl_days`) → store `prune()`. Causal
 merge semantics (vector-clock dominance + content tie-break) and hashed keys are
 defined in the common model, not here.
 
 The two helpers above implement the **pre-commit destination re-validation**
-shared with the client's P2P master: `api/files/upload.py::upload_file` and
-`api/files/delta/apply.py::delta_apply` snapshot the destination
+shared with the client's P2P master: `hsync_server/api/files/upload.py::upload_file` and
+`hsync_server/api/files/delta/apply.py::delta_apply` snapshot the destination
 (`existed_at_start` + marker) before the body streams and re-check it right
 before the atomic `replace`. A destination deleted, renamed away or
 deleted-and-recreated while the body ran is answered `409 destination_changed`
@@ -86,8 +86,8 @@ name or clobber a recreated file.
 
 Sentinel + cleanup logic: `api/file_utils.py` (`is_sentinel_file`
 `hsync-common/hsync_common/models/sentinel.py::is_sentinel_file`, `ensure_sentinel_in_dir`
-`api/file_utils.py::ensure_sentinel_in_dir`, `cleanup_empty_dir`
-`api/file_utils.py::cleanup_empty_dir`). No `.hsyncfolder` marker
+`hsync_server/api/file_utils.py::ensure_sentinel_in_dir`, `cleanup_empty_dir`
+`hsync_server/api/file_utils.py::cleanup_empty_dir`). No `.hsyncfolder` marker
 is written into served buckets; the `buckets` table maps name → folder UUID.
 
 > Field-level attribute tables: [common data-models](../../hsync-common/llm-wiki/data-models.md).

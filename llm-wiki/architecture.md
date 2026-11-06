@@ -7,14 +7,14 @@ versions, tombstones, and accounts live in SQLite: one DB per bucket
 
 ## Rendezvous (`main.py`)
 
-`app = FastAPI(...)` (`main.py::app`) with a `lifespan` (`main.py::lifespan`) that
+`app = FastAPI(...)` (`hsync_server/main.py::app`) with a `lifespan` (`hsync_server/main.py::lifespan`) that
 rendezvouss the admin account (via `auth_store.rendezvous_admin`) and preloads the
-SHA-256 cache via `set_sha256_hashes` (`main.py::lifespan` → `hashes.py::set_sha256_hashes`).
-Without `HSYNC_ADMIN_KEY`, `auth_store/accounts.py::AuthStore.rendezvous_admin`
+SHA-256 cache via `set_sha256_hashes` (`hsync_server/main.py::lifespan` → `hsync_server/hashes.py::set_sha256_hashes`).
+Without `HSYNC_ADMIN_KEY`, `hsync_server/auth_store/accounts.py::AuthStore.rendezvous_admin`
 delivers the generated token on stderr only for a TTY; otherwise it writes
 `<state_dir>/rendezvous_admin_token` (mode 0600), so it never reaches a captured
-log stream. Entry points: `main` Typer CLI (`__main__.py::main`) and `run`
-(`__main__.py::run`); console invocation goes through `__main__.py`.
+log stream. Entry points: `main` Typer CLI (`hsync_server/__main__.py::main`) and `run`
+(`hsync_server/__main__.py::run`); console invocation goes through `__main__.py`.
 
 ## Middleware stack (outermost → innermost)
 
@@ -22,24 +22,24 @@ Added in `main.py` (order matters — last added runs first):
 
 | Order | Middleware | Location | Role |
 | ----- | ---------- | -------- | ---- |
-| 1 | `VersionMiddleware` | `middleware.py::VersionMiddleware` | hard-fail 426 on REST protocol mismatch; rejects a malformed `X-Client-Name` with 400 (shared `is_valid_client_name` SSOT); stamps `X-Server-Version`/`X-Protocol-Version` |
-| 2 | `RequestIdMiddleware` | `middleware.py::RequestIdMiddleware` | per-request id for tracing (`logger.py::get_request_id` context) |
-| 3 | `CORSMiddleware` (optional) | `main.py::configure_cors` | only with a non-empty explicit origin list (`config.py::get_cors_origins`); never wildcard + credentials (`allow_credentials=False`) |
-| 4 | `MaxRequestSizeMiddleware` | `middleware.py::MaxRequestSizeMiddleware` | 413 at the ASGI boundary on any HTTP body over `get_max_request_body_size()`, before parsing and before auth |
-| 5 | `TransferAwareGZipMiddleware` | `middleware.py::TransferAwareGZipMiddleware` | gzip on responses > 1000 B, **except** the transfer payload paths (`…/files/download`, `…/files/delta/data/{token}`), whose coding is the sync protocol's own (identity \| zstd) and must reach clients byte-identical |
-| 6 | `SlowAPIMiddleware` | `main.py::app` | global rate limiting (`rate_limiter.py`) |
+| 1 | `VersionMiddleware` | `hsync_server/middleware.py::VersionMiddleware` | hard-fail 426 on REST protocol mismatch; rejects a malformed `X-Client-Name` with 400 (shared `is_valid_client_name` SSOT); stamps `X-Server-Version`/`X-Protocol-Version` |
+| 2 | `RequestIdMiddleware` | `hsync_server/middleware.py::RequestIdMiddleware` | per-request id for tracing (`hsync_server/logger.py::get_request_id` context) |
+| 3 | `CORSMiddleware` (optional) | `hsync_server/main.py::configure_cors` | only with a non-empty explicit origin list (`hsync_server/config.py::get_cors_origins`); never wildcard + credentials (`allow_credentials=False`) |
+| 4 | `MaxRequestSizeMiddleware` | `hsync_server/middleware.py::MaxRequestSizeMiddleware` | 413 at the ASGI boundary on any HTTP body over `get_max_request_body_size()`, before parsing and before auth |
+| 5 | `TransferAwareGZipMiddleware` | `hsync_server/middleware.py::TransferAwareGZipMiddleware` | gzip on responses > 1000 B, **except** the transfer payload paths (`…/files/download`, `…/files/delta/data/{token}`), whose coding is the sync protocol's own (identity \| zstd) and must reach clients byte-identical |
+| 6 | `SlowAPIMiddleware` | `hsync_server/main.py::app` | global rate limiting (`rate_limiter.py`) |
 
 Prometheus metrics are served by the authenticated `/metrics` route
-(`metrics.py::metrics_endpoint`) and instrumented via `Instrumentator`
-(`main.py::app`).
+(`hsync_server/metrics.py::metrics_endpoint`) and instrumented via `Instrumentator`
+(`hsync_server/main.py::app`).
 
 ## Routers (`routers.py`)
 
 | Router | Auth | Location |
 | ------ | ---- | -------- |
-| `auth_router` | account token via `Depends(verify_api_key)` | `routers.py::auth_router` |
-| `admin_router` | account token + `admin` role | `api/admin.py::admin_router` |
-| `public_router` | none (health, time, WS) | `routers.py::public_router` |
+| `auth_router` | account token via `Depends(verify_api_key)` | `hsync_server/routers.py::auth_router` |
+| `admin_router` | account token + `admin` role | `hsync_server/api/admin.py::admin_router` |
+| `public_router` | none (health, time, WS) | `hsync_server/routers.py::public_router` |
 
 `verify_api_key` (`auth.py`) extracts the Bearer token and verifies it against
 the account store (`auth_store/`): scrypt hash check with a KDF cache, then a
@@ -71,29 +71,29 @@ Higher layers import lower ones. `api/*` reuses `hsync_common.models` and
 
 | Flow | Path | Anchor |
 | ---- | ---- | ------ |
-| Upload | `POST /api/v1/buckets/{bucket}/files` | `api/files/upload.py::upload_file` |
-| Download | `GET /api/v1/buckets/{bucket}/files/download` | `api/files/download.py::download_file` |
-| List | `GET /api/v1/buckets/{bucket}/files` | `api/files/list.py::get_files` |
-| Delete | `DELETE /api/v1/buckets/{bucket}/files` | `api/files/delete.py::delete_file` |
-| WS events | `WS /api/v1/buckets/{bucket}/events/{cid}` | `api/events.py::ws_events` |
+| Upload | `POST /api/v1/buckets/{bucket}/files` | `hsync_server/api/files/upload.py::upload_file` |
+| Download | `GET /api/v1/buckets/{bucket}/files/download` | `hsync_server/api/files/download.py::download_file` |
+| List | `GET /api/v1/buckets/{bucket}/files` | `hsync_server/api/files/list.py::get_files` |
+| Delete | `DELETE /api/v1/buckets/{bucket}/files` | `hsync_server/api/files/delete.py::delete_file` |
+| WS events | `WS /api/v1/buckets/{bucket}/events/{cid}` | `hsync_server/api/events.py::ws_events` |
 
 REST upload writes to disk, updates the hash cache, records/clears tombstones, and
 broadcasts the resulting event to WS subscribers of the bucket via `bucket_manager`
-(`api/connection_manager.py::bucket_manager`). See [modules/rest-api.md](modules/rest-api.md) and
+(`hsync_server/api/connection_manager.py::bucket_manager`). See [modules/rest-api.md](modules/rest-api.md) and
 [modules/websocket.md](modules/websocket.md).
 
 ## Error handling
 
-`register_exception_handlers` (`error_handlers.py::register_exception_handlers`) maps `HSyncError`
-subclasses to HTTP codes through `EXCEPTION_STATUS_CODES` (`error_handlers.py::EXCEPTION_STATUS_CODES`),
-plus a request-validation handler (`error_handlers.py::validation_exception_handler`)
-and a catch-all (`error_handlers.py::global_exception_handler`). Handlers emit a
-uniform JSON error envelope (`error_handlers.py::hsync_exception_handler`).
+`register_exception_handlers` (`hsync_server/error_handlers.py::register_exception_handlers`) maps `HSyncError`
+subclasses to HTTP codes through `EXCEPTION_STATUS_CODES` (`hsync_server/error_handlers.py::EXCEPTION_STATUS_CODES`),
+plus a request-validation handler (`hsync_server/error_handlers.py::validation_exception_handler`)
+and a catch-all (`hsync_server/error_handlers.py::global_exception_handler`). Handlers emit a
+uniform JSON error envelope (`hsync_server/error_handlers.py::hsync_exception_handler`).
 
 ## Storage model
 
-Buckets live under `get_buckets_path()` (`config.py::get_buckets_path`), one directory per
-bucket. Empty dirs are kept alive by a sentinel file (`api/file_utils.py::ensure_sentinel_in_dir`),
+Buckets live under `get_buckets_path()` (`hsync_server/config.py::get_buckets_path`), one directory per
+bucket. Empty dirs are kept alive by a sentinel file (`hsync_server/api/file_utils.py::ensure_sentinel_in_dir`),
 partial uploads use the `.part` suffix (common `constants.py`), and deletions leave
 tombstones (`tombstones.py`). Causal versions/tombstones live in per-bucket DBs
 `get_state_dir()/server/<bucket>.db` (ADR-0025); accounts and bucket membership
@@ -131,7 +131,7 @@ onedir payload and `packaging/rpm/` (`.spec`, Rocky Linux 9 builder);
 conffile are packaged from the deb payload, and an RPM erase keeps the data and
 the `_hsync-server` user (there is no `purge` equivalent). `ENTRY_POINT` is
 `hsync_server/__main__.py`; the console entry point is `run()`
-(`__main__.py::run`). The frozen app exposes the same CLI as
+(`hsync_server/__main__.py::run`). The frozen app exposes the same CLI as
 `python -m hsync_server`.
 
 `deb-all`, `rpm-all` and `rpi` need Docker with `qemu-user-static` binfmt

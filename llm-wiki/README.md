@@ -32,7 +32,7 @@ they are code spans, not hyperlinks.
 ## Quick facts
 
 - Package root: `hsync_server/`.
-- ASGI app object: `app` (`main.py::app`) (FastAPI, lifespan-managed).
+- ASGI app object: `app` (`hsync_server/main.py::app`) (FastAPI, lifespan-managed).
 - Version SSOT: `HSYNC_VERSION` re-exported from `hsync_common.constants`
   (`hsync-common/hsync_common/constants.py::HSYNC_VERSION`); wire header names (`HEADER_*`) and
   the `X-Client-Name` validator (`is_valid_client_name`) are re-exported from the
@@ -41,17 +41,17 @@ they are code spans, not hyperlinks.
   at `hsync-common/hsync_common/constants.py::CONTENT_TYPE_OCTET_STREAM`.
 - API prefix: `/api/v1` from the shared SSOT
   (`hsync-common/hsync_common/protocol/rest.py::REST_API_PREFIX`), applied per route via the
-  `rest_*` helpers (e.g. `api/buckets.py::get_bucket`); admin sub-router at
-  `api/admin.py::admin_router`.
+  `rest_*` helpers (e.g. `hsync_server/api/buckets.py::get_bucket`); admin sub-router at
+  `hsync_server/api/admin.py::admin_router`.
 - Protocol versions enforced from common SSOT (`hsync_common.protocol.handshake`):
-  REST in `VersionMiddleware` (`middleware.py::VersionMiddleware`), WS in
+  REST in `VersionMiddleware` (`hsync_server/middleware.py::VersionMiddleware`), WS in
   `api/events.py` handshake.
 - Auth: per-account tokens (`hs_<id>_<secret>`) verified via scrypt against the
   auth store (`auth.py` → `auth_store/`); roles (`admin`/`client`) + bucket
   membership gate access.
-- Persistence: files under `get_buckets_path()` (`config.py::get_buckets_path`);
+- Persistence: files under `get_buckets_path()` (`hsync_server/config.py::get_buckets_path`);
   causal versions/tombstones in per-bucket DBs `get_state_dir()/server/<bucket>.db`
-  (ADR-0025, `config.py::get_state_dir`). SHA-256 cache is in-memory.
+  (ADR-0025, `hsync_server/config.py::get_state_dir`). SHA-256 cache is in-memory.
 - Standalone builds: `compile.sh` (targets `native`, `deb`, `deb-all`, `rpm`,
   `rpm-all`, `rpi`);
   the Raspberry Pi cross-build image is `packaging/rpi/Dockerfile.builder`, the

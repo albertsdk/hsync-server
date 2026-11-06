@@ -13,10 +13,10 @@ Once a decision is made, convert the chosen option into an ADR under
 
 ### Current behaviour
 
-`api/files/download.py::download_file`
+`hsync_server/api/files/download.py::download_file`
 
 When a download is served with zstd compression, the response uses
-`StreamingResponse` (`api/files/download.py::download_file`) which does not include a
+`StreamingResponse` (`hsync_server/api/files/download.py::download_file`) which does not include a
 `Content-Length` header. The compressed size is not known a priori because
 compression happens chunk-by-chunk in a streaming fashion.
 
@@ -30,7 +30,7 @@ compression happens chunk-by-chunk in a streaming fashion.
 - **Bandwidth planning**: multi-file sync queues benefit from knowing each
   file's transfer size to schedule optimally.
 
-The `X-Checksum-SHA256` header is already set (`api/files/download.py::download_file`), confirming
+The `X-Checksum-SHA256` header is already set (`hsync_server/api/files/download.py::download_file`), confirming
 the server knows the original file metadata.
 
 ### Options
