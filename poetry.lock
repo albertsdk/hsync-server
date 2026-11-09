@@ -1155,7 +1155,7 @@ files = [
 
 [[package]]
 name = "hsync-client"
-version = "1.1.0"
+version = "1.1.0rc1"
 description = "HSYNC Client"
 optional = false
 python-versions = ">=3.12,<3.15"
@@ -1167,7 +1167,7 @@ develop = true
 aiohttp = ">=3.12.0,<4.0.0"
 aioquic = ">=1.3.0,<2.0.0"
 cryptography = ">=50.0.2,<51.0.0"
-hsync-common = "1.1.0"
+hsync-common = "1.1.0rc1"
 loguru = ">=0.7.3,<0.8.0"
 pydantic-settings = ">=2.15.0,<3.0.0"
 requests = ">=2.34.2,<3.0.0"
@@ -1185,7 +1185,7 @@ url = "../hsync-client"
 
 [[package]]
 name = "hsync-common"
-version = "1.1.0"
+version = "1.1.0rc1"
 description = "HSYNC Common - shared models, constants, and compression utilities"
 optional = false
 python-versions = ">=3.12,<3.15"
@@ -3616,4 +3616,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "e811d4a7acac0f9b115db3f0cf21517f36e31cad029b67e9497acdb4c102772d"
+content-hash = "da2cd33ca03854e158b79e5a14a558cb49e9565ba1574ec2c2c3f24ba4917199"
