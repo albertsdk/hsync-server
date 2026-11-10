@@ -268,6 +268,17 @@ class TestPackagedConfig:
 
 
 class TestAdminBucketCli:
+    def test_bucket_list_empty_names_both_data_roots(self):
+        """An empty list must show which roots it read (wrong-tree detection)."""
+        from hsync_server.config import get_auth_db_path, get_buckets_path
+
+        result = runner.invoke(cli.app, ["admin", "bucket", "list"])
+
+        assert result.exit_code == 0
+        assert "(no buckets in " in result.stdout
+        assert get_buckets_path() in result.stdout
+        assert get_auth_db_path() in result.stdout
+
     def test_bucket_create_requires_the_rendezvous_admin(self, monkeypatch):
         """Without the admin row the FK would fail: report it instead."""
         from pathlib import Path

@@ -769,11 +769,14 @@ def client_remove(
 def bucket_list() -> None:
     """List all buckets (FS ∪ membership)."""
     from hsync_server.auth_store import get_auth_store
+    from hsync_server.config import get_auth_db_path, get_buckets_path
 
     store = get_auth_store()
     buckets = store.list_all_buckets()
     if not buckets:
-        typer.echo("(no buckets)")
+        # Name both roots: an empty list is almost always a wrong data tree
+        # (e.g. the conffile was not read), not an empty installation.
+        typer.echo(f"(no buckets in {get_buckets_path()}, memberships in {get_auth_db_path()})")
         return
     for b in buckets:
         owner = b["owner"]
