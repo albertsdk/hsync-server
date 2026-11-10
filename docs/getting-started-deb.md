@@ -117,12 +117,26 @@ sudo hsync-server admin bucket grant --bucket BUCKET --client CLIENT_NAME
 sudo systemctl start hsync-server.service
 ```
 
-Then, on each device:
+Then, on each device, pin the server identity first: the packaged server uses a
+self-signed certificate, so clients authenticate it by fingerprint instead of by
+a public CA.
 
 ```bash
+hsync trust server add SERVER_HOST:443 sha256:FINGERPRINT
 export HSYNC_API_KEY="hs_ACCOUNT_ID_ACCOUNT_SECRET"
-hsync server server.example.com -b photos -p /path/to/dir \
-  --ca-cert /trusted/path/server.crt
+hsync server SERVER_HOST:443 -b BUCKET -p /path/to/dir
+```
+
+`FINGERPRINT` is the `sha256:<hex>` value printed by
+`hsync-server admin tls fingerprint` (see above); verify it out of band before
+trusting it. The address must carry the port the server listens on — a bare host
+expands to port `9753`.
+
+In HSYNC Desktop the same decision is
+**Settings → Server Mode → Server identity check → Ask on first use**: the
+default *Standard verification* accepts only a certificate the system already
+trusts, i.e. a reverse proxy with a real CA in front of the server. Behind such a
+proxy, keep the default and skip the pin.
 ```
 
 > Full command reference: [Roles and Permissions](roles-and-permissions.md).
