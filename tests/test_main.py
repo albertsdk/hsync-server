@@ -115,6 +115,16 @@ class TestStartupOptions:
         assert result.exit_code == 0
         mock_run.assert_called_once()
 
+    def test_ssl_disabled_warning_mentions_https_only_clients(self):
+        """The warning must say clients cannot connect without TLS or a proxy."""
+        run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+        with run_p, log_p as mock_log, ssl_p, reload_p, workers_p:
+            result = runner.invoke(cli.app, [])
+
+        assert result.exit_code == 0
+        warnings = [call.args[0] for call in mock_log.return_value.warning.call_args_list]
+        assert any("https://" in message for message in warnings)
+
 
 class TestVersionAndEnvFile:
     def test_console_script_targets_typer_app_wrapper(self):

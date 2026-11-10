@@ -385,7 +385,11 @@ def main(
         log.info(f"Certificate: {ssl_config.get('ssl_certfile', 'N/A')}")
     else:
         log.info(f"Starting HSYNC server with HTTP/WS on port {effective_port}")
-        log.warning("SSL is disabled. Communication is NOT encrypted!")
+        log.warning(
+            "SSL is disabled: HSYNC clients only speak https://, so they can reach "
+            "this server only through a TLS-terminating proxy. Communication is NOT "
+            "encrypted!"
+        )
 
     # Canonical "serving" line: operators can find the exact URL (and whether
     # the API docs are exposed) without deriving SSL settings by themselves.
