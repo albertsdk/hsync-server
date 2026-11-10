@@ -250,10 +250,12 @@ key compromise, or to replace an expiring certificate:
 2. **Rotate** the certificate on the server host:
 
    ```bash
-   hsync-server admin tls rotate
+   sudo hsync-server admin tls rotate
    ```
 
-   It prints the new fingerprint and re-reads/verifies the pair it wrote.
+   It prints the new fingerprint and re-reads/verifies the pair it wrote. In a
+   container run `docker compose exec server python -m hsync_server admin tls
+   rotate` instead.
 3. **Restart the service.** `admin tls rotate` writes the files; a running
    server keeps serving the certificate it loaded at startup (uvicorn reads
    `ssl_certfile` once at bind) and there is no hot reload.
@@ -264,14 +266,15 @@ key compromise, or to replace an expiring certificate:
 4. **Verify the *served* certificate**, not the file — from a client:
 
    ```bash
-   hsync trust server fingerprint <host>
+   hsync trust server fingerprint HOST
    ```
 
-   Compare it with the value printed in step 2. `hsync-server admin tls
+   Compare it with the value printed in step 2. `sudo hsync-server admin tls
    fingerprint` reads the persisted file and therefore cannot detect a missed
    restart.
 5. **Retire the old fingerprint** once every client has connected with the new
-   one (`hsync trust server remove <host> <old>`; remove the old row on Android).
+   one (`hsync trust server remove HOST OLD_FINGERPRINT`; remove the old row on
+   Android).
 
 > **Rotation is one-way.** The old keypair is replaced atomically and is not
 > kept; a wrong rotation is recovered by rotating again and re-pinning, not by

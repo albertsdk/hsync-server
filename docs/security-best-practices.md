@@ -43,13 +43,15 @@ key is suspected compromised. Rotation is built in and does not require a
 server restart:
 
 ```bash
-hsync-server admin client rotate-key \
+sudo hsync-server admin client rotate-key \
   --name ACCOUNT --grace 3600
 ```
 
 The `--grace` window keeps the old key valid briefly so clients can migrate
 without a hard disconnect. Disable an account immediately with
-`hsync-server admin client disable --name ACCOUNT` to revoke access outright.
+`sudo hsync-server admin client disable --name ACCOUNT` to revoke access
+outright. On another installation use its invocation instead — see
+[Roles and Permissions → Invoke the CLI](roles-and-permissions.md#invoke-the-cli-on-your-installation).
 
 ### Never expose tokens or secrets
 

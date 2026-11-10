@@ -173,7 +173,7 @@ in p2p Mode the same direction needs no shared key.
 
 Create, inspect, and delete buckets either through the REST API
 ([API → Buckets](api.md#buckets)) or through the local admin CLI
-(`hsync-server admin bucket create/list/delete …` — see
+(`sudo hsync-server admin bucket create/list/delete …` on a package — see
 [Roles and Permissions → CLI Tools](roles-and-permissions.md#cli-tools)
 for the full syntax and per-installation invocation).
 
@@ -191,9 +191,9 @@ clients validate the public chain and nothing changes on the HSYNC side.
 
 With the built-in self-signed TLS the certificate is pinned, so rotation is an
 ordered operation: give clients both fingerprints, run
-`hsync-server admin tls rotate`, **restart the service** (there is no hot
+`sudo hsync-server admin tls rotate`, **restart the service** (there is no hot
 reload), then verify the **served** certificate with
-`hsync trust server fingerprint <host>` before retiring the old pin. The full
+`hsync trust server fingerprint HOST` before retiring the old pin. The full
 procedure is in
 [Operations → Certificate rotation](operations.md#certificate-rotation).
 
@@ -257,6 +257,36 @@ reference alone), forward `--no-verify` through the pipe:
 curl -fsSL https://github.com/albertsdk/hsync-server/releases/latest/download/install.sh \
   | bash -s -- --no-verify
 ```
+
+### The admin CLI reports no accounts, or bucket create fails with a foreign key
+
+Symptoms: `admin client list` prints `(no accounts …)`, `admin bucket list`
+prints `(no buckets …)`, or `admin bucket create` ends with
+`FOREIGN KEY constraint failed`.
+
+Cause: the command did not reach the server's data. On a packaged install the
+conffile is root-only, so a command run **without `sudo`** reads a different
+data tree.
+
+Check which database and directory each invocation uses — the paths must match:
+
+```bash
+sudo hsync-server admin client list
+hsync-server admin client list
+sudo ls -l /var/lib/hsync-server/state/server/
+```
+
+Fix: stop the service, run the command as root, restart:
+
+```bash
+sudo systemctl stop hsync-server.service
+sudo hsync-server admin client add --name CLIENT_NAME --role client
+sudo systemctl start hsync-server.service
+```
+
+Then delete the stray `state/` and `buckets/` directories the unprivileged runs
+created in the directory you launched them from (`ls -d state buckets` first,
+they hold no data).
 
 ### Server won't start
 

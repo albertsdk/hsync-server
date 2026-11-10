@@ -291,14 +291,22 @@ tool. All commands live under `hsync-server admin`.
 
 ### Invoke the CLI on your installation
 
-Replace `…` with the actual subcommand. The start-up commands are the same for
-installation and administration.
+The command must reach the **same data the server uses**, with enough privilege
+to read its configuration. On a packaged install the conffile is root-only
+(`/etc/hsync-server/hsync-server.conf`, mode `0600`), so the CLI runs as root:
+without it the command reads a different, empty database and reports
+`(no accounts)` / `(no buckets)` — and `bucket create` then fails on a foreign
+key instead of creating anything.
+
+Replace `…` with the actual subcommand. The examples on this page use the
+packaged form, `sudo hsync-server admin …`; for another installation use the row
+from this table:
 
 | Installation | Invocation |
 | --- | --- |
+| Debian package (`.deb`) / RPM package | service stopped, then `sudo hsync-server admin …` (the binary reads `/etc/hsync-server/hsync-server.conf` itself) |
 | Installer script (Docker Compose) | `cd "$INSTALL_DIR" && docker compose exec server python -m hsync_server admin …` |
 | Docker manual / from source (`docker.sh`) | `./docker.sh shell`, then `python -m hsync_server admin …` inside the container |
-| Debian package (`.deb`) | service stopped, then `sudo hsync-server admin …` (the binary reads `/etc/hsync-server/hsync-server.conf` itself) |
 | From source (`run.sh` / Poetry) | `./run.sh admin …` (or `poetry run hsync-server admin …`) |
 | Native systemd (`/opt/hsync`) | as the `hsync` user, source `/opt/hsync/prod.env` and run `/opt/hsync/hsync-server/.venv/bin/hsync-server admin …` |
 
@@ -311,63 +319,63 @@ avoid write-lock contention.
 
 ```bash
 # Create an account (the token is printed once)
-hsync-server admin client add --name CLIENT_NAME --role client
-hsync-server admin client add --name ops --role admin --valid-days 90
+sudo hsync-server admin client add --name CLIENT_NAME --role client
+sudo hsync-server admin client add --name ops --role admin --valid-days 90
 
 # List accounts (id, name, role, status, generation, prefix, expiry)
-hsync-server admin client list
+sudo hsync-server admin client list
 
 # Rotate a key (the new token is printed once)
-hsync-server admin client rotate-key --name CLIENT_NAME
-hsync-server admin client rotate-key --id ACCOUNT_ID --grace 3600
+sudo hsync-server admin client rotate-key --name CLIENT_NAME
+sudo hsync-server admin client rotate-key --id ACCOUNT_ID --grace 3600
 
 # Set/extend/remove expiry
-hsync-server admin client set-expiry --name CLIENT_NAME --valid-days 30
-hsync-server admin client set-expiry --name CLIENT_NAME --expires-at 2026-12-31T00:00:00Z
-hsync-server admin client set-expiry --name CLIENT_NAME --none
+sudo hsync-server admin client set-expiry --name CLIENT_NAME --valid-days 30
+sudo hsync-server admin client set-expiry --name CLIENT_NAME --expires-at 2026-12-31T00:00:00Z
+sudo hsync-server admin client set-expiry --name CLIENT_NAME --none
 
 # Disable / re-enable an account
-hsync-server admin client disable --name CLIENT_NAME
-hsync-server admin client enable --name CLIENT_NAME
+sudo hsync-server admin client disable --name CLIENT_NAME
+sudo hsync-server admin client enable --name CLIENT_NAME
 
 # Delete an account (--cascade deletes owned buckets)
-hsync-server admin client remove --name CLIENT_NAME
-hsync-server admin client remove --name CLIENT_NAME --cascade
+sudo hsync-server admin client remove --name CLIENT_NAME
+sudo hsync-server admin client remove --name CLIENT_NAME --cascade
 
 # Force deletion of the last admin (recovery)
-hsync-server admin client remove --name admin --force
+sudo hsync-server admin client remove --name admin --force
 ```
 
 ### Bucket and membership management (`admin bucket`)
 
 ```bash
 # Create a bucket (the rendezvous admin becomes its owner)
-hsync-server admin bucket create --bucket BUCKET
+sudo hsync-server admin bucket create --bucket BUCKET
 
 # Delete a bucket and all its contents
-hsync-server admin bucket delete --bucket BUCKET
+sudo hsync-server admin bucket delete --bucket BUCKET
 
 # Cleanup only the DB rows of a ghost bucket (directory no longer on disk)
-hsync-server admin bucket delete --bucket BUCKET --db-only
+sudo hsync-server admin bucket delete --bucket BUCKET --db-only
 
 # List all buckets (FS ∪ membership), including orphans and ghosts
-hsync-server admin bucket list
+sudo hsync-server admin bucket list
 
 # Grant membership (member role only)
-hsync-server admin bucket grant --bucket BUCKET --client CLIENT_NAME
+sudo hsync-server admin bucket grant --bucket BUCKET --client CLIENT_NAME
 
 # Revoke membership
-hsync-server admin bucket revoke --bucket BUCKET --client CLIENT_NAME
+sudo hsync-server admin bucket revoke --bucket BUCKET --client CLIENT_NAME
 
 # Set/transfer ownership (also reclaims orphans)
-hsync-server admin bucket set-owner --bucket BUCKET --client laptop
+sudo hsync-server admin bucket set-owner --bucket BUCKET --client laptop
 ```
 
 ### Recovery
 
 ```bash
 # Recover access if the admin token is lost
-hsync-server admin client rotate-key --name admin
+sudo hsync-server admin client rotate-key --name admin
 ```
 
 ---

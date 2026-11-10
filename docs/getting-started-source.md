@@ -86,12 +86,12 @@ install (`./compile.sh --help` lists them). See the
 ## Export the certificate for clients
 
 ```bash
-hsync-server admin tls fingerprint
+.venv/bin/hsync-server admin tls fingerprint
 ```
 
 The command prints the fingerprint as `sha256:<hex>`, the form clients pin with
 `hsync trust server add`. Verify it out of band before trusting it. Rotate it
-later with `hsync-server admin tls rotate`.
+later with `.venv/bin/hsync-server admin tls rotate`.
 
 ## Connect your clients
 

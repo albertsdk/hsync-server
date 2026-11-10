@@ -434,8 +434,10 @@ sudo ufw allow 9753/tcp
 - The client must present a valid account token (`hs_<id>_<secret>`) via its
   `HSYNC_API_KEY` environment variable. `HSYNC_ADMIN_KEY` is a server-side
   rendezvous secret only — never set it on clients.
-- Issue tokens with `hsync-server admin client add --name <name> --role client`
-  (see [Roles and Permissions → CLI Tools](roles-and-permissions.md#cli-tools)).
+- Issue tokens with the admin CLI on the server host, using that installation's
+  invocation (`sudo hsync-server admin client add --name CLIENT_NAME --role client`
+  on a package) — see
+  [Roles and Permissions → Invoke the CLI](roles-and-permissions.md#invoke-the-cli-on-your-installation).
 - Check the server logs for authentication failures.
 
 **Wrong WebSocket endpoint:**

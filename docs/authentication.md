@@ -89,8 +89,9 @@ no existence leak.
    from "bucket not found").
 5. **Revocation**: rotate-key (immediate) and disable close WS connections on
    the local worker; other workers re-check on every frame, ping, and broadcast.
-6. **CLI recovery**: `hsync-server admin client rotate-key --name admin` from
-   the host filesystem recovers access without a token.
+6. **CLI recovery**: `sudo hsync-server admin client rotate-key --name admin` on
+   the server host (the packaged CLI runs as root, so it reads the root-only
+   conffile and the service's database) recovers access without a token.
 
 ## Source code
 

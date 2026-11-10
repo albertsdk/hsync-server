@@ -132,9 +132,9 @@ hsync server SERVER_HOST:443 -b BUCKET -p /path/to/dir
 ```
 
 `FINGERPRINT` is the `sha256:<hex>` value printed by
-`hsync-server admin tls fingerprint` (see above); verify it out of band before
-trusting it. The address must carry the port the server listens on — a bare host
-expands to port `9753`.
+`sudo hsync-server admin tls fingerprint` (see above); verify it out of band
+before trusting it. The address must carry the port the server listens on — a
+bare host expands to port `9753`.
 
 In HSYNC Desktop the same decision is
 **Settings → Server Mode → Server identity check → Ask on first use**: the
