@@ -152,6 +152,29 @@ To avoid leaking the existence of buckets an account cannot access:
 - Transfer ownership (403).
 - Delete the bucket (403).
 
+### Sharing one bucket between devices
+
+The bucket is the unit of sharing and the account is a **credential, not a
+device**: a client reads and writes a bucket when its account is the server
+`admin`, the bucket's `owner`, or a granted `member` — the server checks the
+credential on every request and on the realtime channel. Devices therefore
+converge through the bucket, and what must match on every device is the **bucket
+name** on the same server:
+
+| Devices | Accounts | Setup |
+| --- | --- | --- |
+| one person, two computers | the same account | nothing else: the membership belongs to the account |
+| one account per device (or two people) | two accounts | `admin client add` each one, then `admin bucket grant` on the bucket |
+
+One account per device is the recommended split when devices are managed
+separately: `admin client rotate-key` and `admin client disable` then act on a
+single device, and `key_prefix` / `last_used_at` name the credential that used
+the bucket. A shared account is one credential everywhere, so revoking it
+disconnects every device that holds it.
+
+Every live device keeps its own connection identity, so two devices on one
+account still receive the bucket's events independently.
+
 ---
 
 ## Hierarchy and Integrity Rules
