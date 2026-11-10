@@ -47,6 +47,12 @@ done
 chown "${HSYNC_USER}:${HSYNC_GROUP}" "${DATA_DIR}/certs" 2>/dev/null || true
 chmod 0700 "${DATA_DIR}/certs"
 
+# A manual run as root leaves root-owned files (log file, state DBs, TLS
+# identity) that the service user cannot write. Re-own those small trees;
+# buckets are excluded because they can hold millions of files.
+chown -R "${HSYNC_USER}:${HSYNC_GROUP}" \
+    "${LOG_DIR}" "${DATA_DIR}/state" "${DATA_DIR}/certs" 2>/dev/null || true
+
 # ── Config file permissions (conffile) ────────────────────────────────────
 # dpkg marks /etc/hsync-server/hsync-server.conf as a conffile, so its
 # contents are preserved across upgrades. It holds the admin key (a secret),

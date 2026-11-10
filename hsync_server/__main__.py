@@ -350,8 +350,17 @@ def main(
             f"directory holding the buckets (packaged installs read it from {SYSTEM_CONFIG_FILE})."
         )
 
-    # Configure logging before starting the server
-    log = setup_logging(level=effective_log_level, color=color)
+    # Configure logging before starting the server. An unwritable log file (a
+    # root-owned leftover from a manual run, a read-only mount) is a
+    # configuration error: report it as one line instead of a loguru traceback.
+    try:
+        log = setup_logging(level=effective_log_level, color=color)
+    except OSError as exc:
+        _fail(
+            f"cannot open the log file {server_config.get_log_file()}: {exc}. "
+            "It must be writable by the user running the server (a file created "
+            "by a previous root run keeps root ownership)."
+        )
 
     log.info(f"HSYNC Server v{HSYNC_VERSION}")
     if configured_from is not None:

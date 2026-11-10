@@ -218,6 +218,9 @@ neither the payload nor the event loop is blocked) plus the
 route stdlib logging into loguru. `setup_logging` (`hsync_server/logger.py::setup_logging`) honors
 `get_log_level`/`get_log_format`/`get_log_file`/rotation (`hsync_server/config.py::get_log_level` /
 `hsync_server/config.py::get_log_format` / `hsync_server/config.py::get_log_file`).
+An unwritable `HSYNC_LOG_FILE` (a root-owned leftover from a manual run, a
+read-only mount) is translated by `main()` (`hsync_server/__main__.py::main`)
+into a one-line CLI error instead of a loguru traceback.
 Timestamps are rendered in the configured IANA timezone (`get_tz`,
 `hsync_server/config.py::get_tz`; `HSYNC_TZ`, default `UTC` — validated by a `field_validator`
 on `Settings.tz`) via the tz-aware formatter built in `_build_formatters`

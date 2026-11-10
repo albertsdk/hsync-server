@@ -137,6 +137,30 @@ class TestVersionAndEnvFile:
         assert result.exit_code != 0
 
 
+class TestStartupFailures:
+    """Startup configuration errors are reported as one actionable line."""
+
+    def test_unwritable_log_file_exits_with_actionable_error(self, monkeypatch, tmp_path):
+        """A log file the service user cannot write must not raise a traceback."""
+        log_file = str(tmp_path / "hsync-server.log")
+        monkeypatch.setattr(server_config, "get_log_file", lambda: log_file)
+        monkeypatch.setattr(
+            cli,
+            "setup_logging",
+            MagicMock(side_effect=PermissionError(13, "Permission denied")),
+        )
+        run_p, _log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+
+        with run_p as mock_run, ssl_p, reload_p, workers_p:
+            result = runner.invoke(cli.app, [])
+
+        assert result.exit_code == 1
+        output = result.output + result.stderr
+        assert log_file in output
+        assert "writable" in output
+        mock_run.assert_not_called()
+
+
 class TestPackagedConfig:
     """A frozen install reads its own conffile and rejects an unusable storage root."""
 

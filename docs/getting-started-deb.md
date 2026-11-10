@@ -65,8 +65,15 @@ connects over `https://` only — a plain-http server address is rejected.
   terminate TLS on 443 — see [Reverse proxy](reverse-proxy.md).
 
 Start the service with `systemctl`, not by running the binary as root: files a
-root run creates in `/var/lib/hsync-server` (TLS identity, state DB) stay
-root-owned and the `_hsync-server` service then cannot use them.
+root run creates in `/var/lib/hsync-server` (TLS identity, state DB) and
+`/var/log/hsync-server` (log file) stay root-owned and the `_hsync-server`
+service then cannot use them. Fix leftovers with:
+
+```bash
+sudo chown -R _hsync-server:_hsync-server \
+  /var/lib/hsync-server/state /var/lib/hsync-server/certs \
+  /var/log/hsync-server
+```
 
 ## Start the service
 
