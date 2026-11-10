@@ -646,11 +646,14 @@ def client_add(
 def client_list() -> None:
     """List all accounts."""
     from hsync_server.auth_store import get_auth_store
+    from hsync_server.config import get_auth_db_path
 
     store = get_auth_store()
     accounts = store.list_accounts()
     if not accounts:
-        typer.echo("(no accounts)")
+        # Name the DB: an empty list almost always means a different data tree,
+        # not an installation without accounts (the server always creates one).
+        typer.echo(f"(no accounts in {get_auth_db_path()})")
         return
     for a in accounts:
         typer.echo(

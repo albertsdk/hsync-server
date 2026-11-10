@@ -267,6 +267,21 @@ class TestPackagedConfig:
         mock_run.assert_not_called()
 
 
+class TestAdminClientCli:
+    def test_client_list_empty_names_the_auth_db(self, monkeypatch):
+        """An empty list must show which database it read."""
+        from hsync_server.auth_store import get_auth_store
+        from hsync_server.config import get_auth_db_path
+
+        monkeypatch.setattr(get_auth_store(), "list_accounts", lambda: [])
+
+        result = runner.invoke(cli.app, ["admin", "client", "list"])
+
+        assert result.exit_code == 0
+        assert "(no accounts in " in result.stdout
+        assert get_auth_db_path() in result.stdout
+
+
 class TestAdminBucketCli:
     def test_bucket_list_empty_names_both_data_roots(self):
         """An empty list must show which roots it read (wrong-tree detection)."""
