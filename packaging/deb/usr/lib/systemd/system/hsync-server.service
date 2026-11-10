@@ -16,6 +16,10 @@ ExecStart=/usr/lib/hsync-server/hsync-server
 Restart=on-failure
 RestartSec=5s
 
+# Allow binding a privileged port (HSYNC_PORT=443) without running as root.
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
 # Writable state: buckets, syncstate.db (ADR-0025) and TLS identity live in
 # /var/lib/hsync-server; logs go to /var/log/hsync-server.
 ReadWritePaths=/var/lib/hsync-server /var/log/hsync-server

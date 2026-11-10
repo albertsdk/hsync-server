@@ -51,6 +51,23 @@ Data is stored under `/var/lib/hsync-server`; logs under `/var/log/hsync-server`
 The binary reads this conffile itself, exactly like the systemd unit, so
 `sudo hsync-server` starts with the same settings as the service.
 
+## Choose the listening port
+
+The server listens on `HSYNC_PORT` (default `9753`) and every HSYNC client
+connects over `https://` only — a plain-http server address is rejected.
+
+- Default: leave `HSYNC_PORT` unset and enter the bare host name in the client
+  (e.g. `rdv`); the client expands it to `https://rdv:9753`.
+- Port 443: uncomment `HSYNC_PORT=443` in the conffile and enter `rdv:443` in
+  the client. The unit grants `CAP_NET_BIND_SERVICE`, so the unprivileged
+  `_hsync-server` user can bind it.
+- Behind a reverse proxy: keep `HSYNC_SSL_ENABLED=false` and let the proxy
+  terminate TLS on 443 — see [Reverse proxy](reverse-proxy.md).
+
+Start the service with `systemctl`, not by running the binary as root: files a
+root run creates in `/var/lib/hsync-server` (TLS identity, state DB) stay
+root-owned and the `_hsync-server` service then cannot use them.
+
 ## Start the service
 
 ```bash

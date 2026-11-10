@@ -114,7 +114,7 @@ production one; copy the relevant file to `dev.env` / `prod.env` and customize i
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HSYNC_PORT` | `9753` | Server listen port |
+| `HSYNC_PORT` | `9753` | Server listen port. Clients connect over `https://` only; the packaged unit grants `CAP_NET_BIND_SERVICE`, so `443` is allowed without root |
 | `HSYNC_WORKERS` | `1` | Number of worker processes (must be `1` — WebSocket state is not shared) |
 | `HSYNC_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error`, `critical` |
 | `HSYNC_TZ` | `UTC` | Timezone (IANA format, e.g. `Europe/Rome`) used to render log timestamps |

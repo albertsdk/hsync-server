@@ -124,7 +124,8 @@ uvicorn and websockets dynamic import points the ASGI app needs at runtime. The
 prerelease to the Debian form (`-`→`~`), `_arch_to_deb` maps `uname -m`, and
 `_inject_shlib_depends` runs `dpkg-shlibdeps` so `libc6`/`zlib1g` land in
 `Depends`. The package installs under `/usr/lib/hsync-server` with a
-`/usr/bin/hsync-server` symlink and a dedicated `_hsync-server` user, and its
+`/usr/bin/hsync-server` symlink and a dedicated `_hsync-server` user, grants the
+unit `CAP_NET_BIND_SERVICE` (so `HSYNC_PORT=443` works unprivileged), and its
 unit is registered but not enabled. The `rpm`/`rpm-all` targets reuse the same
 onedir payload and `packaging/rpm/` (`.spec`, Rocky Linux 9 builder);
 `_semver_to_rpm`/`_arch_to_rpm` mirror the deb helpers, the man page and
