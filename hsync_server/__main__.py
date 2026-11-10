@@ -33,7 +33,7 @@ from hsync_server.config import (
     get_workers,
     load_env_file,
 )
-from hsync_server.constants import ACCOUNT_ID_LEN, HSYNC_VERSION
+from hsync_server.constants import ACCOUNT_ID_LEN, HSYNC_VERSION, SYSTEM_CONFIG_FILE
 from hsync_server.logger import VALID_LOG_LEVELS, setup_logging
 from hsync_server.ssl_utils import get_ssl_config
 
@@ -118,6 +118,33 @@ def _resolve_bind_host_port(host: str | None, port: int | None) -> tuple[str, in
                 )
             bind_port = hp.port
     return bind_host, bind_port
+
+
+def _load_system_env_file() -> Path | None:
+    """Load the conffile shipped by the .deb/.rpm, if this is a frozen build.
+
+    systemd injects the same file as ``EnvironmentFile`` for the service; loading
+    it here too makes ``hsync-server`` and ``hsync-server admin …`` resolve the
+    packaged data paths identically. A source checkout never reads it, so a
+    developer machine that also has the package installed keeps its own
+    ``HSYNC_*`` values. Variables already in the environment win (dotenv does not
+    override them), so an exported value or CLI flag still takes precedence.
+
+    Returns:
+        The loaded path, or ``None`` when no conffile was applied.
+    """
+    if not getattr(sys, "frozen", False):
+        return None
+    path = Path(SYSTEM_CONFIG_FILE)
+    if not path.is_file():
+        return None
+    try:
+        load_env_file(str(path))
+    except PermissionError:
+        # Root-owned 0600 file invoked by another user: keep the environment
+        # as-is instead of failing before any command runs.
+        return None
+    return path
 
 
 @app.callback(invoke_without_command=True)
@@ -213,7 +240,7 @@ def main(
         str | None,
         typer.Option(
             "--env-file",
-            help="Load environment variables from file.",
+            help="Load environment variables from file (replaces the packaged conffile).",
             metavar="PATH",
         ),
     ] = None,
@@ -279,16 +306,22 @@ def main(
 
         Alberto Basso
     """
-    # If a subcommand was invoked (e.g. "admin"), let it handle the call.
-    if ctx.invoked_subcommand is not None:
-        return
-
-    # Load environment file if specified (before reading any config)
+    # Resolve the configuration source before any setting is read: an explicit
+    # --env-file replaces the packaged conffile, which a frozen build reads by
+    # itself so a manual start and the admin CLI see the packaged paths.
+    configured_from: Path | None = None
     if env_file:
         try:
             load_env_file(env_file)
         except FileNotFoundError as e:
             _fail(str(e))
+        configured_from = Path(env_file)
+    else:
+        configured_from = _load_system_env_file()
+
+    # If a subcommand was invoked (e.g. "admin"), let it handle the call.
+    if ctx.invoked_subcommand is not None:
+        return
 
     # Get configuration values (CLI args take precedence over env vars).
     # Settings validation runs lazily here; translate any ValidationError into
@@ -306,10 +339,23 @@ def main(
             print(f"Configuration error: {err['msg']}", file=sys.stderr)
         raise typer.Exit(1) from None
 
+    # Reject an unusable storage root here, with one actionable line: the
+    # lifespan hash preload would otherwise abort startup with a traceback.
+    from hsync_server import config as server_config
+
+    buckets_path = server_config.get_buckets_path()
+    if not Path(buckets_path).is_dir():
+        _fail(
+            f"buckets directory not found: {buckets_path}. Set HSYNC_BUCKETS to the "
+            f"directory holding the buckets (packaged installs read it from {SYSTEM_CONFIG_FILE})."
+        )
+
     # Configure logging before starting the server
     log = setup_logging(level=effective_log_level, color=color)
 
     log.info(f"HSYNC Server v{HSYNC_VERSION}")
+    if configured_from is not None:
+        log.info(f"Loaded configuration from {configured_from}")
     log.info(runtime_summary())
 
     # Get SSL configuration (empty dict if SSL disabled)

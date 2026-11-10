@@ -48,6 +48,8 @@ sudo sed -i \
 ```
 
 Data is stored under `/var/lib/hsync-server`; logs under `/var/log/hsync-server`.
+The binary reads this conffile itself, exactly like the systemd unit, so
+`sudo hsync-server` starts with the same settings as the service.
 
 ## Start the service
 
@@ -64,12 +66,13 @@ curl --insecure https://localhost:9753/health && echo "SERVER OK!"
 
 ## Export the certificate for clients
 
-The admin CLI uses the same conffile; run it with the service **stopped** and
-restart it afterwards:
+Run the admin CLI with the service **stopped** and restart it afterwards. The
+binary reads `/etc/hsync-server/hsync-server.conf` itself, so no extra
+environment setup is needed:
 
 ```bash
 sudo systemctl stop hsync-server.service
-sudo sh -c 'set -a; . /etc/hsync-server/hsync-server.conf; set +a; hsync-server admin tls fingerprint'
+sudo hsync-server admin tls fingerprint
 sudo cp /var/lib/hsync-server/certs/server.crt ./server.crt
 sudo systemctl start hsync-server.service
 ```
@@ -84,9 +87,9 @@ stopped, then restart):
 
 ```bash
 sudo systemctl stop hsync-server.service
-sudo sh -c 'set -a; . /etc/hsync-server/hsync-server.conf; set +a; hsync-server admin client add --name CLIENT_NAME --role client'
-sudo sh -c 'set -a; . /etc/hsync-server/hsync-server.conf; set +a; hsync-server admin bucket create --bucket BUCKET'
-sudo sh -c 'set -a; . /etc/hsync-server/hsync-server.conf; set +a; hsync-server admin bucket grant --bucket BUCKET --client CLIENT_NAME'
+sudo hsync-server admin client add --name CLIENT_NAME --role client
+sudo hsync-server admin bucket create --bucket BUCKET
+sudo hsync-server admin bucket grant --bucket BUCKET --client CLIENT_NAME
 sudo systemctl start hsync-server.service
 ```
 

@@ -139,6 +139,14 @@ handlers; `deb`/`rpm` need only `dpkg-deb`/`rpmbuild`, and `native` does not
 touch Docker. The server ships as the multi-arch container image **and** as
 `.deb`/`.rpm` assets, all built by `.github/workflows/release.yml`.
 
+A frozen process resolves configuration and storage differently from a checkout:
+it loads the packaged conffile itself (`hsync_server/__main__.py::_load_system_env_file`,
+path SSOT `hsync_server/constants.py::SYSTEM_CONFIG_FILE`) so a manual start and
+the `admin` CLI see the same settings as the systemd unit, and its storage
+defaults are CWD-relative (`hsync_server/config.py::_STORAGE_ROOT`) because the
+PyInstaller `_internal` bundle is read-only. `main()` rejects a missing buckets
+root before uvicorn starts (`hsync_server/__main__.py::main`).
+
 > Human-oriented diagrams (system overview, upload/WS sequences):
 > `../docs/internal/architecture.md`.
 > Decision rationale: [decisions.md](decisions.md) →

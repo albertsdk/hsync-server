@@ -52,6 +52,11 @@ they are code spans, not hyperlinks.
 - Persistence: files under `get_buckets_path()` (`hsync_server/config.py::get_buckets_path`);
   causal versions/tombstones in per-bucket DBs `get_state_dir()/server/<bucket>.db`
   (ADR-0025, `hsync_server/config.py::get_state_dir`). SHA-256 cache is in-memory.
+- Packaged installs: the frozen binary reads `/etc/hsync-server/hsync-server.conf`
+  itself (`hsync_server/__main__.py::_load_system_env_file`, path SSOT
+  `hsync_server/constants.py::SYSTEM_CONFIG_FILE`) and defaults its storage roots
+  to the CWD (`hsync_server/config.py::_STORAGE_ROOT`); a missing buckets root
+  aborts the CLI before uvicorn starts (`hsync_server/__main__.py::main`).
 - Standalone builds: `compile.sh` (targets `native`, `deb`, `deb-all`, `rpm`,
   `rpm-all`, `rpi`);
   the Raspberry Pi cross-build image is `packaging/rpi/Dockerfile.builder`, the

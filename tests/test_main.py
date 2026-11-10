@@ -1,5 +1,7 @@
 """Tests for the CLI entrypoint (hsync_server.__main__)."""
 
+import os
+import sys
 import tomllib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -10,6 +12,7 @@ from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
 from hsync_server import __main__ as cli
+from hsync_server import config as server_config
 from hsync_server import main as app_main
 from hsync_server.constants import HSYNC_VERSION
 
@@ -132,6 +135,67 @@ class TestVersionAndEnvFile:
     def test_invalid_log_level_rejected(self):
         result = runner.invoke(cli.app, ["--log-level", "bogus"])
         assert result.exit_code != 0
+
+
+class TestPackagedConfig:
+    """A frozen install reads its own conffile and rejects an unusable storage root."""
+
+    def test_frozen_build_loads_the_packaged_conffile(self, monkeypatch, tmp_path):
+        conffile = tmp_path / "hsync-server.conf"
+        conffile.write_text("HSYNC_SSL_CERT_DIR=/srv/hsync/certs\n")
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(cli, "SYSTEM_CONFIG_FILE", str(conffile))
+        monkeypatch.delenv("HSYNC_SSL_CERT_DIR", raising=False)
+
+        loaded = cli._load_system_env_file()
+
+        assert loaded == conffile
+        assert os.environ["HSYNC_SSL_CERT_DIR"] == "/srv/hsync/certs"
+
+    def test_source_run_ignores_the_packaged_conffile(self, monkeypatch, tmp_path):
+        """A checkout must keep its own HSYNC_* values, not a host install's."""
+        conffile = tmp_path / "hsync-server.conf"
+        conffile.write_text("HSYNC_SSL_CERT_DIR=/srv/hsync/certs\n")
+        monkeypatch.delattr(sys, "frozen", raising=False)
+        monkeypatch.setattr(cli, "SYSTEM_CONFIG_FILE", str(conffile))
+        monkeypatch.delenv("HSYNC_SSL_CERT_DIR", raising=False)
+
+        assert cli._load_system_env_file() is None
+        assert "HSYNC_SSL_CERT_DIR" not in os.environ
+
+    def test_absent_packaged_conffile_is_not_an_error(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(cli, "SYSTEM_CONFIG_FILE", str(tmp_path / "absent.conf"))
+
+        assert cli._load_system_env_file() is None
+
+    def test_env_file_flag_applies_to_subcommands_and_skips_the_conffile(
+        self, monkeypatch, tmp_path
+    ):
+        env_file = tmp_path / "custom.env"
+        env_file.write_text("HSYNC_TZ=Europe/Rome\n")
+        monkeypatch.delenv("HSYNC_TZ", raising=False)
+        monkeypatch.setattr(cli, "_load_system_env_file", MagicMock())
+
+        runner.invoke(cli.app, ["--env-file", str(env_file), "admin", "tls", "fingerprint"])
+
+        assert os.environ["HSYNC_TZ"] == "Europe/Rome"
+        cli._load_system_env_file.assert_not_called()
+
+    def test_missing_buckets_dir_exits_with_actionable_error(self, monkeypatch, tmp_path):
+        """No lifespan traceback: the storage root is validated before uvicorn runs."""
+        missing = str(tmp_path / "absent-buckets")
+        monkeypatch.setattr(server_config, "get_buckets_path", lambda: missing)
+        run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+
+        with run_p as mock_run, log_p, ssl_p, reload_p, workers_p:
+            result = runner.invoke(cli.app, [])
+
+        assert result.exit_code == 1
+        output = result.output + result.stderr
+        assert "buckets directory not found" in output
+        assert "HSYNC_BUCKETS" in output
+        mock_run.assert_not_called()
 
 
 class TestAdminBucketCli:

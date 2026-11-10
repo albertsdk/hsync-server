@@ -187,8 +187,8 @@ Key variables:
 | `HSYNC_ADMIN_KEY` | Rendezvous admin secret (64 hex chars). If unset, the server generates one and prints the admin account token once at startup | auto-generated |
 | `HSYNC_PORT` | Server port | `9753` |
 | `HSYNC_LOG_LEVEL` | Log level | `info` |
-| `HSYNC_BUCKETS` | Directory for bucket data storage | `<app>/buckets` (absolute, resolved at startup) |
-| `HSYNC_STATE_DIR` | Directory for the per-bucket state DBs and the global auth DB (causal versions, tombstones, accounts) | `<app>/state` (absolute, resolved at startup) |
+| `HSYNC_BUCKETS` | Directory for bucket data storage | `<app>/buckets` from source, `./buckets` in a packaged binary (absolute, resolved at startup) |
+| `HSYNC_STATE_DIR` | Directory for the per-bucket state DBs and the global auth DB (causal versions, tombstones, accounts) | `<app>/state` from source, `./state` in a packaged binary (absolute, resolved at startup) |
 | `HSYNC_WORKERS` | Number of uvicorn worker processes | `1` |
 | `HSYNC_MAX_UPLOAD_SIZE` | Maximum upload size in bytes | `10737418240` (10 GiB) |
 

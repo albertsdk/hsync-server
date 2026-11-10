@@ -196,6 +196,28 @@ class TestMinFreeDiskSpaceUnit:
             config.Settings(workers=0)
 
 
+class TestFrozenStorageDefaults:
+    """A frozen build must not default its data directories into the bundle."""
+
+    def test_defaults_follow_the_cwd(self, monkeypatch, tmp_path):
+        """PyInstaller unpacks into a read-only ``_internal`` dir: never default there."""
+        import importlib
+        import sys
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        try:
+            frozen = importlib.reload(config)
+            settings = frozen.Settings()
+        finally:
+            monkeypatch.delattr(sys, "frozen", raising=False)
+            importlib.reload(config)
+
+        assert settings.buckets_path == str((tmp_path / "buckets").resolve())
+        assert settings.state_dir == str((tmp_path / "state").resolve())
+        assert "_internal" not in settings.ssl_cert_dir
+
+
 class TestAdminKeyValidator:
     """Tests for the admin_key field_validator (fail-fast at config load)."""
 

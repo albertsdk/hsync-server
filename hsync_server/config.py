@@ -9,6 +9,7 @@ All configuration values are loaded from environment variables with sensible
 defaults. Environment variables can be set via dev.env or prod.env files.
 """
 
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Final, Literal
@@ -49,6 +50,15 @@ VALID_LOG_FORMATS: Final[tuple[str, ...]] = ("text", "json")
 
 # Application root path - resolved absolute path to the project directory
 _HSYNC_PATH: str = str(Path(__file__).parent.parent.resolve())
+
+# A frozen build (deb/rpm package or standalone binary) unpacks the package into
+# a read-only ``_internal`` directory, so ``_HSYNC_PATH`` there points inside the
+# bundle and cannot host the data directories. A frozen process therefore
+# defaults to the CWD (relative roots are canonicalised by
+# ``resolve_storage_paths``); packaged installs override it with the absolute
+# paths of their conffile.
+_FROZEN: bool = bool(getattr(sys, "frozen", False))
+_STORAGE_ROOT: str = "." if _FROZEN else _HSYNC_PATH
 
 # Headroom added to ``max_upload_size`` when deriving the request-body cap:
 # multipart boundaries and the small text parts (metadata, vclock, cid) share
@@ -135,12 +145,12 @@ class Settings(BaseSettings):
 
     # Storage Configuration
     buckets_path: str = Field(
-        default=f"{_HSYNC_PATH}/buckets",
+        default=f"{_STORAGE_ROOT}/buckets",
         validation_alias=AliasChoices("HSYNC_BUCKETS", "HSYNC_BUCKETS_PATH"),
         description="Path to buckets storage directory",
     )
     state_dir: str = Field(
-        default=f"{_HSYNC_PATH}/state",
+        default=f"{_STORAGE_ROOT}/state",
         description="Directory for the installation causal-state database (state DB)",
     )
 
@@ -172,7 +182,7 @@ class Settings(BaseSettings):
     ssl_certfile: str = Field(default="", description="Path to SSL certificate file")
     ssl_keyfile: str = Field(default="", description="Path to SSL private key file")
     ssl_cert_dir: str = Field(
-        default=f"{_HSYNC_PATH}/certs",
+        default=f"{_STORAGE_ROOT}/certs",
         description="Directory for auto-generated certificates",
     )
 

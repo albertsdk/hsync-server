@@ -298,7 +298,7 @@ installation and administration.
 | --- | --- |
 | Installer script (Docker Compose) | `cd "$INSTALL_DIR" && docker compose exec server python -m hsync_server admin …` |
 | Docker manual / from source (`docker.sh`) | `./docker.sh shell`, then `python -m hsync_server admin …` inside the container |
-| Debian package (`.deb`) | service stopped, then `sudo sh -c 'set -a; . /etc/hsync-server/hsync-server.conf; set +a; hsync-server admin …'` |
+| Debian package (`.deb`) | service stopped, then `sudo hsync-server admin …` (the binary reads `/etc/hsync-server/hsync-server.conf` itself) |
 | From source (`run.sh` / Poetry) | `./run.sh admin …` (or `poetry run hsync-server admin …`) |
 | Native systemd (`/opt/hsync`) | as the `hsync` user, source `/opt/hsync/prod.env` and run `/opt/hsync/hsync-server/.venv/bin/hsync-server admin …` |
 

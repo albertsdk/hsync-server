@@ -15,6 +15,18 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
   A bare non-zero number is rejected (it would be silently read as bytes), an
   empty value falls back to the shared default, and `0` disables the guard.
 - `load_env_file` (`hsync_server/config.py::load_env_file`) loads a dotenv before settings resolve.
+- Packaged conffile: a frozen (`.deb`/`.rpm`) process loads
+  `SYSTEM_CONFIG_FILE` (`hsync_server/constants.py::SYSTEM_CONFIG_FILE`) at startup
+  through `_load_system_env_file` (`hsync_server/__main__.py::_load_system_env_file`),
+  for the serve command and the `admin` subcommands alike; an explicit
+  `--env-file` replaces it and a source checkout never reads it.
+- Storage defaults: `_STORAGE_ROOT` (`hsync_server/config.py::_STORAGE_ROOT`) is the
+  project root in a checkout and the CWD in a frozen build (the PyInstaller
+  bundle directory is read-only); `buckets_path`/`state_dir` are canonicalised by
+  `Settings.resolve_storage_paths` (`hsync_server/config.py::Settings.resolve_storage_paths`).
+  `main()` (`hsync_server/__main__.py::main`) rejects a missing buckets directory
+  with an actionable CLI error before uvicorn starts, so the lifespan preload
+  (`hsync_server/hashes.py::set_sha256_hashes`) is never reached with a bad path.
 - Typed accessors (used everywhere instead of touching `Settings` directly):
   `get_port` (`hsync_server/config.py::get_port`), `get_workers` (`hsync_server/config.py::get_workers`),
   `get_buckets_path` (`hsync_server/config.py::get_buckets_path`),

@@ -27,6 +27,16 @@ from hsync_common.labels import ActionLabel  # noqa: F401
 from hsync_common.protocol.handshake import PROTOCOL_VERSION_REST  # noqa: F401
 
 # =============================================================================
+# Packaged Installation
+# =============================================================================
+
+# Conffile shipped by the .deb/.rpm and injected by the systemd unit as
+# EnvironmentFile. The frozen binary loads it itself, so a manual start and the
+# ``admin`` CLI resolve the packaged data paths exactly like the service does.
+SYSTEM_CONFIG_FILE = "/etc/hsync-server/hsync-server.conf"
+
+
+# =============================================================================
 # File Defaults
 # =============================================================================
 

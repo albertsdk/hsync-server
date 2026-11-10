@@ -118,8 +118,8 @@ production one; copy the relevant file to `dev.env` / `prod.env` and customize i
 | `HSYNC_WORKERS` | `1` | Number of worker processes (must be `1` — WebSocket state is not shared) |
 | `HSYNC_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error`, `critical` |
 | `HSYNC_TZ` | `UTC` | Timezone (IANA format, e.g. `Europe/Rome`) used to render log timestamps |
-| `HSYNC_BUCKETS` | `<app>/buckets` (absolute) | Directory for bucket data storage (relative values are resolved against the process CWD) |
-| `HSYNC_STATE_DIR` | `<app>/state` (absolute) | Directory for the per-bucket state DBs and the global auth DB |
+| `HSYNC_BUCKETS` | `<app>/buckets` from source, `./buckets` in a packaged binary | Directory for bucket data storage (relative values are resolved against the process CWD) |
+| `HSYNC_STATE_DIR` | `<app>/state` from source, `./state` in a packaged binary | Directory for the per-bucket state DBs and the global auth DB |
 | `HSYNC_ADMIN_KEY` | *(optional)* | Rendezvous admin secret (64 hex). If unset, the server generates and prints a one-time admin token. |
 | `HSYNC_MAX_UPLOAD_SIZE` | `10737418240` (10 GiB) | Maximum upload size in bytes (`0` = unlimited, which also disables the request-body cap below unless it is set explicitly) |
 | `HSYNC_MAX_REQUEST_BODY_SIZE` | `0` (auto) | Hard cap in bytes on any HTTP request body, enforced before it is buffered. `0` derives `HSYNC_MAX_UPLOAD_SIZE` + 64 MiB |
@@ -142,7 +142,7 @@ production one; copy the relevant file to `dev.env` / `prod.env` and customize i
 | `HSYNC_SSL_ENABLED` | `false` (app default) | Enable HTTPS/WSS with auto-generated self-signed certs. The shipped `dev.env.example` and `prod.env.example` profiles set it to `true`, so the Docker quickstart serves **https** on this port |
 | `HSYNC_SSL_CERTFILE` | — | Custom SSL certificate path (auto-generated if not set) |
 | `HSYNC_SSL_KEYFILE` | — | Custom SSL private key path (auto-generated if not set) |
-| `HSYNC_SSL_CERT_DIR` | `<app>/certs` | Directory for auto-generated certificates |
+| `HSYNC_SSL_CERT_DIR` | `<app>/certs` from source, `./certs` in a packaged binary | Directory for auto-generated certificates |
 | `HSYNC_LOG_FILE` | — | Path to log file (enables file logging) |
 | `HSYNC_LOG_FORMAT` | `text` | Log format: `text` or `json` |
 | `HSYNC_LOG_ROTATION` | `10 MB` | Log rotation threshold |
@@ -154,6 +154,12 @@ production one; copy the relevant file to `dev.env` / `prod.env` and customize i
 | `HSYNC_RATE_LIMIT_DELTA` | `100/minute` | Rate limit for delta transfer endpoints |
 | `HSYNC_RELOAD` | `false` | Enable uvicorn auto-reload (development only) |
 | `HSYNC_ENABLE_DOCS` | `false` (app default) | Expose `/docs` (Swagger UI) and `/redoc`. Set it to `true` in your env-file to browse the API interactively (`prod.env.example` leaves it off) |
+
+> **Packaged installs**: the frozen binary of the `.deb`/`.rpm` loads
+> `/etc/hsync-server/hsync-server.conf` at startup (the same file the systemd
+> unit injects), so `sudo hsync-server` and `sudo hsync-server admin …` behave
+> exactly like the service. An explicit `--env-file` replaces that conffile, and
+> variables already exported win over both.
 
 > **Note**: The server does not include a built-in TLS terminator for production
 > use. For production deployments, run the server behind a reverse proxy (nginx,

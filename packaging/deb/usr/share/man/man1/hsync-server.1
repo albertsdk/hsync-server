@@ -1,4 +1,4 @@
-.TH HSYNC-SERVER 1 "2026-11-02" "hsync-server 1.1.0-rc.1" "User Commands"
+.TH HSYNC-SERVER 1 "2026-11-10" "hsync-server 1.1.0-rc.1" "User Commands"
 .SH NAME
 hsync-server \- HSYNC file synchronization server
 .SH SYNOPSIS
@@ -15,7 +15,12 @@ Configuration is read from environment variables (prefix
 .BR HSYNC_ ),
 typically supplied through
 .BR /etc/hsync-server/hsync-server.conf
-by the packaged systemd unit.
+by the packaged systemd unit. A packaged (frozen) binary reads that conffile
+itself at startup, so a manual start and the
+.B admin
+commands resolve the same paths as the service. An explicit
+.B \-\-env-file
+replaces it.
 .SH OPTIONS
 .TP
 .BR \-\-version
@@ -60,7 +65,10 @@ Rendezvous admin secret (64 hex characters, optional).
 .TP
 .B HSYNC_BUCKETS
 Path to the buckets directory (default:
-.IR <app>/buckets ).
+.IR <app>/buckets
+in a checkout,
+.IR ./buckets
+in a packaged binary).
 .TP
 .B HSYNC_STATE_DIR
 Path to the per-bucket state DB directory
@@ -68,7 +76,10 @@ Path to the per-bucket state DB directory
 per bucket plus the global
 .IR <state-dir>/server/auth.db ;
 default:
-.IR <app>/state ).
+.IR <app>/state
+in a checkout,
+.IR ./state
+in a packaged binary).
 When
 .B HSYNC_STATE_DB
 is set, that single file is used for every bucket instead.
@@ -80,7 +91,10 @@ manual isolation.
 .TP
 .B HSYNC_SSL_CERT_DIR
 Directory for auto-generated TLS certificates (default:
-.IR <app>/certs ).
+.IR <app>/certs
+in a checkout,
+.IR ./certs
+in a packaged binary).
 Explicit
 .B HSYNC_SSL_CERTFILE
 /
@@ -93,7 +107,8 @@ stderr).
 .SH FILES
 .TP
 .I /etc/hsync-server/hsync-server.conf
-Package configuration (EnvironmentFile), owned root:root (0600).
+Package configuration (EnvironmentFile), owned root:root (0600). Read by the
+systemd unit and by the packaged binary itself.
 .TP
 .I /var/lib/hsync-server/buckets
 Bucket data (see
