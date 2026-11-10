@@ -106,6 +106,10 @@ The command prints the fingerprint as `sha256:<hex>`, the form clients pin with
 
 ## Connect your clients
 
+Every `admin` command runs as **root**: it reads the root-only conffile and
+writes the service's database under `/var/lib/hsync-server/state`. Run without
+`sudo` the CLI cannot read the conffile and stops instead of guessing defaults.
+
 Create one account per client, create the bucket, and grant access (service
 stopped, then restart):
 

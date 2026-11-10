@@ -203,6 +203,41 @@ class TestPackagedConfig:
 
         assert cli._load_system_env_file() is None
 
+    def test_unreadable_packaged_conffile_propagates_permission_error(self, monkeypatch, tmp_path):
+        """An unreadable conffile must not silently fall back to the defaults."""
+        conffile = tmp_path / "hsync-server.conf"
+        conffile.write_text("HSYNC_TZ=Europe/Rome\n")
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(cli, "SYSTEM_CONFIG_FILE", str(conffile))
+        monkeypatch.setattr(
+            cli,
+            "load_env_file",
+            MagicMock(side_effect=PermissionError(13, "Permission denied")),
+        )
+
+        with pytest.raises(PermissionError):
+            cli._load_system_env_file()
+
+    def test_unreadable_conffile_exits_instead_of_using_other_defaults(self, monkeypatch, tmp_path):
+        """Running as a user that cannot read the conffile is a hard error."""
+        conffile = str(tmp_path / "hsync-server.conf")
+        monkeypatch.setattr(cli, "SYSTEM_CONFIG_FILE", conffile)
+        monkeypatch.setattr(
+            cli,
+            "_load_system_env_file",
+            MagicMock(side_effect=PermissionError(13, "Permission denied")),
+        )
+        run_p, _log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+
+        with run_p as mock_run, ssl_p, reload_p, workers_p:
+            result = runner.invoke(cli.app, [])
+
+        assert result.exit_code == 1
+        output = result.output + result.stderr
+        assert conffile in output
+        assert "--env-file" in output
+        mock_run.assert_not_called()
+
     def test_env_file_flag_applies_to_subcommands_and_skips_the_conffile(
         self, monkeypatch, tmp_path
     ):
@@ -233,6 +268,21 @@ class TestPackagedConfig:
 
 
 class TestAdminBucketCli:
+    def test_bucket_create_requires_the_rendezvous_admin(self, monkeypatch):
+        """Without the admin row the FK would fail: report it instead."""
+        from pathlib import Path
+
+        from hsync_server.auth_store import get_auth_store
+        from hsync_server.config import get_buckets_path
+
+        monkeypatch.setattr(get_auth_store(), "get_account", lambda account_id: None)
+
+        result = runner.invoke(cli.app, ["admin", "bucket", "create", "--bucket", "photos"])
+
+        assert result.exit_code == 1
+        assert "no rendezvous admin account" in (result.output + result.stderr)
+        assert not (Path(get_buckets_path()) / "photos").exists()
+
     def test_bucket_create_creates_directory_and_owner(self):
         """`admin bucket create` creates the bucket dir and assigns the owner."""
         from hsync_server.auth_store import RENDEZVOUS_ADMIN_ID, get_auth_store

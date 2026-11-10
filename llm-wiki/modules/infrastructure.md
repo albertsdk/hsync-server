@@ -19,7 +19,9 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
   `SYSTEM_CONFIG_FILE` (`hsync_server/constants.py::SYSTEM_CONFIG_FILE`) at startup
   through `_load_system_env_file` (`hsync_server/__main__.py::_load_system_env_file`),
   for the serve command and the `admin` subcommands alike; an explicit
-  `--env-file` replaces it and a source checkout never reads it.
+  `--env-file` replaces it, a source checkout never reads it, and a conffile the
+  caller cannot read (root-only) stops the CLI instead of falling back to the
+  built-in defaults.
 - Storage defaults: `_STORAGE_ROOT` (`hsync_server/config.py::_STORAGE_ROOT`) is the
   project root in a checkout and the CWD in a frozen build (the PyInstaller
   bundle directory is read-only); `buckets_path`/`state_dir` are canonicalised by

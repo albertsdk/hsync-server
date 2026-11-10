@@ -132,18 +132,20 @@ def _load_system_env_file() -> Path | None:
 
     Returns:
         The loaded path, or ``None`` when no conffile was applied.
+
+    Raises:
+        PermissionError: The conffile exists but the caller cannot read it (it
+            is root-only). Falling back to the built-in defaults would act on a
+            different, usually empty, data tree.
     """
     if not getattr(sys, "frozen", False):
         return None
     path = Path(SYSTEM_CONFIG_FILE)
-    if not path.is_file():
-        return None
     try:
-        load_env_file(str(path))
-    except PermissionError:
-        # Root-owned 0600 file invoked by another user: keep the environment
-        # as-is instead of failing before any command runs.
+        path.stat()
+    except FileNotFoundError:
         return None
+    load_env_file(str(path))
     return path
 
 
@@ -317,7 +319,13 @@ def main(
             _fail(str(e))
         configured_from = Path(env_file)
     else:
-        configured_from = _load_system_env_file()
+        try:
+            configured_from = _load_system_env_file()
+        except PermissionError:
+            _fail(
+                f"cannot read {SYSTEM_CONFIG_FILE}: permission denied. Run the "
+                "command as root (the conffile is root-only) or pass --env-file."
+            )
 
     # If a subcommand was invoked (e.g. "admin"), let it handle the call.
     if ctx.invoked_subcommand is not None:
@@ -783,9 +791,24 @@ def bucket_create(
     ],
 ) -> None:
     """Create a new bucket. The rendezvous admin becomes its owner."""
-    from hsync_server.auth_store import RENDEZVOUS_ADMIN_ID
+    from hsync_server.auth_store import RENDEZVOUS_ADMIN_ID, get_auth_store
     from hsync_server.bucket_provisioning import create_bucket
-    from hsync_server.exceptions import ConflictError
+    from hsync_server.config import get_auth_db_path
+    from hsync_server.exceptions import (
+        ConflictError,
+        DeleteError,
+        InvalidBucketNameError,
+    )
+
+    # The owner row references the rendezvous admin, so the account must exist
+    # in the database this command opened. It is created by the server's first
+    # start: without it, creating the bucket would fail on the foreign key.
+    if get_auth_store().get_account(RENDEZVOUS_ADMIN_ID) is None:
+        _fail(
+            f"no rendezvous admin account in {get_auth_db_path()}: start the "
+            "server once (systemctl start hsync-server) and run this as root so "
+            "it reads the packaged conffile."
+        )
 
     try:
         create_bucket(
@@ -793,7 +816,7 @@ def bucket_create(
             owner_account_id=RENDEZVOUS_ADMIN_ID,
             owner_name="admin",
         )
-    except ConflictError as exc:
+    except (ConflictError, DeleteError, InvalidBucketNameError) as exc:
         _fail(str(exc))
     typer.echo(f"Bucket created: {bucket}")
 
