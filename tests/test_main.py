@@ -220,6 +220,8 @@ class TestPackagedConfig:
 
     def test_unreadable_conffile_exits_instead_of_using_other_defaults(self, monkeypatch, tmp_path):
         """Running as a user that cannot read the conffile is a hard error."""
+        monkeypatch.delenv("HSYNC_BUCKETS", raising=False)
+        monkeypatch.delenv("HSYNC_STATE_DIR", raising=False)
         conffile = str(tmp_path / "hsync-server.conf")
         monkeypatch.setattr(cli, "SYSTEM_CONFIG_FILE", conffile)
         monkeypatch.setattr(
@@ -237,6 +239,32 @@ class TestPackagedConfig:
         assert conffile in output
         assert "--env-file" in output
         mock_run.assert_not_called()
+
+    def test_unreadable_conffile_is_tolerated_when_systemd_injected_the_config(
+        self, monkeypatch, tmp_path
+    ):
+        """The packaged unit runs as _hsync-server; systemd injects the conffile.
+
+        Re-reading the root-only file from the daemon cannot succeed, but the
+        configuration already arrived through ``EnvironmentFile=``, so the failed
+        self-read must not abort the service.
+        """
+        monkeypatch.setenv("HSYNC_BUCKETS", str(tmp_path))
+        monkeypatch.setenv("HSYNC_STATE_DIR", str(tmp_path / "state"))
+        monkeypatch.setattr(
+            cli,
+            "_load_system_env_file",
+            MagicMock(side_effect=PermissionError(13, "Permission denied")),
+        )
+        monkeypatch.setattr(server_config, "get_buckets_path", lambda: str(tmp_path))
+        run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+
+        with run_p as mock_run, log_p, ssl_p, reload_p, workers_p:
+            result = runner.invoke(cli.app, [])
+
+        assert result.exit_code == 0, result.output + result.stderr
+        assert "permission denied" not in (result.output + result.stderr).lower()
+        mock_run.assert_called_once()
 
     def test_env_file_flag_applies_to_subcommands_and_skips_the_conffile(
         self, monkeypatch, tmp_path

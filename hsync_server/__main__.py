@@ -8,6 +8,7 @@ This module allows the package to be run directly using Python's -m flag.
 """
 
 import json
+import os
 import ssl
 import sys
 from datetime import UTC, datetime
@@ -147,6 +148,18 @@ def _load_system_env_file() -> Path | None:
         return None
     load_env_file(str(path))
     return path
+
+
+# The packaged conffile always sets these. Their presence in the environment
+# means systemd already read the root-only file as root and injected it through
+# ``EnvironmentFile=``: the frozen daemon (running as ``_hsync-server``) already
+# has the configuration, so its own failed read is redundant, not an error.
+_PACKAGED_CONFIG_ENV_KEYS = ("HSYNC_BUCKETS", "HSYNC_STATE_DIR")
+
+
+def _config_injected_by_systemd() -> bool:
+    """True when the conffile's settings are already present in the environment."""
+    return any(key in os.environ for key in _PACKAGED_CONFIG_ENV_KEYS)
 
 
 @app.callback(invoke_without_command=True)
@@ -322,10 +335,19 @@ def main(
         try:
             configured_from = _load_system_env_file()
         except PermissionError:
-            _fail(
-                f"cannot read {SYSTEM_CONFIG_FILE}: permission denied. Run the "
-                "command as root (the conffile is root-only) or pass --env-file."
-            )
+            if _config_injected_by_systemd():
+                # The packaged unit runs the daemon as `_hsync-server`; systemd
+                # read the root-only conffile as root and injected its HSYNC_*
+                # values via EnvironmentFile=. Re-reading it here cannot succeed
+                # and is unnecessary, so keep the injected configuration. Only a
+                # non-root run with no injected config is a hard error (the CLI
+                # case), which is what keeps `admin ...` from acting on defaults.
+                configured_from = None
+            else:
+                _fail(
+                    f"cannot read {SYSTEM_CONFIG_FILE}: permission denied. Run the "
+                    "command as root (the conffile is root-only) or pass --env-file."
+                )
 
     # If a subcommand was invoked (e.g. "admin"), let it handle the call.
     if ctx.invoked_subcommand is not None:

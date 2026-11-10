@@ -48,8 +48,10 @@ sudo sed -i \
 ```
 
 Data is stored under `/var/lib/hsync-server`; logs under `/var/log/hsync-server`.
-The binary reads this conffile itself, exactly like the systemd unit, so
-`sudo hsync-server` starts with the same settings as the service.
+The daemon runs as the dedicated `_hsync-server` user and receives this conffile
+from systemd (`EnvironmentFile=`), which reads it as root. A manual
+`sudo hsync-server` reads the same file itself, so both start with the same
+settings.
 
 ## Choose the listening port
 

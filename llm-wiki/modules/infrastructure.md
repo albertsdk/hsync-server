@@ -20,8 +20,11 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
   through `_load_system_env_file` (`hsync_server/__main__.py::_load_system_env_file`),
   for the serve command and the `admin` subcommands alike; an explicit
   `--env-file` replaces it, a source checkout never reads it, and a conffile the
-  caller cannot read (root-only) stops the CLI instead of falling back to the
-  built-in defaults.
+  caller cannot read (root-only) stops a CLI run instead of falling back to the
+  built-in defaults. The packaged unit runs the daemon as `_hsync-server` and lets
+  systemd read the root-only file as root via `EnvironmentFile=`; when those
+  settings are already in the environment (`hsync_server/__main__.py::_config_injected_by_systemd`),
+  the daemon's own failed read is tolerated instead of aborting the service.
 - Storage defaults: `_STORAGE_ROOT` (`hsync_server/config.py::_STORAGE_ROOT`) is the
   project root in a checkout and the CWD in a frozen build (the PyInstaller
   bundle directory is read-only); `buckets`/`state_dir` are canonicalised by
