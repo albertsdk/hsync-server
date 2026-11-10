@@ -80,7 +80,7 @@ The default installation:
 - enables built-in HTTPS with a persistent self-signed certificate;
 - stores files, causal state and certificates in the plain host directory
   `<install-dir>/hsync-data` (back it up; restore it to migrate);
-- generates the rendezvous admin secret locally without printing it.
+- generates the built-in admin secret locally without printing it.
 
 ### Verify the container image
 
@@ -177,15 +177,15 @@ curl --insecure https://localhost:9753/health && echo "SERVER OK!"
 
 ## Export the certificate for clients
 
-Read the rendezvous admin secret locally:
+Read the built-in admin secret locally:
 
 ```bash
 grep '^HSYNC_ADMIN_KEY=' "$HOME/.local/share/hsync-server/.env"
 ```
 
-> On first start the server creates the rendezvous admin account with token
-> `hs_HsyncAdminRendezvous01_<secret>` (silent when `HSYNC_ADMIN_KEY` is set).
-> See [Roles and Permissions → Admin rendezvous](roles-and-permissions.md#admin-rendezvous).
+> On first start the server creates the built-in admin account with token
+> `hs_HsyncAdminBuiltinId01_<secret>` (silent when `HSYNC_ADMIN_KEY` is set).
+> See [Roles and Permissions → Built-in admin](roles-and-permissions.md#built-in-admin-account).
 
 Export the public certificate to each client:
 

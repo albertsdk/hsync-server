@@ -29,7 +29,7 @@ from hsync_common.models.folder import (
     state_db_override,
 )
 from hsync_common.models.tombstone import TOMBSTONE_TTL_DAYS_DEFAULT
-from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # =============================================================================
@@ -119,7 +119,7 @@ class Settings(BaseSettings):
     # Authentication
     admin_key: SecretStr | None = Field(
         default=None,
-        description="Secret for the rendezvous admin account (64 hex chars). "
+        description="Secret for the built-in admin account (64 hex chars). "
         "If absent, the server generates one and prints it once at startup.",
     )
 
@@ -144,9 +144,9 @@ class Settings(BaseSettings):
     )
 
     # Storage Configuration
-    buckets_path: str = Field(
+    # Named ``buckets`` so the env prefix yields the documented ``HSYNC_BUCKETS``.
+    buckets: str = Field(
         default=f"{_STORAGE_ROOT}/buckets",
-        validation_alias=AliasChoices("HSYNC_BUCKETS", "HSYNC_BUCKETS_PATH"),
         description="Path to buckets storage directory",
     )
     state_dir: str = Field(
@@ -321,7 +321,7 @@ class Settings(BaseSettings):
             raise ValueError(f"HSYNC_TZ '{v}' is not a valid IANA timezone name") from e
         return v
 
-    @field_validator("buckets_path", "state_dir", mode="after")
+    @field_validator("buckets", "state_dir", mode="after")
     @classmethod
     def resolve_storage_paths(cls, v: str) -> str:
         """Return storage paths in absolute, resolved form.
@@ -351,20 +351,6 @@ class Settings(BaseSettings):
                 "Generate one with: openssl rand -hex 32"
             )
         return v
-
-    @model_validator(mode="after")
-    def warn_legacy_api_key(self) -> "Settings":
-        """Detect a leftover HSYNC_API_KEY and fail with an actionable message."""
-        import os
-
-        if os.environ.get("HSYNC_API_KEY"):
-            raise ValueError(
-                "HSYNC_API_KEY is no longer used. The server now uses per-account "
-                "tokens (hs_<id>_<secret>). Set HSYNC_ADMIN_KEY (64 hex) for the "
-                "rendezvous admin secret, or leave it unset to auto-generate. "
-                "Client-side HSYNC_API_KEY remains valid (it holds the account token)."
-            )
-        return self
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -427,9 +413,9 @@ def get_log_file() -> str:
 
 
 def get_admin_key() -> str | None:
-    """Get the rendezvous admin secret from environment (late binding).
+    """Get the built-in admin secret from environment (late binding).
 
-    Returns ``None`` if not set.  Consumed only during rendezvous (§9).
+    Returns ``None`` if not set. Consumed only at first start.
     """
     settings = get_settings()
     if settings.admin_key is None:
@@ -439,7 +425,7 @@ def get_admin_key() -> str | None:
 
 def get_buckets_path() -> str:
     """Get buckets storage path from environment (late binding)."""
-    return get_settings().buckets_path
+    return get_settings().buckets
 
 
 def get_state_dir() -> str:

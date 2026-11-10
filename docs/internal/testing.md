@@ -168,7 +168,7 @@ The suite enforces isolation at **three independent levels**:
 Configuration is isolated separately by **`_scrub_hsync_env` (autouse)**: every
 in-process test runs with the developer's `HSYNC_*` variables removed (only
 `HSYNC_ADMIN_KEY` survives — the conftest sets it at import time for the
-rendezvous admin), so `Settings()` default-value assertions are hermetic and
+built-in admin), so `Settings()` default-value assertions are hermetic and
 independent of the execution environment; `monkeypatch.delenv` restores them on
 teardown. This mirrors the same fixture in `hsync-client`'s conftest. Note it
 covers per-test reads only: the rate limiter captures `HSYNC_RATE_LIMIT_*` at

@@ -24,7 +24,7 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
   built-in defaults.
 - Storage defaults: `_STORAGE_ROOT` (`hsync_server/config.py::_STORAGE_ROOT`) is the
   project root in a checkout and the CWD in a frozen build (the PyInstaller
-  bundle directory is read-only); `buckets_path`/`state_dir` are canonicalised by
+  bundle directory is read-only); `buckets`/`state_dir` are canonicalised by
   `Settings.resolve_storage_paths` (`hsync_server/config.py::Settings.resolve_storage_paths`).
   `main()` (`hsync_server/__main__.py::main`) rejects a missing buckets directory
   with an actionable CLI error before uvicorn starts, so the lifespan preload
@@ -48,8 +48,7 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
   knobs).
 - Validation sets: `VALID_LOG_LEVELS` (`hsync_server/config.py::VALID_LOG_LEVELS`), `VALID_LOG_FORMATS` (`hsync_server/config.py::VALID_LOG_FORMATS`).
 - Admin-key validity (64 lowercase hex) enforced by a field_validator at load
-  time; the `lifespan` rendezvouss the admin account (`hsync_server/main.py::lifespan`). A leftover
-  `HSYNC_API_KEY` in the environment fails startup with a migration message.
+  time; the `lifespan` creates the built-in admin account (`hsync_server/main.py::lifespan`).
 - Delta transfer config that **takes effect**: `delta_enabled` (default
   `true`), `delta_token_ttl` (300s), `rate_limit_delta` ("100/minute").
 

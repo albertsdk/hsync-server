@@ -23,8 +23,8 @@ from hsync_server.constants import ACCOUNT_ID_ALPHABET, ACCOUNT_ID_LEN, mint_aln
 __all__ = [
     "ACCOUNT_ID_ALPHABET",
     "ACCOUNT_ID_LEN",
-    "RENDEZVOUS_ADMIN_ID",
-    "RENDEZVOUS_ADMIN_NAME",
+    "BUILTIN_ADMIN_ID",
+    "BUILTIN_ADMIN_NAME",
     "KEY_PREFIX_LEN",
     "LAST_USED_THROTTLE",
     "SALT_LEN",
@@ -47,9 +47,7 @@ KEY_PREFIX_LEN = 8  # first 8 hex chars of the active secret
 
 # Precompiled account-id pattern derived from the SSOT alphabet: one C-level
 # fullmatch replaces the 21-iteration Python generator that parse_token ran on
-# the per-request auth hot path. The id length is pinned by ACCOUNT_ID_LEN
-# (regular accounts); the reserved 22-char RENDEZVOUS_ADMIN_ID is special-cased
-# in parse_token, so the pattern itself stays on the standard length.
+# the per-request auth hot path.
 _ACCOUNT_ID_RE = re.compile(f"^[{re.escape(ACCOUNT_ID_ALPHABET)}]{{{ACCOUNT_ID_LEN}}}$")
 
 # scrypt parameters (named, not magic numbers; overridable for tests via env).
@@ -63,9 +61,12 @@ SALT_LEN = 16
 # scrypt requires ~128*N*r bytes; with N=2^17, r=8 → ~128 MB.
 SCRYPT_MAXMEM = int(os.environ.get("HSYNC_SCRYPT_MAXMEM", str(256 * 1024 * 1024)))
 
-# Rendezvous
-RENDEZVOUS_ADMIN_ID = "HsyncAdminRendezvous01"
-RENDEZVOUS_ADMIN_NAME = "admin"
+# Built-in administrator: created when the store is empty, and the owner of every
+# bucket the local CLI creates. The id is one of the ordinary ACCOUNT_ID_LEN
+# alphanumeric ids, reserved here so it is never minted for another account; the
+# name is what the CLI and the REST/CLI surfaces refer to.
+BUILTIN_ADMIN_ID = "HsyncAdminBuiltinId01"
+BUILTIN_ADMIN_NAME = "admin"
 
 # Name validation
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -80,11 +81,12 @@ _SCRYPT_PHC_PARTS = 5
 def mint_account_id() -> str:
     """Generate a 21-char alphanumeric account id (same style as ``get_server_cid``).
 
-    The reserved rendezvous id ``RENDEZVOUS_ADMIN_ID`` is never minted here.
+    ``BUILTIN_ADMIN_ID`` is reserved for the built-in administrator and is never
+    minted here.
     """
     while True:
         cid = mint_alnum_id()
-        if cid != RENDEZVOUS_ADMIN_ID:
+        if cid != BUILTIN_ADMIN_ID:
             return cid
 
 
@@ -96,24 +98,22 @@ def mint_secret() -> str:
 def parse_token(token: str) -> tuple[str, str] | None:
     """Parse ``hs_<account_id>_<secret 64 hex>`` → ``(id, secret)``.
 
-    Standard account ids are 21 alnum chars (``ACCOUNT_ID_LEN``); the reserved
-    rendezvous admin id (``RENDEZVOUS_ADMIN_ID``) is 22 chars and is accepted
-    as the single length exception — it is never minted for regular accounts,
-    so no other 22-char id is valid.  Returns ``None`` if the format is
-    invalid.  The caller must run a dummy scrypt on the failure path to keep
-    timing uniform.
+    Account ids are exactly ``ACCOUNT_ID_LEN`` alphanumeric characters, the
+    built-in administrator included. Returns ``None`` if the format is invalid.
+    The caller must run a dummy scrypt on the failure path to keep timing
+    uniform.
     """
     if not token.startswith(TOKEN_PREFIX):
         return None
     rest = token.removeprefix(TOKEN_PREFIX)
     sep = rest.find("_")
-    if sep != ACCOUNT_ID_LEN and sep != len(RENDEZVOUS_ADMIN_ID):
+    if sep != ACCOUNT_ID_LEN:
         return None
     account_id = rest[:sep]
     secret = rest[sep + 1 :]
     if len(secret) != SECRET_HEX_LEN:
         return None
-    if account_id != RENDEZVOUS_ADMIN_ID and not _ACCOUNT_ID_RE.fullmatch(account_id):
+    if not _ACCOUNT_ID_RE.fullmatch(account_id):
         return None
     # Length is already validated above (== SECRET_HEX_LEN), so the precompiled
     # {64} pattern is equivalent to the ad-hoc `[0-9a-f]+` fullmatch compiled

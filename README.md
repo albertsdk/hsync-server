@@ -177,14 +177,14 @@ See the [Environment Variables table](docs/README.md#environment-variables) in
 the documentation for the complete list with defaults and descriptions.
 
 Clients authenticate with per-account tokens (`hs_<id>_<secret>`); see
-[Authentication](docs/authentication.md) for the auth flow and the rendezvous
+[Authentication](docs/authentication.md) for the auth flow and the built-in
 admin account.
 
 Key variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HSYNC_ADMIN_KEY` | Rendezvous admin secret (64 hex chars). If unset, the server generates one and prints the admin account token once at startup | auto-generated |
+| `HSYNC_ADMIN_KEY` | Built-in admin secret (64 hex chars). If unset, the server generates one and prints the admin account token once at startup | auto-generated |
 | `HSYNC_PORT` | Server port | `9753` |
 | `HSYNC_LOG_LEVEL` | Log level | `info` |
 | `HSYNC_BUCKETS` | Directory for bucket data storage | `<app>/buckets` from source, `./buckets` in a packaged binary (absolute, resolved at startup) |

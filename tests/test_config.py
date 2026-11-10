@@ -62,7 +62,7 @@ class TestSettings:
         assert settings.ssl_enabled is False
         assert settings.compression_enabled is True
         assert settings.max_upload_size == 10 * 1024 * 1024 * 1024  # 10GB
-        assert settings.buckets_path.endswith("/buckets")
+        assert settings.buckets.endswith("/buckets")
         assert settings.min_free_disk_space == 500 * 1024 * 1024
         assert settings.rate_limit_default == "500/minute"
         assert settings.rate_limit_upload == "200/minute"
@@ -79,7 +79,7 @@ class TestSettings:
             log_level="debug",
             cors_enabled=True,
             cors_origins="http://localhost,http://example.com",
-            buckets_path="/tmp/hsync-buckets",
+            buckets="/tmp/hsync-buckets",
             trusted_proxies="127.0.0.1, 10.0.0.1 ",
         )
 
@@ -88,7 +88,7 @@ class TestSettings:
         assert settings.tz == "Europe/Rome"
         assert settings.log_level == "debug"
         assert settings.cors_enabled is True
-        assert settings.buckets_path == "/tmp/hsync-buckets"
+        assert settings.buckets == "/tmp/hsync-buckets"
         assert settings.trusted_proxies_set == frozenset({"127.0.0.1", "10.0.0.1"})
 
     def test_cors_origins_list_property(self):
@@ -115,19 +115,19 @@ class TestSettings:
         with pytest.raises(ValidationError):
             config.Settings(tz="Not/AZone")
 
-    def test_buckets_path_default(self):
-        """Test that buckets_path defaults to the app directory."""
+    def test_buckets_default(self):
+        """Test that buckets defaults to the app directory."""
         settings = config.Settings()
 
-        assert settings.buckets_path.endswith("/buckets")
+        assert settings.buckets.endswith("/buckets")
 
-    def test_hsync_buckets_env_alias(self, monkeypatch, tmp_path):
-        """HSYNC_BUCKETS is the documented env var for buckets_path."""
+    def test_hsync_buckets_env(self, monkeypatch, tmp_path):
+        """HSYNC_BUCKETS is the documented env var for the buckets directory."""
         monkeypatch.setenv("HSYNC_BUCKETS", str(tmp_path))
 
         settings = config.Settings()
 
-        assert settings.buckets_path == str(tmp_path)
+        assert settings.buckets == str(tmp_path)
 
     def test_validate_log_level_normalizes_case(self):
         """Test that log level is normalized to lowercase."""
@@ -213,7 +213,7 @@ class TestFrozenStorageDefaults:
             monkeypatch.delattr(sys, "frozen", raising=False)
             importlib.reload(config)
 
-        assert settings.buckets_path == str((tmp_path / "buckets").resolve())
+        assert settings.buckets == str((tmp_path / "buckets").resolve())
         assert settings.state_dir == str((tmp_path / "state").resolve())
         assert "_internal" not in settings.ssl_cert_dir
 

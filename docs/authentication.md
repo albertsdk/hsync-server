@@ -22,20 +22,20 @@ The token is presented as `Authorization: Bearer <token>` (REST) and as the
 `token` field of the WS `auth` frame. Clients treat the token as an opaque
 string — no parsing is required on the client side.
 
-## Rendezvous
+## Built-in administrator
 
-On first start (empty account store), an admin account is created:
+On first start (empty account store) the built-in admin account is created:
 
 - If `HSYNC_ADMIN_KEY` (64 lowercase hex) is set in the environment: used
   silently as the admin secret. Ideal for CI/deploy automation.
 - If absent: a secret is generated and the full token `hs_<id>_<secret>` is
   delivered once. On an interactive terminal it is printed to stderr; when
   stderr is not a TTY (systemd/journald, container log drivers) it is written to
-  `<state_dir>/rendezvous_admin_token` with mode `0600`, so it never reaches a
+  `<state_dir>/builtin_admin_token` with mode `0600`, so it never reaches a
   captured log stream. **It is not recoverable**: move it to your secret store
   and delete the file.
 
-The admin account has `name=admin`, `id=HsyncAdminRendezvous01`, `role=admin`.
+That account has `name=admin`, `id=HsyncAdminBuiltinId01`, `role=admin`.
 
 ## Authentication flow (WebSocket)
 
@@ -97,7 +97,7 @@ no existence leak.
 
 | Component | File |
 |---|---|
-| Account store (tables, scrypt, rendezvous, CRUD) | `hsync_server/auth_store/` |
+| Account store (tables, scrypt, admin bootstrap, CRUD) | `hsync_server/auth_store/` |
 | Token verification + AuthContext + dependencies | `hsync_server/auth.py` |
 | Bucket endpoints (ownership, authz) | `hsync_server/api/buckets.py` |
 | Membership/owner API | `hsync_server/api/members.py` |

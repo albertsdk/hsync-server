@@ -1,4 +1,4 @@
-"""Tests for the release installation rendezvous."""
+"""Tests for the release installation script."""
 
 from __future__ import annotations
 

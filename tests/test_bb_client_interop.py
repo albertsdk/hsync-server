@@ -191,7 +191,7 @@ class TestClientUploadArbitrationE2E:
 
         env = _raw_client_env()
         # Client env: hsync-client still reads HSYNC_API_KEY and sends its value
-        # verbatim as the Bearer token (the full hs_HsyncAdminRendezvous01_<secret>).
+        # verbatim as the Bearer token (the full hs_HsyncAdminBuiltinId01_<secret>).
         env["HSYNC_API_KEY"] = api_key
         result = subprocess.run(
             [

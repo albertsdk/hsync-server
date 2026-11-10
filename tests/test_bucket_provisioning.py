@@ -8,7 +8,7 @@ with ``EACCES``.
 from pathlib import Path
 
 from hsync_server import bucket_provisioning
-from hsync_server.auth_store import RENDEZVOUS_ADMIN_ID
+from hsync_server.auth_store import BUILTIN_ADMIN_ID
 
 
 def _buckets_root() -> Path:
@@ -17,9 +17,7 @@ def _buckets_root() -> Path:
 
 
 def _create(bucket: str) -> Path:
-    bucket_provisioning.create_bucket(
-        bucket, owner_account_id=RENDEZVOUS_ADMIN_ID, owner_name="admin"
-    )
+    bucket_provisioning.create_bucket(bucket, owner_account_id=BUILTIN_ADMIN_ID, owner_name="admin")
     return _buckets_root() / bucket
 
 

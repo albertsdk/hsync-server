@@ -213,7 +213,7 @@ authorization is determined by `(account role, bucket membership)`.
   secret) plus account id/name — **never** the full token.
 - **`last_used_at`** tracks each account's last use (throttled to 1 update /
   5 minutes).
-- The rendezvous token is printed **once** to stderr, never to application logs.
+- The built-in admin token is printed **once** to stderr, never to application logs.
 
 ### Lifecycle
 
@@ -272,14 +272,14 @@ bucket or a subset of operations). Scope is determined by the **account role**:
 To restrict an account to a subset of buckets, use **membership** (grant access
 only to the desired buckets).
 
-### Admin rendezvous
+### Built-in admin account
 
-On first start (empty store), the rendezvous admin account is created
-(`name=admin`, `id=HsyncAdminRendezvous01`, `role=admin`):
+On first start (empty store) the built-in admin account is created
+(`name=admin`, `id=HsyncAdminBuiltinId01`, `role=admin`):
 
 - If `HSYNC_ADMIN_KEY` (64 hex) is set → used as the secret (silent).
 - If absent → the server generates a secret and prints the token **once**.
-- If set after rendezvous → ignored (warning).
+- If set once accounts exist → ignored (warning).
 
 ---
 
@@ -349,7 +349,7 @@ sudo hsync-server admin client remove --name admin --force
 ### Bucket and membership management (`admin bucket`)
 
 ```bash
-# Create a bucket (the rendezvous admin becomes its owner)
+# Create a bucket (the built-in admin becomes its owner)
 sudo hsync-server admin bucket create --bucket BUCKET
 
 # Delete a bucket and all its contents

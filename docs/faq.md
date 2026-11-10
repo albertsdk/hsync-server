@@ -294,9 +294,9 @@ The server sees `[Errno 13] Permission denied: '/var/lib/hsync-server/buckets/BU
 and answers `500`; the client retries and gives up.
 
 Cause: the bucket directory is owned by `root`, so the service user cannot write
-inside it. That happens for a bucket created by an admin CLI run as root before
-this ownership hand-over existed. New buckets created with
-`sudo hsync-server admin bucket create` inherit the buckets directory's owner.
+inside it. `hsync-server admin bucket create` hands the new directory to the
+buckets directory's owner, so this only happens for a directory created outside
+the CLI (by hand or by another tool running as root).
 
 Fix without stopping the service:
 
@@ -325,7 +325,7 @@ Common causes:
 - `HSYNC_ADMIN_KEY` malformed — must be exactly 64 lowercase hex characters
   (generate with `openssl rand -hex 32`). If unset, the server generates a
   one-time admin token instead (stderr on a TTY, otherwise
-  `<state_dir>/rendezvous_admin_token`, mode 0600).
+  `<state_dir>/builtin_admin_token`, mode 0600).
 - Data directory permissions — the container runs as the configured user
   (`HSYNC_UID`/`HSYNC_GID`, defaulting to the invoking user) and must be able
   to write to the bind-mounted data directory.

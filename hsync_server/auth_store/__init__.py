@@ -3,8 +3,8 @@
 
 """Server-only account and membership store backed by ``state DB``.
 
-This package is the single DRY path for REST, WS, CLI and rendezvous auth
-state.  The implementation is split by responsibility:
+This package is the single DRY path for REST, WS, CLI and the built-in
+admin bootstrap.  The implementation is split by responsibility:
 
 * ``credentials`` — id/secret minting, token parsing, scrypt hashing (pure)
 * ``models`` — ``AccountRow``/``MemberRow`` and ``TargetNotFoundError``
@@ -14,12 +14,12 @@ state.  The implementation is split by responsibility:
 * ``buckets`` — bucket inventory and deletion (``BucketsMixin``)
 * ``store`` — the composed ``AuthStore`` and its process-wide cache
 
-Every name historically exported by ``hsync_server.auth_store`` is re-exported
-here, so ``from hsync_server.auth_store import <name>`` keeps working unchanged.
+Every public name is re-exported here, so ``from hsync_server.auth_store
+import <name>`` is the single import path.
 
 Consumers: ``hsync_server.auth`` (verify + AuthContext), ``hsync_server.api``
 (buckets, admin, members, events), ``hsync_server.__main__`` (CLI admin),
-``hsync_server.main`` (lifespan rendezvous).
+``hsync_server.main`` (lifespan bootstrap).
 """
 
 from hsync_server.exceptions import ConflictError, ForbiddenError
@@ -30,10 +30,10 @@ from .credentials import (
     _DUMMY_PHC,
     ACCOUNT_ID_ALPHABET,
     ACCOUNT_ID_LEN,
+    BUILTIN_ADMIN_ID,
+    BUILTIN_ADMIN_NAME,
     KEY_PREFIX_LEN,
     LAST_USED_THROTTLE,
-    RENDEZVOUS_ADMIN_ID,
-    RENDEZVOUS_ADMIN_NAME,
     SALT_LEN,
     SCRYPT_DKLEN,
     SCRYPT_N,
@@ -58,8 +58,8 @@ from .store import AuthStore, get_auth_store, reset_auth_cache
 __all__ = [
     "ACCOUNT_ID_ALPHABET",
     "ACCOUNT_ID_LEN",
-    "RENDEZVOUS_ADMIN_ID",
-    "RENDEZVOUS_ADMIN_NAME",
+    "BUILTIN_ADMIN_ID",
+    "BUILTIN_ADMIN_NAME",
     "KEY_PREFIX_LEN",
     "LAST_USED_THROTTLE",
     "SALT_LEN",

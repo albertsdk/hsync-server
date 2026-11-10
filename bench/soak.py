@@ -42,10 +42,10 @@ from pathlib import Path
 
 import httpx
 
-# Fixed rendezvous admin secret (64 hex) for every soak run; the Bearer token is
-# hs_HsyncAdminRendezvous01_<secret>.
+# Fixed built-in admin secret (64 hex) for every soak run; the Bearer token is
+# hs_HsyncAdminBuiltinId01_<secret>.
 _ADMIN_SECRET = "0123456789abcdef" * 4  # 64 hex chars, fixed and safe
-_TOKEN = f"hs_HsyncAdminRendezvous01_{_ADMIN_SECRET}"
+_TOKEN = f"hs_HsyncAdminBuiltinId01_{_ADMIN_SECRET}"
 
 
 def _free_port() -> int:

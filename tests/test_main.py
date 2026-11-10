@@ -294,7 +294,7 @@ class TestAdminBucketCli:
         assert get_buckets_path() in result.stdout
         assert get_auth_db_path() in result.stdout
 
-    def test_bucket_create_requires_the_rendezvous_admin(self, monkeypatch):
+    def test_bucket_create_requires_the_builtin_admin(self, monkeypatch):
         """Without the admin row the FK would fail: report it instead."""
         from pathlib import Path
 
@@ -306,12 +306,12 @@ class TestAdminBucketCli:
         result = runner.invoke(cli.app, ["admin", "bucket", "create", "--bucket", "photos"])
 
         assert result.exit_code == 1
-        assert "no rendezvous admin account" in (result.output + result.stderr)
+        assert "no built-in admin account" in (result.output + result.stderr)
         assert not (Path(get_buckets_path()) / "photos").exists()
 
     def test_bucket_create_creates_directory_and_owner(self):
         """`admin bucket create` creates the bucket dir and assigns the owner."""
-        from hsync_server.auth_store import RENDEZVOUS_ADMIN_ID, get_auth_store
+        from hsync_server.auth_store import BUILTIN_ADMIN_ID, get_auth_store
         from hsync_server.config import get_buckets_path
 
         result = runner.invoke(cli.app, ["admin", "bucket", "create", "--bucket", "photos"])
@@ -322,7 +322,7 @@ class TestAdminBucketCli:
 
         assert (Path(get_buckets_path()) / "photos").is_dir()
         store = get_auth_store()
-        assert store.get_owner("photos").id == RENDEZVOUS_ADMIN_ID  # type: ignore[union-attr]
+        assert store.get_owner("photos").id == BUILTIN_ADMIN_ID  # type: ignore[union-attr]
 
     def test_bucket_create_duplicate_fails(self):
         """Creating an existing bucket fails with exit code 1."""
@@ -366,7 +366,7 @@ class TestAdminBucketCli:
             store._begin()
             store.conn.execute(
                 "INSERT INTO bucket_members (bucket, client_id, role) VALUES (?, ?, 'owner')",
-                ("ghostbucket", "HsyncAdminRendezvous01"),
+                ("ghostbucket", "HsyncAdminBuiltinId01"),
             )
             store._commit()
 
@@ -511,7 +511,7 @@ class TestFastApiApplication:
     async def test_lifespan_preloads_hashes_from_configured_bucket_path(
         self, tmp_path, monkeypatch
     ):
-        """Lifespan rendezvouss admin and preloads hashes from the configured bucket path."""
+        """Lifespan creates the built-in admin and preloads hashes from the bucket path."""
         from hsync_common.models.sqlstore import reset_state_db_cache
 
         from hsync_server import main as app_main

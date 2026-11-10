@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2025 Alberto Basso
 
-"""Account lifecycle mixin: rendezvous, CRUD, key rotation, verify, last-used."""
+"""Account lifecycle mixin: admin bootstrap, CRUD, key rotation, verify, last-used."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from hsync_server.exceptions import ConflictError
 
 from .buckets import _iter_bucket_dirs
 from .credentials import (
+    BUILTIN_ADMIN_ID,
+    BUILTIN_ADMIN_NAME,
     LAST_USED_THROTTLE,
-    RENDEZVOUS_ADMIN_ID,
-    RENDEZVOUS_ADMIN_NAME,
     TOKEN_PREFIX,
     _hash_secret,
     _key_prefix,
@@ -36,11 +36,11 @@ class AccountsMixin(AuthStoreBase):
     """Account-related operations (see ``DbMixin`` for the connection)."""
 
     # ------------------------------------------------------------------
-    # Rendezvous
+    # Built-in admin
     # ------------------------------------------------------------------
 
-    def rendezvous_admin(self, env_secret: str | None) -> str | None:
-        """Create the rendezvous admin account if the table is empty.
+    def bootstrap_admin(self, env_secret: str | None) -> str | None:
+        """Create the built-in admin account if the table is empty.
 
         Returns the full token ``hs_<id>_<secret>`` when a secret was
         generated (env was absent), or ``None`` when the env secret was used
@@ -54,6 +54,12 @@ class AccountsMixin(AuthStoreBase):
                     log.warning(
                         "HSYNC_ADMIN_KEY is set but accounts already exist in DB; "
                         "the env value is ignored."
+                    )
+                if self.get_account(BUILTIN_ADMIN_ID) is None:
+                    log.error(
+                        f"The store at {self._db_path} has accounts but no built-in "
+                        "admin: it is not a valid HSYNC state directory. An empty "
+                        "store creates the built-in admin and prints its token once."
                     )
                 return None
 
@@ -76,8 +82,8 @@ class AccountsMixin(AuthStoreBase):
                     return None
 
                 self._insert_client(
-                    account_id=RENDEZVOUS_ADMIN_ID,
-                    name=RENDEZVOUS_ADMIN_NAME,
+                    account_id=BUILTIN_ADMIN_ID,
+                    name=BUILTIN_ADMIN_NAME,
                     role="admin",
                     key_hash=key_hash,
                     key_prefix=_key_prefix(secret),
@@ -85,8 +91,8 @@ class AccountsMixin(AuthStoreBase):
                     created_at=now,
                 )
 
-                # Adopt orphan bucket directories (rendezvous-only).
-                self._adopt_orphan_buckets(RENDEZVOUS_ADMIN_ID)
+                # Adopt orphan bucket directories (bootstrap only).
+                self._adopt_orphan_buckets(BUILTIN_ADMIN_ID)
 
                 self._commit()
             except sqlite3.IntegrityError:
@@ -94,7 +100,7 @@ class AccountsMixin(AuthStoreBase):
                 return None
 
             if generated:
-                token = f"{TOKEN_PREFIX}{RENDEZVOUS_ADMIN_ID}_{secret}"
+                token = f"{TOKEN_PREFIX}{BUILTIN_ADMIN_ID}_{secret}"
                 # The generated token is a full admin credential: never let it
                 # reach a captured log stream. Interactive terminals get it on
                 # stderr; daemons (systemd/journald, container log drivers) get
@@ -106,13 +112,13 @@ class AccountsMixin(AuthStoreBase):
 
                 if sys.stderr.isatty():
                     print(
-                        f"\n*** Rendezvous admin account created. ***\n"
+                        f"\n*** Built-in admin account created. ***\n"
                         f"Token (save now, not recoverable): {token}\n",
                         file=sys.stderr,
                     )
-                    log.warning("Rendezvous admin account created; token printed to stderr.")
+                    log.warning("Built-in admin account created; token printed to stderr.")
                 else:
-                    token_file = Path(get_state_dir()) / "rendezvous_admin_token"
+                    token_file = Path(get_state_dir()) / "builtin_admin_token"
                     fd = os.open(
                         token_file,
                         os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0),
@@ -122,18 +128,18 @@ class AccountsMixin(AuthStoreBase):
                         handle.write(token + "\n")
                     os.chmod(token_file, 0o600)
                     log.warning(
-                        "Rendezvous admin account created; token written to "
+                        "Built-in admin account created; token written to "
                         f"{token_file} (mode 0600). Save it and delete the file."
                     )
                 return token
-            log.info("Rendezvous admin account created from HSYNC_ADMIN_KEY.")
+            log.info("Built-in admin account created from HSYNC_ADMIN_KEY.")
             return None
 
     def _adopt_orphan_buckets(self, admin_id: str) -> None:
         """Assign ownership of every existing bucket directory to *admin_id*.
 
-        Runs only during rendezvous (when ``clients`` was empty).  Directories
-        starting with ``.`` are excluded.
+        Runs only during the admin bootstrap (when ``clients`` was empty).
+        Directories starting with ``.`` are excluded.
         """
         from hsync_server.config import get_buckets_path
 
@@ -205,7 +211,7 @@ class AccountsMixin(AuthStoreBase):
         """Insert one active account row.
 
         Single definition of the ``clients`` column list shared by
-        :meth:`rendezvous_admin` and :meth:`create_account` (both create an
+        :meth:`bootstrap_admin` and :meth:`create_account` (both create an
         active account with a fresh generation-1 key); ``prior_*`` and
         ``last_used_at`` start NULL.
         """

@@ -291,7 +291,7 @@ def main(
 
     [bold]Environment Variables:[/bold]
 
-        HSYNC_ADMIN_KEY         Rendezvous admin secret (64 hex, optional)
+        HSYNC_ADMIN_KEY         Built-in admin secret (64 hex, optional)
         HSYNC_BUCKETS           Path to buckets directory
         HSYNC_STATE_DIR         Path to state DB directory
         HSYNC_CORS_ENABLED      Enable CORS (true/false)
@@ -599,14 +599,13 @@ def _resolve_account_id(name: str | None, account_id: str | None) -> str:
 def _resolve_client_target(client: str):
     """Resolve a --client value (account id or name) to an account.
 
-    A value with the standard id length (``ACCOUNT_ID_LEN``) or the reserved
-    22-char ``RENDEZVOUS_ADMIN_ID`` is treated as an id, anything else as a
-    name.
+    A value with the account-id length (``ACCOUNT_ID_LEN``) is treated as an id,
+    anything else as a name.
     """
-    from hsync_server.auth_store import RENDEZVOUS_ADMIN_ID, TargetNotFoundError, get_auth_store
+    from hsync_server.auth_store import TargetNotFoundError, get_auth_store
 
     store = get_auth_store()
-    is_id = client == RENDEZVOUS_ADMIN_ID or (len(client) == ACCOUNT_ID_LEN and client.isalnum())
+    is_id = len(client) == ACCOUNT_ID_LEN and client.isalnum()
     try:
         return store.resolve_target(client if is_id else None, None if is_id else client)
     except TargetNotFoundError:
@@ -796,8 +795,8 @@ def bucket_create(
         typer.Option("--bucket", help="Bucket name."),
     ],
 ) -> None:
-    """Create a new bucket. The rendezvous admin becomes its owner."""
-    from hsync_server.auth_store import RENDEZVOUS_ADMIN_ID, get_auth_store
+    """Create a new bucket. The built-in admin account becomes its owner."""
+    from hsync_server.auth_store import BUILTIN_ADMIN_ID, get_auth_store
     from hsync_server.bucket_provisioning import create_bucket
     from hsync_server.config import get_auth_db_path
     from hsync_server.exceptions import (
@@ -806,12 +805,12 @@ def bucket_create(
         InvalidBucketNameError,
     )
 
-    # The owner row references the rendezvous admin, so the account must exist
+    # The owner row references the built-in admin, so the account must exist
     # in the database this command opened. It is created by the server's first
     # start: without it, creating the bucket would fail on the foreign key.
-    if get_auth_store().get_account(RENDEZVOUS_ADMIN_ID) is None:
+    if get_auth_store().get_account(BUILTIN_ADMIN_ID) is None:
         _fail(
-            f"no rendezvous admin account in {get_auth_db_path()}: start the "
+            f"no built-in admin account in {get_auth_db_path()}: start the "
             "server once (systemctl start hsync-server) and run this as root so "
             "it reads the packaged conffile."
         )
@@ -819,7 +818,7 @@ def bucket_create(
     try:
         create_bucket(
             bucket,
-            owner_account_id=RENDEZVOUS_ADMIN_ID,
+            owner_account_id=BUILTIN_ADMIN_ID,
             owner_name="admin",
         )
     except (ConflictError, DeleteError, InvalidBucketNameError) as exc:
@@ -857,7 +856,7 @@ def bucket_grant(
     """Grant membership to an account on a bucket."""
     _require_valid_bucket(bucket)
     from hsync_server.auth_store import (
-        RENDEZVOUS_ADMIN_ID,
+        BUILTIN_ADMIN_ID,
         ConflictError,
         ForbiddenError,
         get_auth_store,
@@ -867,7 +866,7 @@ def bucket_grant(
     # CLI operates as admin (filesystem authority).
     target = _resolve_client_target(client)
     try:
-        store.grant_member(bucket, target, RENDEZVOUS_ADMIN_ID, caller_is_admin=True)
+        store.grant_member(bucket, target, BUILTIN_ADMIN_ID, caller_is_admin=True)
     except (ConflictError, ForbiddenError) as e:
         _fail(str(e))
     typer.echo(f"Granted: {target.name} → member of {bucket}")
@@ -881,7 +880,7 @@ def bucket_revoke(
     """Revoke membership from a bucket."""
     _require_valid_bucket(bucket)
     from hsync_server.auth_store import (
-        RENDEZVOUS_ADMIN_ID,
+        BUILTIN_ADMIN_ID,
         ConflictError,
         ForbiddenError,
         TargetNotFoundError,
@@ -891,7 +890,7 @@ def bucket_revoke(
     store = get_auth_store()
     target = _resolve_client_target(client)
     try:
-        store.revoke_member(bucket, target.id, RENDEZVOUS_ADMIN_ID, caller_is_admin=True)
+        store.revoke_member(bucket, target.id, BUILTIN_ADMIN_ID, caller_is_admin=True)
     except (ConflictError, ForbiddenError, TargetNotFoundError) as e:
         _fail(str(e))
     typer.echo(f"Revoked: {target.name} from {bucket}")
@@ -907,7 +906,7 @@ def bucket_set_owner(
     from pathlib import Path
 
     from hsync_server.auth_store import (
-        RENDEZVOUS_ADMIN_ID,
+        BUILTIN_ADMIN_ID,
         ConflictError,
         ForbiddenError,
         get_auth_store,
@@ -927,7 +926,7 @@ def bucket_set_owner(
             store.reclaim_orphan(bucket, target, caller_is_admin=True)
             action = "reclaimed"
         else:
-            store.transfer_owner(bucket, target, RENDEZVOUS_ADMIN_ID, caller_is_admin=True)
+            store.transfer_owner(bucket, target, BUILTIN_ADMIN_ID, caller_is_admin=True)
             action = "transferred"
     except (ConflictError, ForbiddenError) as e:
         _fail(str(e))
