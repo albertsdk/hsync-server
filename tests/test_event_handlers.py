@@ -471,6 +471,53 @@ class TestHandleRenamedEvent:
         assert result is None
 
     @pytest.mark.asyncio
+    async def test_an_already_applied_file_rename_is_a_silent_noop(self, tmp_path):
+        """A descendant moved by its renamed ancestor must not surface ENOENT.
+
+        The client reports a directory move for the directory *and* its children;
+        the ancestor is applied first, so the child's source is already gone while
+        its destination exists. That is a redundant event, not an error, so the
+        handler returns None instead of raising (and never logs a scary error).
+        """
+        bucket_dir = str(tmp_path / "bucket")
+        new_dir = f"{bucket_dir}/New"
+        os.makedirs(new_dir)
+        moved = Path(f"{new_dir}/f.txt")
+        moved.write_text("content")
+        src = {"filepath": "Old/f.txt", "sha256sum": "abc", "permissions": "644"}
+        dst = {"filepath": "New/f.txt", "sha256sum": "abc", "permissions": "644"}
+
+        result = await handle_renamed_event(src, dst, bucket_dir, "bucket", "cid")
+
+        assert result is None
+        assert moved.read_text() == "content"
+
+    @pytest.mark.asyncio
+    async def test_an_already_applied_directory_rename_is_a_silent_noop(self, tmp_path):
+        """A nested directory moved by its renamed ancestor is a no-op too."""
+        bucket_dir = str(tmp_path / "bucket")
+        new_dir = f"{bucket_dir}/New/Sub"
+        os.makedirs(new_dir)
+        src = {"path": "Old/Sub", "permissions": "755"}
+        dst = {"path": "New/Sub", "permissions": "755"}
+
+        result = await handle_renamed_event(src, dst, bucket_dir, "bucket", "cid")
+
+        assert result is None
+        assert os.path.isdir(new_dir)
+
+    @pytest.mark.asyncio
+    async def test_a_missing_source_without_a_destination_still_raises(self, tmp_path):
+        """Only a rename that actually landed is treated as already applied."""
+        bucket_dir = str(tmp_path / "bucket")
+        os.makedirs(bucket_dir)
+        src = {"filepath": "Old/f.txt", "sha256sum": "abc", "permissions": "644"}
+        dst = {"filepath": "New/f.txt", "sha256sum": "abc", "permissions": "644"}
+
+        with pytest.raises(FileNotFoundError):
+            await handle_renamed_event(src, dst, bucket_dir, "bucket", "cid")
+
+    @pytest.mark.asyncio
     async def test_rename_file_moves_version_entry(self, tmp_path, _isolated_versions):
         """A file rename carries the version entry to the destination path."""
         from hsync_server.versions import record_version, server_version_info

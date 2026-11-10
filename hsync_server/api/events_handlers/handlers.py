@@ -251,10 +251,25 @@ async def handle_renamed_event(
         if not _validate_path(dst_dir.path, bucket_dir):
             return None
         if src_dir.path and dst_dir.path:
+            try:
+                rename(src_dir.path, dst_dir.path)
+            except FileNotFoundError:
+                # A move is reported for a directory *and* its descendants (the
+                # polling watcher and scan-based pairing do that). The ancestor
+                # event is applied first, so the descendant's source is already
+                # gone while its destination exists: this event is redundant,
+                # not an error. Skipping keeps the log honest; the ancestor's
+                # broadcast still reaches every peer.
+                if not Path(dst_dir.path).exists():
+                    raise
+                log.debug(
+                    f"{ActionLabel.RENAME} Skipped already-applied directory rename "
+                    f'"{src_dir.path}" -> "{dst_dir.path}" (CID: {cid})'
+                )
+                return None
             log.info(
                 f'{ActionLabel.RENAME} Renamed "{src_dir.path}" -> "{dst_dir.path}" (CID: {cid})'
             )
-            rename(src_dir.path, dst_dir.path)
             # Causal bookkeeping is best-effort: the on-disk rename already
             # happened, so a failure here must not abort the event broadcast
             # (peers would never learn of the rename).
@@ -276,10 +291,22 @@ async def handle_renamed_event(
         if not _validate_path(dst_file.filepath, bucket_dir):
             return None
         if src_file.filepath and dst_file.filepath:
+            try:
+                rename(src_file.filepath, dst_file.filepath)
+            except FileNotFoundError:
+                # Same redundancy as the directory branch: a descendant was
+                # moved by its renamed ancestor, so its own event has nothing
+                # left to do. Not an error.
+                if not Path(dst_file.filepath).exists():
+                    raise
+                log.debug(
+                    f"{ActionLabel.RENAME} Skipped already-applied rename "
+                    f'"{src_file.filepath}" -> "{dst_file.filepath}" (CID: {cid})'
+                )
+                return None
             log.info(
                 f'{ActionLabel.RENAME} Renamed "{src_file.filepath}" -> "{dst_file.filepath}" (CID: {cid})'
             )
-            rename(src_file.filepath, dst_file.filepath)
             # Causal bookkeeping is best-effort: the on-disk rename already
             # happened, so a failure here must not abort the event broadcast
             # (peers would never learn of the rename).

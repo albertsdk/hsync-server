@@ -81,6 +81,16 @@ and treats this bookkeeping as best-effort so it never aborts the broadcast;
 `deleted` records the causal tombstone through the shared
 `hsync_server/tombstones.py::record_path_deletion`.
 
+`renamed` is **idempotent for a moved subtree**: a directory move is reported
+both for the directory and for its descendants (the polling watcher and the
+scan-based pairing do that), and the ancestor event is applied first. A
+descendant whose source is already gone while its destination exists is an
+already-applied rename, skipped at debug level without a rebroadcast or an error
+(the ancestor's broadcast already covers it); a missing source **without** a
+destination still raises, so genuine failures are not hidden. The success
+`RENAME` line is logged only after the on-disk rename succeeds, so a failed
+rename never reads as "Renamed" in the log.
+
 ## Path safety (`api/events_handlers/validation.py`)
 
 - `is_path_within_bucket` (`hsync_server/api/events_handlers/validation.py::is_path_within_bucket`) — containment guard for every
