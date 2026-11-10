@@ -13,6 +13,7 @@ interfaces.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from hsync_common.path_validation import is_valid_bucket_name
@@ -28,6 +29,32 @@ from hsync_server.exceptions import (
 )
 
 __all__ = ["create_bucket", "delete_bucket"]
+
+
+def _adopt_root_ownership(directory: Path) -> None:
+    """Hand a freshly created bucket directory to the storage root's owner.
+
+    The admin CLI runs as root on a packaged install, so ``mkdir`` alone would
+    leave the bucket owned by ``root:root`` and the service user could not write
+    inside it (every upload would fail with ``EACCES``). Adopting the parent's
+    uid/gid keeps the whole buckets tree owned by the account the server runs
+    as. No-op for the REST path, which already runs as that account.
+    """
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        return
+    parent = directory.parent
+    try:
+        st = parent.stat()
+    except OSError as exc:
+        log.warning(f"Cannot read the ownership of {parent}: {exc}")
+        return
+    try:
+        os.chown(directory, st.st_uid, st.st_gid)
+    except OSError as exc:
+        log.warning(
+            f"Cannot hand {directory} to {st.st_uid}:{st.st_gid} ({exc}); the "
+            f"server cannot write in it until: chown -R {st.st_uid}:{st.st_gid} {directory}"
+        )
 
 
 def create_bucket(bucket: str, *, owner_account_id: str, owner_name: str) -> str:
@@ -57,6 +84,8 @@ def create_bucket(bucket: str, *, owner_account_id: str, owner_name: str) -> str
     except FileExistsError:
         log.warning(f"Bucket already exists: {bucket_directory}")
         raise ConflictError(f"Bucket '{bucket}' already exists.") from None
+
+    _adopt_root_ownership(bucket_directory)
 
     store = get_auth_store()
     try:

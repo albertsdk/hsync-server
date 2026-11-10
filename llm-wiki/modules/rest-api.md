@@ -80,6 +80,9 @@ Rate-limit values: `hsync_server/config.py::get_rate_limit_default` /
     Existing name → `ConflictError` (REST maps it to 409). The admin
     create-on-behalf endpoint (`api/admin.py`) delegates here too, so it
     inherits the same name validation and orphan rollback.
+    When the caller is root (the packaged admin CLI), the new directory adopts
+    the buckets root's uid/gid (`hsync_server/bucket_provisioning.py::_adopt_root_ownership`)
+    so the service user can write inside it; the REST path is a no-op there.
   - `delete_bucket` (`hsync_server/bucket_provisioning.py::delete_bucket`) validates the name, then
     delegates to `AuthStore.delete_bucket` (DB rows + `shutil.rmtree`). With
     `delete_files=False` it calls `AuthStore.delete_bucket_db` only — the CLI

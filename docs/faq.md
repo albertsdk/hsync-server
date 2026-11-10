@@ -288,6 +288,23 @@ Then delete the stray `state/` and `buckets/` directories the unprivileged runs
 created in the directory you launched them from (`ls -d state buckets` first,
 they hold no data).
 
+### Uploads fail with "Permission denied" inside a bucket
+
+The server sees `[Errno 13] Permission denied: '/var/lib/hsync-server/buckets/BUCKET'`
+and answers `500`; the client retries and gives up.
+
+Cause: the bucket directory is owned by `root`, so the service user cannot write
+inside it. That happens for a bucket created by an admin CLI run as root before
+this ownership hand-over existed. New buckets created with
+`sudo hsync-server admin bucket create` inherit the buckets directory's owner.
+
+Fix without stopping the service:
+
+```bash
+sudo chown -R _hsync-server:_hsync-server \
+  /var/lib/hsync-server/buckets/BUCKET
+```
+
 ### Server won't start
 
 **"Address already in use" on port 9753:**
