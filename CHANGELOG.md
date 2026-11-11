@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-11
+
+### Changed
+
+- Dependency refresh: `typer` 0.29.
+
 ### Fixed
 
 - A resumable upload whose preflight offset no longer matches the server's
