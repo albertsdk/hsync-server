@@ -59,8 +59,11 @@ from hsync_common.protocol.rest import (
 from loguru import logger as log
 from pydantic import BaseModel, Field
 
-from hsync_server.api.authz import check_bucket_access
-from hsync_server.api.files.delta._util import delta_disabled_response
+from hsync_server.api.files.delta._util import (
+    delta_authorize,
+    delta_disabled_response,
+    delta_preflight,
+)
 from hsync_server.api.files.delta.tokens import delta_tmp_dir, delta_token_store
 from hsync_server.api.utils import read_request_body_capped, resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
@@ -159,11 +162,9 @@ async def get_delta_signatures(
     The client compares ``sha256`` with its expected ``base_hash`` first
     (early-out) and then scans its newer file against these signatures.
     """
-    check_bucket_access(bucket, ctx)
-    start_time = time.time()
-
-    if not get_delta_enabled():
-        return delta_disabled_response()
+    start_time, refusal = delta_preflight(bucket, ctx)
+    if refusal is not None:
+        return refusal
     file = resolve_within_bucket(bucket, path)
     if file is None:
         raise InvalidPathError(details={"path": path})
@@ -210,8 +211,7 @@ async def post_delta_signatures(
     literal payload, or ``{delta: false, reason}`` when a full transfer is
     cheaper (the client then falls back to a plain download).
     """
-    check_bucket_access(bucket, ctx)
-    start_time = time.time()
+    start_time = delta_authorize(bucket, ctx)
 
     # Read and validate body size before Pydantic parsing, regardless
     # of whether Content-Length is present or the client uses chunked

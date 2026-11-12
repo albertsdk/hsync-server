@@ -18,15 +18,17 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import BackgroundTasks, Depends, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from hsync_common.protocol.rest import REST_DELTA_DATA_PATH_TEMPLATE
 
-from hsync_server.api.authz import check_bucket_access
-from hsync_server.api.files.delta._util import delta_disabled_response
+from hsync_server.api.files.delta._util import (
+    delta_preflight,
+    token_expired_response,
+    token_not_found_response,
+)
 from hsync_server.api.files.delta.tokens import delta_token_store
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import CONTENT_ENCODING_ZSTD
-from hsync_server.config import get_delta_enabled
 from hsync_server.constants import CONTENT_TYPE_OCTET_STREAM
 from hsync_server.metrics import record_delta_transfer, record_transfer_duration
 from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
@@ -42,30 +44,28 @@ async def get_delta_data(
     ctx: Annotated[AuthContext, Depends(verify_api_key)],
 ):
     """Stream the parked literal payload for a valid download token."""
-    check_bucket_access(bucket, ctx)
-    start_time = time.time()
-
-    if not get_delta_enabled():
-        return delta_disabled_response()
+    start_time, refusal = delta_preflight(bucket, ctx)
+    if refusal is not None:
+        return refusal
 
     entry = delta_token_store.lookup(token)
     if entry is None:
-        return JSONResponse(status_code=404, content={"detail": "token_not_found"})
+        return token_not_found_response()
     if delta_token_store.is_expired(entry):
         delta_token_store.discard(token)
-        return JSONResponse(status_code=410, content={"detail": "token_expired"})
+        return token_expired_response()
     # The token is a capability bound to the issuing account and bucket: a
     # token minted for bucket A / account X must never serve payloads through
     # bucket B or for account Y (a leaked URL is not transferable). Entries
     # without an account id come from producers that have no account identity.
     if entry.bucket != bucket or (entry.account_id and entry.account_id != ctx.id):
-        return JSONResponse(status_code=404, content={"detail": "token_not_found"})
+        return token_not_found_response()
 
     # Single-use: the entry leaves the registry before streaming starts.
     delta_token_store.consume(token)
     payload_file = entry.payload_file
     if not Path(payload_file).is_file():
-        return JSONResponse(status_code=410, content={"detail": "token_expired"})
+        return token_expired_response()
 
     background = BackgroundTasks()
     background.add_task(delta_token_store._delete_payload, entry)

@@ -54,11 +54,10 @@ from hsync_common.protocol.rest import REST_DELTA_APPLY_SUFFIX, rest_bucket_temp
 from hsync_common.time_utils import conflict_timestamp
 from loguru import logger as log
 
-from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.connection_manager import bucket_manager
 from hsync_server.api.file_utils import update_file_timestamp
 from hsync_server.api.files._conflicts import plan_conflict_rejection
-from hsync_server.api.files.delta._util import delta_disabled_response
+from hsync_server.api.files.delta._util import delta_preflight
 from hsync_server.api.files.upload import _flush_to_disk
 from hsync_server.api.files.version_publish import record_published_version
 from hsync_server.api.utils import (
@@ -74,7 +73,7 @@ from hsync_server.arbitration import (
 )
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import decompress_file_to_file
-from hsync_server.config import get_buckets_path, get_delta_enabled, get_max_upload_size
+from hsync_server.config import get_buckets_path, get_max_upload_size
 from hsync_server.exceptions import (
     ConflictLostError,
     InsufficientStorageError,
@@ -171,11 +170,9 @@ async def delta_apply(
     file: UploadFile = File(...),
 ) -> JSONResponse:
     """Apply a client-computed delta to the server-side base file."""
-    check_bucket_access(bucket, ctx)
-    start_time = time.time()
-
-    if not get_delta_enabled():
-        return delta_disabled_response()
+    start_time, refusal = delta_preflight(bucket, ctx)
+    if refusal is not None:
+        return refusal
 
     literal_tmp: str | None = None
     decompressed_tmp: str | None = None
@@ -204,7 +201,6 @@ async def delta_apply(
         dest_existed = Path(file_location).exists()
         dest_marker = deletion_marker_snapshot(bucket, bucket_root, file_location)
 
-        meta = _parse_metadata(metadata)
         meta = _parse_metadata(metadata)
         base_sha256, new_sha256, new_size, ops = _validate_instructions(meta)
 

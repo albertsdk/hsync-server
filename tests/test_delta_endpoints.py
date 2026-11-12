@@ -96,9 +96,7 @@ class TestGetSignatures:
         assert resp.status_code == 400
 
     async def test_disabled_feature_is_404(self, client, bucket_dir, monkeypatch):
-        monkeypatch.setattr(
-            "hsync_server.api.files.delta.signatures.get_delta_enabled", lambda: False
-        )
+        monkeypatch.setattr("hsync_server.api.files.delta._util.get_delta_enabled", lambda: False)
         rel = _write_base(bucket_dir, _base_bytes())
         resp = await client.get(
             "/api/v1/buckets/bucket1/files/delta/signatures", params={"path": rel}
