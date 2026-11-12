@@ -139,6 +139,50 @@ def _bucket_dir(bucket: str) -> str:
     return f"{get_buckets_path()}/{bucket}"
 
 
+def _parse_wire_vclock(vclock: str) -> dict[str, int] | None:
+    """Decode an optional wire vector clock, or ``None`` when absent.
+
+    A non-object clock is a 400; non-integer and boolean entries are dropped,
+    matching the effective-clock semantics the arbitration matrix expects.
+    """
+    if not vclock:
+        return None
+    raw_vclock = decode_wire_vclock(vclock)
+    if not isinstance(raw_vclock, dict):
+        raise ValidationError(message="Invalid vclock JSON", details={"vclock": vclock})
+    return {
+        str(k): int(v)
+        for k, v in raw_vclock.items()
+        if isinstance(v, int) and not isinstance(v, bool)
+    }
+
+
+async def _guard_expected_content(
+    *, bucket: str, filename: str, file_location: str, expected_sha256: str
+) -> None:
+    """Raise 400/409 unless the path still holds the declared content.
+
+    The caller reached the metadata branch because its content matched the
+    listing; if the path no longer holds that content (a concurrent upload),
+    applying the mode/mtime would touch bytes nobody saw. A malformed
+    declaration is a 400; a content change is a 409 so the caller falls back to
+    the ordinary upload path, which resolves the content first.
+    """
+    if not expected_sha256:
+        return
+    if not is_sha256_hex(expected_sha256):
+        raise ValidationError(message="Invalid expected_sha256", details={"filename": filename})
+    current_sha = get_sha256_hash(file_location)
+    if not current_sha:
+        # Cold cache: hash off the loop rather than on it.
+        current_sha = await compute_sha256_async(file_location)
+    if not current_sha or not hmac.compare_digest(current_sha, expected_sha256.lower()):
+        raise ConflictError(
+            message="File content changed; metadata not applied",
+            details={"bucket": bucket, "filename": filename},
+        )
+
+
 @auth_router.patch(rest_bucket_template(REST_FILES_PERMISSIONS_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def patch_file_permissions(
@@ -206,16 +250,7 @@ async def patch_file_permissions(
     if permissions and not is_valid_octal_permissions(permissions):
         raise InvalidPermissionFormatError(details={"permissions": permissions})
 
-    parsed_vclock: dict[str, int] | None = None
-    if vclock:
-        raw_vclock = decode_wire_vclock(vclock)
-        if not isinstance(raw_vclock, dict):
-            raise ValidationError(message="Invalid vclock JSON", details={"vclock": vclock})
-        parsed_vclock = {
-            str(k): int(v)
-            for k, v in raw_vclock.items()
-            if isinstance(v, int) and not isinstance(v, bool)
-        }
+    parsed_vclock = _parse_wire_vclock(vclock)
 
     if not Path(file_location).exists():
         return JSONResponse(
@@ -226,26 +261,12 @@ async def patch_file_permissions(
             },
         )
 
-    if expected_sha256:
-        # The caller reached this branch because its content matched the
-        # listing; if the path no longer holds that content (a concurrent
-        # upload), applying the mode/mtime would touch bytes nobody saw. The
-        # 409 makes the caller fall back to the ordinary upload path, which
-        # resolves the content first.
-        if not is_sha256_hex(expected_sha256):
-            raise ValidationError(
-                message="Invalid expected_sha256",
-                details={"filename": filename},
-            )
-        current_sha = get_sha256_hash(file_location)
-        if not current_sha:
-            # Cold cache: hash off the loop rather than on it.
-            current_sha = await compute_sha256_async(file_location)
-        if not current_sha or not hmac.compare_digest(current_sha, expected_sha256.lower()):
-            raise ConflictError(
-                message="File content changed; metadata not applied",
-                details={"bucket": bucket, "filename": filename},
-            )
+    await _guard_expected_content(
+        bucket=bucket,
+        filename=filename,
+        file_location=file_location,
+        expected_sha256=expected_sha256,
+    )
 
     changed = await apply_metadata_to_existing_file(
         bucket=bucket,
