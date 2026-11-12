@@ -317,7 +317,6 @@ async def upload_file(
         dest_marker = deletion_marker_snapshot(bucket, bucket_root, file_location)
 
         partial_file_path = f"{file_location}{PARTIAL_DOWNLOAD_SUFFIX}"
-        partial_file_path = f"{file_location}{PARTIAL_DOWNLOAD_SUFFIX}"
 
         # Skip upload if identical file already exists (same SHA-256). A
         # permission-only change (chmod) reuses this branch: the content is

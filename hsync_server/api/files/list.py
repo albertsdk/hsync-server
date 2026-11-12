@@ -29,7 +29,6 @@ from hsync_common.listing import (
     symlink_entry,
 )
 from hsync_common.models.file import File as LocalFile
-from hsync_common.models.symlink import Symlink
 from hsync_common.models.version import relpath_in_bucket
 from hsync_common.protocol.rest import (
     REST_DIRS_SUFFIX,
@@ -144,17 +143,6 @@ async def get_upload_status(
             "message": "No partial file exists",
         },
     )
-
-
-def _emit_symlink(file_path: str, bucket_root: str) -> dict | None:
-    """Return a bucket-relative symlink entry, or None to skip it."""
-    try:
-        link = Symlink.get(file_path)
-    except OSError:
-        return None
-    if link is None:
-        return None
-    return symlink_entry(link, file_path, bucket_root)
 
 
 def _iter_file_entries(root_dir: str, bucket_root: str, bucket: str) -> Iterator[dict]:
