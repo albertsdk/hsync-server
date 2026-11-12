@@ -30,7 +30,27 @@ from hsync_server.auth_store import get_auth_store
 from hsync_server.config import get_buckets_path
 from hsync_server.exceptions import BucketNotFoundError, InvalidBucketNameError
 
-__all__ = ["check_bucket_access", "ensure_bucket_access"]
+__all__ = ["bucket_or_404", "check_bucket_access", "ensure_bucket_access"]
+
+
+def _bucket_dir(bucket: str) -> Path:
+    """Return the bucket directory path, rejecting a malformed name (400)."""
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
+    return Path(get_buckets_path()) / bucket
+
+
+def bucket_or_404(bucket: str) -> Path:
+    """Return the bucket directory, raising 400 (bad name) or 404 (absent).
+
+    The shared prologue of every bucket-scoped check: a malformed name is a
+    400 and a missing directory a 404, so the callers agree on the two
+    rejections before applying their own authorization decision.
+    """
+    bucket_dir = _bucket_dir(bucket)
+    if not bucket_dir.exists():
+        raise BucketNotFoundError(details={"bucket": bucket})
+    return bucket_dir
 
 
 def check_bucket_access(bucket: str, ctx: AuthContext) -> None:
@@ -40,11 +60,7 @@ def check_bucket_access(bucket: str, ctx: AuthContext) -> None:
     caller has no membership on both map to ``BucketNotFoundError`` (404) so
     that existence is never leaked; a malformed name is a 400.
     """
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-    bucket_dir = Path(get_buckets_path()) / bucket
-    if not bucket_dir.exists():
-        raise BucketNotFoundError(details={"bucket": bucket})
+    bucket_or_404(bucket)
     store = get_auth_store()
     if not store.has_access(ctx.id, bucket, is_admin=(ctx.role == "admin")):
         # 404 to avoid leaking existence.
@@ -60,9 +76,7 @@ def ensure_bucket_access(bucket: str, ctx: AuthContext) -> None:
     """
     from shutil import rmtree
 
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-    bucket_dir = Path(get_buckets_path()) / bucket
+    bucket_dir = _bucket_dir(bucket)
     if not bucket_dir.exists():
         # Auto-create the bucket and set ownership.
         try:

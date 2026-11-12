@@ -15,7 +15,6 @@ Admin operates on any bucket; owner on their own; member gets 403; others 404.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, status
@@ -29,12 +28,12 @@ from hsync_common.protocol.rest import (
 from loguru import logger as log
 from pydantic import BaseModel, Field
 
+from hsync_server.api.authz import bucket_or_404
 from hsync_server.api.responses import (
     account_not_found_response,
     conflict_response,
     not_found_response,
 )
-from hsync_server.api.utils import is_valid_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.auth_store import (
     AccountRow,
@@ -43,10 +42,8 @@ from hsync_server.auth_store import (
     TargetNotFoundError,
     get_auth_store,
 )
-from hsync_server.config import get_buckets_path
 from hsync_server.exceptions import (
     BucketNotFoundError,
-    InvalidBucketNameError,
     ValidationError,
 )
 from hsync_server.routers import auth_router
@@ -64,11 +61,7 @@ class TransferOwnerRequest(BaseModel):
 
 def _check_owner_or_admin(bucket: str, ctx: AuthContext) -> None:
     """Raise 403 for members, 404 for non-members/nonexistent."""
-    if not is_valid_bucket(bucket):
-        raise InvalidBucketNameError(details={"bucket": bucket})
-    bucket_dir = Path(get_buckets_path()) / bucket
-    if not bucket_dir.exists():
-        raise BucketNotFoundError(details={"bucket": bucket})
+    bucket_or_404(bucket)
     if ctx.role == "admin":
         return
     store = get_auth_store()
