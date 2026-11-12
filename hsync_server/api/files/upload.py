@@ -170,6 +170,153 @@ def _resync_upload_response(offset: int, size: int) -> JSONResponse:
     )
 
 
+def _validate_upload_request(
+    *,
+    cid: str,
+    file: UploadFile,
+    size: int,
+    offset: int,
+    compressed: str,
+    max_upload_size: int,
+    sha256sum: str,
+    permissions: str,
+    is_compressed: bool,
+    is_resumable: bool,
+) -> str:
+    """Validate the upload metadata before any body is read; return the used name.
+
+    Every rejection here happens before the body is streamed, so an invalid
+    request is cheap and never writes a temp file (DoS guard). The declared
+    checksum and CID must be well-formed and the sanitized filename must be
+    allowed; internal sync-engine artifacts are refused so a peer cannot alter
+    another peer's sync behaviour through the wire.
+    """
+    if max_upload_size > 0 and size > max_upload_size:
+        raise FileTooLargeError(
+            message=f"File size {size} exceeds maximum allowed size of {max_upload_size} bytes",
+            details={
+                "max_size": max_upload_size,
+                "provided_size": size,
+            },
+        )
+
+    # Check disk space before accepting upload (size-aware: the filesystem
+    # must hold the configured reserve plus the incoming file)
+    ensure_disk_space(size)
+
+    if not is_valid_cid(cid):
+        raise ValidationError(
+            message="Invalid client ID format",
+            details={"cid": cid},
+        )
+    # The declared checksum must be a well-formed digest: it is compared
+    # with hmac.compare_digest, which raises TypeError on non-ASCII input
+    # — a malformed declaration must be a 400, not an unhandled 500.
+    if not is_sha256_hex(sha256sum):
+        raise ValidationError(
+            message="Invalid SHA-256 checksum format",
+            details={"sha256sum": sha256sum},
+        )
+    # Compressed uploads must arrive in a single request: the resumable
+    # path appends raw bytes to a .part and never decompresses it, so a
+    # resumed compressed upload could only ever fail the integrity check.
+    if is_compressed and is_resumable:
+        raise ValidationError(
+            message=(
+                "Compressed uploads are not resumable: send the full payload in a single request"
+            ),
+            details={"offset": offset, "compressed": compressed},
+        )
+    if permissions and not is_valid_octal_permissions(permissions):
+        raise InvalidPermissionFormatError(details={"permissions": permissions})
+
+    # Sanitize filename to handle dangerous characters automatically
+    original_filename = file.filename or ""
+    safe_filename = sanitize_filename(original_filename)
+
+    # If sanitization changed the filename, warn but allow it
+    if safe_filename != original_filename:
+        log.warning(f"Filename sanitized: '{original_filename}' -> '{safe_filename}'")
+
+    if not is_valid_filename(safe_filename):
+        raise InvalidFilenameError(details={"filename": safe_filename})
+
+    # Internal sync-engine artifacts must never enter the storage via the
+    # wire: a peer that could (re)write them would alter every other
+    # peer's sync behaviour through the sync channel itself.
+    if is_internal_name(safe_filename):
+        raise InvalidFilenameError(
+            message="Internal sync-engine filenames are not allowed",
+            details={"filename": safe_filename},
+        )
+    return safe_filename
+
+
+async def _upload_duplicate_shortcut(
+    *,
+    bucket: str,
+    path: str,
+    file: UploadFile,
+    cid: str,
+    sha256sum: str,
+    mtime: str,
+    permissions: str,
+    file_location: str,
+    partial_file_path: str,
+    buckets_path: str,
+) -> JSONResponse | None:
+    """Short-circuit an upload whose content is already on disk (identical SHA-256).
+
+    A permission-only change (chmod) reuses this branch: the content is already
+    on disk, so instead of rejecting the upload the new mode is applied and the
+    other connected clients are notified. Returns ``None`` when there is nothing
+    to short-circuit (new content, or no declared checksum).
+    """
+    if not (
+        sha256sum
+        and Path(file_location).exists()
+        and hmac.compare_digest(sha256sum, get_sha256_hash(file_location) or "")
+    ):
+        return None
+    log.warning(f"File already present: {file_location}")
+    # Update mtime even if skipping upload
+    update_file_timestamp(file_location, mtime)
+    # The utime pass changed the (mtime_ns) the cache keyed on: refresh
+    # the entry so the next identical upload still hits the dup-skip.
+    set_sha256_hash(file_location, sha256sum)
+    # The file exists: drop any stale deletion marker for it.
+    clear_deletion(bucket, f"{buckets_path}/{bucket}", file_location)
+    # Clean up partial file if exists
+    if Path(partial_file_path).exists():
+        remove(partial_file_path)
+    # Shared metadata-only branch (same logic as the dedicated
+    # PATCH /files/permissions endpoint): applies the new mode and/or
+    # mtime when it diverges and re-broadcasts a causal `modified` event.
+    permissions_only = await apply_metadata_to_existing_file(
+        bucket=bucket,
+        file_location=file_location,
+        cid=cid,
+        permissions=permissions,
+    )
+    # Never leak absolute filesystem paths on the wire — the
+    # client already knows the bucket-relative path it uploaded.
+    if permissions_only:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "info": "Permissions updated",
+                "file": _wire_relpath(bucket, path, file.filename),
+            },
+        )
+    return JSONResponse(
+        status_code=409,
+        content={
+            "info": "File already present",
+            "file": _wire_relpath(bucket, path, file.filename),
+        },
+    )
+
+
 @auth_router.post(rest_bucket_template(REST_FILES_SUFFIX))
 @limiter.limit(RATE_LIMIT_UPLOAD)
 async def upload_file(
@@ -237,69 +384,18 @@ async def upload_file(
         max_upload_size = get_max_upload_size()
         buckets_path = get_buckets_path()
 
-        # Early validation: Check size BEFORE accepting any data
-        # This prevents DoS attacks with huge files
-        if max_upload_size > 0 and size > max_upload_size:
-            raise FileTooLargeError(
-                message=f"File size {size} exceeds maximum allowed size of {max_upload_size} bytes",
-                details={
-                    "max_size": max_upload_size,
-                    "provided_size": size,
-                },
-            )
-
-        # Check disk space before accepting upload (size-aware: the filesystem
-        # must hold the configured reserve plus the incoming file)
-        ensure_disk_space(size)
-
-        if not is_valid_cid(cid):
-            raise ValidationError(
-                message="Invalid client ID format",
-                details={"cid": cid},
-            )
-        # The declared checksum must be a well-formed digest: it is compared
-        # with hmac.compare_digest, which raises TypeError on non-ASCII input
-        # — a malformed declaration must be a 400, not an unhandled 500.
-        if not is_sha256_hex(sha256sum):
-            raise ValidationError(
-                message="Invalid SHA-256 checksum format",
-                details={"sha256sum": sha256sum},
-            )
-        # Compressed uploads must arrive in a single request: the resumable
-        # path appends raw bytes to a .part and never decompresses it, so a
-        # resumed compressed upload could only ever fail the integrity check.
-        if is_compressed and is_resumable:
-            raise ValidationError(
-                message=(
-                    "Compressed uploads are not resumable: "
-                    "send the full payload in a single request"
-                ),
-                details={"offset": offset, "compressed": compressed},
-            )
-        if permissions and not is_valid_octal_permissions(permissions):
-            raise InvalidPermissionFormatError(details={"permissions": permissions})
-
-        # Sanitize filename to handle dangerous characters automatically
-        original_filename = file.filename or ""
-        safe_filename = sanitize_filename(original_filename)
-
-        # If sanitization changed the filename, warn but allow it
-        if safe_filename != original_filename:
-            log.warning(f"Filename sanitized: '{original_filename}' -> '{safe_filename}'")
-            # Update file.filename with sanitized name for further processing
-            file.filename = safe_filename
-
-        if not is_valid_filename(file.filename or ""):
-            raise InvalidFilenameError(details={"filename": file.filename})
-
-        # Internal sync-engine artifacts must never enter the storage via the
-        # wire: a peer that could (re)write them would alter every other
-        # peer's sync behaviour through the sync channel itself.
-        if is_internal_name(file.filename or ""):
-            raise InvalidFilenameError(
-                message="Internal sync-engine filenames are not allowed",
-                details={"filename": file.filename},
-            )
+        file.filename = _validate_upload_request(
+            cid=cid,
+            file=file,
+            size=size,
+            offset=offset,
+            compressed=compressed,
+            max_upload_size=max_upload_size,
+            sha256sum=sha256sum,
+            permissions=permissions,
+            is_compressed=is_compressed,
+            is_resumable=is_resumable,
+        )
 
         # Confine the upload directory to *this* bucket: the raw form path is
         # untrusted input and must never escape into a sibling bucket.
@@ -323,48 +419,20 @@ async def upload_file(
         # already on disk, so instead of rejecting the upload we apply the
         # new permissions and notify the other connected clients — the
         # permission change is a normal causal `modified` event.
-        if (
-            sha256sum
-            and Path(file_location).exists()
-            and hmac.compare_digest(sha256sum, get_sha256_hash(file_location) or "")
-        ):
-            log.warning(f"File already present: {file_location}")
-            # Update mtime even if skipping upload
-            update_file_timestamp(file_location, mtime)
-            # The utime pass changed the (mtime_ns) the cache keyed on: refresh
-            # the entry so the next identical upload still hits the dup-skip.
-            set_sha256_hash(file_location, sha256sum)
-            # The file exists: drop any stale deletion marker for it.
-            clear_deletion(bucket, f"{buckets_path}/{bucket}", file_location)
-            # Clean up partial file if exists
-            if Path(partial_file_path).exists():
-                remove(partial_file_path)
-            # Shared metadata-only branch (same logic as the dedicated
-            # PATCH /files/permissions endpoint): applies the new mode and/or
-            # mtime when it diverges and re-broadcasts a causal `modified` event.
-            permissions_only = await apply_metadata_to_existing_file(
-                bucket=bucket,
-                file_location=file_location,
-                cid=cid,
-                permissions=permissions,
-            )
-            # Never leak absolute filesystem paths on the wire — the
-            # client already knows the bucket-relative path it uploaded.
-            if permissions_only:
-                return JSONResponse(
-                    status_code=200,
-                    content={
-                        "info": "Permissions updated",
-                        "file": _wire_relpath(bucket, path, file.filename),
-                    },
-                )
-            return JSONResponse(
-                status_code=409,
-                content={
-                    "info": "File already present",
-                    "file": _wire_relpath(bucket, path, file.filename),
-                },
-            )
+        duplicate = await _upload_duplicate_shortcut(
+            bucket=bucket,
+            path=path,
+            file=file,
+            cid=cid,
+            sha256sum=sha256sum,
+            mtime=mtime,
+            permissions=permissions,
+            file_location=file_location,
+            partial_file_path=partial_file_path,
+            buckets_path=buckets_path,
+        )
+        if duplicate is not None:
+            return duplicate
 
         # Ensure directory exists
         Path(file_directory).mkdir(parents=True, exist_ok=True)
