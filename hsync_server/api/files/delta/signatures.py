@@ -198,6 +198,51 @@ async def get_delta_signatures(
 # the delta is refused anyway, so ``BoundedLiteralSink`` (hsync-common) stops the
 # match instead of growing the temp file (and burning CPU) on a transfer that is
 # not worth doing.
+async def _resolve_signature_inputs(
+    bucket: str, body: DeltaSignaturesRequest
+) -> tuple[list[BlockSignature], str, int, str]:
+    """Resolve the target file, validate the block size and rebuild the signatures.
+
+    Returns ``(sigs, file, new_size, new_sha256)``. ``sanitize_signature_list``
+    rebuilds every entry through ``sanitize_block_signature``, so it already
+    returns fresh validated dicts (no pre-copy needed); the list is converted
+    once to ``BlockSignature`` objects and then released, so the peak holds the
+    matcher's representation, not both.
+    """
+    file = resolve_within_bucket(bucket, body.path)
+    if file is None:
+        raise InvalidPathError(details={"path": body.path})
+    if not await isfile(file):
+        raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": body.path})
+    if body.block_size not in _VALID_BLOCK_SIZES:
+        raise ValidationError(
+            message="Unsupported delta block size",
+            details={"block_size": body.block_size},
+        )
+    clean_sigs = sanitize_signature_list(body.signatures)
+    if clean_sigs is None:
+        raise ValidationError(message="Invalid delta signatures payload")
+    sigs = [BlockSignature(**s) for s in clean_sigs]
+    new_size = Path(file).stat().st_size
+    new_sha256 = await get_or_compute_sha256(file)
+    return sigs, file, new_size, new_sha256
+
+
+def _match_against_base(
+    file: str, sigs: list[BlockSignature], block_size: int, literal_path: Path
+) -> tuple[list, int, bool]:
+    """Match ``sigs`` against ``file``, streaming literals to ``literal_path``.
+
+    The literals stream straight to the temp file (never a RAM buffer) and the
+    data-op offsets come from the bounded sink, which reports the true payload
+    size and whether the cap was hit. Returns ``(ops, literal_size, capped)``.
+    """
+    with open(literal_path, "wb") as sink_file:
+        sink = BoundedLiteralSink(sink_file, DELTA_MAX_LITERAL_SIZE)
+        ops = find_matches_file_to_sink(file, sigs, block_size, sink)
+    return ops, sink.total, sink.over_limit
+
+
 @auth_router.post(rest_bucket_template(REST_DELTA_SIGNATURES_SUFFIX))
 @limiter.limit(RATE_LIMIT_DELTA)
 async def post_delta_signatures(
@@ -222,47 +267,15 @@ async def post_delta_signatures(
 
     if not get_delta_enabled():
         return delta_disabled_response()
-    file = resolve_within_bucket(bucket, body.path)
-    if file is None:
-        raise InvalidPathError(details={"path": body.path})
-    if not await isfile(file):
-        raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": body.path})
 
-    if body.block_size not in _VALID_BLOCK_SIZES:
-        raise ValidationError(
-            message="Unsupported delta block size",
-            details={"block_size": body.block_size},
-        )
-    # ``sanitize_signature_list`` rebuilds every entry through
-    # ``sanitize_block_signature``, so it already returns fresh validated dicts:
-    # the previous ``[dict(s) for s in body.signatures]`` pre-copy duplicated the
-    # whole list for nothing (+193 B/signature measured, up to
-    # DELTA_MAX_SIGNATURES = 100_000 entries).
-    clean_sigs = sanitize_signature_list(body.signatures)
-    if clean_sigs is None:
-        raise ValidationError(message="Invalid delta signatures payload")
-
-    sigs = [BlockSignature(**s) for s in clean_sigs]
-    # The dict list exists only to build ``sigs``: release it before matching so
-    # the peak holds the matcher's representation, not both.
-    del clean_sigs
-
-    new_size = Path(file).stat().st_size
-    new_sha256 = await get_or_compute_sha256(file)
+    sigs, file, new_size, new_sha256 = await _resolve_signature_inputs(bucket, body)
 
     literal_path = delta_tmp_dir() / f"delta_literals_{uuid.uuid4().hex}.bin"
     match_start = time.time()
 
-    def _match() -> tuple[list, int, bool]:
-        # The literals stream straight to the temp file (never a RAM buffer) and
-        # the data-op offsets come from the bounded sink, which reports the true
-        # payload size and whether the cap was hit.
-        with open(literal_path, "wb") as sink_file:
-            sink = BoundedLiteralSink(sink_file, DELTA_MAX_LITERAL_SIZE)
-            ops = find_matches_file_to_sink(file, sigs, body.block_size, sink)
-        return ops, sink.total, sink.over_limit
-
-    ops, literal_size, capped = await asyncio.to_thread(_match)
+    ops, literal_size, capped = await asyncio.to_thread(
+        _match_against_base, file, sigs, body.block_size, literal_path
+    )
     match_duration = time.time() - match_start
 
     if capped:

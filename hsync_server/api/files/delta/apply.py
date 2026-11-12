@@ -95,7 +95,11 @@ from hsync_server.metrics import (
 )
 from hsync_server.rate_limiter import RATE_LIMIT_DELTA, limiter
 from hsync_server.routers import auth_router
-from hsync_server.tombstones import deletion_marker_snapshot, destination_mutation_since
+from hsync_server.tombstones import (
+    MarkerSnapshot,
+    deletion_marker_snapshot,
+    destination_mutation_since,
+)
 
 
 def _unprocessable(detail: str, **extra: Any) -> JSONResponse:
@@ -159,6 +163,36 @@ def _check_ops_bounds(
     )
 
 
+async def _resolve_delta_target(
+    bucket: str, path: str
+) -> tuple[str, str, bool, MarkerSnapshot | None]:
+    """Resolve the base file and snapshot it before the body streams.
+
+    The final component is NOT dereferenced: the base file is read and then
+    replaced atomically. A symlink at the endpoint is a structural entry that a
+    delta cannot patch (no analogue does — rsync/git recreate links, never patch
+    them); it is refused explicitly so the rebuild can never turn a link into a
+    regular file. The snapshot lets the final move refuse a destination that was
+    deleted, renamed away or recreated while the delta ran (same contract as the
+    client/P2P gates). Returns ``(file_location, bucket_root, dest_existed,
+    dest_marker)``.
+    """
+    file_location = resolve_within_bucket(bucket, path, resolve_final=False)
+    if file_location is None:
+        raise InvalidPathError(details={"path": path})
+    if Path(file_location).is_symlink():
+        raise ValidationError(
+            message="Delta apply does not support symlink paths",
+            details={"path": path},
+        )
+    if not await isfile(file_location):
+        raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": path})
+    bucket_root = f"{get_buckets_path()}/{bucket}"
+    dest_existed = Path(file_location).exists()
+    dest_marker = deletion_marker_snapshot(bucket, bucket_root, file_location)
+    return file_location, bucket_root, dest_existed, dest_marker
+
+
 @auth_router.post(rest_bucket_template(REST_DELTA_APPLY_SUFFIX))
 @limiter.limit(RATE_LIMIT_DELTA)
 async def delta_apply(
@@ -178,28 +212,9 @@ async def delta_apply(
     decompressed_tmp: str | None = None
     part_path: str | None = None
     try:
-        # The final component is NOT dereferenced: the base file is read and
-        # then replaced atomically. A symlink at the endpoint is a structural
-        # entry that delta transfer cannot patch (no analogue does — rsync/git
-        # recreate links, never patch them); refuse it explicitly so the
-        # rebuild below can never turn a link into a regular file.
-        file_location = resolve_within_bucket(bucket, path, resolve_final=False)
-        if file_location is None:
-            raise InvalidPathError(details={"path": path})
-        if Path(file_location).is_symlink():
-            raise ValidationError(
-                message="Delta apply does not support symlink paths",
-                details={"path": path},
-            )
-        if not await isfile(file_location):
-            raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": path})
-
-        # The destination is snapshotted before the body streams: if it is
-        # deleted, renamed away or recreated while the delta runs, the final
-        # move must not commit over it (same contract as the client/P2P gates).
-        bucket_root = f"{get_buckets_path()}/{bucket}"
-        dest_existed = Path(file_location).exists()
-        dest_marker = deletion_marker_snapshot(bucket, bucket_root, file_location)
+        file_location, bucket_root, dest_existed, dest_marker = await _resolve_delta_target(
+            bucket, path
+        )
 
         meta = _parse_metadata(metadata)
         base_sha256, new_sha256, new_size, ops = _validate_instructions(meta)
