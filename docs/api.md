@@ -71,6 +71,13 @@ require the `admin` role.
 when the caller already owns `HSYNC_MAX_BUCKETS_PER_ACCOUNT` buckets (default
 `100`; `0` = unlimited).
 
+Bucket creation is explicit: only the **upload** endpoint creates a missing
+bucket on the fly (`ensure_bucket_access`), while the listing, download and
+delete endpoints answer `404` for a bucket that does not exist — the same answer
+they give when the caller has no membership, so existence is never leaked. A
+sync starts with the listing, so a bucket that does not exist must be created
+first (`POST /buckets` or `hsync-server admin bucket create`).
+
 ### Membership and Ownership
 
 Membership endpoints are scoped to a bucket and enforce the owner/admin
