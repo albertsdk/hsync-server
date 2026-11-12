@@ -69,6 +69,48 @@ from hsync_server.tombstones import (
 from hsync_server.versions import move_version, move_version_prefix, server_version_info
 
 
+def _validate_rename_request(
+    *, src: str, dst: str, expected_sha256: str, mtime: int, permissions: str
+) -> None:
+    """Validate the rename parameters before touching the filesystem."""
+    if not src or not dst:
+        raise InvalidPathError(details={"path": src or dst})
+    if src.strip("/") == dst.strip("/"):
+        raise InvalidPathError(details={"path": src, "reason": "source equals destination"})
+    if expected_sha256 and not is_sha256_hex(expected_sha256):
+        raise ValidationError(message="Invalid expected_sha256", details={"filename": src})
+    if mtime < 0:
+        raise ValidationError(message="Invalid mtime", details={"filename": src})
+    if permissions and not is_valid_octal_permissions(permissions):
+        raise InvalidPermissionFormatError(details={"permissions": permissions})
+
+
+async def _broadcast_rename(
+    *,
+    bucket: str,
+    local_bucket: str,
+    origin_cid: str,
+    is_dir: bool,
+    src_path: str,
+    dst_model: File | Dir,
+) -> None:
+    """Broadcast the ``renamed`` event for a completed move.
+
+    The source model reuses the destination's metadata with the vacated path,
+    exactly like the live rename handler: the content is identical by
+    definition of a move.
+    """
+    src_model = deepcopy(dst_model)
+    if is_dir:
+        src_model.path = src_path
+    else:
+        src_model.filepath = src_path
+    manager = bucket_manager.get_manager(bucket)
+    await manager.send_message(
+        Event(origin_cid, local_bucket, bucket, EventName.renamed, src_model, dst_model)
+    )
+
+
 @auth_router.patch(rest_bucket_template(REST_FILES_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def rename_file(
@@ -121,16 +163,13 @@ async def rename_file(
     """
     check_bucket_access(bucket, ctx)
 
-    if not src or not dst:
-        raise InvalidPathError(details={"path": src or dst})
-    if src.strip("/") == dst.strip("/"):
-        raise InvalidPathError(details={"path": src, "reason": "source equals destination"})
-    if expected_sha256 and not is_sha256_hex(expected_sha256):
-        raise ValidationError(message="Invalid expected_sha256", details={"filename": src})
-    if mtime < 0:
-        raise ValidationError(message="Invalid mtime", details={"filename": src})
-    if permissions and not is_valid_octal_permissions(permissions):
-        raise InvalidPermissionFormatError(details={"permissions": permissions})
+    _validate_rename_request(
+        src=src,
+        dst=dst,
+        expected_sha256=expected_sha256,
+        mtime=mtime,
+        permissions=permissions,
+    )
 
     # Both endpoints are peer-supplied and untrusted: confine them to *this*
     # bucket. resolve_final=False keeps a link at either end as the LINK entry,
@@ -270,17 +309,13 @@ async def rename_file(
     log.info(f'{ActionLabel.RENAME} "{src}" -> "{dst}" (CID: {origin_cid})')
 
     if dst_model is not None:
-        # The source model reuses the destination's metadata with the vacated
-        # path, exactly like the live rename handler: the content is identical
-        # by definition of a move.
-        src_model = deepcopy(dst_model)
-        if is_dir:
-            src_model.path = src_path
-        else:
-            src_model.filepath = src_path
-        manager = bucket_manager.get_manager(bucket)
-        await manager.send_message(
-            Event(origin_cid, local_bucket, bucket, EventName.renamed, src_model, dst_model)
+        await _broadcast_rename(
+            bucket=bucket,
+            local_bucket=local_bucket,
+            origin_cid=origin_cid,
+            is_dir=is_dir,
+            src_path=src_path,
+            dst_model=dst_model,
         )
 
     return JSONResponse(status_code=200, content=content)
