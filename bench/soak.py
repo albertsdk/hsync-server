@@ -30,10 +30,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
-import socket
 import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -41,43 +38,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
-
-# Fixed built-in admin secret (64 hex) for every soak run; the Bearer token is
-# hs_HsyncAdminBuiltinId01_<secret>.
-_ADMIN_SECRET = "0123456789abcdef" * 4  # 64 hex chars, fixed and safe
-_TOKEN = f"hs_HsyncAdminBuiltinId01_{_ADMIN_SECRET}"
-
-
-def _free_port() -> int:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
-    finally:
-        sock.close()
-
-
-def _proc_rss_mb(pid: int) -> float:
-    """Resident set size of *pid* in MiB (0.0 when the process is gone)."""
-    try:
-        with open(f"/proc/{pid}/status", encoding="ascii") as fh:
-            for line in fh:
-                if line.startswith("VmRSS:"):
-                    return int(line.split()[1]) / 1024.0
-    except OSError:
-        return 0.0
-    return 0.0
-
-
-def _proc_cpu_seconds(pid: int) -> float:
-    """utime+stime of *pid* in seconds (comm may contain spaces: split after ')')."""
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
-    except OSError:
-        return 0.0
-    fields = stat[stat.rindex(")") + 2 :].split()
-    ticks = os.sysconf("SC_CLK_TCK")
-    return (int(fields[11]) + int(fields[12])) / ticks
+from server_process import (
+    API_TOKEN,
+    cpu_seconds,
+    free_port,
+    rss_mb,
+    start_server,
+    wait_ready,
+)
 
 
 def _payload(seed: str, size: int) -> bytes:
@@ -173,7 +141,7 @@ def _worker(
     owned = state.owned[tid]
     # Per-file causal history this worker has merged (it owns these files).
     clocks: dict[str, dict[str, int]] = {rel: dict(state.clocks.get(rel, {})) for rel in owned}
-    headers = {"Authorization": f"Bearer {_TOKEN}"}
+    headers = {"Authorization": f"Bearer {API_TOKEN}"}
     with httpx.Client(base_url=base_url, headers=headers, timeout=60.0) as client:
         tick = 0
         pick = 0
@@ -238,66 +206,6 @@ def _worker(
                 state.record_error(f"op {kind}", "exception", f"{type(exc).__name__}: {exc}")
 
 
-def _start_server(
-    port: int, root: Path, log_path: Path, *, no_compression: bool = False
-) -> subprocess.Popen:
-    """Spawn the real server with a scrubbed, soak-specific environment."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("HSYNC_")}
-    buckets_root = root / "buckets"
-    state_root = root / "state"
-    # The server refuses to start when the buckets dir is missing (the
-    # lifespan preload validates it), so create both dirs up front.
-    buckets_root.mkdir(parents=True, exist_ok=True)
-    state_root.mkdir(parents=True, exist_ok=True)
-    env.update(
-        {
-            "HSYNC_ADMIN_KEY": _ADMIN_SECRET,
-            "HSYNC_SCRYPT_N": "16",
-            "HSYNC_SCRYPT_MAXMEM": "33554432",
-            "HSYNC_BUCKETS": str(buckets_root),
-            "HSYNC_STATE_DIR": str(state_root),
-            "HSYNC_RATE_LIMIT_DEFAULT": "1000000/minute",
-            "HSYNC_RATE_LIMIT_UPLOAD": "1000000/minute",
-            "HSYNC_RATE_LIMIT_DOWNLOAD": "1000000/minute",
-            "HSYNC_RATE_LIMIT_DELTA": "1000000/minute",
-            "HSYNC_RATE_LIMIT_WEBSOCKET": "1000000/minute",
-            "HSYNC_RATE_LIMIT_WS_MESSAGES": "1000000/second",
-            "HSYNC_MIN_FREE_DISK_SPACE": "0",
-            "HSYNC_ENABLE_DOCS": "false",
-        }
-    )
-    if no_compression:
-        env["HSYNC_COMPRESSION_ENABLED"] = "false"
-    log = open(log_path, "wb")
-    try:
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "hsync_server", "--port", str(port), "--log-level", "warning"],
-            env=env,
-            cwd=str(Path(__file__).resolve().parents[1]),
-            stdout=log,
-            stderr=subprocess.STDOUT,
-        )
-    finally:
-        log.close()
-    return proc
-
-
-def _wait_ready(proc: subprocess.Popen, base_url: str, timeout: float = 60.0) -> None:
-    """Poll ``GET /health`` until the server answers or the deadline passes."""
-    deadline = time.monotonic() + timeout
-    with httpx.Client(base_url=base_url, timeout=5.0) as client:
-        while time.monotonic() < deadline:
-            if proc.poll() is not None:
-                raise RuntimeError(f"server exited during startup (code {proc.returncode})")
-            try:
-                if client.get("/health").status_code == 200:
-                    return
-            except httpx.HTTPError:
-                pass
-            time.sleep(0.25)
-    raise RuntimeError("server did not become healthy")
-
-
 def _seed(state: SoakState, client: httpx.Client, bucket: str, files: int, size: int) -> None:
     """Upload the initial manifest through the public REST API."""
     for i in range(files):
@@ -333,13 +241,13 @@ def run(args: argparse.Namespace) -> int:
     """Seed, hammer, sample and verify; return 0 on SOAK-PASS."""
     with tempfile.TemporaryDirectory(prefix="hsync-soak-") as tmp:
         root = Path(tmp)
-        port = _free_port()
+        port = free_port()
         base_url = f"http://127.0.0.1:{port}"
         log_path = root / "server.log"
-        proc = _start_server(port, root, log_path, no_compression=args.no_compression)
+        proc = start_server(port, root, log_path, no_compression=args.no_compression)
         try:
-            _wait_ready(proc, base_url)
-            headers = {"Authorization": f"Bearer {_TOKEN}"}
+            wait_ready(proc, base_url)
+            headers = {"Authorization": f"Bearer {API_TOKEN}"}
             size = args.file_kb * 1024
             state = SoakState()
             with httpx.Client(base_url=base_url, headers=headers, timeout=120.0) as client:
@@ -357,8 +265,8 @@ def run(args: argparse.Namespace) -> int:
                     f"{args.threads} workers, {args.duration:.0f}s sustained phase, "
                     f"compression={'off' if args.no_compression else 'on'}"
                 )
-                rss_start = _proc_rss_mb(proc.pid)
-                cpu_start = _proc_cpu_seconds(proc.pid)
+                rss_start = rss_mb(proc.pid)
+                cpu_start = cpu_seconds(proc.pid)
                 stop = threading.Event()
                 workers = [
                     threading.Thread(
@@ -388,15 +296,15 @@ def run(args: argparse.Namespace) -> int:
                         next_sample += args.sample_interval
                         print(
                             f"  t+{time.monotonic() - t0:5.0f}s ops={state.ops} "
-                            f"errors={state.errors} rss={_proc_rss_mb(proc.pid):.0f}MB "
-                            f"cpu={_proc_cpu_seconds(proc.pid) - cpu_start:.1f}s"
+                            f"errors={state.errors} rss={rss_mb(proc.pid):.0f}MB "
+                            f"cpu={cpu_seconds(proc.pid) - cpu_start:.1f}s"
                         )
                 stop.set()
                 for w in workers:
                     w.join(timeout=30.0)
 
                 problems = _final_verify(client, args.bucket, dict(state.expected))
-                rss_end = _proc_rss_mb(proc.pid)
+                rss_end = rss_mb(proc.pid)
                 elapsed = time.monotonic() - t0
                 print(
                     f"stopped: ops={state.ops} ({state.ops / elapsed:.1f} ops/s) "

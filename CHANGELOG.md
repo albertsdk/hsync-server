@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `bench/bench_api.py` measures per-endpoint REST latency plus the
+  listing/download concurrency curve with the node's CPU% (the single-process
+  ceiling); `bench/server_process.py` is the shared launcher it and `soak.py`
+  now use.
+
 ### Changed
 
 - The file listing resolves each entry's bucket-relative path once and fetches

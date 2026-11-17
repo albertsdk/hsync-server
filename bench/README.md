@@ -9,9 +9,10 @@ delta, models, path validation, stores) are already covered by
 |---|---|---|
 | Startup — process spawn cost | **implemented** (`bench_startup.py`) | Cold `import hsync_server.main` + live uvicorn spawn to `/health` readiness (with optional bucket pre-population to isolate the hash preload) |
 | L1 — in-process micro-benchmark | **implemented** (this directory) | Measures the auth/rate-limit/version/arbitration/validation wrappers every REST+WS request or upload runs |
-| L2/L3 — transport load + soak | **L3 soak implemented** (`soak.py`); L2 wire-latency benchmark deferred | The soak spawns the real server over loopback and measures sustained mixed traffic + RSS; a per-operation L2 latency tier is still a follow-on |
+| L2 — REST latency + concurrency | **implemented** (`bench_api.py`) | Spawns the real server and drives `/health`, listing, upload and download over HTTP, plus the listing/download concurrency curve with node CPU% (the single-process GIL ceiling) |
+| L3 — soak | **implemented** (`soak.py`) | Sustained mixed traffic + RSS over `--duration`; verdict SOAK-PASS/FAIL |
 | L4 — profiling diagnostic | n/a (yet) | Added only when a specific anomaly needs a cost breakdown |
-| L5 — CPU-saturation sweep | n/a | Multi-process uvicorn topology, not a single Python call — revisit with L2 |
+| L5 — CPU-saturation sweep | n/a | Multi-process uvicorn topology, not a single Python call; L2 already exposes the single-process ceiling |
 
 Each script is a **plain script, not a test**: it is never collected by pytest
 (`testpaths = ["tests"]`, `python_files = ["test_*.py"]`), never runs in CI, and
@@ -32,6 +33,8 @@ read or written — mirroring the test suite's `no_tests_touch_real_repo_state`.
 | Script | Measures |
 |---|---|
 | `bench_startup.py` | **Startup** — cold `import hsync_server.main` and live uvicorn spawn → `GET /health` 200, with optional `--files N` bucket pre-population to isolate the `set_sha256_hashes` lifespan preload |
+| `bench_api.py` | **L2 REST latency + concurrency** — spawns the real server and measures `GET /health`, the listing (with `--files` entries), 64 KiB upload and 1 MiB download latency, then the listing/download concurrency curve (`--levels`) with the node's CPU% (100% = one core). The listing row is the scaling limit: O(entries) CPU per client |
+| `server_process.py` | Shared spawn/readiness/proc helpers used by `bench_api.py` and `soak.py` (scrubbed env, raised rate limits, temp buckets/state) |
 | `soak.py` | **L3 soak (manual, long)** — spawns the real server (temp buckets/state, raised rate limits) and drives mixed upload/overwrite/download-verify/list/delete traffic for `--duration`, sampling the server process RSS/CPU from `/proc`. Verdict: 0 failed ops, final listing + full download re-hash match the expected manifest, RSS delta within `--max-rss-mb`. `--no-compression` stays as a diagnostic to isolate harness/RSS checks from the compression path |
 | `bench_auth.py` | `parse_token` (valid / bad-prefix / bad-id / bad-secret), `_cache_key` (SHA-256 of token) — the per-request auth gate (scrypt itself is the rare KDF-cache miss, not measured) |
 | `bench_rate_limiter.py` | `get_client_ip` (trusted-proxy + XFF / direct / no-client), `_parse_ws_rate`, `TokenBucket.acquire` (hit / drained) |
@@ -54,7 +57,10 @@ cd hsync-server
 # the whole suite in one go, writing the versioned baseline file
 .venv/bin/python bench/run_all.py --count 2000            # -> ../bench_result.txt
 
-# or one script at a time
+# L2 — REST latency + concurrency (real server, wire-only)
+.venv/bin/python bench/bench_api.py --files 1000 --requests 20 --levels 1,4,8,16
+
+# or one L1 script at a time
 .venv/bin/python bench/bench_auth.py --count 2000
 .venv/bin/python bench/bench_rate_limiter.py --count 2000
 .venv/bin/python bench/bench_hashes.py --count 2000
