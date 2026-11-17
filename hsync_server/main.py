@@ -47,7 +47,7 @@ from .constants import (
     HSYNC_VERSION,
 )
 from .error_handlers import register_exception_handlers
-from .hashes import set_sha256_hashes
+from .hashes import register_sha256_cache_provider, set_sha256_hashes
 from .middleware import (
     MaxRequestSizeMiddleware,
     RequestIdMiddleware,
@@ -88,7 +88,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     active = sum(1 for a in accounts if a.status == "active")
     log.info(f"Accounts: {len(accounts)} total, {active} active")
 
-    # Preload SHA-256 checksums for all existing files in buckets.
+    # Preload SHA-256 checksums for all existing files in buckets. Register the
+    # provider first: the listing builds entries through hsync-common's
+    # File.get, which must read the cache this preload fills instead of its own
+    # 10k LRU (otherwise every start and every listing past 10k re-hashes files).
+    register_sha256_cache_provider()
     buckets_path = get_buckets_path()
     log.info(f"Loading SHA-256 file hashes from: {buckets_path}")
     sha256_files = set_sha256_hashes(buckets_path)

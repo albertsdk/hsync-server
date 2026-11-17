@@ -273,3 +273,64 @@ class TestSetSHA256Hashes:
             assert hashes.get_sha256_hash(str(old)) is None
             # Only new file should be present
             assert len(hashes.FILE_HASHES) == 1
+
+
+class TestListingHashCacheBridge:
+    """The listing shares the preloaded cache through hsync-common's provider.
+
+    Regression: ``File.get`` (used by ``_iter_file_entries``) consulted
+    hsync-common's own 10k LRU, so the lifespan preload filled a different cache
+    and every start (and every listing past 10k files) re-read whole files.
+    """
+
+    def setup_method(self):
+        from hsync_common.models.file import reset_sha256_cache_provider
+
+        reset_sha256_cache_provider()
+        hashes.FILE_HASHES = {}
+        hashes.register_sha256_cache_provider()
+
+    def teardown_method(self):
+        from hsync_common.models.file import reset_sha256_cache_provider
+
+        reset_sha256_cache_provider()
+
+    def test_listing_uses_the_preloaded_cache_without_hashing(self, tmp_path, monkeypatch):
+        import hashlib
+
+        from hsync_server.api.files.list import _iter_file_entries
+
+        root = tmp_path / "bucket"
+        root.mkdir()
+        expected = {}
+        for name, content in (("a.txt", b"aaa"), ("b.txt", b"bbb")):
+            (root / name).write_bytes(content)
+            expected[name] = hashlib.sha256(content).hexdigest()
+
+        assert hashes.set_sha256_hashes(str(root)) == 2
+
+        def _boom(_path):
+            raise AssertionError("the listing must use the preloaded hash")
+
+        monkeypatch.setattr("hsync_common.models.file.compute_sha256", _boom)
+        entries = list(_iter_file_entries(str(root), str(root), "bucket"))
+
+        assert {entry["filepath"]: entry["sha256sum"] for entry in entries} == expected
+
+    def test_invalidate_forces_a_recompute_that_lands_in_the_server_cache(self, tmp_path):
+        import hashlib
+
+        from hsync_common.models.file import File, invalidate_sha256_cache
+
+        target = tmp_path / "c.txt"
+        target.write_bytes(b"ccc")
+        hashes.set_sha256_hash(str(target), "0" * 64)
+
+        invalidate_sha256_cache(str(target))
+        assert hashes.get_sha256_hash(str(target)) is None
+
+        file_obj = File.get(str(target))
+
+        assert file_obj is not None
+        assert file_obj.sha256sum == hashlib.sha256(b"ccc").hexdigest()
+        assert hashes.get_sha256_hash(str(target)) == file_obj.sha256sum
