@@ -45,18 +45,13 @@ from server_process import (
     API_TOKEN,
     cpu_seconds,
     free_port,
+    payload,
     rss_mb,
     start_server,
     wait_ready,
 )
 
 _PRECOMPRESSED_SUFFIX = ".zip"  # skips the server's zstd path (should_compress)
-
-
-def _payload(size: int, seed: str) -> bytes:
-    """Deterministic, effectively incompressible payload of *size* bytes."""
-    digest = hashlib.sha256(seed.encode()).digest()
-    return (digest * ((size // len(digest)) + 1))[:size]
 
 
 def _upload(client: httpx.Client, bucket: str, name: str, content: bytes, cid: str) -> None:
@@ -126,6 +121,10 @@ def _level(
     cpu = cpu_seconds(pid) - cpu_before
 
     result = BenchResult(f"{name} conc={workers}", samples, len(samples))
+    # BenchResult.ops = count / sum(samples) is sequential semantics; with
+    # `workers` threads that understates aggregate throughput by ~N. The
+    # concurrency row exists to report the wall-clock rate, so set it here.
+    result.ops = len(samples) / wall
     print(
         f"  {name:22s} conc={workers:2d}  ops/s={len(samples) / wall:8.1f}  "
         f"p50={result.p50:8.2f} ms  p99={result.p99:8.2f} ms  "
@@ -158,7 +157,7 @@ def run(
 
             # Seed: --files 1 KiB entries, unique names so every upload is a create.
             seed_size = 1024
-            seed_content = _payload(seed_size, "seed")
+            seed_content = payload(seed_size, "seed")
             started = time.perf_counter()
             for index in range(args.files):
                 _upload(client, bucket, f"seed/file-{index:05d}.bin", seed_content, cid)
@@ -168,8 +167,8 @@ def run(
                 f"({args.files / elapsed:.1f} files/s) rss={rss_mb(proc.pid):.0f}MB"
             )
 
-            upload_content = _payload(64 * 1024, "upload")
-            download_content = _payload(1024 * 1024, "download")
+            upload_content = payload(64 * 1024, "upload")
+            download_content = payload(1024 * 1024, "download")
             _upload(client, bucket, f"probe{_PRECOMPRESSED_SUFFIX}", download_content, cid)
             upload_count = {"n": 0}
 

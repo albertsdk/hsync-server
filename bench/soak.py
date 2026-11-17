@@ -42,16 +42,11 @@ from server_process import (
     API_TOKEN,
     cpu_seconds,
     free_port,
+    payload,
     rss_mb,
     start_server,
     wait_ready,
 )
-
-
-def _payload(seed: str, size: int) -> bytes:
-    """Deterministic per-file payload of *size* bytes."""
-    digest = hashlib.sha256(seed.encode()).digest()
-    return (digest * ((size // len(digest)) + 1))[:size]
 
 
 def _tick_clock(clock: dict[str, int], cid: str) -> dict[str, int]:
@@ -156,7 +151,7 @@ def _worker(
             pick += 1
             try:
                 if kind < 4:  # overwrite with fresh content
-                    data = _payload(f"{tid}:{rel}:{tick}", size)
+                    data = payload(size, f"{tid}:{rel}:{tick}")
                     clocks[rel] = _tick_clock(clocks[rel], cid)
                     r = _upload(client, bucket, rel, data, cid, json.dumps(clocks[rel]))
                     if r.status_code != 201:
@@ -192,7 +187,7 @@ def _worker(
                     if r.status_code != 200:
                         state.record_error(f"delete {rel}", r.status_code, r.text[:120])
                         continue
-                    data = _payload(f"{tid}:{rel}:recreate:{tick}", size)
+                    data = payload(size, f"{tid}:{rel}:recreate:{tick}")
                     # Resolve the deletion in the clock, then tick for the write
                     # (the tombstone inherited the last version clock + 1 tick).
                     clocks[rel] = _tick_clock(_tick_clock(clocks[rel], cid), cid)
@@ -210,7 +205,7 @@ def _seed(state: SoakState, client: httpx.Client, bucket: str, files: int, size:
     """Upload the initial manifest through the public REST API."""
     for i in range(files):
         rel = f"soak/file_{i:04d}.bin"
-        data = _payload(f"seed:{rel}", size)
+        data = payload(size, f"seed:{rel}")
         clock = {"SoakSeeder00000000001": 1}
         r = _upload(client, bucket, rel, data, "SoakSeeder00000000001", json.dumps(clock))
         if r.status_code != 201:

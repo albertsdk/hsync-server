@@ -10,7 +10,9 @@ Nothing in the server or the test suite imports this module.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import secrets
 import socket
 import subprocess
 import sys
@@ -19,10 +21,17 @@ from pathlib import Path
 
 import httpx
 
-# Fixed built-in admin secret (64 hex) for every benchmark run; the Bearer token
-# is hs_HsyncAdminBuiltinId01_<secret>.
-ADMIN_SECRET = "0123456789abcdef" * 4  # 64 hex chars, fixed and safe
+# Per-process admin secret (64 hex): a committed/fixed credential on a server
+# with rate limits off would be a real admin token for anyone who reaches the
+# port. The Bearer token is hs_HsyncAdminBuiltinId01_<secret>.
+ADMIN_SECRET = secrets.token_hex(32)
 API_TOKEN = f"hs_HsyncAdminBuiltinId01_{ADMIN_SECRET}"
+
+
+def payload(size: int, seed: str) -> bytes:
+    """Deterministic, effectively incompressible payload of *size* bytes."""
+    digest = hashlib.sha256(seed.encode()).digest()
+    return (digest * ((size // len(digest)) + 1))[:size]
 
 
 def free_port() -> int:
@@ -90,7 +99,17 @@ def start_server(
     log = open(log_path, "wb")
     try:
         proc = subprocess.Popen(
-            [sys.executable, "-m", "hsync_server", "--port", str(port), "--log-level", "warning"],
+            [
+                sys.executable,
+                "-m",
+                "hsync_server",
+                "--host",
+                "127.0.0.1",  # loopback only: the bench server must never be reachable
+                "--port",
+                str(port),
+                "--log-level",
+                "warning",
+            ],
             env=env,
             cwd=str(Path(__file__).resolve().parents[1]),
             stdout=log,

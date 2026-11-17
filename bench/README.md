@@ -20,6 +20,11 @@ asserts only that the measured operation really took the intended branch.
 
 ## Isolation
 
+Every spawned server binds **127.0.0.1 only** and uses a per-process random
+admin secret (`server_process.ADMIN_SECRET`, minted with `secrets`) with rate
+limits raised: a committed token on an all-interfaces bind would be a real admin
+credential reachable from the network for the run's duration.
+
 The server's `Settings` singleton is cached (`@lru_cache`), so every benchmark
 that touches persisted state (version/arbitration stores open the per-bucket state DB
 under `HSYNC_STATE_DIR`; `resolve_within_bucket` resolves under
