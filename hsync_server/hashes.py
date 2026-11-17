@@ -17,16 +17,25 @@ import hashlib
 from os import stat as os_stat
 from os import walk
 from pathlib import Path
+from threading import RLock
 
 from hsync_common.hashing import compute_sha256, compute_sha256_async
 from hsync_common.models.dir import is_hidden_dir
 from hsync_common.models.file import is_hidden_file, set_sha256_cache_provider
 
 # In-memory storage for file hashes
-# Maps SHA256(filepath) -> (SHA256(file_content), mtime_ns, size), ordered
-# least-recently-used first. A plain dict is used (insertion-ordered) rather
-# than OrderedDict, so the map stays a drop-in for callers/tests that rebind it.
-FILE_HASHES: dict[str, tuple[str, int, int]] = {}
+# Maps SHA256(filepath) -> (SHA256(file_content), mtime_ns, ctime_ns, size),
+# ordered least-recently-used first. A plain dict is used (insertion-ordered)
+# rather than OrderedDict, so the map stays a drop-in for callers/tests that
+# rebind it.
+FILE_HASHES: dict[str, tuple[str, int, int, int]] = {}
+
+# Guards every FILE_HASHES access. Since hsync-common's File.get provider
+# routes listing lookups here, the map is read/mutated from anyio worker threads
+# (streamed listings) while the event loop mutates it (upload/rename/delete);
+# the compound touch (pop+reinsert) and the LRU eviction
+# (``del next(iter(...))``) are not atomic across threads without it.
+_hashes_lock = RLock()
 
 # Upper bound on retained entries. Without it the map grew with every distinct
 # file ever listed or uploaded (~360 B/entry), i.e. hundreds of MB on a large
@@ -40,24 +49,27 @@ def _hashed_path_key(filepath: str) -> str:
     return hashlib.sha256(filepath.encode()).hexdigest()
 
 
-def _cache_sha256_hash(hashed_key: str, entry: tuple[str, int, int]) -> None:
+def _cache_sha256_hash(hashed_key: str, entry: tuple[str, int, int, int]) -> None:
     """Insert/refresh *entry* as most-recently-used, evicting the LRU at the cap."""
-    # Re-insert so the key becomes most-recently-used: a plain dict assignment
-    # on an existing key would keep its old (staler) position.
-    FILE_HASHES.pop(hashed_key, None)
-    FILE_HASHES[hashed_key] = entry
-    if len(FILE_HASHES) > FILE_HASHES_MAX_SIZE:
-        del FILE_HASHES[next(iter(FILE_HASHES))]  # evict least-recently-used
+    with _hashes_lock:
+        # Re-insert so the key becomes most-recently-used: a plain dict
+        # assignment on an existing key would keep its old (staler) position.
+        FILE_HASHES.pop(hashed_key, None)
+        FILE_HASHES[hashed_key] = entry
+        if len(FILE_HASHES) > FILE_HASHES_MAX_SIZE:
+            del FILE_HASHES[next(iter(FILE_HASHES))]  # evict least-recently-used
 
 
 def set_sha256_hash(filepath: str, sha256sum: str) -> None:
     """
     Store a SHA-256 hash for a file path, with its current metadata.
 
-    The digest is stored together with the (mtime_ns, size) observed now, so
-    :func:`get_sha256_hash` can refuse stale entries instead of serving a
-    checksum that no longer describes the file on disk. A missing/unreadable
-    file is not cached (there is nothing verifiable to attach the digest to).
+    The digest is stored together with the ``(mtime_ns, ctime_ns, size)``
+    observed now, so :func:`get_sha256_hash` can refuse stale entries instead of
+    serving a checksum that no longer describes the file on disk. ``ctime_ns``
+    catches a rewrite that restores mtime and size (``touch -r``-style), which
+    the mtime/size pair alone cannot. A missing/unreadable file is not cached
+    (there is nothing verifiable to attach the digest to).
 
     The file path is hashed with SHA-256 before storage for privacy.
 
@@ -69,17 +81,20 @@ def set_sha256_hash(filepath: str, sha256sum: str) -> None:
         st = os_stat(filepath)
     except OSError:
         return
-    _cache_sha256_hash(_hashed_path_key(filepath), (sha256sum, st.st_mtime_ns, st.st_size))
+    _cache_sha256_hash(
+        _hashed_path_key(filepath),
+        (sha256sum, st.st_mtime_ns, st.st_ctime_ns, st.st_size),
+    )
 
 
 def get_sha256_hash(filepath: str) -> str | None:
     """
     Retrieve the stored SHA-256 hash for a file path if it is still fresh.
 
-    The cached digest is served only while the file's current (mtime_ns,
-    size) match the values captured at caching time; a changed or vanished
-    file returns ``None`` and the stale entry is dropped, so callers
-    recompute instead of trusting an outdated checksum.
+    The cached digest is served only while the file's current
+    ``(mtime_ns, ctime_ns, size)`` match the values captured at caching time; a
+    changed or vanished file returns ``None`` and the stale entry is dropped, so
+    callers recompute instead of trusting an outdated checksum.
 
     Args:
         filepath: Absolute path to the file.
@@ -88,22 +103,23 @@ def get_sha256_hash(filepath: str) -> str | None:
         The SHA-256 checksum if found and fresh, None otherwise.
     """
     hashed_key: str = _hashed_path_key(filepath)
-    entry = FILE_HASHES.get(hashed_key)
-    if entry is None:
-        return None
-    sha256sum, mtime_ns, size = entry
-    try:
-        st = os_stat(filepath)
-    except OSError:
-        del FILE_HASHES[hashed_key]
-        return None
-    if (st.st_mtime_ns, st.st_size) != (mtime_ns, size):
-        del FILE_HASHES[hashed_key]
-        return None
-    # Fresh hit: mark as most-recently-used so it survives LRU eviction.
-    FILE_HASHES.pop(hashed_key, None)
-    FILE_HASHES[hashed_key] = entry
-    return sha256sum
+    with _hashes_lock:
+        entry = FILE_HASHES.get(hashed_key)
+        if entry is None:
+            return None
+        sha256sum, mtime_ns, ctime_ns, size = entry
+        try:
+            st = os_stat(filepath)
+        except OSError:
+            del FILE_HASHES[hashed_key]
+            return None
+        if (st.st_mtime_ns, st.st_ctime_ns, st.st_size) != (mtime_ns, ctime_ns, size):
+            del FILE_HASHES[hashed_key]
+            return None
+        # Fresh hit: mark as most-recently-used so it survives LRU eviction.
+        FILE_HASHES.pop(hashed_key, None)
+        FILE_HASHES[hashed_key] = entry
+        return sha256sum
 
 
 def del_sha256_hash(filepath: str) -> bool:
@@ -117,10 +133,11 @@ def del_sha256_hash(filepath: str) -> bool:
         True if the hash was found and deleted, False otherwise.
     """
     hashed_key: str = _hashed_path_key(filepath)
-    if hashed_key in FILE_HASHES:
-        del FILE_HASHES[hashed_key]
-        return True
-    return False
+    with _hashes_lock:
+        if hashed_key in FILE_HASHES:
+            del FILE_HASHES[hashed_key]
+            return True
+        return False
 
 
 def register_sha256_cache_provider() -> None:
@@ -142,35 +159,41 @@ def register_sha256_cache_provider() -> None:
 
 
 def _provider_get_sha256(filepath: str, mtime_ns: int, ctime_ns: int, size: int) -> str | None:
-    """Serve a fresh preloaded digest to ``File.get`` (ctime is not part of the key)."""
+    """Serve a fresh preloaded digest to ``File.get``."""
     hashed_key = _hashed_path_key(filepath)
-    entry = FILE_HASHES.get(hashed_key)
-    if entry is None:
-        return None
-    sha256sum, cached_mtime_ns, cached_size = entry
-    if (cached_mtime_ns, cached_size) != (mtime_ns, size):
+    with _hashes_lock:
+        entry = FILE_HASHES.get(hashed_key)
+        if entry is None:
+            return None
+        sha256sum, cached_mtime_ns, cached_ctime_ns, cached_size = entry
+        if (cached_mtime_ns, cached_ctime_ns, cached_size) != (mtime_ns, ctime_ns, size):
+            FILE_HASHES.pop(hashed_key, None)
+            return None
         FILE_HASHES.pop(hashed_key, None)
-        return None
-    FILE_HASHES.pop(hashed_key, None)
-    FILE_HASHES[hashed_key] = entry  # touch: survive LRU eviction
-    return sha256sum
+        FILE_HASHES[hashed_key] = entry  # touch: survive LRU eviction
+        return sha256sum
 
 
 def _provider_set_sha256(
     filepath: str, sha256sum: str, mtime_ns: int, ctime_ns: int, size: int
 ) -> None:
     """Store a ``File.get`` miss in the server cache with its stat identity."""
-    _cache_sha256_hash(_hashed_path_key(filepath), (sha256sum, mtime_ns, size))
+    _cache_sha256_hash(
+        _hashed_path_key(filepath),
+        (sha256sum, mtime_ns, ctime_ns, size),
+    )
 
 
 def _provider_invalidate_sha256(filepath: str) -> None:
     """Drop one path from the server cache (rename/delete/upload invalidation)."""
-    FILE_HASHES.pop(_hashed_path_key(filepath), None)
+    with _hashes_lock:
+        FILE_HASHES.pop(_hashed_path_key(filepath), None)
 
 
 def _provider_clear_sha256() -> None:
     """Clear the server cache (hsync-common's ``clear_sha256_cache`` routes here)."""
-    FILE_HASHES.clear()
+    with _hashes_lock:
+        FILE_HASHES.clear()
 
 
 async def get_or_compute_sha256(filepath: str) -> str:
@@ -204,7 +227,8 @@ def set_sha256_hashes(directory: str) -> int:
     if not Path(directory).is_dir():
         raise ValueError(f"Invalid directory path: {directory}")
 
-    FILE_HASHES.clear()
+    with _hashes_lock:
+        FILE_HASHES.clear()
     file_count = 0
 
     # Walk directory tree, skipping hidden directories

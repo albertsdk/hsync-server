@@ -334,3 +334,78 @@ class TestListingHashCacheBridge:
         assert file_obj is not None
         assert file_obj.sha256sum == hashlib.sha256(b"ccc").hexdigest()
         assert hashes.get_sha256_hash(str(target)) == file_obj.sha256sum
+
+
+class TestHashCacheFreshnessAndConcurrency:
+    """ctime defeats a touch-r rewrite, and worker threads share the map safely."""
+
+    def setup_method(self):
+        hashes.FILE_HASHES = {}
+
+    def test_rewrite_restoring_mtime_is_not_served_from_the_cache(self, tmp_path):
+        """A same-size rewrite with a restored mtime must not reuse the digest."""
+        target = tmp_path / "f.txt"
+        target.write_bytes(b"AAAA")
+        original = target.stat()
+        hashes.set_sha256_hash(str(target), "a" * 64)
+        assert hashes.get_sha256_hash(str(target)) == "a" * 64
+
+        target.write_bytes(b"BBBB")  # same size, new content
+        os.utime(str(target), ns=(original.st_atime_ns, original.st_mtime_ns))
+
+        assert target.stat().st_size == original.st_size
+        assert hashes.get_sha256_hash(str(target)) is None
+
+    def test_provider_rejects_a_rewrite_that_restores_mtime(self, tmp_path):
+        """File.get through the server provider re-hashes such a rewrite."""
+        import hashlib
+
+        from hsync_common.models.file import File
+
+        target = tmp_path / "c.txt"
+        target.write_bytes(b"AAAA")
+        original = target.stat()
+        hashes.set_sha256_hash(str(target), hashlib.sha256(b"AAAA").hexdigest())
+        hashes.register_sha256_cache_provider()
+        try:
+            target.write_bytes(b"BBBB")
+            os.utime(str(target), ns=(original.st_atime_ns, original.st_mtime_ns))
+
+            file_obj = File.get(str(target))
+
+            assert file_obj is not None
+            assert file_obj.sha256sum == hashlib.sha256(b"BBBB").hexdigest()
+            assert hashes.get_sha256_hash(str(target)) == file_obj.sha256sum
+        finally:
+            from hsync_common.models.file import reset_sha256_cache_provider
+
+            reset_sha256_cache_provider()
+
+    def test_concurrent_access_is_thread_safe(self, tmp_path, monkeypatch):
+        """Listing worker threads and the event loop share FILE_HASHES.
+
+        Without the module lock the hit-touch (pop+reinsert) and the LRU
+        eviction (``del next(iter(...))``) can interleave with another thread's
+        mutation and raise KeyError/RuntimeError, truncating a listing.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        monkeypatch.setattr(hashes, "FILE_HASHES_MAX_SIZE", 64)
+        paths = []
+        for index in range(32):
+            target = tmp_path / f"f{index}.bin"
+            target.write_bytes(b"x")
+            paths.append(str(target))
+
+        def worker(seed: int) -> None:
+            for iteration in range(400):
+                path = paths[(seed + iteration) % len(paths)]
+                hashes.set_sha256_hash(path, f"{seed:02d}{iteration:03d}" + "0" * 59)
+                hashes.get_sha256_hash(path)
+                if iteration % 5 == 0:
+                    hashes.del_sha256_hash(path)
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(worker, range(8)))
+
+        assert len(hashes.FILE_HASHES) <= 64
