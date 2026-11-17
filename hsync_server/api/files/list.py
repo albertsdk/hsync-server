@@ -51,7 +51,7 @@ from hsync_server.hashes import get_sha256_hash
 from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import get_tombstone_store
-from hsync_server.versions import server_version_info_for_relpath
+from hsync_server.versions import listing_version_source, version_info_from_entry
 
 # Cap on the POST /tombstones body: comfortably above a full
 # ``TOMBSTONE_MAX_ENTRIES`` payload, so a hostile member cannot force the
@@ -160,7 +160,12 @@ def _iter_file_entries(root_dir: str, bucket_root: str, bucket: str) -> Iterator
 
     Order is the deterministic path order (sorted entries); the ``mtime``
     priority is applied by the consumer after it has collected the entries.
+
+    The version store and its lock are fetched **once** per pass (not per
+    entry), and the bucket-relative path is resolved once and reused by both
+    the wire entry and the version JOIN.
     """
+    version_store, version_lock = listing_version_source(bucket)
     for entry_path, link in iter_bucket_entries(
         bucket_root,
         start_dir=root_dir,
@@ -178,12 +183,15 @@ def _iter_file_entries(root_dir: str, bucket_root: str, bucket: str) -> Iterator
 
         file_obj = LocalFile.get(entry_path)
         if file_obj:
-            file_data = file_entry(file_obj, bucket_root)
             rel = relpath_in_bucket(file_obj.filepath or "", bucket_root)
+            file_data = file_entry(file_obj, bucket_root, rel=rel)
             # JOIN causal version metadata from the version store (ADR-0022).
-            version = server_version_info_for_relpath(bucket, rel) if rel is not None else None
-            if version is not None:
-                file_data["version"] = version
+            if rel is not None:
+                with version_lock:
+                    version_entry = version_store.get(rel)
+                version = version_info_from_entry(version_entry)
+                if version is not None:
+                    file_data["version"] = version
             yield file_data
 
 

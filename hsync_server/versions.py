@@ -202,17 +202,19 @@ def server_version_info(bucket: str, bucket_dir: str, abs_path: str):
     return server_version_info_for_relpath(bucket, relpath)
 
 
-def server_version_info_for_relpath(bucket: str, relpath: str) -> VersionInfo | None:
-    """Return the :class:`VersionInfo` for an already-resolved relative path.
+def listing_version_source(bucket: str) -> tuple[SyncStateStore, threading.RLock]:
+    """Return the cached store and its lock for one whole listing pass.
 
-    Listings already resolve each entry's bucket-relative path (to emit the
-    wire ``filepath``), so the JOIN must not recompute it: this variant skips a
-    second component split per entry on the per-listing hot path.
+    Consumer: ``api/files/list.py`` (a listing joins the version of every
+    entry). Calling ``get_version_store`` per entry paid a registry lookup and
+    an ``os.getpid`` fork check per file; the listing fetches both once and only
+    takes the lock around each read.
     """
-    if not relpath:
-        return None
-    with _registry.lock(bucket):
-        entry = get_version_store(bucket).get(relpath)
+    return get_version_store(bucket), _registry.lock(bucket)
+
+
+def version_info_from_entry(entry: FileVersion | None) -> VersionInfo | None:
+    """Build the wire ``VersionInfo`` from a store entry, or ``None`` (pure)."""
     if entry is None:
         return None
     return VersionInfo(
@@ -222,6 +224,21 @@ def server_version_info_for_relpath(bucket: str, relpath: str) -> VersionInfo | 
         ts=entry["ts"],
         corrected_mtime=entry.get("corrected_mtime", 0),
     )
+
+
+def server_version_info_for_relpath(bucket: str, relpath: str) -> VersionInfo | None:
+    """Return the :class:`VersionInfo` for an already-resolved relative path.
+
+    Listings already resolve each entry's bucket-relative path (to emit the
+    wire ``filepath``), so the JOIN must not recompute it: this variant skips a
+    second component split per entry on the per-listing hot path.
+    """
+    if not relpath:
+        return None
+    store, lock = listing_version_source(bucket)
+    with lock:
+        entry = store.get(relpath)
+    return version_info_from_entry(entry)
 
 
 def get_server_cid() -> str:

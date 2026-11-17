@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The file listing resolves each entry's bucket-relative path once and fetches
+  the version store and its lock once per pass, instead of a registry lookup
+  (with an `os.getpid` fork check) per entry.
+
 ### Fixed
 
 - The file listing no longer re-hashes the bucket at startup or past 10k files:
