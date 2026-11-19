@@ -298,7 +298,6 @@ from hsync_common.path_validation import (
     is_reserved_name,
     is_safe_path_component,
     is_valid_filename,
-    sanitize_filename,
 )
 
 
@@ -460,45 +459,6 @@ class TestIsSafePathComponent:
         assert is_safe_path_component("..") is False
         assert is_safe_path_component("../../etc") is False
         assert is_safe_path_component("dir/../../../etc") is False
-
-
-class TestSanitizeFilename:
-    """Tests for sanitize_filename function."""
-
-    def test_normal_filename_unchanged(self):
-        """Normal filenames are kept as-is."""
-        assert sanitize_filename("file.txt") == "file.txt"
-        assert sanitize_filename("document.pdf") == "document.pdf"
-
-    def test_path_removed(self):
-        """Path separators are removed, keeping only filename."""
-        assert sanitize_filename("path/to/file.txt") == "file.txt"
-        assert sanitize_filename("C:\\Windows\\file.txt") == "file.txt"
-
-    def test_forbidden_chars_replaced(self):
-        """Forbidden characters are replaced with underscores."""
-        assert sanitize_filename("file<name>.txt") == "file_name_.txt"
-        assert sanitize_filename("file:name.txt") == "file_name.txt"
-
-    def test_trailing_removed(self):
-        """Trailing spaces and periods are removed."""
-        assert sanitize_filename("file.txt ") == "file.txt"
-        assert sanitize_filename("file.txt.") == "file.txt"
-
-    def test_empty_becomes_unnamed(self):
-        """Empty strings and reserved names become 'unnamed'."""
-        assert sanitize_filename("") == "unnamed"
-        # Reserved names are also sanitized to 'unnamed'
-        assert sanitize_filename("NUL") == "unnamed"
-        assert sanitize_filename("CON") == "unnamed"
-        assert sanitize_filename("   ") == "unnamed"
-
-    def test_long_filename_truncated(self):
-        """Filenames longer than 255 chars are truncated."""
-        long_name = "a" * 300 + ".txt"
-        result = sanitize_filename(long_name)
-        assert len(result) <= 255
-        assert result.endswith(".txt")
 
 
 class TestBuildContentDisposition:

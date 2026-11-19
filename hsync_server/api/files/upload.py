@@ -35,7 +35,7 @@ from hsync_common.ids import is_valid_cid
 from hsync_common.models.event import Event, EventName
 from hsync_common.models.file import is_partial_file
 from hsync_common.models.version import decode_wire_vclock, relpath_in_bucket
-from hsync_common.path_validation import is_internal_name, is_valid_filename, sanitize_filename
+from hsync_common.path_validation import is_internal_name, is_valid_filename
 from hsync_common.permissions import is_valid_octal_permissions
 from hsync_common.protocol.rest import REST_FILES_SUFFIX, rest_bucket_template
 from hsync_common.time_utils import conflict_timestamp
@@ -230,26 +230,30 @@ def _validate_upload_request(
     if permissions and not is_valid_octal_permissions(permissions):
         raise InvalidPermissionFormatError(details={"permissions": permissions})
 
-    # Sanitize filename to handle dangerous characters automatically
+    # A name that any supported device cannot store identically must not enter
+    # the shared namespace: renaming it here would make this copy disagree with
+    # the sender's (and with every other peer), so the request is refused and
+    # the sender reports the item instead.
     original_filename = file.filename or ""
-    safe_filename = sanitize_filename(original_filename)
-
-    # If sanitization changed the filename, warn but allow it
-    if safe_filename != original_filename:
-        log.warning(f"Filename sanitized: '{original_filename}' -> '{safe_filename}'")
-
-    if not is_valid_filename(safe_filename):
-        raise InvalidFilenameError(details={"filename": safe_filename})
+    if not is_valid_filename(original_filename):
+        raise InvalidFilenameError(
+            message=(
+                "The file name cannot be stored identically on every device "
+                '(remove < > : " / \\ | ? *, trailing dots/spaces, and reserved '
+                "names such as CON)"
+            ),
+            details={"filename": original_filename},
+        )
 
     # Internal sync-engine artifacts must never enter the storage via the
     # wire: a peer that could (re)write them would alter every other
     # peer's sync behaviour through the sync channel itself.
-    if is_internal_name(safe_filename):
+    if is_internal_name(original_filename):
         raise InvalidFilenameError(
             message="Internal sync-engine filenames are not allowed",
-            details={"filename": safe_filename},
+            details={"filename": original_filename},
         )
-    return safe_filename
+    return original_filename
 
 
 async def _upload_duplicate_shortcut(

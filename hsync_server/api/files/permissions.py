@@ -25,7 +25,7 @@ from hsync_common.models.event import Event, EventName
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import is_hidden_file
 from hsync_common.models.version import decode_wire_vclock
-from hsync_common.path_validation import is_internal_name, is_valid_filename, sanitize_filename
+from hsync_common.path_validation import is_internal_name, is_valid_filename
 from hsync_common.permissions import is_valid_octal_permissions, sanitize_remote_permissions
 from hsync_common.protocol.rest import REST_FILES_PERMISSIONS_SUFFIX, rest_bucket_template
 from loguru import logger as log
@@ -236,8 +236,8 @@ async def patch_file_permissions(
     """
     check_bucket_access(bucket, ctx)
 
-    safe_name = sanitize_filename(Path(filename).name or "")
-    if not is_valid_filename(safe_name) or is_internal_name(safe_name):
+    name = Path(filename).name or ""
+    if not is_valid_filename(name) or is_internal_name(name):
         raise InvalidFilenameError(details={"filename": filename})
 
     file_location = resolve_within_bucket(bucket, filename)

@@ -30,6 +30,32 @@ class TestFileUploadValidation:
         assert "HSYNC-1001" in response.text
 
     @pytest.mark.asyncio
+    async def test_upload_non_portable_filename_is_rejected_not_renamed(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """A name another device cannot store is refused, never rewritten."""
+        bucket_path = os.path.join(temp_buckets_dir, "namebucket")
+        os.makedirs(bucket_path)
+        content = b"content"
+
+        response = await client.post(
+            "/api/v1/buckets/namebucket/files",
+            files={"file": ("a:b.txt", io.BytesIO(content), "text/plain")},
+            data={
+                "cid": "TestClientX1234567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(content).hexdigest(),
+            },
+        )
+
+        assert response.status_code == 400
+        assert "HSYNC-1007" in response.text
+        # No silent rename: nothing is stored under a mangled name either.
+        assert not os.path.exists(os.path.join(bucket_path, "a_b.txt"))
+        assert not os.path.exists(os.path.join(bucket_path, "a:b.txt"))
+
+    @pytest.mark.asyncio
     async def test_upload_path_traversal_rejected(self, client: AsyncClient, temp_buckets_dir: str):
         """Upload with path traversal is rejected."""
         bucket_path = os.path.join(temp_buckets_dir, "securitybucket")
