@@ -404,10 +404,15 @@ class TestAdminBucketCli:
         assert result.exit_code == 0, result.output
         assert "Bucket deleted: ghostbucket" in result.stdout
 
-        with sqlite3.connect(get_auth_db_path()) as conn:
+        # ``with sqlite3.connect(...)`` only commits/rolls back; it never closes
+        # the handle, so the connection must be closed explicitly.
+        conn = sqlite3.connect(get_auth_db_path())
+        try:
             row = conn.execute(
                 "SELECT 1 FROM bucket_members WHERE bucket = ?", ("ghostbucket",)
             ).fetchone()
+        finally:
+            conn.close()
         assert row is None
 
     def test_bucket_delete_without_db_only_fails_on_ghost(self):
