@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the streamed JSON is batched, so a 1,073-file listing drops from ~471 ms
   to ~39 ms p50 (and the first listing after the preload from ~158 ms to ~5 ms
   on a 200x1 MiB bucket).
+- An upload whose filename exceeds 255 bytes answers `400`/`HSYNC-1007` instead
+  of failing with a `500`: the portable-name policy rejects it before the
+  filesystem write (`ENAMETOOLONG`).
 
 ## [1.1.0] - 2026-11-11
 
