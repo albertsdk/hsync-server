@@ -73,7 +73,6 @@ filterwarnings = [
     "error::DeprecationWarning:tests.*",
     "default::Warning:hsync_server.*",
     "default::Warning:tests.*",
-    "ignore::urllib3.exceptions.InsecureRequestWarning",
     "ignore::DeprecationWarning:pathspec.*",
     "ignore::DeprecationWarning:watchdog.*",
     # slowapi 0.1.10 (latest) still calls asyncio.iscoroutinefunction, which is
