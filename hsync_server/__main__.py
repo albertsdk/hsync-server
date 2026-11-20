@@ -7,6 +7,7 @@ Usage:
 This module allows the package to be run directly using Python's -m flag.
 """
 
+import atexit
 import json
 import os
 import ssl
@@ -37,6 +38,7 @@ from hsync_server.config import (
 from hsync_server.constants import ACCOUNT_ID_LEN, HSYNC_VERSION, SYSTEM_CONFIG_FILE
 from hsync_server.logger import VALID_LOG_LEVELS, setup_logging
 from hsync_server.ssl_utils import get_ssl_config
+from hsync_server.state_maintenance import close_shared_state
 
 # Warn when the served TLS certificate is within this many days of expiry.
 _CERT_EXPIRY_WARN_DAYS = 30
@@ -447,6 +449,10 @@ def main(
 
 def run() -> None:
     """Entry point for the CLI application."""
+    # The lifespan covers a served process; the admin subcommands never enter
+    # it, so their state DB would otherwise be left to the garbage collector.
+    # The close is idempotent, so a served process closes twice by design.
+    atexit.register(close_shared_state)
     app()
 
 

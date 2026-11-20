@@ -654,3 +654,16 @@ class TestTlsFingerprint:
         result = runner.invoke(cli.app, ["admin", "tls", "fingerprint"])
         assert result.exit_code == 1
         assert "TLS is disabled" in result.output
+
+
+class TestAtexitWiring:
+    def test_run_registers_the_state_close_for_non_lifespan_paths(self):
+        """The admin subcommands never enter the lifespan, so ``run`` closes via atexit."""
+        with (
+            patch.object(cli, "app") as mock_app,
+            patch.object(cli.atexit, "register") as mock_register,
+        ):
+            cli.run()
+
+        mock_app.assert_called_once_with()
+        mock_register.assert_called_once_with(cli.close_shared_state)

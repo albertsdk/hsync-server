@@ -57,6 +57,7 @@ from .middleware import (
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .routers import auth_router, public_router
 from .state_maintenance import (
+    close_shared_state,
     run_periodic_incremental_vacuum,
     vacuum_on_shutdown,
     vacuum_on_startup,
@@ -115,7 +116,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         maintenance_stop.set()
         await maintenance_task
-        vacuum_on_shutdown()
+        try:
+            vacuum_on_shutdown()
+        finally:
+            # The handles outlive the app object, so closing them is what
+            # checkpoints the WAL and keeps them out of the garbage collector:
+            # it must run even when the final VACUUM fails.
+            close_shared_state()
 
 
 def configure_cors(app: FastAPI, *, enabled: bool, origins: list[str]) -> None:

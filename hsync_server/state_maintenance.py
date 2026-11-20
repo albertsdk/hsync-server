@@ -37,6 +37,7 @@ from hsync_common.models.sqlstore import (
     INCREMENTAL_VACUUM_INTERVAL_S,
     INCREMENTAL_VACUUM_PAGES,
     incremental_vacuum_state_db,
+    reset_state_db_cache,
     state_db_freelist_count,
     vacuum_state_db,
 )
@@ -45,6 +46,7 @@ from loguru import logger as log
 from hsync_server.config import get_state_dir
 
 __all__ = [
+    "close_shared_state",
     "run_periodic_incremental_vacuum",
     "vacuum_on_shutdown",
     "vacuum_on_startup",
@@ -149,6 +151,29 @@ def vacuum_on_startup() -> None:
 def vacuum_on_shutdown() -> None:
     """Reclaim free space accumulated during this session, at graceful shutdown."""
     _full_vacuum("shutdown")
+
+
+def close_shared_state() -> None:
+    """Release the process-wide SQLite handles this process opened.
+
+    Called at graceful shutdown and, through ``atexit``, on the exit paths that
+    never enter the lifespan (the admin subcommands). The caches are process-wide
+    singletons, so the order matters: drop the wrappers that hold a reference to
+    a connection first, then close and drop the connections themselves. Every
+    step is idempotent, so a second call — or one after a failed startup — is
+    harmless, and the next use re-opens the DB instead of failing.
+    """
+    # Local imports: the vacuum paths do not need them, and ``main`` imports this
+    # module early — the auth store and the version/tombstone registries are
+    # pulled in only when a process is actually shutting down.
+    from hsync_server import tombstones, versions
+    from hsync_server.auth_store import reset_auth_cache
+
+    reset_auth_cache()
+    versions.reset_cache()
+    tombstones.reset_cache()
+    reset_state_db_cache()
+    log.debug("State DB handles released")
 
 
 def _incremental_vacuum_once() -> None:
