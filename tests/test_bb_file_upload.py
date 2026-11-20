@@ -566,22 +566,21 @@ class TestUploadFilesystemPathLimits:
         assert dl.status_code == 200, dl.text
         assert dl.content == content
 
-    def test_overlong_filename_sanitized_to_component_limit(
+    def test_overlong_filename_rejected_not_truncated(
         self, bb_upload, bb_http: httpx.Client, bb_bucket: str
     ):
         # Given a 300-byte ASCII filename (past the 255-byte component limit)
-        content = b"name truncated"
+        content = b"name refused"
 
         # When uploading it
         r = bb_upload(bb_http, bb_bucket, "a" * 300, content)
 
-        # Then the stored name is the 255-byte sanitized form and the content
-        # is intact (truncation must never drop or corrupt the payload)
-        assert r.status_code == 201, r.text
-        listed = bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json()
-        assert len(listed) == 1
-        assert listed[0]["filepath"] == "a" * 255
-        assert listed[0]["sha256sum"] == _sha(content)
+        # Then it is refused as an invalid filename and nothing is stored: the
+        # portable-name policy never renames, because a truncated copy would
+        # stop agreeing with the sender's
+        assert r.status_code == 400, r.text
+        assert r.json()["error"] == "HSYNC-1007"
+        assert bb_http.get(f"/api/v1/buckets/{bb_bucket}/files").json() == []
 
     def test_overlong_path_component_rejected(
         self, bb_upload, bb_http: httpx.Client, bb_bucket: str

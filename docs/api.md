@@ -260,7 +260,8 @@ corrected_mtime=1737072000
 > and `path`/`filename` must resolve inside the target bucket (no `..`,
 > absolute paths or backslashes) and be storable **identically on every supported
 > device**: a filename containing `< > : " / \ | ? *` or a control character, a
-> trailing dot or space, or a reserved name such as `CON` is refused with `400`
+> trailing dot or space, a reserved name such as `CON`, or a name longer than
+> 255 bytes is refused with `400`
 > (`HSYNC-1007`). The server never renames an upload — a renamed copy would
 > disagree with the sender's. Compressed uploads (`compressed=true`) must
 > declare the real file `size` and are capped at it when decompressed.

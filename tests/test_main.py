@@ -404,10 +404,15 @@ class TestAdminBucketCli:
         assert result.exit_code == 0, result.output
         assert "Bucket deleted: ghostbucket" in result.stdout
 
-        with sqlite3.connect(get_auth_db_path()) as conn:
+        # ``with sqlite3.connect(...)`` only commits/rolls back; it never closes
+        # the handle, so the connection must be closed explicitly.
+        conn = sqlite3.connect(get_auth_db_path())
+        try:
             row = conn.execute(
                 "SELECT 1 FROM bucket_members WHERE bucket = ?", ("ghostbucket",)
             ).fetchone()
+        finally:
+            conn.close()
         assert row is None
 
     def test_bucket_delete_without_db_only_fails_on_ghost(self):
@@ -649,3 +654,16 @@ class TestTlsFingerprint:
         result = runner.invoke(cli.app, ["admin", "tls", "fingerprint"])
         assert result.exit_code == 1
         assert "TLS is disabled" in result.output
+
+
+class TestAtexitWiring:
+    def test_run_registers_the_state_close_for_non_lifespan_paths(self):
+        """The admin subcommands never enter the lifespan, so ``run`` closes via atexit."""
+        with (
+            patch.object(cli, "app") as mock_app,
+            patch.object(cli.atexit, "register") as mock_register,
+        ):
+            cli.run()
+
+        mock_app.assert_called_once_with()
+        mock_register.assert_called_once_with(cli.close_shared_state)
