@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `POST /delta/apply` requires `payload_size` in the metadata part (the literal
+  payload's wire bytes): a missing or non-numeric value is a `400`, mirroring the
+  P2P master. The field is the progress total the peer reports on.
 - The file listing resolves each entry's bucket-relative path once and fetches
   the version store and its lock once per pass, instead of a registry lookup
   (with an `os.getpid` fork check) per entry.

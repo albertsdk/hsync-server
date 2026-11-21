@@ -332,6 +332,7 @@ def _apply_multipart(
         "new_size": len(new),
         "block_size": block_size,
         "compressed": False,
+        "payload_size": len(literals),
         "ops": [op.to_dict() for op in ops],
     }
     metadata.update(meta_overrides)
@@ -453,6 +454,19 @@ class TestDeltaApply:
         )
         assert resp.status_code == 400
 
+    async def test_missing_payload_size_is_400(self, client, bucket_dir, tmp_path):
+        """``payload_size`` is part of the delta-apply contract.
+
+        Both ends report progress on that wire total, so a metadata part without
+        it is a malformed request (the p2p master answers the same way).
+        """
+        base = _base_bytes()
+        _write_base(bucket_dir, base)
+        payload = _apply_multipart(base, base + b"x", tmp_path, payload_size=None)
+        resp = await client.post("/api/v1/buckets/bucket1/files/delta/apply", **payload)
+        assert resp.status_code == 400
+        assert "payload_size" in resp.text
+
     async def test_symlink_path_is_rejected(self, client, bucket_dir):
         """A symlink path is a structural entry, not patchable content: delta
         apply must reject it (400) and leave the link untouched."""
@@ -472,6 +486,7 @@ class TestDeltaApply:
                         "new_size": 1,
                         "block_size": BLOCK,
                         "compressed": False,
+                        "payload_size": 1,
                         "ops": [{"type": "data", "offset": 0, "length": 1, "data_offset": 0}],
                     }
                 ),
@@ -618,6 +633,7 @@ class TestRoundTrips:
             "new_size": len(new),
             "block_size": sig_body["block_size"],
             "compressed": False,
+            "payload_size": len(literals),
             "ops": [op.to_dict() for op in ops],
         }
         resp = await client.post(
@@ -697,6 +713,7 @@ class TestConcurrency:
             "new_size": len(new1),
             "block_size": sig_body["block_size"],
             "compressed": False,
+            "payload_size": len(literals1),
             "ops": [op.to_dict() for op in ops1],
         }
 
@@ -710,6 +727,7 @@ class TestConcurrency:
             "new_size": len(new2),
             "block_size": sig_body["block_size"],
             "compressed": False,
+            "payload_size": len(literals2),
             "ops": [op.to_dict() for op in ops2],
         }
 

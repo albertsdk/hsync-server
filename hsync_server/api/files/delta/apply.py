@@ -133,6 +133,11 @@ def _validate_instructions(meta: dict[str, Any]) -> tuple[str, str, int, list[De
         raise ValidationError(message="Invalid SHA-256 in delta metadata")
     if not isinstance(new_size, int) or isinstance(new_size, bool) or new_size < 0:
         raise ValidationError(message="Invalid new_size in delta metadata")
+    # The wire literal's declared byte count: both ends report progress on it,
+    # so it is part of the contract even though the rebuild does not need it.
+    payload_size = meta.get("payload_size")
+    if not isinstance(payload_size, int) or isinstance(payload_size, bool) or payload_size < 0:
+        raise ValidationError(message="Invalid payload_size in delta metadata")
     ops = sanitize_op_list(meta.get("ops"))
     if ops is None:
         raise ValidationError(message="Invalid ops in delta metadata")
