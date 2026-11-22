@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `DELETE …/files` prunes the directory the deletion emptied (and its emptied
+  ancestors) instead of keeping it as an intentional empty folder, so a folder a
+  peer deleted no longer comes back while its files stay deleted.
 - The file listing no longer re-hashes the bucket at startup or past 10k files:
   it reads the preloaded SHA-256 cache through `register_sha256_cache_provider`,
   and the streamed JSON is batched, so a 1,073-file listing drops from ~471 ms
