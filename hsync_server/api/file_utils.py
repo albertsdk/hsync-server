@@ -51,6 +51,26 @@ def cleanup_empty_dir(dir_path: str, bucket_root: str | None = None) -> None:
         log.debug(f'Removed empty directory "{dir_path}"')
 
 
+def prune_empty_dirs(dir_path: str, bucket_root: str) -> None:
+    """Remove *dir_path* and every ancestor it leaves empty, up to *bucket_root*.
+
+    A file delete can leave a chain of empty directories behind, and
+    ``GET …/dirs`` lists every directory on disk: keeping the shell advertises
+    the folder back to the peer that deleted it, whose reconcile re-creates it
+    (the folder came back while its files stayed deleted). ``remove_empty_dir``
+    is the emptiness test, so a directory holding content — or nothing but a
+    peer's ``.hsynckeep`` marker — stops the walk, and *bucket_root* is never
+    removed.
+    """
+    root = Path(bucket_root)
+    current = Path(dir_path)
+    while current != root and root in current.parents:
+        if not remove_empty_dir(str(current), keep_root=bucket_root):
+            return
+        log.debug(f'Removed empty directory "{current}"')
+        current = current.parent
+
+
 def update_file_timestamp(file_location: str, mtime: str | None = None) -> None:
     """
     Restore the file modification time.

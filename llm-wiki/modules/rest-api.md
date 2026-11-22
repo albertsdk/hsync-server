@@ -382,8 +382,14 @@ transports.
 Removes the file (for a symlink path, the **link itself**, never its target —
 final component left unresolved by the confinement), drops its hash
 (`del_sha256_hash`, `hsync_server/hashes.py::del_sha256_hash`), records a tombstone (`record_deletion`,
-`hsync_server/tombstones.py::record_deletion`), cleans up now-empty dirs (`cleanup_empty_dir`,
-`hsync_server/api/file_utils.py::cleanup_empty_dir`), and broadcasts a `deleted` event. The delta apply
+`hsync_server/tombstones.py::record_deletion`), removes the directories the deletion
+emptied (`prune_empty_dirs`, `hsync_server/api/file_utils.py::prune_empty_dirs`), and
+broadcasts a `deleted` event. Directories carry no tombstone, so a deleted folder
+converges through its **absence**: `GET …/dirs` lists every directory on disk, and
+keeping the emptied shell (an "intentional empty folder") advertises it back to the
+peer that deleted it, whose reconcile re-creates it — the folder came back while its
+files stayed deleted. An intentional empty folder carries a `.hsynckeep`, so it is
+never empty and survives the prune; the bucket root is never removed. The delta apply
 endpoint (`delta/apply.py`) **refuses symlink paths with 400**: a delta
 patches file content and must never turn a symlink into a regular file.
 
