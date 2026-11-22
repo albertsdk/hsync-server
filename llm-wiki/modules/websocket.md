@@ -121,8 +121,21 @@ the descendant walk + hashing (`record_deletion_tree`,
 rename endpoint) and the `rmtree`
 run **synchronously on the loop on purpose**: offloading them would let an
 upload publish a new descendant mid-walk that the `rmtree` then removes without
-a tombstone (a resurrection risk). Full loop-freedom here needs a bucket/
-tree mutation lock shared with upload — a documented follow-up.
+a tombstone (a resurrection risk).
+
+The removal is also **authoritative for its subtree**: `handle_deleted_event`
+opens an in-flight window (`hsync-common/hsync_common/deletions.py::begin_tree_delete`, closed in
+`finally`) and removes the tree with `_rmtree_converging`
+(`hsync_server/api/events_handlers/handlers.py::_rmtree_converging`), which
+retries over content a writer already past the gate published. Blocking the
+event loop is not enough on its own — an upload or delta streaming on a worker
+thread writes to the filesystem regardless — so every writer checks the same
+registry: the REST endpoints raise `ConflictError` (409) and the WS
+`added`/`modified` handlers drop the event (`_drop_inside_tree_delete`,
+`hsync_server/api/events_handlers/handlers.py::_drop_inside_tree_delete`).
+Without it the `rmtree` fails with `ENOTEMPTY`, the event is never broadcast and
+the tree stays half present — the folder then comes back on the peers' next
+reconcile.
 
 > Human-readable WS sequence diagram (WebSocket Event Flow): `../docs/internal/architecture.md`.
 > The machine-readable WS contract is the generated schema in `hsync-common`

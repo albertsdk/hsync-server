@@ -33,6 +33,7 @@ from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from hsync_common.clock import clamp_incoming_corrected_mtime
 from hsync_common.constants import DELTA_MAX_LITERAL_SIZE, PARTIAL_DELTA_SUFFIX
+from hsync_common.deletions import covered_by_tree_delete
 from hsync_common.delta import (
     MISMATCH_HASH,
     DeltaError,
@@ -75,6 +76,7 @@ from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.compression import decompress_file_to_file
 from hsync_server.config import get_buckets_path, get_max_upload_size
 from hsync_server.exceptions import (
+    ConflictError,
     ConflictLostError,
     InsufficientStorageError,
     InvalidBucketNameError,
@@ -185,6 +187,16 @@ async def _resolve_delta_target(
     file_location = resolve_within_bucket(bucket, path, resolve_final=False)
     if file_location is None:
         raise InvalidPathError(details={"path": path})
+    # A delta writes the destination: refuse it while a recursive delete owns
+    # the tree (see hsync_common.deletions).
+    if covered_by_tree_delete(file_location):
+        log.debug(
+            f"[TREE-DELETE] Refused a delta apply inside an in-flight delete: {file_location}"
+        )
+        raise ConflictError(
+            message="Path is being deleted",
+            details={"bucket": bucket, "filename": path},
+        )
     if Path(file_location).is_symlink():
         raise ValidationError(
             message="Delta apply does not support symlink paths",

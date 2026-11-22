@@ -492,7 +492,7 @@ use the intersection for transfer gating.
 | 401 | Unauthorized - Invalid token |
 | 403 | Forbidden - Insufficient permissions (non-admin on `/admin`, member on an administrative operation) |
 | 404 | Not Found - Resource not found or inaccessible (indistinguishable) |
-| 409 | Conflict — file already present (same SHA-256), stale upload (`superseded`), tie-break loser (`conflict_lost`), delta base changed, or an auth conflict (name taken, last admin, self-target) |
+| 409 | Conflict — file already present (same SHA-256), stale upload (`superseded`), tie-break loser (`conflict_lost`), delta base changed, a write into a tree a peer is currently deleting (`Path is being deleted`), or an auth conflict (name taken, last admin, self-target) |
 | 413 | Payload Too Large - Request body exceeds `HSYNC_MAX_REQUEST_BODY_SIZE` (rejected before buffering and before auth) |
 | 422 | Unprocessable Entity - Request body validation failed |
 | 429 | Too Many Requests - Rate limit exceeded |

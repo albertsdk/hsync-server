@@ -15,6 +15,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
+from hsync_common.deletions import covered_by_tree_delete
 from hsync_common.path_validation import is_safe_symlink_target
 from hsync_common.protocol.rest import REST_SYMLINKS_SUFFIX, rest_bucket_template
 from loguru import logger as log
@@ -23,7 +24,7 @@ from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.utils import resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.constants import ActionLabel
-from hsync_server.exceptions import InvalidPathError
+from hsync_server.exceptions import ConflictError, InvalidPathError
 from hsync_server.rate_limiter import RATE_LIMIT_DEFAULT, limiter
 from hsync_server.routers import auth_router
 
@@ -74,6 +75,15 @@ async def create_symlink(
 
     if not target:
         raise InvalidPathError(details={"path": path, "reason": "target is required"})
+
+    # A link is content: planting one inside a subtree being removed would
+    # recreate what the deleting peer deleted (see hsync_common.deletions).
+    if covered_by_tree_delete(absolute):
+        log.debug(f"[TREE-DELETE] Refused a symlink inside an in-flight delete: {absolute}")
+        raise ConflictError(
+            message="Path is being deleted",
+            details={"bucket": bucket, "filename": path},
+        )
 
     if not is_safe_symlink_target(absolute, target, resolve_within_bucket(bucket, "") or ""):
         log.warning(

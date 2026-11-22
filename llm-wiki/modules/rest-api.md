@@ -313,6 +313,17 @@ remain synchronous: offloading them would open an event-loop window in which a
 same-path upload could mix generations into the tombstone/event metadata —
 correctness over loop-freedom.
 
+**Writes inside a tree being deleted are refused.** While a recursive `deleted`
+event removes a tree, its window is open (`hsync-common/hsync_common/deletions.py::covered_by_tree_delete`), and the
+upload, delta-apply, rename-destination and symlink endpoints answer
+`409 Conflict` (`ConflictError`, `HSYNC-3004`, message `Path is being deleted`)
+instead of recreating what the deleting peer removed: the server's `rmtree`
+would otherwise fail with `ENOTEMPTY` and abandon a half-deleted tree. The
+refusal is transient — the peer re-offers the content once the removal
+completed, so a client retries on its next reconcile rather than treating the
+409 as a permanent rejection. The publisher-side contract is in
+[websocket.md](websocket.md#deleted-event-semantics).
+
 
 - `get_files` (`hsync_server/api/files/list.py::get_files`) streams the bucket walk, skipping
   hidden/sentinel/`.part` files (`is_hidden_file`, `is_hidden_dir`,

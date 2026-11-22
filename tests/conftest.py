@@ -325,6 +325,7 @@ def test_app() -> Generator[FastAPI]:
 
     # Import file endpoints from files module
     from hsync_server.api.files import (
+        create_symlink,
         delete_file,
         delta_apply,
         download_file,
@@ -365,6 +366,9 @@ def test_app() -> Generator[FastAPI]:
         "/api/v1/buckets/{bucket}/files", delete_file, methods=["DELETE"]
     )
     test_auth_router.add_api_route("/api/v1/buckets/{bucket}/files", rename_file, methods=["PATCH"])
+    test_auth_router.add_api_route(
+        "/api/v1/buckets/{bucket}/symlinks", create_symlink, methods=["POST"]
+    )
     test_auth_router.add_api_route(
         "/api/v1/buckets/{bucket}/tombstones", get_tombstones, methods=["GET"]
     )

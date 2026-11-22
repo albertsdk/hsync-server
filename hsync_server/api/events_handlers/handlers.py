@@ -18,6 +18,7 @@ from pathlib import Path
 from shutil import rmtree
 from typing import Any
 
+from hsync_common.deletions import begin_tree_delete, covered_by_tree_delete, end_tree_delete
 from hsync_common.models.dir import Dir
 from hsync_common.models.event import Event, EventName
 from hsync_common.models.file import File
@@ -57,6 +58,42 @@ def _validate_path(path: str | None, bucket_dir: str, *, allow_root: bool = True
     return True
 
 
+def _drop_inside_tree_delete(path: str) -> bool:
+    """True when *path* sits inside a subtree a recursive delete is removing.
+
+    Materialising it would recreate content the deleting peer asked to remove:
+    the ``rmtree`` would fail with ``ENOTEMPTY`` and the tree would stay half
+    present. A dropped event is recovered by the reconcile of either side, after
+    the removal completed.
+    """
+    if not covered_by_tree_delete(path):
+        return False
+    log.debug(f"[TREE-DELETE] Dropped a write inside an in-flight delete: {path}")
+    return True
+
+
+def _rmtree_converging(path: str, attempts: int = 3) -> None:
+    """Remove a tree even when content is written into it mid-removal.
+
+    ``rmtree`` walks depth-first and raises ``ENOTEMPTY`` when an entry appears
+    inside a directory after its children were removed. The in-flight window
+    keeps new writers out, but one already past the gate (a streaming upload on
+    a worker thread) can still land a byte: the delete is the peer's intent, so
+    retry instead of reporting a half-deleted tree as an error.
+    """
+    for attempt in range(attempts):
+        try:
+            rmtree(path, ignore_errors=False)
+            return
+        except FileNotFoundError:
+            # A concurrent request removed the tree first.
+            return
+        except OSError:
+            if attempt == attempts - 1 or not Path(path).exists():
+                raise
+            log.debug(f"[TREE-DELETE] Retrying a recursive delete after a concurrent write: {path}")
+
+
 # ---------------------------------------------------------------------------
 # Shared create-or-modify handler (DRY: added + modified were ~90% identical)
 # ---------------------------------------------------------------------------
@@ -82,6 +119,8 @@ async def _handle_create_or_modify(
         dir_obj = Dir.from_dict(src, bucket_dir)
         if not _validate_path(dir_obj.path, bucket_dir):
             return None
+        if dir_obj.path and _drop_inside_tree_delete(dir_obj.path):
+            return None
         if dir_obj.path and dir_obj.permissions:
             log.info(f'{label} {verb} dir "{dir_obj.path}" (CID: {cid})')
             if create_dir:
@@ -93,6 +132,8 @@ async def _handle_create_or_modify(
         file_obj = File.from_dict(src, bucket_dir, False)
         filepath = file_obj.filepath
         if filepath is None or not _validate_path(filepath, bucket_dir):
+            return None
+        if _drop_inside_tree_delete(filepath):
             return None
         log.info(f'{label} {verb} file "{filepath}" (CID: {cid})')
         # A (re-)created file invalidates any prior deletion marker so peers
@@ -179,11 +220,20 @@ async def handle_deleted_event(
                 # rmtree stay synchronous ON PURPOSE: offloading them would
                 # let uploads publish new descendants into the tree mid-walk
                 # that the rmtree then removes without a tombstone — a
-                # resurrection regression. Full loop-freedom requires a
-                # shared bucket/tree mutation lock (documented follow-up).
+                # resurrection regression.
                 record_deletion_tree(bucket, bucket_dir, dir_obj.path, cid=cid)
                 log.info(f'{ActionLabel.DELETE} Deleted dir "{dir_obj.path}" (CID: {cid})')
-                rmtree(dir_obj.path, ignore_errors=False)
+                # The window closes the tree for the whole removal: the event
+                # loop is blocked here, but an upload/delta streaming on a
+                # worker thread can still publish a file inside it, and the
+                # rmtree would then fail with ENOTEMPTY and leave the tree half
+                # present. Writers consult the same registry and are refused
+                # (409) while it is open; see hsync_common.deletions.
+                begin_tree_delete(dir_obj.path)
+                try:
+                    _rmtree_converging(dir_obj.path)
+                finally:
+                    end_tree_delete(dir_obj.path)
             return Event(cid, bucket_dir, bucket, EventName.deleted, dir_obj)
 
     elif "filepath" in src:

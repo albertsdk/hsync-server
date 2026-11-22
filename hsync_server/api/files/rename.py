@@ -27,6 +27,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
+from hsync_common.deletions import covered_by_tree_delete
 from hsync_common.hashing import is_sha256_hex
 from hsync_common.ids import is_valid_cid
 from hsync_common.listing import file_entry
@@ -186,6 +187,14 @@ async def rename_file(
     # report a genuinely present rename source as missing.
     if not (src_obj.is_symlink() or src_obj.exists()):
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": src})
+    # Moving content into a subtree another client is removing would recreate
+    # what it deleted (see hsync_common.deletions).
+    if covered_by_tree_delete(dst_path):
+        log.debug(f"[TREE-DELETE] Refused a rename inside an in-flight delete: {dst_path}")
+        raise ConflictError(
+            message="Path is being deleted",
+            details={"bucket": bucket, "filename": dst},
+        )
     if src_obj.is_symlink():
         # Links replicate structurally (path + target), never as content: a
         # "rename" would have to be a symlink create + delete pair, which the
