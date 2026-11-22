@@ -215,6 +215,7 @@ Key variables:
 | [Sync Flow](docs/sync-flow.md) | Server-side sync flow: storage, events, tombstones |
 | [FAQ](docs/faq.md) | Frequently asked questions and troubleshooting |
 | [Contributing](CONTRIBUTING.md) | Development setup and contribution guidelines |
+| [Contributors](CONTRIBUTORS.md) | People who contribute to HSYNC |
 | [Report an issue](https://github.com/albertsdk/hsync-server/issues) | Open development and bug tracking |
 | [Security Policy](SECURITY.md) | Supported versions and how to report vulnerabilities |
 
