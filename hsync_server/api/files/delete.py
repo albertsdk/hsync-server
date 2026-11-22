@@ -22,11 +22,7 @@ from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.connection_manager import bucket_manager
-from hsync_server.api.file_utils import (
-    cleanup_empty_dir,
-    ensure_sentinel_in_dir,
-    is_sentinel_file,
-)
+from hsync_server.api.file_utils import prune_empty_dirs
 from hsync_server.api.utils import resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
@@ -130,15 +126,15 @@ async def delete_file(
             remove(backup_file)
             log.info(f'{ActionLabel.DELETE} Backup file: "{backup_file}" deleted successfully')
 
-        parent = str(Path(file).parent)
-        if is_sentinel_file(file):
-            # Sentinel removed — clean up the now-empty directory.
-            # bucket_root must never be removed: a sentinel deletion at the
-            # bucket root would otherwise wipe the whole bucket folder.
-            cleanup_empty_dir(parent, bucket_root=local_bucket)
-        else:
-            # Regular file removed — preserve directory with sentinel
-            ensure_sentinel_in_dir(parent)
+        # The directory the delete vacated is not an *intentional* empty folder:
+        # ``GET …/dirs`` lists every directory on disk, so keeping it (with a
+        # ``.hsynckeep``) advertises the folder back to the peer that deleted it,
+        # whose reconcile then re-creates it — the folder came back while its
+        # files stayed deleted. Remove the emptied shell (and every ancestor the
+        # removal emptied) instead. An intentional empty folder carries a
+        # ``.hsynckeep``, so it is never empty and survives this; the bucket root
+        # is never removed.
+        prune_empty_dirs(str(Path(file).parent), bucket_root=local_bucket)
 
         # Return only the relative path to avoid leaking server-side
         # filesystem layout to the caller.

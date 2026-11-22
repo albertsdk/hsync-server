@@ -331,3 +331,69 @@ class TestFileDelete:
         details = response.json()["details"]
         assert "error" not in details
         assert details["reason"] == "OSError"
+
+
+class TestADeleteNeverKeepsTheEmptiedDirectory:
+    """A folder emptied by a delete must not survive as an empty shell.
+
+    ``GET …/dirs`` lists every directory on disk, so a shell left behind is
+    advertised back to the peer that deleted the folder and its reconcile
+    re-creates it: the folder came back while its files stayed deleted.
+    """
+
+    @pytest.mark.asyncio
+    async def test_deleting_the_last_file_removes_its_directory(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        bucket_path = os.path.join(temp_buckets_dir, "deleteemptied")
+        os.makedirs(os.path.join(bucket_path, "Crono"))
+        with open(os.path.join(bucket_path, "Crono", "01.mp3"), "w") as f:
+            f.write("x")
+
+        response = await client.request(
+            "DELETE",
+            "/api/v1/buckets/deleteemptied/files",
+            data={"cid": "TestClientX1234567890", "filename": "Crono/01.mp3"},
+        )
+
+        assert response.status_code == 200
+        assert not os.path.exists(os.path.join(bucket_path, "Crono"))
+
+    @pytest.mark.asyncio
+    async def test_emptied_ancestors_are_removed_too(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        """The whole vacated chain goes, not just the immediate parent."""
+        bucket_path = os.path.join(temp_buckets_dir, "deletenested")
+        os.makedirs(os.path.join(bucket_path, "Album", "CD1"))
+        with open(os.path.join(bucket_path, "Album", "CD1", "01.mp3"), "w") as f:
+            f.write("x")
+
+        response = await client.request(
+            "DELETE",
+            "/api/v1/buckets/deletenested/files",
+            data={"cid": "TestClientX1234567890", "filename": "Album/CD1/01.mp3"},
+        )
+
+        assert response.status_code == 200
+        assert not os.path.exists(os.path.join(bucket_path, "Album"))
+
+    @pytest.mark.asyncio
+    async def test_deleting_one_of_several_files_keeps_the_directory(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        bucket_path = os.path.join(temp_buckets_dir, "deletekept")
+        os.makedirs(os.path.join(bucket_path, "Crono"))
+        for name in ("01.mp3", "02.mp3"):
+            with open(os.path.join(bucket_path, "Crono", name), "w") as f:
+                f.write("x")
+
+        response = await client.request(
+            "DELETE",
+            "/api/v1/buckets/deletekept/files",
+            data={"cid": "TestClientX1234567890", "filename": "Crono/01.mp3"},
+        )
+
+        assert response.status_code == 200
+        assert os.path.isdir(os.path.join(bucket_path, "Crono"))
+        assert os.path.exists(os.path.join(bucket_path, "Crono", "02.mp3"))
