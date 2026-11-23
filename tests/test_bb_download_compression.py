@@ -48,6 +48,10 @@ class TestDownloadCompressed:
         # threshold decision fired.
         assert r.status_code == 200
         assert r.headers.get("Content-Encoding") == "zstd"
+        # ADR-0053: the compressed body is streamed (no Content-Length) but tells
+        # the client the final size so progress/pre-allocation stay accurate.
+        assert "Content-Length" not in r.headers
+        assert r.headers.get("X-Uncompressed-Size") == str(len(original))
         assert "X-Checksum-SHA256" in r.headers
         assert r.content == original
 

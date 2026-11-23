@@ -190,6 +190,11 @@ class TestDownloadRange:
 
         # Then the server answers 206 with exactly the remaining bytes
         assert r.status_code == 206, r.text
+        # ADR-0053: a Range is always identity (exact offsets), never the
+        # compressed body, and carries no uncompressed-size hint.
+        assert r.headers.get("Content-Encoding") in (None, "", "identity")
+        assert r.headers.get("X-Uncompressed-Size") is None
+        assert r.headers.get("Accept-Ranges") == "bytes"
         assert r.headers.get("Content-Range") == (
             f"bytes {offset}-{len(sample.payload) - 1}/{len(sample.payload)}"
         ), sample.ctx
