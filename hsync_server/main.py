@@ -207,7 +207,8 @@ configure_cors(app, enabled=get_cors_enabled(), origins=get_cors_origins())
 app.add_middleware(RequestIdMiddleware)
 
 # Add Version middleware for client-server version compatibility checking
-# This adds X-Server-Version header to all responses and rejects incompatible clients
+# This rejects incompatible clients and, only with HSYNC_EXPOSE_VERSION_HEADERS,
+# advertises the server build in X-Server-Version/X-Protocol-Version
 app.add_middleware(VersionMiddleware)
 
 # Configure Prometheus metrics instrumentation.

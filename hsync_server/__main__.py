@@ -8,6 +8,7 @@ This module allows the package to be run directly using Python's -m flag.
 """
 
 import atexit
+import ipaddress
 import json
 import os
 import ssl
@@ -97,6 +98,22 @@ def _require_valid_bucket(bucket: str) -> None:
 
     if not is_valid_bucket_name(bucket):
         _fail(f"invalid bucket name: {bucket!r}")
+
+
+def _is_loopback_host(host: str) -> bool:
+    """True when *host* binds loopback only (``localhost``, ``127.0.0.0/8``, ``::1``).
+
+    A wildcard or routable address is not loopback: anything served there is
+    reachable from the network. A hostname is treated as non-loopback because it
+    can resolve anywhere.
+    """
+    candidate = host.strip().strip("[]")
+    if candidate.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(candidate).is_loopback
+    except ValueError:
+        return False
 
 
 def _resolve_bind_host_port(host: str | None, port: int | None) -> tuple[str, int | None]:
@@ -429,6 +446,12 @@ def main(
     log.info(f"Serving at {scheme}://localhost:{effective_port}")
     if get_settings().enable_docs:
         log.info(f"API documentation: {scheme}://localhost:{effective_port}/docs")
+        if not _is_loopback_host(effective_host):
+            log.warning(
+                f"API documentation is reachable on every interface ({effective_host}). "
+                "Swagger UI and the OpenAPI schema map the whole API for "
+                "unauthenticated callers: set HSYNC_ENABLE_DOCS=false in production."
+            )
 
     # Auto-reload (dev mode) and multiple workers are mutually exclusive in
     # uvicorn: reload always runs single-process. Honor HSYNC_WORKERS only when
@@ -443,6 +466,9 @@ def main(
         log_level=effective_log_level,
         reload=reload_enabled,
         workers=effective_workers,
+        # No ``Server: uvicorn``: the header identifies the stack to every probe
+        # and is consumed by no client.
+        server_header=False,
         **ssl_config,
     )
 

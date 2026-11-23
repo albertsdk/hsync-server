@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   listing/download concurrency curve with the node's CPU% (the single-process
   ceiling); `bench/server_process.py` is the shared launcher it and `soak.py`
   now use.
+- `HSYNC_EXPOSE_VERSION_HEADERS` (default `false`) opts in to the
+  `X-Server-Version`/`X-Protocol-Version` response headers.
 
 ### Changed
 
@@ -28,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The file listing resolves each entry's bucket-relative path once and fetches
   the version store and its lock once per pass, instead of a registry lookup
   (with an `os.getpid` fork check) per entry.
+- Responses no longer advertise the server build by default: the version headers
+  are opt-in, uvicorn's `Server` header is suppressed, a `426` echoes only the
+  caller's own protocol value, and 404/405 answer a generic `{"error": …}`
+  envelope instead of the framework's `{"detail": …}` shape.
+- A validation error (`422`) keeps its field-level `validation_errors` in the log
+  only, so the response no longer maps the request schema to the caller.
+- Enabling `HSYNC_ENABLE_DOCS` on a non-loopback bind logs a warning: the shipped
+  Swagger UI and OpenAPI schema describe the whole API to whoever reaches them.
 
 ### Fixed
 

@@ -20,6 +20,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from .config import get_expose_version_headers
 from .constants import (
     HEADER_CLIENT_NAME,
     HEADER_PROTOCOL_VERSION,
@@ -85,7 +86,9 @@ class VersionMiddleware(BaseHTTPMiddleware):
     1. Reads the X-Protocol-Version header from incoming requests
     2. Hard-fails with 426 when it is present and differs from the server's
        protocol version (there is no legacy protocol to negotiate down to)
-    3. Adds X-Server-Version and X-Protocol-Version to every response
+    3. Adds X-Server-Version and X-Protocol-Version to every response only when
+       ``HSYNC_EXPOSE_VERSION_HEADERS`` is enabled (default off: an exact build
+       identifier is what an unauthenticated caller needs to target a known CVE)
     4. Validates the X-Client-Name slug when present: it must identify a
        product ("hsync-client", "hsync-android"), never an internal module
        or file, so values like "main_logic.py" are rejected with 400
@@ -107,14 +110,20 @@ class VersionMiddleware(BaseHTTPMiddleware):
             call_next: The next middleware or route handler.
 
         Returns:
-            The HTTP response with X-Server-Version and X-Protocol-Version
-            headers, or 426 Upgrade Required on a protocol-version mismatch.
+            The HTTP response, with X-Server-Version and X-Protocol-Version when
+            disclosure is enabled, or 426 Upgrade Required on a protocol-version
+            mismatch.
         """
-        # Advertised on every response (accepted and rejected alike).
-        version_headers = {
-            HEADER_SERVER_VERSION: HSYNC_VERSION,
-            HEADER_PROTOCOL_VERSION: PROTOCOL_VERSION_REST,
-        }
+        # Advertised only on request: the exact build identifier is otherwise
+        # handed to every unauthenticated probe.
+        version_headers = (
+            {
+                HEADER_SERVER_VERSION: HSYNC_VERSION,
+                HEADER_PROTOCOL_VERSION: PROTOCOL_VERSION_REST,
+            }
+            if get_expose_version_headers()
+            else {}
+        )
 
         # Validate the client-name slug first: a malformed product identifier
         # is rejected outright (400), regardless of its protocol version. The
@@ -134,6 +143,8 @@ class VersionMiddleware(BaseHTTPMiddleware):
         client_protocol = request.headers.get(HEADER_PROTOCOL_VERSION, "")
 
         # Hard-fail on an explicit mismatch; capabilities never bridge versions.
+        # The echoed value is the caller's own input; the server's version stays
+        # in the log, so the 426 body carries no server-side fact.
         if client_protocol and client_protocol != PROTOCOL_VERSION_REST:
             log.warning(
                 f"Rejecting client with incompatible protocol {client_protocol} "
@@ -144,7 +155,6 @@ class VersionMiddleware(BaseHTTPMiddleware):
                 content={
                     "error": "Protocol version incompatible",
                     "client_protocol_version": client_protocol,
-                    "server_protocol_version": PROTOCOL_VERSION_REST,
                 },
                 headers=version_headers,
             )
@@ -152,7 +162,6 @@ class VersionMiddleware(BaseHTTPMiddleware):
         # Process the request
         response = await call_next(request)
 
-        # Always advertise the server's app and protocol versions.
         response.headers.update(version_headers)
 
         return response

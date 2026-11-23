@@ -25,6 +25,12 @@ server {
     ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
 
+    # Do not advertise the proxy's own version.
+    server_tokens off;
+    # Keeps the upstream build identifier out when HSYNC_EXPOSE_VERSION_HEADERS
+    # is enabled on the server.
+    proxy_hide_header X-Server-Version;
+
     client_max_body_size 10g;
 
     location / {
@@ -53,6 +59,13 @@ server {
 > server trusts only the rightmost hop that is not a configured proxy, so a
 > forged header prefix cannot spoof the address. Add this proxy's IP to
 > `HSYNC_TRUSTED_PROXIES` so per-IP rate limits and logs show the client IP.
+
+> **Banner hygiene**: `server_tokens off` drops the nginx version from the
+> `Server` header and error pages. The server itself emits no `Server:` header
+> and omits `X-Server-Version`/`X-Protocol-Version` unless
+> `HSYNC_EXPOSE_VERSION_HEADERS=true`, so `proxy_hide_header` matters only when
+> that flag is enabled — keep it as defence in depth. See
+> [Security Best Practices → Information Disclosure](security-best-practices.md#information-disclosure).
 
 ## Traefik
 

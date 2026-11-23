@@ -11,6 +11,7 @@ your data.
 
 - [Account and Key Management](#account-and-key-management)
 - [Network Exposure](#network-exposure)
+- [Information Disclosure](#information-disclosure)
 - [TLS Configuration](#tls-configuration)
 - [Filesystem Permissions](#filesystem-permissions)
 - [Rate Limiting](#rate-limiting)
@@ -118,6 +119,46 @@ HSYNC_TRUSTED_PROXIES=10.0.0.5,10.0.0.6
 Keep every proxy in the chain in the list. With a single proxy, prefer
 overwriting the header (`proxy_set_header X-Forwarded-For $remote_addr`) as
 defence in depth.
+
+---
+
+## Information Disclosure
+
+An unauthenticated caller should learn as little as possible about the build it
+is talking to: the exact version is what lets an automated scan pick a matching
+CVE. Everything that identifies the server is therefore off by default.
+
+### Version headers are opt-in
+
+`X-Server-Version` and `X-Protocol-Version` are **not** sent unless
+`HSYNC_EXPOSE_VERSION_HEADERS=true`. Protocol enforcement is unaffected: a client
+announcing an incompatible `X-Protocol-Version` still receives `426`, and that
+body echoes only the caller's own value (the server's version goes to the log).
+
+### API documentation is off by default
+
+`/docs`, `/redoc` and `/openapi.json` exist only with `HSYNC_ENABLE_DOCS=true`.
+Starting the server with the docs enabled on a non-loopback bind logs a warning:
+Swagger UI and the OpenAPI schema map the entire API, including every parameter
+name, for anyone who reaches them.
+
+### No framework fingerprint
+
+The server does not emit `Server: uvicorn`. An unmapped path or a wrong method
+answers `{"error": "Not Found"}` / `{"error": "Method Not Allowed"}` instead of
+the framework's `{"detail": ...}` shape, and a validation error keeps its
+field-level detail in the log only, so a probe cannot map the request schema.
+
+### Hide the proxy's own banner too
+
+The reverse proxy is the only remaining component that advertises a version; the
+configuration that strips it lives in
+[Reverse Proxy → Nginx](reverse-proxy.md#nginx) (single source of truth for
+proxy directives).
+
+> Obscurity is hygiene, not a security control. TLS, per-account tokens, rate
+> limits and prompt upgrades are what actually protect the deployment; this
+> section only removes the free reconnaissance.
 
 ---
 
@@ -283,6 +324,8 @@ pattern.
 
 - [ ] `HSYNC_ADMIN_KEY` is 64 hex chars, generated with `openssl rand -hex 32`
 - [ ] `HSYNC_ADMIN_KEY` is stored in `prod.env` (chmod 600), never in version control
+- [ ] `HSYNC_EXPOSE_VERSION_HEADERS` is left `false` (default) on the public deployment
+- [ ] `HSYNC_ENABLE_DOCS` is `false` on the public deployment
 - [ ] Server port 9753 is **not** exposed to the internet
 - [ ] Reverse proxy terminates TLS with a valid Let's Encrypt certificate
 - [ ] HTTP → HTTPS redirect is configured

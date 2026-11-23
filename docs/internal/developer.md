@@ -203,7 +203,7 @@ The server applies middleware in this order:
 
 | Order | Middleware | Purpose |
 |-------|-----------|---------|
-| 1 | Version | Enforce wire-protocol version (hard-fail 426 on mismatch); stamp `X-Server-Version`/`X-Protocol-Version` |
+| 1 | Version | Enforce wire-protocol version (hard-fail 426 on mismatch); stamp `X-Server-Version`/`X-Protocol-Version` only with `HSYNC_EXPOSE_VERSION_HEADERS` |
 | 2 | Request ID | Assign a unique `X-Request-ID` to every request for log correlation |
 | 3 | CORS | Cross-Origin Resource Sharing headers (when `HSYNC_CORS_ENABLED=true`) |
 | 4 | GZip (`TransferAwareGZipMiddleware`) | Compress API responses larger than 1000 bytes; the transfer payload endpoints (`…/files/download`, `…/files/delta/data/{token}`) are excluded, because their `Content-Encoding` is the sync protocol's own (identity or zstd) and a client rejects anything else |

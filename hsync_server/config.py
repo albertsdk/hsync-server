@@ -263,6 +263,16 @@ class Settings(BaseSettings):
         description="Expose /docs (Swagger UI) and /redoc endpoints",
     )
 
+    # Response disclosure
+    expose_version_headers: bool = Field(
+        default=False,
+        description=(
+            "Advertise X-Server-Version / X-Protocol-Version on responses. "
+            "Off by default: an unauthenticated caller learns the exact build "
+            "to target. Protocol enforcement keeps working either way."
+        ),
+    )
+
     # Development
     reload: bool = Field(
         default=False,
@@ -587,6 +597,11 @@ def get_ws_max_connections_per_ip() -> int:
 def get_reload() -> bool:
     """Get uvicorn auto-reload flag (late binding)."""
     return get_settings().reload
+
+
+def get_expose_version_headers() -> bool:
+    """Get the response version-header disclosure flag (late binding)."""
+    return get_settings().expose_version_headers
 
 
 def get_tombstone_ttl_days() -> int:

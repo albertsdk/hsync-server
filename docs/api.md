@@ -612,15 +612,9 @@ Errors are categorized by prefix:
 ```json
 {
   "error": "HSYNC-1000",
-  "message": "Validation error",
-  "details": {
-    "validation_errors": [
-      {
-        "type": "missing",
-        "loc": ["body", "cid"],
-        "msg": "Field required"
-      }
-    ]
-  }
+  "message": "Validation error"
 }
 ```
+
+The field-level detail (`validation_errors`) is written to the server log, not
+returned: the response must not hand a caller a map of the request schema.

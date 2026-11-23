@@ -125,6 +125,72 @@ class TestStartupOptions:
         warnings = [call.args[0] for call in mock_log.return_value.warning.call_args_list]
         assert any("https://" in message for message in warnings)
 
+    def test_uvicorn_server_header_disabled(self):
+        """uvicorn must not stamp ``Server: uvicorn`` on responses."""
+        run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+        with run_p as mock_run, log_p, ssl_p, reload_p, workers_p:
+            result = runner.invoke(cli.app, [])
+
+        assert result.exit_code == 0
+        _, kwargs = mock_run.call_args
+        assert kwargs["server_header"] is False
+
+    def test_docs_on_public_bind_warns(self):
+        """API docs on a wildcard bind map the whole API to a remote caller."""
+        run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+        with (
+            run_p,
+            log_p as mock_log,
+            ssl_p,
+            reload_p,
+            workers_p,
+            patch.object(cli, "get_settings", return_value=MagicMock(enable_docs=True)),
+        ):
+            result = runner.invoke(cli.app, [])
+
+        assert result.exit_code == 0
+        warnings = [call.args[0] for call in mock_log.return_value.warning.call_args_list]
+        assert any("HSYNC_ENABLE_DOCS" in message for message in warnings)
+
+    def test_docs_on_loopback_bind_does_not_warn(self):
+        """A loopback-only bind keeps the docs warning silent."""
+        run_p, log_p, ssl_p, reload_p, workers_p = _patches(reload=False, workers=1)
+        with (
+            run_p,
+            log_p as mock_log,
+            ssl_p,
+            reload_p,
+            workers_p,
+            patch.object(cli, "get_settings", return_value=MagicMock(enable_docs=True)),
+        ):
+            result = runner.invoke(cli.app, ["--host", "127.0.0.1"])
+
+        assert result.exit_code == 0
+        warnings = [call.args[0] for call in mock_log.return_value.warning.call_args_list]
+        assert not any("HSYNC_ENABLE_DOCS" in message for message in warnings)
+
+
+class TestLoopbackHostDetection:
+    """``_is_loopback_host`` decides whether the docs warning applies."""
+
+    @pytest.mark.parametrize(
+        ("host", "expected"),
+        [
+            ("127.0.0.1", True),
+            ("127.5.6.7", True),
+            ("::1", True),
+            ("[::1]", True),
+            ("localhost", True),
+            ("LOCALHOST", True),
+            ("0.0.0.0", False),
+            ("::", False),
+            ("192.168.1.10", False),
+            ("example.com", False),
+        ],
+    )
+    def test_is_loopback_host(self, host, expected):
+        assert cli._is_loopback_host(host) is expected
+
 
 class TestVersionAndEnvFile:
     def test_console_script_targets_typer_app_wrapper(self):

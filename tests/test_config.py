@@ -196,6 +196,20 @@ class TestMinFreeDiskSpaceUnit:
             config.Settings(workers=0)
 
 
+class TestResponseDisclosureDefaults:
+    """The server advertises nothing about its build unless asked to."""
+
+    def test_version_headers_off_by_default(self, monkeypatch):
+        monkeypatch.delenv("HSYNC_EXPOSE_VERSION_HEADERS", raising=False)
+
+        assert config.Settings().expose_version_headers is False
+
+    def test_version_headers_env_opt_in(self, monkeypatch):
+        monkeypatch.setenv("HSYNC_EXPOSE_VERSION_HEADERS", "true")
+
+        assert config.Settings().expose_version_headers is True
+
+
 class TestFrozenStorageDefaults:
     """A frozen build must not default its data directories into the bundle."""
 

@@ -7,12 +7,15 @@ import json
 import pytest
 from fastapi import FastAPI, status
 from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.testclient import TestClient
 
 from hsync_server.error_handlers import (
     EXCEPTION_STATUS_CODES,
     get_status_code_for_exception,
     global_exception_handler,
     hsync_exception_handler,
+    http_exception_handler,
     register_exception_handlers,
     validation_exception_handler,
 )
@@ -132,6 +135,69 @@ class TestValidationExceptionHandler:
         content = json.loads(response.body)
         assert content["error"] == "HSYNC-1000"
         assert content["message"] == "Validation error"
+        # The field-level detail stays in the log: echoing it back would spell
+        # out the request schema to an unauthenticated caller.
+        assert "details" not in content
+
+
+class TestHttpExceptionHandler:
+    """Framework-raised HTTP errors must not leak a framework-shaped body."""
+
+    @staticmethod
+    def _app() -> FastAPI:
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        @app.get("/known")
+        async def known():
+            return {"ok": True}
+
+        return app
+
+    def test_unknown_path_is_a_generic_envelope(self):
+        """A probe of an unmapped path gets no ``{"detail": ...}`` shape."""
+        response = TestClient(self._app()).get("/does-not-exist")
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.json() == {"error": "Not Found"}
+
+    def test_wrong_method_keeps_the_allow_header(self):
+        """405 uses the generic envelope and keeps the HTTP ``Allow`` header."""
+        response = TestClient(self._app()).post("/known")
+
+        assert response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+        assert response.json() == {"error": "Method Not Allowed"}
+        assert "GET" in response.headers["Allow"]
+
+    def test_deliberate_http_errors_keep_their_body(self):
+        """401 with ``WWW-Authenticate`` is an API answer, not framework noise."""
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        @app.get("/private")
+        async def private():
+            raise StarletteHTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        response = TestClient(app).get("/private")
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.json() == {"detail": "Not authenticated"}
+        assert response.headers["WWW-Authenticate"] == "Bearer"
+
+    @pytest.mark.asyncio
+    async def test_handler_returns_the_given_headers(self, mocker):
+        """The handler never drops headers the router attached."""
+        request = mocker.MagicMock()
+        exc = StarletteHTTPException(status_code=405, headers={"Allow": "GET, POST"})
+
+        response = await http_exception_handler(request, exc)
+
+        assert response.status_code == 405
+        assert response.headers["allow"] == "GET, POST"
 
 
 class TestGlobalExceptionHandler:
@@ -165,15 +231,19 @@ class TestRegisterExceptionHandlers:
     """Tests for register_exception_handlers function."""
 
     def test_registers_all_handlers(self):
-        """Test that the three core handlers are registered on a fresh app."""
+        """Test that the four core handlers are registered on a fresh app."""
 
         app = FastAPI()
 
         register_exception_handlers(app)
 
-        # Three core handlers: HSyncError, RequestValidationError, Exception
-        assert len(app.exception_handlers) >= 3
+        # Four core handlers: StarletteHTTPException, HSyncError,
+        # RequestValidationError, Exception.
+        assert len(app.exception_handlers) >= 4
         handler_names = {h.__name__ for h in app.exception_handlers.values()}
+        assert "http_exception_handler" in handler_names, (
+            f"http_exception_handler not found in {handler_names}"
+        )
         assert "hsync_exception_handler" in handler_names, (
             f"hsync_exception_handler not found in {handler_names}"
         )

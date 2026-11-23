@@ -22,7 +22,7 @@ Added in `main.py` (order matters — last added runs first):
 
 | Order | Middleware | Location | Role |
 | ----- | ---------- | -------- | ---- |
-| 1 | `VersionMiddleware` | `hsync_server/middleware.py::VersionMiddleware` | hard-fail 426 on REST protocol mismatch; rejects a malformed `X-Client-Name` with 400 (shared `is_valid_client_name` SSOT); stamps `X-Server-Version`/`X-Protocol-Version` |
+| 1 | `VersionMiddleware` | `hsync_server/middleware.py::VersionMiddleware` | hard-fail 426 on REST protocol mismatch (the body echoes only the caller's own value); rejects a malformed `X-Client-Name` with 400 (shared `is_valid_client_name` SSOT); stamps `X-Server-Version`/`X-Protocol-Version` only with `HSYNC_EXPOSE_VERSION_HEADERS` (`hsync_server/config.py::get_expose_version_headers`) |
 | 2 | `RequestIdMiddleware` | `hsync_server/middleware.py::RequestIdMiddleware` | per-request id for tracing (`hsync_server/logger.py::get_request_id` context) |
 | 3 | `CORSMiddleware` (optional) | `hsync_server/main.py::configure_cors` | only with a non-empty explicit origin list (`hsync_server/config.py::get_cors_origins`); never wildcard + credentials (`allow_credentials=False`) |
 | 4 | `MaxRequestSizeMiddleware` | `hsync_server/middleware.py::MaxRequestSizeMiddleware` | 413 at the ASGI boundary on any HTTP body over `get_max_request_body_size()`, before parsing and before auth |

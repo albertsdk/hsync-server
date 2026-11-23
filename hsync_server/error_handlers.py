@@ -15,6 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from hsync_common.text import safe_json_for_log
 from loguru import logger as log
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .exceptions import (
     AuthenticationError,
@@ -102,14 +103,16 @@ async def validation_exception_handler(
     """
     Handle Pydantic validation errors.
 
-    Converts FastAPI/Pydantic validation errors to standardized format.
+    The field-level ``errors()`` detail stays in the log: echoing it back to an
+    unauthenticated caller spells out the exact request schema, which is the
+    kind of information disclosure this endpoint deliberately avoids.
 
     Args:
         _request: The incoming request (unused but required by FastAPI).
         exc: The validation exception.
 
     Returns:
-        JSONResponse with validation error details.
+        JSONResponse with the generic validation envelope.
     """
     errors = exc.errors()
     log.warning(f"Validation error: {safe_json_for_log(errors)}")
@@ -119,8 +122,40 @@ async def validation_exception_handler(
         content={
             "error": "HSYNC-1000",
             "message": "Validation error",
-            "details": {"validation_errors": errors},
         },
+    )
+
+
+# The only responses whose body the framework produces. Left alone they return
+# ``{"detail": "Not Found"}``, a shape that identifies the stack to a probe.
+_GENERIC_HTTP_ERRORS: dict[int, str] = {
+    status.HTTP_404_NOT_FOUND: "Not Found",
+    status.HTTP_405_METHOD_NOT_ALLOWED: "Method Not Allowed",
+}
+
+
+async def http_exception_handler(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """Answer framework-raised HTTP errors without a framework-shaped body.
+
+    404 and 405 get a generic ``{"error": ...}`` envelope; the ``Allow`` header
+    is preserved because it is part of the HTTP contract for 405. Every other
+    status keeps FastAPI's default ``{"detail": ...}`` body and headers
+    verbatim: those are deliberate API answers (401 with ``WWW-Authenticate``,
+    429 from the rate limiter) that clients already consume.
+
+    Args:
+        _request: The incoming request (unused but required by FastAPI).
+        exc: The HTTP exception raised by the router or a dependency.
+
+    Returns:
+        JSONResponse with a generic envelope, or the default body.
+    """
+    generic_message = _GENERIC_HTTP_ERRORS.get(exc.status_code)
+    content = {"error": generic_message} if generic_message else {"detail": exc.detail}
+    return JSONResponse(
+        content=content,
+        status_code=exc.status_code,
+        headers=exc.headers,
     )
 
 
@@ -172,6 +207,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     Args:
         app: The FastAPI application instance.
     """
+    # Starlette-raised errors (404/405 from the router, HTTPException from a
+    # dependency) first: this is what keeps framework-shaped bodies off the wire.
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
+
     app.add_exception_handler(HSyncError, hsync_exception_handler)  # type: ignore[arg-type]
 
     app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]

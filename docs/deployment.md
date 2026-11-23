@@ -106,7 +106,8 @@ curl -k https://localhost:9753/health && echo "SERVER OK!"
 > `HSYNC_SSL_ENABLED=true` (the default in both `dev.env.example` and
 > `prod.env.example`) means **https**, otherwise http. To browse the
 > interactive API docs, set `HSYNC_ENABLE_DOCS=true` in your env-file (it
-> defaults to `false` and `prod.env.example` keeps it off).
+> defaults to `false` and `prod.env.example` keeps it off, because it maps the
+> whole API for anyone who reaches it).
 
 ### Container-aware behavior
 

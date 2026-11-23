@@ -154,6 +154,7 @@ production one; copy the relevant file to `dev.env` / `prod.env` and customize i
 | `HSYNC_RATE_LIMIT_DELTA` | `100/minute` | Rate limit for delta transfer endpoints |
 | `HSYNC_RELOAD` | `false` | Enable uvicorn auto-reload (development only) |
 | `HSYNC_ENABLE_DOCS` | `false` (app default) | Expose `/docs` (Swagger UI) and `/redoc`. Set it to `true` in your env-file to browse the API interactively (`prod.env.example` leaves it off) |
+| `HSYNC_EXPOSE_VERSION_HEADERS` | `false` | Advertise `X-Server-Version`/`X-Protocol-Version` on responses. Off by default so an unauthenticated caller cannot read the exact build; protocol-version enforcement (426) is always active |
 
 > **Packaged installs**: the frozen binary of the `.deb`/`.rpm` loads
 > `/etc/hsync-server/hsync-server.conf` at startup (the same file the systemd

@@ -182,11 +182,27 @@ class TestRequestIdMiddlewareIntegration:
         assert resp2.json()["id"] == "id2"
 
 
-class TestVersionMiddleware:
-    """Tests for VersionMiddleware."""
+@pytest.fixture
+def version_headers_enabled(monkeypatch: pytest.MonkeyPatch):
+    """Force version-header disclosure on for one test.
 
-    def test_adds_version_headers(self):
-        """X-Server-Version and X-Protocol-Version are added to responses."""
+    Patches the getter ``VersionMiddleware`` actually calls: the module-level
+    import binds that function at import time, so a test that reloads
+    ``hsync_server.config`` (``tests/test_config.py``) would otherwise leave the
+    middleware reading a different, stale cache.
+    """
+    monkeypatch.setattr("hsync_server.middleware.get_expose_version_headers", lambda: True)
+
+
+class TestVersionMiddleware:
+    """Tests for VersionMiddleware.
+
+    Version headers are off by default (``HSYNC_EXPOSE_VERSION_HEADERS``), so
+    these tests pin both the default and the opt-in behaviour.
+    """
+
+    @staticmethod
+    def _app() -> FastAPI:
         app = FastAPI()
         app.add_middleware(VersionMiddleware)
 
@@ -194,8 +210,19 @@ class TestVersionMiddleware:
         async def test_endpoint():
             return {"status": "ok"}
 
-        client = TestClient(app)
-        response = client.get("/test")
+        return app
+
+    def test_version_headers_absent_by_default(self):
+        """No build identifier reaches an unauthenticated caller."""
+        response = TestClient(self._app()).get("/test")
+
+        assert response.status_code == 200
+        assert HEADER_SERVER_VERSION not in response.headers
+        assert HEADER_PROTOCOL_VERSION not in response.headers
+
+    def test_version_headers_advertised_when_enabled(self, version_headers_enabled):
+        """The opt-in restores the informational headers."""
+        response = TestClient(self._app()).get("/test")
 
         assert response.status_code == 200
         assert response.headers[HEADER_SERVER_VERSION] == HSYNC_VERSION
@@ -203,114 +230,71 @@ class TestVersionMiddleware:
 
     def test_accepts_matching_protocol(self):
         """A request with the server's protocol version is accepted."""
-        app = FastAPI()
-        app.add_middleware(VersionMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        response = client.get("/test", headers={HEADER_PROTOCOL_VERSION: PROTOCOL_VERSION_REST})
+        response = TestClient(self._app()).get(
+            "/test", headers={HEADER_PROTOCOL_VERSION: PROTOCOL_VERSION_REST}
+        )
 
         assert response.status_code == 200
-        assert response.headers[HEADER_PROTOCOL_VERSION] == PROTOCOL_VERSION_REST
 
     def test_rejects_mismatched_protocol(self):
         """A mismatched protocol version is hard-failed with 426."""
-        app = FastAPI()
-        app.add_middleware(VersionMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(self._app(), raise_server_exceptions=False)
         response = client.get("/test", headers={HEADER_PROTOCOL_VERSION: "api/999"})
 
         assert response.status_code == 426
-        assert response.headers[HEADER_SERVER_VERSION] == HSYNC_VERSION
-        assert response.headers[HEADER_PROTOCOL_VERSION] == PROTOCOL_VERSION_REST
         data = response.json()
-        assert "error" in data
+        assert data["error"] == "Protocol version incompatible"
+        # The caller's own value is echoed; the server's is not disclosed.
         assert data["client_protocol_version"] == "api/999"
-        assert data["server_protocol_version"] == PROTOCOL_VERSION_REST
+        assert "server_protocol_version" not in data
+
+    def test_426_does_not_advertise_version_headers(self):
+        """Even a rejection carries no build identifier by default."""
+        client = TestClient(self._app(), raise_server_exceptions=False)
+        response = client.get("/test", headers={HEADER_PROTOCOL_VERSION: "api/999"})
+
+        assert response.status_code == 426
+        assert HEADER_SERVER_VERSION not in response.headers
+        assert HEADER_PROTOCOL_VERSION not in response.headers
 
     def test_accepts_valid_client_name(self):
         """A request identifying a real product is accepted."""
-        app = FastAPI()
-        app.add_middleware(VersionMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        response = client.get("/test", headers={HEADER_CLIENT_NAME: "hsync-client"})
+        response = TestClient(self._app()).get(
+            "/test", headers={HEADER_CLIENT_NAME: "hsync-client"}
+        )
 
         assert response.status_code == 200
 
     def test_rejects_malformed_client_name(self):
         """A client name that looks like a module file is rejected with 400."""
-        app = FastAPI()
-        app.add_middleware(VersionMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(self._app(), raise_server_exceptions=False)
         response = client.get("/test", headers={HEADER_CLIENT_NAME: "main_logic.py"})
 
         assert response.status_code == 400
-        assert response.headers[HEADER_SERVER_VERSION] == HSYNC_VERSION
-        assert response.headers[HEADER_PROTOCOL_VERSION] == PROTOCOL_VERSION_REST
         data = response.json()
         assert data["error"] == "Malformed client name"
         assert data["client_name"] == "main_logic.py"
+        assert HEADER_SERVER_VERSION not in response.headers
 
     def test_rejects_ws_client_name_whitespace(self):
         """Whitespace or mixed-case product names are rejected."""
-        app = FastAPI()
-        app.add_middleware(VersionMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(self._app(), raise_server_exceptions=False)
         for bad_name in ("HSYNC Client", "hsync_client"):
             response = client.get("/test", headers={HEADER_CLIENT_NAME: bad_name})
             assert response.status_code == 400, bad_name
 
     def test_missing_client_name_accepted(self):
         """Requests without the client name (health checks) keep working."""
-        app = FastAPI()
-        app.add_middleware(VersionMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        response = client.get("/test")
+        response = TestClient(self._app()).get("/test")
 
         assert response.status_code == 200
 
     def test_works_without_protocol_header(self):
-        """Requests without the protocol header are accepted."""
-        app = FastAPI()
-        app.add_middleware(VersionMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        response = client.get("/test")
+        """Requests without the protocol header are accepted, unadvertised."""
+        response = TestClient(self._app()).get("/test")
 
         assert response.status_code == 200
-        assert HEADER_PROTOCOL_VERSION in response.headers
+        assert HEADER_PROTOCOL_VERSION not in response.headers
 
 
 class TestVersionMiddlewareIntegration:
@@ -338,7 +322,21 @@ class TestVersionMiddlewareIntegration:
         assert response.status_code == 200
         assert "X-Request-ID" in response.headers
         assert response.headers["X-Request-ID"] == "test-request-id"
-        assert HEADER_SERVER_VERSION in response.headers
+        assert HEADER_SERVER_VERSION not in response.headers
+
+    def test_enabled_headers_survive_the_middleware_chain(self, version_headers_enabled):
+        """The opt-in still advertises the build next to the request ID."""
+        app = FastAPI()
+        app.add_middleware(RequestIdMiddleware)
+        app.add_middleware(VersionMiddleware)
+
+        @app.get("/test")
+        async def test_endpoint():
+            return {"request_id": get_request_id()}
+
+        response = TestClient(app).get("/test")
+
+        assert response.status_code == 200
         assert response.headers[HEADER_SERVER_VERSION] == HSYNC_VERSION
 
     def test_protocol_check_before_request_id(self):

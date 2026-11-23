@@ -52,6 +52,13 @@ helpers are thin wrappers over `hsync_common`; check there first (DRY, `AGENTS.m
 - Validation sets: `VALID_LOG_LEVELS` (`hsync_server/config.py::VALID_LOG_LEVELS`), `VALID_LOG_FORMATS` (`hsync_server/config.py::VALID_LOG_FORMATS`).
 - Admin-key validity (64 lowercase hex) enforced by a field_validator at load
   time; the `lifespan` creates the built-in admin account (`hsync_server/main.py::lifespan`).
+- Response disclosure: `expose_version_headers` (`hsync_server/config.py::Settings.expose_version_headers`
+  → `HSYNC_EXPOSE_VERSION_HEADERS`, default `false`) gates the
+  `X-Server-Version`/`X-Protocol-Version` headers in `VersionMiddleware`; protocol
+  enforcement does not depend on it. The uvicorn banner is disabled
+  (`server_header=False`, `hsync_server/__main__.py::main`), and enabling
+  `enable_docs` on a non-loopback bind logs a warning
+  (`hsync_server/__main__.py::_is_loopback_host`).
 - Delta transfer config that **takes effect**: `delta_enabled` (default
   `true`), `delta_token_ttl` (300s), `rate_limit_delta` ("100/minute").
 
@@ -221,10 +228,15 @@ neither the payload nor the event loop is blocked) plus the
   (`hsync_server/exceptions.py::AuthenticationError`) → missing/invalid key; `FileOperationError` (`hsync_server/exceptions.py::FileOperationError`) →
   upload/download/delete/storage.
 - `register_exception_handlers` (`hsync_server/error_handlers.py::register_exception_handlers`) installs:
+  `http_exception_handler` (`hsync_server/error_handlers.py::http_exception_handler`) — 404/405 answer
+  `{"error": ...}` (the `Allow` header is preserved) while every other `HTTPException`
+  keeps FastAPI's `{"detail": ...}` body and headers (401 + `WWW-Authenticate`);
   `hsync_exception_handler` (`hsync_server/error_handlers.py::hsync_exception_handler`) using `get_status_code_for_exception` (`hsync_server/error_handlers.py::get_status_code_for_exception`) +
-  `EXCEPTION_STATUS_CODES` map (`hsync_server/error_handlers.py::EXCEPTION_STATUS_CODES`); `validation_exception_handler` (`hsync_server/error_handlers.py::validation_exception_handler`);
-  `global_exception_handler` (`hsync_server/error_handlers.py::global_exception_handler`). All emit a uniform JSON error
-  envelope (`hsync_server/error_handlers.py::hsync_exception_handler`).
+  `EXCEPTION_STATUS_CODES` map (`hsync_server/error_handlers.py::EXCEPTION_STATUS_CODES`);
+  `validation_exception_handler` (`hsync_server/error_handlers.py::validation_exception_handler`) — generic envelope,
+  the field-level `validation_errors` stays in the log; `global_exception_handler`
+  (`hsync_server/error_handlers.py::global_exception_handler`). All emit a JSON error
+  envelope; none echoes a server-side build identifier.
 
 ## Logging (`logger.py`)
 
