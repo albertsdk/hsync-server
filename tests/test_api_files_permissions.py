@@ -149,6 +149,67 @@ class TestPatchFilePermissions:
         assert entry["version"]["version_id"] == "ver-1"
 
     @pytest.mark.asyncio
+    async def test_patch_applies_raw_mtime_without_corrected(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        # A clock-free peer cannot express a corrected time; it sends the raw
+        # on-disk value, which must still converge.
+        bucket_path = os.path.join(temp_buckets_dir, "permbucket_raw")
+        os.makedirs(bucket_path)
+        await _upload(client, "permbucket_raw", "raw.bin", b"same bytes")
+        target = Path(bucket_path, "raw.bin")
+        raw = 1_700_000_000
+        assert int(target.stat().st_mtime) != raw
+
+        response = await client.patch(
+            "/api/v1/buckets/permbucket_raw/files/permissions",
+            params={"filename": "raw.bin", "permissions": "644", "raw_mtime": str(raw)},
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["info"] == "Metadata updated"
+        assert int(target.stat().st_mtime) == raw
+        assert target.read_bytes() == b"same bytes"
+
+    @pytest.mark.asyncio
+    async def test_patch_clamps_far_future_raw_mtime(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        bucket_path = os.path.join(temp_buckets_dir, "permbucket_rawclamp")
+        os.makedirs(bucket_path)
+        await _upload(client, "permbucket_rawclamp", "raw2.bin", b"same bytes")
+        target = Path(bucket_path, "raw2.bin")
+
+        response = await client.patch(
+            "/api/v1/buckets/permbucket_rawclamp/files/permissions",
+            params={"filename": "raw2.bin", "permissions": "644", "raw_mtime": str(10**12)},
+        )
+
+        assert response.status_code == 200, response.text
+        assert int(target.stat().st_mtime) < 10**12
+
+    @pytest.mark.asyncio
+    async def test_patch_records_a_version_for_raw_mtime(
+        self, client: AsyncClient, temp_buckets_dir: str
+    ):
+        bucket_path = os.path.join(temp_buckets_dir, "permbucket_rawver")
+        os.makedirs(bucket_path)
+        await _upload(client, "permbucket_rawver", "rv.bin", b"bytes")
+        raw = 1_700_000_000
+
+        response = await client.patch(
+            "/api/v1/buckets/permbucket_rawver/files/permissions",
+            params={"filename": "rv.bin", "permissions": "644", "raw_mtime": str(raw)},
+        )
+        assert response.status_code == 200, response.text
+
+        listing = await client.get("/api/v1/buckets/permbucket_rawver/files")
+        assert listing.status_code == 200, listing.text
+        entry = next(f for f in listing.json() if f["filepath"] == "rv.bin")
+        # No offset measured in tests, so the corrected equivalent is identity.
+        assert entry["version"]["corrected_mtime"] == raw
+
+    @pytest.mark.asyncio
     async def test_patch_rejects_invalid_vclock(self, client: AsyncClient, temp_buckets_dir: str):
         bucket_path = os.path.join(temp_buckets_dir, "permbucket_badvc")
         os.makedirs(bucket_path)

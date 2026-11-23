@@ -18,6 +18,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
+from hsync_common.clock import clamp_incoming_raw_mtime, correct_mtime
 from hsync_common.constants import MTIME_PROPAGATION_TOLERANCE_SECONDS
 from hsync_common.hashing import compute_sha256_async, is_sha256_hex
 from hsync_common.ids import is_valid_cid
@@ -61,6 +62,7 @@ async def apply_metadata_to_existing_file(
     cid: str,
     permissions: str,
     mtime: int = 0,
+    raw_mtime: int = 0,
     vclock: dict[str, int] | None = None,
     version_id: str | None = None,
 ) -> bool:
@@ -74,6 +76,10 @@ async def apply_metadata_to_existing_file(
       diverges from the stored mtime by more than
       :data:`MTIME_PROPAGATION_TOLERANCE_SECONDS` (a plain ``touch``). The
       far-future clamp inside :func:`update_file_timestamp` guards abuse.
+    - *raw_mtime* is the fallback for a peer with no measured clock: it cannot
+      express a corrected time, so it sends the raw on-disk value, applied
+      verbatim (clamped) and stored with its corrected equivalent so trusted
+      clients keep ordering it consistently.
     - When either diverges, the change is applied and a causal ``modified``
       event carrying the stored file metadata (STILL with its unchanged content
       hash, joined version store clock) is re-broadcast to the other connected
@@ -101,6 +107,21 @@ async def apply_metadata_to_existing_file(
             if cached_hash:
                 set_sha256_hash(file_location, cached_hash)
             changed = True
+    elif raw_mtime > 0:
+        clamped_raw = int(clamp_incoming_raw_mtime(raw_mtime))
+        try:
+            current_mtime = int(Path(file_location).stat().st_mtime)
+        except OSError:
+            current_mtime = 0
+        if abs(current_mtime - clamped_raw) > MTIME_PROPAGATION_TOLERANCE_SECONDS:
+            cached_hash = get_sha256_hash(file_location)
+            update_file_timestamp(file_location, mtime=str(clamped_raw))
+            if cached_hash:
+                set_sha256_hash(file_location, cached_hash)
+            changed = True
+            # Store the corrected equivalent so the listing's version advertises
+            # a value a trusted client can order against.
+            mtime = correct_mtime(clamped_raw)
     # A metadata-only change must reach the other connected clients:
     # re-emit the (unchanged) file as a `modified` event so they apply
     # just the metadata (their content dedup sees the same hash).
@@ -193,6 +214,7 @@ async def patch_file_permissions(
     permissions: str,
     cid: str = "",
     mtime: int = 0,
+    raw_mtime: int = 0,
     vclock: str = "",
     version_id: str = "",
     expected_sha256: str = "",
@@ -215,6 +237,8 @@ async def patch_file_permissions(
             (setuid/setgid/sticky) are stripped (remote-supplied).
         cid: Client ID for event attribution (validated, optional).
         mtime: Corrected Unix mtime to propagate (0 = leave unchanged).
+        raw_mtime: Raw Unix mtime from a clock-free peer, applied verbatim
+            (clamped) when no corrected ``mtime`` is supplied (0 = none).
         vclock: JSON-encoded effective vector clock of the sender ("" = none).
         version_id: Effective version id of the sender ("" = none).
         expected_sha256: Optional guard. The caller only reached this branch
@@ -274,13 +298,15 @@ async def patch_file_permissions(
         cid=cid,
         permissions=permissions,
         mtime=max(0, int(mtime)),
+        raw_mtime=max(0, int(raw_mtime)),
         vclock=parsed_vclock,
         version_id=version_id or None,
     )
     if changed:
         log.info(
             f'{ActionLabel.PERMISSION} Metadata updated: "{bucket}/{filename}" '
-            f"({sanitize_remote_permissions(permissions)}, mtime={max(0, int(mtime))})"
+            f"({sanitize_remote_permissions(permissions)}, "
+            f"mtime={max(0, int(mtime)) or max(0, int(raw_mtime))})"
         )
         return JSONResponse(
             status_code=200,
