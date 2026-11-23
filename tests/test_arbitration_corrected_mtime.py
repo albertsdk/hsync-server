@@ -71,7 +71,6 @@ def _arbitrate(
 class TestArbitrationCorrectedMtime:
     def test_incoming_newer_corrected_mtime_wins_tie_break(self):
         """Concurrent clocks + newer incoming corrected mtime ⇒ accepted_conflict_won."""
-        offset_store.record(0.0)
         stored = _store_with("f.txt", "h-stored", {CID_B: 1}, corrected=100)
         result = _arbitrate(
             "f.txt",
@@ -86,7 +85,6 @@ class TestArbitrationCorrectedMtime:
 
     def test_stored_newer_corrected_mtime_wins_tie_break(self):
         """Concurrent clocks + newer stored corrected mtime ⇒ conflict_lost."""
-        offset_store.record(0.0)
         stored = _store_with("f.txt", "h-stored", {CID_B: 1}, corrected=200)
         result = _arbitrate(
             "f.txt",
@@ -101,7 +99,6 @@ class TestArbitrationCorrectedMtime:
 
     def test_missing_corrected_mtime_falls_back_to_hash(self):
         """A side with corrected mtime 0 degrades to the deterministic hash fallback."""
-        offset_store.record(0.0)
         stored = _store_with("f.txt", "aaa", {CID_B: 1}, corrected=0)
         result = _arbitrate(
             "f.txt",
@@ -143,26 +140,26 @@ class TestArbitrationCorrectedMtime:
         assert result.record_corrected_mtime == 120
 
 
-def test_untrusted_clock_falls_back_to_content():
-    """A host with no measured clock cannot rank by time (ADR-0054).
+def test_the_receiver_clock_does_not_gate_the_comparison():
+    """The server orders the replicated claims, never its own clock (ADR-0054).
 
-    Both timestamps collapse to unknown, so the deterministic content
-    tie-break decides even though one value is numerically newer.
+    Trust is enforced by the uploader (it advertises 0 when it cannot vouch for
+    its clock), so a server that never measured a reference still ranks two known
+    claims chronologically: the newer wins even though its hash sorts lower, so
+    the *content* tie-break would have picked the other side.
     """
-    offset_store.clear()
-    stored = _store_with("f.txt", "aaa", {CID_B: 1}, corrected=200)
+    offset_store.clear()  # the server never measures its own clock
+    stored = _store_with("f.txt", "zzz", {CID_B: 1}, corrected=100)
     result = _arbitrate(
         "f.txt",
-        "zzz",
+        "aaa",  # lower hash: only the newer corrected mtime can make it win
         {CID_A: 1},
         stored,
-        incoming_corrected=100,
-        disk_hash="aaa",
+        incoming_corrected=200,
+        disk_hash="zzz",
     )
-    # The older incoming timestamp wins because "zzz" > "aaa"; the accepted
-    # version still records what the uploader advertised.
     assert result.outcome is ArbitrationOutcome.accepted_conflict_won
-    assert result.record_corrected_mtime == 100
+    assert result.record_corrected_mtime == 200
 
 
 def test_negative_corrected_mtime_behaves_as_unknown():

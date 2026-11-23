@@ -133,8 +133,11 @@ modification time, 0 ⇒ unknown ⇒ hash fallback). Behavior:
   `resolution` and a `version` object carrying the recorded merged `vclock`
   and `corrected_mtime`), `superseded` (409, stale ancestor, no copy),
   `conflict_lost` (409, incoming loses tie-break, bytes preserved as
-  conflicted copy). The chronological tie-break (ADR-0023) uses the
-  corrected mtimes: higher wins, missing/tie falls back to SHA-256.
+  conflicted copy). The chronological tie-break (ADR-0023) uses the incoming
+  corrected mtimes (a version with none carries `0`): higher wins, while a
+  missing value, a tie or a difference inside the fixed one-second guard falls
+  back to SHA-256. The server's own clock trust never gates it (ADR-0054): the
+  producer withholds the value when it cannot vouch for its clock.
 - **Destination re-validation** (upload and delta apply): the destination is
   snapshotted (`existed_at_start` + tombstone marker, `tombstones.deletion_marker_snapshot`)
   before the body streams and re-checked right before the atomic commit

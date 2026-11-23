@@ -16,9 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Upload arbitration ignores the advertised corrected mtimes while the server clock is
-  untrusted, so a concurrent conflict resolves by content identity instead of by a
-  timestamp the server cannot vouch for.
+- Upload arbitration orders concurrent uploads by the advertised corrected mtimes
+  (a fixed one-second guard; content identity within it). The receiver's own clock
+  trust never gates it: a host that cannot vouch for its clock already advertises
+  `corrected_mtime = 0`, so the decision is a pure function of the replicated
+  metadata and the server (which never measures a reference) still ranks the
+  uploads chronologically (ADR-0054).
 - `POST /delta/apply` requires `payload_size` in the metadata part (the literal
   payload's wire bytes): a missing or non-numeric value is a `400`, mirroring the
   P2P master. The field is the progress total the peer reports on.

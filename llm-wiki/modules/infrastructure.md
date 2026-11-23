@@ -319,9 +319,11 @@ uploads for the same file are ordered (ADR-0022).
   client's P2P master); this module binds it to the per-bucket version store, the
   server CID and the immediate `save()`. Returns an
   `ArbitrationResult` (`hsync-common/hsync_common/models/arbitration.py::ArbitrationResult`; outcome + record clock + record corrected mtime + loser
-  cid for conflict-copy naming). ADR-0023: the tie-break compares the incoming
-  `corrected_mtime` with the stored one, falling back to SHA-256 when unknown
-  or tied. `conflicted_copy_name` (`hsync-common/hsync_common/arbitration.py::conflicted_copy_name`) builds the canonical `_conflicted_copy_` path.
+  cid for conflict-copy naming). ADR-0023/ADR-0054: the tie-break compares the
+  incoming `corrected_mtime` with the stored one (an unknown value is `0`) and
+  falls back to SHA-256 on a missing value, a tie or a difference inside the
+  fixed one-second guard; the receiver's own clock trust never gates it.
+  `conflicted_copy_name` (`hsync-common/hsync_common/arbitration.py::conflicted_copy_name`) builds the canonical `_conflicted_copy_` path.
 - `plan_conflict_rejection` (`hsync_server/api/files/_conflicts.py::plan_conflict_rejection`) — the shared
   rejection plan for a lost upload: `superseded` (discard the incoming bytes,
   no copy) or `conflict_lost` (preserve them as the canonical conflicted copy),
