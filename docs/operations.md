@@ -490,6 +490,19 @@ automatically. Configure rotation with:
   uploads and rejects them if disk space is too low. The value is a size with an
   explicit unit (`HSYNC_MIN_FREE_DISK_SPACE=500MB`; `0` disables the check).
 
+### Conflicted copies
+
+A concurrent conflict keeps both sides: the losing bytes are preserved next to
+the winner as `<stem>_conflicted_copy_<timestamp>_<cid>.<ext>`. They are ordinary
+synced files and are retained. To reclaim old ones, run the opt-in maintenance
+command — it deletes only the canonical conflict-copy names, through the normal
+tombstone path, and is per-bucket and dry-runnable:
+
+```bash
+sudo hsync-server admin maintenance prune-conflicts --older-than-days 30
+sudo hsync-server admin maintenance prune-conflicts --bucket photos --older-than-days 30 --dry-run
+```
+
 ### Network bandwidth
 
 - **Compression**: Zstandard (zstd) compression is enabled by default for

@@ -179,10 +179,36 @@ class TestFileDownload:
 
         assert response.status_code == 200
         assert response.headers.get("Content-Encoding") == "zstd"
+        # The chunked compressed body carries its final (uncompressed) size so a
+        # client can still show progress without the listing.
+        assert response.headers.get("X-Uncompressed-Size") == str(len(content))
         # httpx transparently decodes the zstd Content-Encoding, so reaching the
         # original bytes proves the streamed body is a single, valid zstd frame
         # decodable by a real client (one-shot decompression compatibility).
         assert response.content == content
+
+    @pytest.mark.asyncio
+    async def test_download_range_is_identity(self, client: AsyncClient, temp_buckets_dir: str):
+        """A Range (resume) request is served identity, so byte offsets are exact."""
+        from unittest.mock import patch
+
+        bucket_path = os.path.join(temp_buckets_dir, "rangebucket")
+        os.makedirs(bucket_path)
+        content = ("compressible streaming download line\n" * 5000).encode()
+        with open(os.path.join(bucket_path, "big.txt"), "wb") as f:
+            f.write(content)
+
+        with patch("hsync_server.api.files.download.get_compression_enabled", return_value=True):
+            response = await client.get(
+                "/api/v1/buckets/rangebucket/files/download",
+                params={"filename": "big.txt"},
+                headers={"Range": "bytes=0-99"},
+            )
+
+        assert response.status_code == 206
+        assert response.headers.get("Content-Encoding") in (None, "", "identity")
+        assert response.headers.get("X-Uncompressed-Size") is None
+        assert response.content == content[:100]
 
 
 class TestFileList:

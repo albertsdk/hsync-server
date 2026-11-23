@@ -27,7 +27,6 @@ they are code spans, not hyperlinks.
 | [modules/benchmarks.md](modules/benchmarks.md) | L1 micro-benchmark suite (`bench/`): tiers, scenario→code anchors, isolation, methodology, findings |
 | [data-models.md](data-models.md) | Server-local state (hash cache, tombstone store) + reuse of common models |
 | [decisions.md](decisions.md) | Pointer to ecosystem ADRs under `../../hsync-common/docs/internal/adr/` |
-| [deferred-design-issues.md](deferred-design-issues.md) | Analysed but deferred architectural issues (compression Content-Length) — read before implementing related features |
 
 ## Quick facts
 

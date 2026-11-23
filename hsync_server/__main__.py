@@ -476,6 +476,9 @@ admin_app.add_typer(bucket_cli_app, name="bucket")
 tls_app = typer.Typer(name="tls", help="Inspect the server TLS certificate.")
 admin_app.add_typer(tls_app, name="tls")
 
+maintenance_app = typer.Typer(name="maintenance", help="Opt-in storage maintenance.")
+admin_app.add_typer(maintenance_app, name="maintenance")
+
 
 def _warn_if_certificate_expiring(cert_path: str | None, log) -> None:
     """Log a warning when the served TLS certificate is near or past expiry.
@@ -959,6 +962,56 @@ def bucket_set_owner(
     except (ConflictError, ForbiddenError) as e:
         _fail(str(e))
     typer.echo(f"Ownership {action}: {bucket} → {target.name}")
+
+
+@maintenance_app.command("prune-conflicts")
+def maintenance_prune_conflicts(
+    older_than_days: Annotated[
+        float,
+        typer.Option(
+            "--older-than-days",
+            help="Delete conflicted copies whose mtime is at least this many days old.",
+            min=0.0,
+        ),
+    ],
+    bucket: Annotated[
+        str | None,
+        typer.Option("--bucket", help="Restrict to one bucket (default: every bucket)."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="List the targets without deleting anything."),
+    ] = False,
+) -> None:
+    """Delete conflicted-copy siblings older than the given age (opt-in).
+
+    Only files named by the canonical ``_conflicted_copy_<ts>_`` marker are
+    eligible; every removal goes through the same state-consistent delete as the
+    REST endpoint (tombstone, hash/version cleanup, directory prune).
+    """
+    from pathlib import Path
+
+    from hsync_server.config import get_buckets_path
+    from hsync_server.maintenance import prune_conflicted_copies
+
+    if bucket is not None:
+        _require_valid_bucket(bucket)
+    root = Path(get_buckets_path())
+    if not root.is_dir():
+        _fail(f"buckets root does not exist: {root}")
+    if bucket is not None and not (root / bucket).is_dir():
+        _fail(f"bucket does not exist: {bucket}")
+
+    removed = prune_conflicted_copies(
+        buckets_root=root,
+        bucket=bucket,
+        older_than_s=older_than_days * 86400.0,
+        dry_run=dry_run,
+    )
+    for path in removed:
+        typer.echo(str(path))
+    verb = "Would delete" if dry_run else "Deleted"
+    typer.echo(f"{verb} {len(removed)} conflicted copy/-ies")
 
 
 def _cli_parse_expiry(expires_at: str | None, valid_days: int | None) -> int | None:

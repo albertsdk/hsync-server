@@ -15,26 +15,21 @@ from typing import Annotated
 from fastapi import Depends, Form
 from fastapi.responses import JSONResponse
 from hsync_common.models.event import Event, EventName
-from hsync_common.models.file import File as LocalFile
-from hsync_common.models.file import invalidate_sha256_cache
 from hsync_common.protocol.rest import REST_FILES_SUFFIX, rest_bucket_template
 from loguru import logger as log
 
 from hsync_server.api.authz import check_bucket_access
 from hsync_server.api.connection_manager import bucket_manager
-from hsync_server.api.file_utils import prune_empty_dirs
 from hsync_server.api.utils import resolve_within_bucket
 from hsync_server.auth import AuthContext, verify_api_key
 from hsync_server.config import get_buckets_path
-from hsync_server.constants import BACKUP_SUFFIX, ActionLabel
 from hsync_server.exceptions import (
     DeleteError,
     InvalidPathError,
 )
 from hsync_server.exceptions import FileNotFoundError as HSyncFileNotFoundError
+from hsync_server.maintenance import cleanup_deleted_path, delete_path_state
 from hsync_server.routers import auth_router
-from hsync_server.tombstones import record_path_deletion
-from hsync_server.versions import clear_version
 
 
 @auth_router.delete(rest_bucket_template(REST_FILES_SUFFIX))
@@ -66,10 +61,10 @@ async def delete_file(
         DeleteError: If deletion fails.
     """
     check_bucket_access(bucket, ctx)
-    # Confine to *this* bucket: the filename is untrusted input and must
-    # never escape into a sibling bucket or outside the storage root. The
-    # final component is NOT dereferenced: deleting a symlink path removes
-    # the link itself, never the target file it points to.
+    # Confine to *this* bucket: the filename is untrusted input and must never
+    # escape into a sibling bucket or outside the storage root. The final
+    # component is NOT dereferenced: deleting a symlink path removes the link
+    # itself, never the target file it points to.
     file = resolve_within_bucket(bucket, filename, resolve_final=False)
     if file is None:
         raise InvalidPathError(details={"path": filename})
@@ -77,67 +72,26 @@ async def delete_file(
     if not Path(file).exists():
         raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": filename})
 
+    local_bucket = f"{get_buckets_path()}/{bucket}"
     try:
-        from os import remove
+        # The state-consistent core is shared with the maintenance sweep: write
+        # the causal tombstone, unlink, then drop the hash-cache and version
+        # entry. A crash between the two never resurrects the path because the
+        # marker is written first.
+        src = delete_path_state(bucket, file, bucket_dir=local_bucket, cid=cid)
 
-        # Collect file metadata before deletion (needed for the event and tombstone).
-        # Kept synchronous ON PURPOSE: moved to a worker thread it would
-        # re-enable event-loop interleaving between metadata capture, tombstone
-        # persistence and the unlink — the delete must stay one atomic step
-        # w.r.t. other coroutines.
-        src = LocalFile.get(file)
-        local_bucket = f"{get_buckets_path()}/{bucket}"
-
-        # Record a causal tombstone BEFORE removing the file so peers offline
-        # at deletion time do not resurrect the file on their next full sync.
-        # The marker inherits the stored version clock for the path and is
-        # ticked by the requesting peer (validated), so delete-vs-recreate and
-        # delete-vs-delete resolve causally (ADR-0003). Writing the marker
-        # first guarantees that a server crash between deletion and tombstone
-        # persistence never causes a resurrection. Sentinel files are per-peer
-        # and never exchanged — the helper drops any stale marker instead.
-        record_path_deletion(
-            bucket,
-            local_bucket,
-            file,
-            sha256sum=src.sha256sum if src else None,
-            cid=cid,
-        )
-
-        # Remove the file after the tombstone is persisted. If the remove
-        # fails, the tombstone is harmless (the file path still exists,
-        # and a subsequent re-upload clears the marker via clear_deletion).
-        remove(file)
-        invalidate_sha256_cache(file)
-        # Drop the causal version entry so a re-created file starts fresh.
-        clear_version(bucket, local_bucket, file)
-        log.info(f'{ActionLabel.DELETE} File: "{file}" deleted successfully (CID: {cid})')
-
-        # Broadcast "deleted" event to other clients after successful removal.
-        # This is best-effort: a crash here won't resurrect the file because
-        # the tombstone is already on disk (written above).
+        # Broadcast "deleted" after the file is gone. Best-effort: the tombstone
+        # already guarantees no resurrection if this fails.
         if src:
             manager = bucket_manager.get_manager(bucket)
             await manager.send_message(Event(cid, local_bucket, bucket, EventName.deleted, src))
 
-        # Also remove any backup file associated with this file
-        backup_file = f"{file}{BACKUP_SUFFIX}"
-        if Path(backup_file).exists():
-            remove(backup_file)
-            log.info(f'{ActionLabel.DELETE} Backup file: "{backup_file}" deleted successfully')
+        # Drop any ``.backup`` snapshot and the emptied directory shell, so the
+        # peer that deleted the path does not see the folder advertised back.
+        cleanup_deleted_path(file, bucket_dir=local_bucket)
 
-        # The directory the delete vacated is not an *intentional* empty folder:
-        # ``GET …/dirs`` lists every directory on disk, so keeping it (with a
-        # ``.hsynckeep``) advertises the folder back to the peer that deleted it,
-        # whose reconcile then re-creates it — the folder came back while its
-        # files stayed deleted. Remove the emptied shell (and every ancestor the
-        # removal emptied) instead. An intentional empty folder carries a
-        # ``.hsynckeep``, so it is never empty and survives this; the bucket root
-        # is never removed.
-        prune_empty_dirs(str(Path(file).parent), bucket_root=local_bucket)
-
-        # Return only the relative path to avoid leaking server-side
-        # filesystem layout to the caller.
+        # Return only the relative path to avoid leaking server-side filesystem
+        # layout to the caller.
         return JSONResponse(
             status_code=200,
             content={

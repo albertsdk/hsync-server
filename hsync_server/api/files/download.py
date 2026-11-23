@@ -162,6 +162,10 @@ async def download_file(
             headers={
                 "Content-Encoding": CONTENT_ENCODING_ZSTD,
                 "Content-Disposition": build_content_disposition(filename.split("/")[-1]),
+                # The compressed body is chunked (no Content-Length); this lets a
+                # client that does not read the listing still know the final size
+                # for progress/pre-allocation. A resumed transfer uses identity.
+                "X-Uncompressed-Size": str(file_size),
                 **checksum_header,
             },
         )

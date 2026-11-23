@@ -124,7 +124,10 @@ lifecycle.
 > A download is always served with the file's exact bytes: either as-is, or
 > zstd-compressed (`Content-Encoding: zstd`) when the file is eligible. The body
 > is never gzip-compressed, so a client that advertises gzip still receives the
-> original bytes and length, and byte-range resume stays exact.
+> original bytes and length. A compressed body is streamed without a
+> `Content-Length` and carries `X-Uncompressed-Size` for progress/pre-allocation;
+> a `Range` request is always answered with raw bytes and `Accept-Ranges: bytes`,
+> so a byte-range resume is exact.
 
 #### Moving a file (`PATCH …/files`)
 
@@ -281,16 +284,16 @@ corrected_mtime=1737072000
 
 > `resolution` is `"accepted"` (causally ahead) or `"accepted_conflict_won"`
 > (true concurrent divergence won by the incoming content: the most recent
-> offset-corrected `corrected_mtime` wins the chronological tie-break
-> (ADR-0023), with a deterministic SHA-256 fallback when a side lacks the
-> field; the previous bytes are preserved as a
-> `_conflicted_copy_<timestamp>_<cid>` sibling). The `version` object echoes
-> the recorded causal version (merged vclock + corrected mtime) so the
-> uploader can mirror the agreed base. `vclock`, `version_id` and
-> `corrected_mtime` are optional: older peers that omit them are treated as
-> an empty clock / unknown mtime and never cause an error. Malformed `vclock`
-> payloads are also treated as absent, and a peer-supplied `corrected_mtime`
-> farther than 300 s in the future is clamped (conflict engineering).
+> offset-corrected `corrected_mtime` wins the chronological tie-break when the
+> two differ by more than one second (ADR-0023), with a deterministic SHA-256
+> fallback on a missing field or a difference within one second; the previous
+> bytes are preserved as a `_conflicted_copy_<timestamp>_<cid>` sibling). The
+> `version` object echoes the recorded causal version (merged vclock +
+> corrected mtime) so the uploader can mirror the agreed base. `vclock`,
+> `version_id` and `corrected_mtime` are optional on the wire; an absent clock
+> or mtime is treated as unknown. Malformed `vclock` payloads are treated as
+> absent, and a peer-supplied `corrected_mtime` farther than 300 s in the
+> future is clamped (conflict engineering).
 
 ### List Files
 
@@ -333,9 +336,10 @@ Authorization: Bearer hs_<account_id>_<secret>
 >   no conflict copy created (nothing is lost).
 > - `409` `{"error": "HSYNC-4006", "resolution": "conflict_lost", ...}` — true
 >   concurrent divergence won by the stored version on the chronological
->   tie-break (most recent offset-corrected `corrected_mtime`, SHA-256
->   fallback when a side lacks the field): the incoming bytes are preserved
->   as a `_conflicted_copy_` sibling and the client should download the winner.
+>   tie-break (most recent offset-corrected `corrected_mtime` when the two
+>   differ by more than one second; SHA-256 fallback on a missing field or a
+>   difference within one second): the incoming bytes are preserved as a
+>   `_conflicted_copy_` sibling and the client should download the winner.
 
 ### Upload Status (resumable uploads)
 
