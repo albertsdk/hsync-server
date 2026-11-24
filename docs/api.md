@@ -107,6 +107,36 @@ lifecycle.
 | `DELETE` | `/api/v1/admin/clients/{client_id}` | Delete an account (`?cascade=true`) | 20/min |
 | `GET` | `/api/v1/admin/buckets` | List all buckets (FS ∪ membership) | 20/min |
 | `POST` | `/api/v1/admin/buckets` | Create a bucket on behalf of an owner | 20/min |
+| `GET` | `/api/v1/admin/buckets/{bucket}/history` | List the versions preserved for a bucket | 20/min |
+| `POST` | `/api/v1/admin/buckets/{bucket}/history/{entry_id}/restore` | Restore one preserved version | 20/min |
+
+The history endpoints are the remote form of `hsync-server admin history
+list|restore`, for a deployment run as a container or appliance with no shell
+(see [Operations → Preserved versions](operations.md#preserved-versions-history)):
+
+```http
+GET /api/v1/admin/buckets/BUCKET_NAME/history
+Authorization: Bearer ADMIN_TOKEN
+
+{"bucket": "photos",
+ "entries": [{"entry_id": "1700000000-1a2b3c4d5e6f",
+              "path": "docs/report.txt",
+              "size": 11,
+              "recorded_at": 1700000000,
+              "reason": "overwrite",
+              "cid": null}],
+ "storage_bytes": 11}
+```
+
+Entries are listed newest first; no absolute server path is ever returned. The
+listing reads the store, not the bucket directory, so a bucket that was deleted
+still reports what it preserved (possibly nothing).
+`POST .../{entry_id}/restore` publishes the preserved bytes at the path the entry
+records and answers `200` with `status`, `path` and `size`, where `status` is
+`restored` or `unchanged`. An occupied path answers `409`: retry with the body
+`{"overwrite": true}`, which preserves the content being replaced first. A copy
+that no longer matches its recorded checksum also answers `409` and is never
+published. An unknown entry or bucket answers `404`, and a failed write `500`.
 
 ### Files
 
