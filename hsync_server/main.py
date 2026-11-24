@@ -48,6 +48,7 @@ from .constants import (
 )
 from .error_handlers import register_exception_handlers
 from .hashes import register_sha256_cache_provider, set_sha256_hashes
+from .history_maintenance import run_periodic_prune
 from .middleware import (
     MaxRequestSizeMiddleware,
     RequestIdMiddleware,
@@ -103,10 +104,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # serving, so the synchronous VACUUM cannot race a request).
     vacuum_on_startup()
 
-    # Start the periodic in-place compaction of the state DB; it is cancelled
-    # during shutdown below.
+    # Start the periodic in-place compaction of the state DB and the retention
+    # sweep of the history store; both are cancelled during shutdown below.
     maintenance_stop = asyncio.Event()
     maintenance_task = asyncio.create_task(run_periodic_incremental_vacuum(maintenance_stop))
+    history_stop = asyncio.Event()
+    history_task = asyncio.create_task(run_periodic_prune(history_stop))
 
     tot_time = round(time.time() - start, 3)
     log.info(f"HSYNC Server started in: {tot_time} sec.")
@@ -115,7 +118,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         maintenance_stop.set()
+        history_stop.set()
         await maintenance_task
+        await history_task
         try:
             vacuum_on_shutdown()
         finally:

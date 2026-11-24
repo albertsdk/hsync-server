@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now use.
 - `HSYNC_EXPOSE_VERSION_HEADERS` (default `false`) opts in to the
   `X-Server-Version`/`X-Protocol-Version` response headers.
+- `GET /api/v1/admin/buckets/{bucket}/history` and
+  `POST /api/v1/admin/buckets/{bucket}/history/{entry_id}/restore` expose a
+  bucket's preserved versions over the admin API, delegating the causal part to
+  the same restore the CLI uses, for a deployment without a shell.
+- The history store prunes itself: a daily sweep (with an immediate first pass)
+  applies the retention window and the volume share, and a failed sweep is logged
+  and retried instead of stopping the server.
 
 ### Changed
 

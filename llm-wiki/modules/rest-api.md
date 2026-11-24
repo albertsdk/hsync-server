@@ -50,6 +50,8 @@ client mirrors cannot drift.
 | `DELETE /api/v1/admin/clients/{client_id}` | `admin.delete_client` (`hsync_server/api/admin.py::delete_client`) | admin | admin |
 | `GET /api/v1/admin/buckets` | `admin.list_all_buckets` (`hsync_server/api/admin.py::list_all_buckets`) | admin | admin |
 | `POST /api/v1/admin/buckets` | `admin.create_bucket_on_behalf` (`hsync_server/api/admin.py::create_bucket_on_behalf`) | admin | admin |
+| `GET /api/v1/admin/buckets/{bucket}/history` | `admin.list_bucket_history` (`hsync_server/api/admin.py::list_bucket_history`) | admin | admin |
+| `POST /api/v1/admin/buckets/{bucket}/history/{entry_id}/restore` | `admin.restore_bucket_history_entry` (`hsync_server/api/admin.py::restore_bucket_history_entry`) | admin | admin |
 | `GET /health` | `health.root` (`hsync_server/api/health.py::root`) | none | — |
 | `GET /api/v1/time` | `health.get_time` (`hsync_server/api/health.py::get_time`) | none | — |
 | `GET /metrics` | `metrics.metrics_endpoint` (`hsync_server/metrics.py::metrics_endpoint`) | key | — |

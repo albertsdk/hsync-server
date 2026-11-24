@@ -400,6 +400,32 @@ The admin surface is `hsync-server admin history list|prune|restore`
 the default size budget comes from `hsync_common/disk.py::share_of_volume_bytes`
 over the state dir, and `--max-size 0` leaves the age bound alone. `restore --json`
 exits 0 for every status so the caller reads the report, not the exit code.
+A deployment without a shell reaches the same store over the admin API
+(`hsync_common/protocol/rest.py::REST_ADMIN_BUCKET_HISTORY_PATH` /
+`::REST_ADMIN_BUCKET_HISTORY_RESTORE_PATH` →
+`hsync_server/api/admin.py::list_bucket_history` /
+`::restore_bucket_history_entry`), which delegates the causal part to the same
+`restore_entry` instead of reimplementing it.
+
+## History retention (`history_maintenance.py`, ADR-0057)
+
+The store is bounded by policy, not by the operator remembering a command, so the
+rules live in one module and every front-end applies the same ones:
+
+- `default_bounds()` (`hsync_server/history_maintenance.py::default_bounds`)
+  returns `PruneBounds` from `HISTORY_RETENTION_DAYS_DEFAULT` and
+  `hsync_common/disk.py::share_of_volume_bytes` over the state dir
+  (`HISTORY_QUOTA_PERCENT_DEFAULT` / `HISTORY_QUOTA_FLOOR_MB_DEFAULT`).
+- `prune_now()` (`hsync_server/history_maintenance.py::prune_now`) applies bounds
+  (default or explicit) through `hsync_server/history.py::prune` and logs what it
+  reclaimed; the admin CLI passes its `--older-than-days` / `--max-size`
+  overrides through it.
+- `run_periodic_prune(stop)` (`hsync_server/history_maintenance.py::run_periodic_prune`)
+  sweeps immediately and then every `SWEEP_INTERVAL_S`
+  (`hsync_server/history_maintenance.py::SWEEP_INTERVAL_S`, one day), running the
+  prune in a worker thread and logging a failure instead of ending the loop. It is
+  started and cancelled by the `lifespan` (`hsync_server/main.py::lifespan`), next
+  to the incremental vacuum task.
 
 ## State-DB maintenance (`state_maintenance.py`)
 

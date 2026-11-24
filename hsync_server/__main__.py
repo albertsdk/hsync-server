@@ -1190,28 +1190,21 @@ def history_prune(
     Age is the primary bound; the budget only reacts to a burst (a file rewritten
     repeatedly fits the window but not the disk).
     """
-    from hsync_common.defaults import (
-        HISTORY_QUOTA_FLOOR_MB_DEFAULT,
-        HISTORY_QUOTA_PERCENT_DEFAULT,
-        HISTORY_RETENTION_DAYS_DEFAULT,
-    )
-    from hsync_common.disk import BYTES_PER_MB, share_of_volume_bytes
+    from hsync_common.disk import BYTES_PER_MB
 
     from hsync_server import history
-    from hsync_server.config import get_state_dir
+    from hsync_server.history_maintenance import PruneBounds, default_bounds, prune_now
 
     if bucket is not None:
         _require_valid_bucket(bucket)
-    days = HISTORY_RETENTION_DAYS_DEFAULT if older_than_days is None else older_than_days
-    if max_size_mb is None:
-        max_bytes: int | None = share_of_volume_bytes(
-            Path(get_state_dir()),
-            percent=HISTORY_QUOTA_PERCENT_DEFAULT,
-            floor_mb=HISTORY_QUOTA_FLOOR_MB_DEFAULT,
-        )
-    else:
-        max_bytes = max_size_mb * BYTES_PER_MB or None
-    report = history.prune(bucket=bucket, retention_days=days, max_bytes=max_bytes, dry_run=dry_run)
+    defaults = default_bounds()
+    bounds = PruneBounds(
+        retention_days=defaults.retention_days if older_than_days is None else older_than_days,
+        max_bytes=(
+            defaults.max_bytes if max_size_mb is None else max_size_mb * BYTES_PER_MB or None
+        ),
+    )
+    report = prune_now(bounds, bucket=bucket, dry_run=dry_run)
     if as_json:
         typer.echo(
             json.dumps(

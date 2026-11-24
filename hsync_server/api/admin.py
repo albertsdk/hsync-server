@@ -13,11 +13,15 @@ Consumers: ``hsync_server.main`` (router inclusion).
 
 from __future__ import annotations
 
+from asyncio import to_thread
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from hsync_common.protocol.rest import (
+    REST_ADMIN_BUCKET_HISTORY_PATH,
+    REST_ADMIN_BUCKET_HISTORY_RESTORE_PATH,
     REST_ADMIN_BUCKETS_PATH,
     REST_ADMIN_CLIENT_DISABLE_PATH,
     REST_ADMIN_CLIENT_ENABLE_PATH,
@@ -29,6 +33,7 @@ from hsync_common.protocol.rest import (
 from loguru import logger as log
 from pydantic import BaseModel, Field
 
+from hsync_server import history
 from hsync_server.api.responses import (
     account_not_found_response,
     conflict_response,
@@ -45,7 +50,9 @@ from hsync_server.auth_store import (
     validate_name,
 )
 from hsync_server.bucket_provisioning import create_bucket
-from hsync_server.exceptions import InvalidBucketNameError, ValidationError
+from hsync_server.config import get_buckets_path
+from hsync_server.exceptions import FileOperationError, InvalidBucketNameError, ValidationError
+from hsync_server.maintenance import RestoreStatus, restore_entry
 from hsync_server.rate_limiter import RATE_LIMIT_ADMIN, limiter
 
 # Admin sub-router — all endpoints inherit auth_router's verify_api_key
@@ -89,6 +96,13 @@ class SetExpiryRequest(BaseModel):
 class CreateBucketRequest(BaseModel):
     bucket: str = Field(..., description="Bucket name")
     owner: str = Field(..., description="Owner account id or name")
+
+
+class RestoreHistoryRequest(BaseModel):
+    overwrite: bool = Field(
+        default=False,
+        description="Replace a file already at that path (its bytes are preserved first)",
+    )
 
 
 # =============================================================================
@@ -326,6 +340,102 @@ async def create_bucket_on_behalf(
             "owner": target.id,
             "info": "Bucket created successfully.",
         },
+    )
+
+
+# =============================================================================
+# Bucket history (ADR-0057)
+# =============================================================================
+
+
+def _bucket_dir(bucket: str) -> Path:
+    """Return one bucket's storage directory; the name is validated first.
+
+    Raises:
+        InvalidBucketNameError: The name is one the bucket layer would refuse.
+    """
+    if not is_valid_bucket(bucket):
+        raise InvalidBucketNameError(details={"bucket": bucket})
+    return Path(get_buckets_path()) / bucket
+
+
+@admin_router.get(REST_ADMIN_BUCKET_HISTORY_PATH)
+@limiter.limit(RATE_LIMIT_ADMIN)
+async def list_bucket_history(request: Request, bucket: str) -> JSONResponse:
+    """List the versions the server preserved for one bucket, newest first.
+
+    The store, not the bucket directory, is the source of truth: a bucket that no
+    longer exists still answers with whatever it preserved (possibly nothing), as
+    ``admin history list`` does. No absolute server path is ever exposed.
+    """
+    _bucket_dir(bucket)
+    items = await to_thread(history.entries, bucket)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "bucket": bucket,
+            "entries": [
+                {
+                    "entry_id": item.entry_id,
+                    "path": item.entry["relpath"],
+                    "size": item.entry["size"],
+                    "recorded_at": item.entry["recorded_at"],
+                    "reason": item.entry["reason"],
+                    "cid": item.entry["cid"],
+                }
+                for item in items
+            ],
+            "storage_bytes": await to_thread(history.storage_bytes, bucket),
+        },
+    )
+
+
+@admin_router.post(REST_ADMIN_BUCKET_HISTORY_RESTORE_PATH)
+@limiter.limit(RATE_LIMIT_ADMIN)
+async def restore_bucket_history_entry(
+    request: Request,
+    bucket: str,
+    entry_id: str,
+    req: RestoreHistoryRequest | None = None,
+) -> JSONResponse:
+    """Put a preserved version back at its path, as ``admin history restore`` does.
+
+    The causal part is delegated to ``maintenance.restore_entry``: publishing the
+    bytes, clearing the deletion marker and recording a new version must stay that
+    single implementation, whatever the front-end.
+    """
+    directory = _bucket_dir(bucket)
+    if not directory.is_dir():
+        return not_found_response("Bucket not found.")
+    overwrite = req.overwrite if req is not None else False
+    outcome = await to_thread(
+        restore_entry,
+        bucket,
+        entry_id,
+        bucket_dir=str(directory),
+        overwrite=overwrite,
+    )
+    if outcome.status in (RestoreStatus.RESTORED, RestoreStatus.UNCHANGED):
+        log.info(
+            f"Admin restored history entry {entry_id} of bucket '{bucket}' ({outcome.status.value})"
+        )
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"status": outcome.status.value, "path": outcome.relpath, "size": outcome.size},
+        )
+    if outcome.status is RestoreStatus.CONFLICT:
+        return conflict_response(
+            f"{outcome.relpath} is occupied; retry with overwrite=true to replace it."
+        )
+    if outcome.status is RestoreStatus.DAMAGED:
+        return conflict_response(
+            f"The preserved copy of {outcome.relpath} no longer matches its record."
+        )
+    if outcome.status is RestoreStatus.MISSING:
+        return not_found_response(f"No usable history entry '{entry_id}'.")
+    raise FileOperationError(
+        message=f"Could not restore {outcome.relpath}",
+        details={"bucket": bucket, "entry_id": entry_id},
     )
 
 

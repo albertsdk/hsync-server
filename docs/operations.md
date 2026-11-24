@@ -549,9 +549,19 @@ sudo hsync-server admin history prune --bucket photos --max-size 2048
 ```
 
 `--max-size` is the byte budget in MB and `0` leaves the age bound alone; the
-default is the size share above. The sweep runs by hand — schedule it (for
-example daily from cron) if the deployment writes a lot, and add
+default is the size share above.
+
+The server applies those bounds itself: the retention sweep runs once at startup
+and then once a day, so a deployment that never runs a command still stays within
+the window and the share. A failed sweep is logged and retried on the next pass
+instead of stopping the server. The commands above are for an on-demand sweep,
+`--dry-run` to see the targets first, or a bucket-specific cleanup. Add
 `<data>/state/history` to the backup set when the preserved versions matter.
+
+A deployment with no shell (a container or an appliance) reaches the same store
+over the admin API: `GET /api/v1/admin/buckets/{bucket}/history` and
+`POST /api/v1/admin/buckets/{bucket}/history/{entry_id}/restore` — see
+[API → Admin](api.md#admin).
 
 ### Restore a preserved version
 
