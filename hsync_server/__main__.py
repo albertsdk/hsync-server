@@ -1149,7 +1149,7 @@ def history_list(
     for item in items:
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(item.entry["recorded_at"]))
         typer.echo(
-            f"{when}  {item.entry['bucket']}  {item.entry['reason']:<9}  "
+            f"{item.entry_id}  {when}  {item.entry['bucket']}  {item.entry['reason']:<9}  "
             f"{item.entry['size']:>10} B  {item.entry['relpath']}"
         )
     total = sum(item.entry["size"] for item in items)
@@ -1222,7 +1222,70 @@ def history_prune(
         )
         return
     verb = "Would remove" if dry_run else "Removed"
-    typer.echo(f"{verb} {report.removed} preserved version(s), {report.freed} B.")
+    typer.echo(
+        f"{verb} {report.removed} preserved version(s), {report.freed} B "
+        f"(store now {history.storage_bytes(bucket)} B)."
+    )
+
+
+@history_app.command("restore")
+def history_restore(
+    entry_id: Annotated[str, typer.Argument(help="Entry id, as printed by ``history list``.")],
+    bucket: Annotated[
+        str,
+        typer.Option("--bucket", help="Bucket the entry belongs to."),
+    ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Replace a file that is already at that path (it is preserved first).",
+        ),
+    ] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
+) -> None:
+    """Put a preserved version back at its path.
+
+    The restored file becomes the server's current version: the deletion marker is
+    cleared and a new version is recorded, so peers pick it up on their next cycle
+    (a local command broadcasts no live event). The entry itself is kept.
+    """
+    from hsync_server.config import get_buckets_path
+    from hsync_server.maintenance import RestoreStatus, restore_entry
+
+    _require_valid_bucket(bucket)
+    bucket_dir = Path(get_buckets_path()) / bucket
+    if not bucket_dir.is_dir():
+        _fail(f"bucket does not exist: {bucket}")
+
+    outcome = restore_entry(bucket, entry_id, bucket_dir=str(bucket_dir), overwrite=overwrite)
+    if as_json:
+        typer.echo(
+            json.dumps(
+                {
+                    "status": outcome.status.value,
+                    "path": outcome.relpath,
+                    "file": outcome.abs_path,
+                    "size": outcome.size,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+    if outcome.status is RestoreStatus.RESTORED:
+        typer.echo(f"Restored {outcome.relpath} ({outcome.size} B).")
+        return
+    if outcome.status is RestoreStatus.UNCHANGED:
+        typer.echo(f"{outcome.relpath} already holds these bytes.")
+        return
+    if outcome.status is RestoreStatus.CONFLICT:
+        _fail(f"{outcome.relpath} exists; pass --overwrite to replace it.")
+    if outcome.status is RestoreStatus.DAMAGED:
+        _fail(f"the preserved copy of {outcome.relpath} does not match its record.")
+    if outcome.status is RestoreStatus.MISSING:
+        _fail(f"no usable history entry {entry_id} in bucket {bucket}.")
+    _fail(f"could not write {outcome.relpath}")
 
 
 def _history_scope(bucket: str | None) -> list[str]:

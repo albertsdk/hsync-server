@@ -553,9 +553,39 @@ default is the size share above. The sweep runs by hand — schedule it (for
 example daily from cron) if the deployment writes a lot, and add
 `<data>/state/history` to the backup set when the preserved versions matter.
 
-The store is a safety copy, not a restore command yet: an entry under
-`<data>/state/history/<bucket>/<id>/payload/` holds the exact bytes at the path
-recorded in its `entry.json`, so you can copy one back by hand.
+### Restore a preserved version
+
+Put an entry back at the path its record names:
+
+```bash
+sudo hsync-server admin history restore ENTRY_ID --bucket photos
+```
+
+The id comes from the first column of `history list` (the `entry_id` field with
+`--json`). The file reappears with its recorded bytes, mtime and permissions, and
+the restore counts as a normal server write: the path stops being reported as
+deleted and connected clients download it on their next cycle. No live event is
+broadcast, so a client that is already idle notices on its next sync.
+
+```bash
+sudo hsync-server admin history restore ENTRY_ID --bucket photos --json
+```
+
+The command writes JSON (`status`, `path`, `file`, `size`) and exits `0` even
+when `status` is not `restored`, so a script can react to `conflict`, `missing`
+or `damaged` instead of parsing an error.
+
+A path that is already occupied is left untouched unless you ask otherwise;
+`--overwrite` replaces it and preserves the content it replaces, so the
+replacement is recoverable too:
+
+```bash
+sudo hsync-server admin history restore ENTRY_ID --bucket photos --overwrite
+```
+
+Restoring the same bytes twice reports `unchanged` and writes nothing. A
+preserved copy whose content no longer matches its recorded SHA-256 is never
+published: the command reports `damaged` and leaves the path as it is.
 
 ### Network bandwidth
 
