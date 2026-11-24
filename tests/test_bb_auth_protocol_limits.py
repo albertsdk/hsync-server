@@ -42,9 +42,22 @@ class TestAuthAndProtocol:
             headers={"X-Protocol-Version": "api/999"},
         )
 
-        # Then the server refuses with 426 and advertises its own version
+        # Then the server refuses with 426 and echoes the caller's own value, while
+        # the server's version headers stay off by default (opt-in via
+        # HSYNC_EXPOSE_VERSION_HEADERS): even a rejection must not advertise the
+        # build (VersionMiddleware; pinned by tests/test_middleware.py).
         assert r.status_code == 426
-        assert r.headers.get("X-Protocol-Version") == PROTOCOL_VERSION_REST
+        assert r.json()["client_protocol_version"] == "api/999"
+        assert "X-Protocol-Version" not in r.headers
+        assert "X-Server-Version" not in r.headers
+
+    def test_matching_protocol_version_accepted(self, bb_http: httpx.Client, bb_bucket: str):
+        """A request carrying the server's exact protocol version is accepted."""
+        r = bb_http.get(
+            f"/api/v1/buckets/{bb_bucket}/files",
+            headers={"X-Protocol-Version": PROTOCOL_VERSION_REST},
+        )
+        assert r.status_code == 200
 
     @pytest.mark.parametrize(
         "version",
