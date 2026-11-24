@@ -19,6 +19,7 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 
+from hsync_common.constants import HISTORY_REASON_DELETE
 from hsync_common.models.arbitration import is_conflicted_copy
 from hsync_common.models.file import File as LocalFile
 from hsync_common.models.file import invalidate_sha256_cache
@@ -26,6 +27,7 @@ from loguru import logger as log
 
 from hsync_server.api.file_utils import prune_empty_dirs
 from hsync_server.constants import BACKUP_SUFFIX, ActionLabel
+from hsync_server.history import capture_file
 from hsync_server.tombstones import record_path_deletion
 from hsync_server.versions import clear_version
 
@@ -44,6 +46,10 @@ def delete_path_state(
     if not Path(abs_path).exists():
         return None
     src = LocalFile.get(abs_path)
+    # Preserve the bytes before the tombstone makes them unreachable (ADR-0057).
+    # A failed capture leaves the deletion intact: the tombstone is what keeps the
+    # cluster correct, the copy is only what makes the loss undoable.
+    capture_file(bucket, abs_path, bucket_dir=bucket_dir, reason=HISTORY_REASON_DELETE, cid=cid)
     record_path_deletion(
         bucket,
         bucket_dir,

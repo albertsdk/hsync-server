@@ -505,6 +505,12 @@ admin_app.add_typer(tls_app, name="tls")
 maintenance_app = typer.Typer(name="maintenance", help="Opt-in storage maintenance.")
 admin_app.add_typer(maintenance_app, name="maintenance")
 
+history_app = typer.Typer(
+    name="history",
+    help="Inspect or prune the bytes kept for overwritten and deleted paths (ADR-0057).",
+)
+admin_app.add_typer(history_app, name="history")
+
 
 def _warn_if_certificate_expiring(cert_path: str | None, log) -> None:
     """Log a warning when the served TLS certificate is near or past expiry.
@@ -1098,6 +1104,132 @@ def maintenance_prune_backups(
         typer.echo(str(path))
     verb = "Would delete" if dry_run else "Deleted"
     typer.echo(f"{verb} {len(removed)} overwrite snapshot(s)")
+
+
+@history_app.command("list")
+def history_list(
+    bucket: Annotated[
+        str | None,
+        typer.Option("--bucket", help="Restrict to one bucket (default: every bucket)."),
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
+) -> None:
+    """List the versions the server preserved, newest first."""
+    import time
+
+    from hsync_server import history
+
+    if bucket is not None:
+        _require_valid_bucket(bucket)
+    items = [item for name in _history_scope(bucket) for item in history.entries(name)]
+    items.sort(key=lambda item: (item.entry["recorded_at"], item.entry_id), reverse=True)
+    if as_json:
+        typer.echo(
+            json.dumps(
+                [
+                    {
+                        "entry_id": item.entry_id,
+                        "bucket": item.entry["bucket"],
+                        "path": item.entry["relpath"],
+                        "size": item.entry["size"],
+                        "recorded_at": item.entry["recorded_at"],
+                        "reason": item.entry["reason"],
+                        "cid": item.entry["cid"],
+                    }
+                    for item in items
+                ],
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+    if not items:
+        typer.echo("No preserved versions.")
+        return
+    for item in items:
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(item.entry["recorded_at"]))
+        typer.echo(
+            f"{when}  {item.entry['bucket']}  {item.entry['reason']:<9}  "
+            f"{item.entry['size']:>10} B  {item.entry['relpath']}"
+        )
+    total = sum(item.entry["size"] for item in items)
+    typer.echo(f"\n{len(items)} entr{'y' if len(items) == 1 else 'ies'}, {total} B.")
+
+
+@history_app.command("prune")
+def history_prune(
+    bucket: Annotated[
+        str | None,
+        typer.Option("--bucket", help="Restrict to one bucket (default: every bucket)."),
+    ] = None,
+    older_than_days: Annotated[
+        int | None,
+        typer.Option(
+            "--older-than-days",
+            help="Delete entries older than this (default: the shared retention default).",
+            min=0,
+        ),
+    ] = None,
+    max_size_mb: Annotated[
+        int | None,
+        typer.Option(
+            "--max-size",
+            help="Byte budget in MB (0 = age bound only; default: the shared quota).",
+            min=0,
+            metavar="MB",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Report the targets without deleting anything."),
+    ] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
+) -> None:
+    """Delete preserved versions past the retention window or the size budget.
+
+    Age is the primary bound; the budget only reacts to a burst (a file rewritten
+    repeatedly fits the window but not the disk).
+    """
+    from hsync_common.defaults import (
+        HISTORY_QUOTA_FLOOR_MB_DEFAULT,
+        HISTORY_QUOTA_PERCENT_DEFAULT,
+        HISTORY_RETENTION_DAYS_DEFAULT,
+    )
+    from hsync_common.disk import BYTES_PER_MB, share_of_volume_bytes
+
+    from hsync_server import history
+    from hsync_server.config import get_state_dir
+
+    if bucket is not None:
+        _require_valid_bucket(bucket)
+    days = HISTORY_RETENTION_DAYS_DEFAULT if older_than_days is None else older_than_days
+    if max_size_mb is None:
+        max_bytes: int | None = share_of_volume_bytes(
+            Path(get_state_dir()),
+            percent=HISTORY_QUOTA_PERCENT_DEFAULT,
+            floor_mb=HISTORY_QUOTA_FLOOR_MB_DEFAULT,
+        )
+    else:
+        max_bytes = max_size_mb * BYTES_PER_MB or None
+    report = history.prune(bucket=bucket, retention_days=days, max_bytes=max_bytes, dry_run=dry_run)
+    if as_json:
+        typer.echo(
+            json.dumps(
+                {"removed": report.removed, "freed": report.freed, "dry_run": dry_run},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+    verb = "Would remove" if dry_run else "Removed"
+    typer.echo(f"{verb} {report.removed} preserved version(s), {report.freed} B.")
+
+
+def _history_scope(bucket: str | None) -> list[str]:
+    """Buckets the history commands operate on: the requested one, or all."""
+    from hsync_server import history
+
+    return [bucket] if bucket is not None else history.buckets()
 
 
 if __name__ == "__main__":

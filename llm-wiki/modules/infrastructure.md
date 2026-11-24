@@ -359,6 +359,34 @@ Opt-in sweeps shared by the REST delete path and `hsync-server admin maintenance
   that file as the last complete copy. The suffix is hidden from listings and is
   not a synced path, so the removal takes no tombstone.
 
+## History store (`history.py`, ADR-0057)
+
+`hsync_server/history.py` preserves the bytes a write replaces or a delete
+removes, per bucket, under `<state dir>/history` (contract:
+`hsync-common/hsync_common/models/history.py::HistoryEntry`). Two hooks feed it:
+`hsync_server/maintenance.py::delete_path_state` (`reason=delete`, before the
+tombstone) and the upload publish path
+(`hsync_server/api/files/upload.py`, `hsync_server/api/files/delta/apply.py`;
+`reason=overwrite`, before the atomic `replace`).
+
+- `capture_file()` (`hsync_server/history.py::capture_file`) hardlinks the source
+  (copy fallback on another volume), writes `entry.json` atomically at 0640 and
+  returns the entry id. It skips a symlink, a non-regular file and a path outside
+  the bucket, and returns `None` instead of raising: a recovery copy must never
+  abort the operation it makes recoverable.
+- `entries()` / `buckets()` / `storage_bytes()` read the store; a damaged record
+  is skipped rather than listed.
+- `prune()` (`hsync_server/history.py::prune`) applies the age bound
+  (`HISTORY_RETENTION_DAYS_DEFAULT`) and then the size bound, evicting the oldest
+  entries first and counting the recorded payload size, not the record. An
+  unparsable entry cannot be restored, so it is charged its directory size and
+  reclaimed first. `dry_run` reports the same counts without deleting.
+
+The admin surface is `hsync-server admin history list|prune`
+(`hsync_server/__main__.py::history_list` / `::history_prune`); the default size
+budget comes from `hsync_common/disk.py::share_of_volume_bytes` over the state
+dir, and `--max-size 0` leaves the age bound alone.
+
 ## State-DB maintenance (`state_maintenance.py`)
 
 each state DB is compacted in place so pruned version/tombstone pages never
