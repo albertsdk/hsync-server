@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import stat as stat_module
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 from hsync_common.models.arbitration import is_conflicted_copy
@@ -66,6 +67,22 @@ def cleanup_deleted_path(abs_path: str, *, bucket_dir: str) -> None:
     prune_empty_dirs(str(Path(abs_path).parent), bucket_root=bucket_dir)
 
 
+def _iter_bucket_files(buckets_root: Path, bucket: str | None) -> Iterator[tuple[str, Path]]:
+    """Yield ``(bucket name, path)`` for every file of the selected buckets."""
+    names = (
+        [bucket]
+        if bucket is not None
+        else sorted(p.name for p in buckets_root.iterdir() if p.is_dir())
+    )
+    for name in names:
+        root = buckets_root / name
+        if not root.is_dir():
+            continue
+        for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
+            for filename in filenames:
+                yield name, Path(dirpath) / filename
+
+
 def prune_conflicted_copies(
     *,
     buckets_root: Path,
@@ -85,31 +102,67 @@ def prune_conflicted_copies(
     """
     moment = time.time() if now is None else now
     cutoff = moment - older_than_s
-    names = (
-        [bucket]
-        if bucket is not None
-        else sorted(p.name for p in buckets_root.iterdir() if p.is_dir())
-    )
     removed: list[Path] = []
-    for name in names:
-        root = buckets_root / name
-        if not root.is_dir():
+    for name, path in _iter_bucket_files(buckets_root, bucket):
+        if not is_conflicted_copy(path.name):
             continue
-        bucket_dir = str(root)
-        for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
-            for filename in filenames:
-                if not is_conflicted_copy(filename):
-                    continue
-                path = Path(dirpath) / filename
-                try:
-                    st = path.lstat()
-                except OSError:
-                    continue
-                if not stat_module.S_ISREG(st.st_mode) or st.st_mtime > cutoff:
-                    continue
-                removed.append(path)
-                if dry_run:
-                    continue
-                delete_path_state(name, str(path), bucket_dir=bucket_dir, cid=None)
-                cleanup_deleted_path(str(path), bucket_dir=bucket_dir)
+        try:
+            st = path.lstat()
+        except OSError:
+            continue
+        if not stat_module.S_ISREG(st.st_mode) or st.st_mtime > cutoff:
+            continue
+        removed.append(path)
+        if dry_run:
+            continue
+        bucket_dir = str(buckets_root / name)
+        delete_path_state(name, str(path), bucket_dir=bucket_dir, cid=None)
+        cleanup_deleted_path(str(path), bucket_dir=bucket_dir)
+    return removed
+
+
+def prune_orphaned_backups(
+    *,
+    buckets_root: Path,
+    bucket: str | None = None,
+    older_than_s: float,
+    dry_run: bool = False,
+    now: float | None = None,
+) -> list[Path]:
+    """Delete ``<path>.backup`` snapshots that outlived their publish.
+
+    An overwrite snapshots the previous bytes to ``<path>.backup`` and removes the
+    snapshot once the new content is published, so one still present after
+    *older_than_s* was left by a publish interrupted after that rename. Such a
+    snapshot is **kept while its primary is missing**: ``download.py`` serves it
+    as the last complete copy, so deleting it would destroy the only data the
+    crash left behind.
+
+    The suffix is hidden from listings and is not a synced path, so the removal
+    takes no tombstone — only the file. ``dry_run`` reports the targets without
+    touching them.
+    """
+    moment = time.time() if now is None else now
+    cutoff = moment - older_than_s
+    removed: list[Path] = []
+    for _bucket, path in _iter_bucket_files(buckets_root, bucket):
+        filename = path.name
+        if not filename.endswith(BACKUP_SUFFIX):
+            continue
+        if not path.with_name(filename[: -len(BACKUP_SUFFIX)]).exists():
+            continue
+        try:
+            st = path.lstat()
+        except OSError:
+            continue
+        if not stat_module.S_ISREG(st.st_mode) or st.st_mtime > cutoff:
+            continue
+        if not dry_run:
+            try:
+                path.unlink()
+            except OSError:
+                continue
+            # A snapshot is hashed when it is served as the fallback copy.
+            invalidate_sha256_cache(str(path))
+        removed.append(path)
     return removed

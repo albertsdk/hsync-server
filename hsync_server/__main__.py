@@ -1050,5 +1050,55 @@ def _cli_parse_expiry(expires_at: str | None, valid_days: int | None) -> int | N
         _fail(str(e))
 
 
+@maintenance_app.command("prune-backups")
+def maintenance_prune_backups(
+    older_than_days: Annotated[
+        float,
+        typer.Option(
+            "--older-than-days",
+            help="Delete overwrite snapshots whose mtime is at least this many days old.",
+            min=0.0,
+        ),
+    ],
+    bucket: Annotated[
+        str | None,
+        typer.Option("--bucket", help="Restrict to one bucket (default: every bucket)."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="List the targets without deleting anything."),
+    ] = False,
+) -> None:
+    """Delete leftover ``<path>.backup`` overwrite snapshots (opt-in).
+
+    A snapshot whose primary file is missing is the last complete copy left by an
+    interrupted publish, so it is kept; only the residue of a publish that did
+    finish is removed.
+    """
+    from pathlib import Path
+
+    from hsync_server.config import get_buckets_path
+    from hsync_server.maintenance import prune_orphaned_backups
+
+    if bucket is not None:
+        _require_valid_bucket(bucket)
+    root = Path(get_buckets_path())
+    if not root.is_dir():
+        _fail(f"buckets root does not exist: {root}")
+    if bucket is not None and not (root / bucket).is_dir():
+        _fail(f"bucket does not exist: {bucket}")
+
+    removed = prune_orphaned_backups(
+        buckets_root=root,
+        bucket=bucket,
+        older_than_s=older_than_days * 86400.0,
+        dry_run=dry_run,
+    )
+    for path in removed:
+        typer.echo(str(path))
+    verb = "Would delete" if dry_run else "Deleted"
+    typer.echo(f"{verb} {len(removed)} overwrite snapshot(s)")
+
+
 if __name__ == "__main__":
     run()

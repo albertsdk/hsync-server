@@ -503,6 +503,20 @@ sudo hsync-server admin maintenance prune-conflicts --older-than-days 30
 sudo hsync-server admin maintenance prune-conflicts --bucket photos --older-than-days 30 --dry-run
 ```
 
+### Interrupted overwrite snapshots
+
+An overwrite keeps the previous bytes in `<path>.backup` until the new content is
+published, then removes the snapshot. If the process dies in that window the
+snapshot stays behind: it is hidden from listings, so nothing else reclaims it.
+While the file itself is missing the snapshot is the **last complete copy** — the
+server serves it as a fallback — so the sweep below only removes snapshots whose
+file exists again:
+
+```bash
+sudo hsync-server admin maintenance prune-backups --older-than-days 7
+sudo hsync-server admin maintenance prune-backups --bucket photos --older-than-days 7 --dry-run
+```
+
 ### Network bandwidth
 
 - **Compression**: Zstandard (zstd) compression is enabled by default for

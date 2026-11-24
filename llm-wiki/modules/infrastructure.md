@@ -343,6 +343,22 @@ uploads for the same file are ordered (ADR-0022).
   artifact). The upload and delta-apply endpoints execute the returned
   move/removal with their own bookkeeping (backup copy vs `.delta.part`).
 
+## Storage maintenance (`maintenance.py`)
+
+Opt-in sweeps shared by the REST delete path and `hsync-server admin maintenance`
+(each takes `older_than_s`, an optional `bucket`, `dry_run` and an injectable
+`now`; both walk the buckets through `hsync_server/maintenance.py::_iter_bucket_files`):
+
+- `prune_conflicted_copies()` (`hsync_server/maintenance.py::prune_conflicted_copies`)
+  removes `_conflicted_copy_<ts>_` siblings through
+  `delete_path_state` + `cleanup_deleted_path`, so a sweep never desyncs the
+  tombstones or the version store.
+- `prune_orphaned_backups()` (`hsync_server/maintenance.py::prune_orphaned_backups`)
+  removes `<path>.backup` snapshots left by an interrupted overwrite. It **skips a
+  snapshot whose primary is missing**: `hsync_server/api/files/download.py` serves
+  that file as the last complete copy. The suffix is hidden from listings and is
+  not a synced path, so the removal takes no tombstone.
+
 ## State-DB maintenance (`state_maintenance.py`)
 
 each state DB is compacted in place so pruned version/tombstone pages never
