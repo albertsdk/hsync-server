@@ -40,7 +40,10 @@ by that user and never need `chown`.
 
 > **Note**: Causal versions, tombstones, accounts and membership live in
 > `HSYNC_STATE_DIR` (`/project/state/server/<bucket>.db` per bucket plus
-> `auth.db`), not inside the buckets directory. Back up the whole data directory.
+> `auth.db`), not inside the buckets directory. The bytes an overwrite replaces
+> or a delete removes are preserved under `HSYNC_STATE_DIR/history/<bucket>/`
+> (see [Preserved versions](#preserved-versions-history)). Back up the whole data
+> directory.
 
 ---
 
@@ -502,6 +505,57 @@ tombstone path, and is per-bucket and dry-runnable:
 sudo hsync-server admin maintenance prune-conflicts --older-than-days 30
 sudo hsync-server admin maintenance prune-conflicts --bucket photos --older-than-days 30 --dry-run
 ```
+
+### Interrupted overwrite snapshots
+
+An overwrite keeps the previous bytes in `<path>.backup` until the new content is
+published, then removes the snapshot. If the process dies in that window the
+snapshot stays behind: it is hidden from listings, so nothing else reclaims it.
+While the file itself is missing the snapshot is the **last complete copy** — the
+server serves it as a fallback — so the sweep below only removes snapshots whose
+file exists again:
+
+```bash
+sudo hsync-server admin maintenance prune-backups --older-than-days 7
+sudo hsync-server admin maintenance prune-backups --bucket photos --older-than-days 7 --dry-run
+```
+
+### Preserved versions (history)
+
+A bucket stores one current version per path, so a write that replaces a file or
+a delete destroys what was there. The server therefore keeps a copy of exactly
+those bytes, per bucket, in `<data>/state/history/<bucket>/` — outside the
+buckets, so no client ever sees them and the protocol is unchanged. Each entry
+records the path, size, mode, mtime, SHA-256 and why it was kept (`overwrite` or
+`delete`).
+
+Two bounds keep the store small. The **age** bound drops an entry after 7 days;
+the **size** bound allows the store 10 % of the filesystem that hosts it, never
+less than 512 MiB, and reclaims the oldest entries first. An overwrite that only
+replaces the same bytes is still copied once, so a hot path rewritten in a loop
+is bounded by the size share rather than by the number of writes.
+
+Inspect what is preserved, then reclaim it (age first, then the size share):
+
+```bash
+sudo hsync-server admin history list
+sudo hsync-server admin history list --bucket photos --json
+```
+
+```bash
+sudo hsync-server admin history prune --dry-run
+sudo hsync-server admin history prune --older-than-days 3
+sudo hsync-server admin history prune --bucket photos --max-size 2048
+```
+
+`--max-size` is the byte budget in MB and `0` leaves the age bound alone; the
+default is the size share above. The sweep runs by hand — schedule it (for
+example daily from cron) if the deployment writes a lot, and add
+`<data>/state/history` to the backup set when the preserved versions matter.
+
+The store is a safety copy, not a restore command yet: an entry under
+`<data>/state/history/<bucket>/<id>/payload/` holds the exact bytes at the path
+recorded in its `entry.json`, so you can copy one back by hand.
 
 ### Network bandwidth
 

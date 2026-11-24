@@ -89,3 +89,59 @@ def test_prune_can_be_restricted_to_one_bucket(tmp_path, monkeypatch):
     assert maintenance.prune_conflicted_copies(
         buckets_root=root, bucket="a", older_than_s=0, now=moment + 1
     ) == [a]
+
+
+# ── overwrite snapshots (`<path>.backup`) ───────────────────────────────
+def test_backup_sweep_keeps_the_only_copy_of_a_crashed_publish(tmp_path):
+    """A snapshot without its primary is the data the crash left: never removed."""
+    root = tmp_path / "buckets"
+    now = 10_000_000.0
+    stale = now - 30 * 86400
+
+    orphan = root / "photos" / "lost.txt.backup"
+    _touch(orphan, stale)
+
+    assert maintenance.prune_orphaned_backups(buckets_root=root, older_than_s=86400, now=now) == []
+    assert orphan.exists()
+
+
+def test_backup_sweep_removes_only_stale_snapshots_of_a_live_path(tmp_path):
+    root = tmp_path / "buckets"
+    now = 10_000_000.0
+    stale = now - 30 * 86400
+    recent = now - 60
+
+    primary = root / "photos" / "photo.jpg"
+    _touch(primary, stale)
+    old_snapshot = root / "photos" / "photo.jpg.backup"
+    _touch(old_snapshot, stale)
+    fresh_snapshot = root / "docs" / "notes.txt.backup"
+    _touch(fresh_snapshot, recent)
+    _touch(root / "docs" / "notes.txt", stale)
+    # An ordinary file keeps the conflicted-copy sweep's territory.
+    _touch(root / "photos" / "other.jpg", stale)
+
+    dry = maintenance.prune_orphaned_backups(
+        buckets_root=root, older_than_s=7 * 86400, dry_run=True, now=now
+    )
+    assert dry == [old_snapshot]
+    assert old_snapshot.exists(), "a dry run must not delete"
+
+    removed = maintenance.prune_orphaned_backups(buckets_root=root, older_than_s=7 * 86400, now=now)
+    assert removed == [old_snapshot]
+    assert not old_snapshot.exists()
+    # The live path, the recent snapshot and every other file are untouched.
+    assert primary.exists() and fresh_snapshot.exists() and (root / "photos" / "other.jpg").exists()
+
+
+def test_backup_sweep_can_be_restricted_to_one_bucket(tmp_path):
+    root = tmp_path / "buckets"
+    moment = 1_000.0
+    for name in ("a", "b"):
+        _touch(root / name / "keep.txt", moment)
+        _touch(root / name / "keep.txt.backup", moment)
+
+    assert maintenance.prune_orphaned_backups(
+        buckets_root=root, bucket="a", older_than_s=0, now=moment + 1
+    ) == [root / "a" / "keep.txt.backup"]
+    assert (root / "b" / "keep.txt.backup").exists()

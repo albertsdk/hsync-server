@@ -28,7 +28,7 @@ from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from hsync_common.clock import clamp_incoming_corrected_mtime
-from hsync_common.constants import PARTIAL_DOWNLOAD_SUFFIX
+from hsync_common.constants import HISTORY_REASON_OVERWRITE, PARTIAL_DOWNLOAD_SUFFIX
 from hsync_common.deletions import covered_by_tree_delete
 from hsync_common.format import format_bytes, format_duration
 from hsync_common.hashing import compute_sha256_async, is_sha256_hex
@@ -75,6 +75,7 @@ from hsync_server.exceptions import (
 )
 from hsync_server.file_lock_manager import get_file_lock_manager
 from hsync_server.hashes import get_sha256_hash, set_sha256_hash
+from hsync_server.history import capture_file
 from hsync_server.rate_limiter import RATE_LIMIT_UPLOAD, limiter
 from hsync_server.routers import auth_router
 from hsync_server.tombstones import (
@@ -460,6 +461,16 @@ async def upload_file(
         # while the new version is being uploaded
         backup_path = f"{file_location}{BACKUP_SUFFIX}"
         if Path(file_location).exists():
+            # Preserve the content this publish replaces (ADR-0057) while it is
+            # still the current one: the ``.backup`` snapshot below only lives
+            # until the publish finishes.
+            capture_file(
+                bucket,
+                file_location,
+                bucket_dir=str(Path(buckets_path) / bucket),
+                reason=HISTORY_REASON_OVERWRITE,
+                cid=cid,
+            )
             _backup_existing_file(file_location, backup_path)
 
         # Fused checksum: updated while the body is copied so a complete

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `hsync-server admin maintenance prune-backups` reclaims the `<path>.backup`
+  snapshots left by an interrupted publish. A snapshot whose file is missing is
+  kept: the download endpoint serves it as the last complete copy.
 - `bench/bench_api.py` measures per-endpoint REST latency plus the
   listing/download concurrency curve with the node's CPU% (the single-process
   ceiling); `bench/server_process.py` is the shared launcher it and `soak.py`

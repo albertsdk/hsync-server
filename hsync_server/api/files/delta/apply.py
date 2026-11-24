@@ -32,7 +32,11 @@ from aiofiles.tempfile import NamedTemporaryFile
 from fastapi import Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from hsync_common.clock import clamp_incoming_corrected_mtime
-from hsync_common.constants import DELTA_MAX_LITERAL_SIZE, PARTIAL_DELTA_SUFFIX
+from hsync_common.constants import (
+    DELTA_MAX_LITERAL_SIZE,
+    HISTORY_REASON_OVERWRITE,
+    PARTIAL_DELTA_SUFFIX,
+)
 from hsync_common.deletions import covered_by_tree_delete
 from hsync_common.delta import (
     MISMATCH_HASH,
@@ -90,6 +94,7 @@ from hsync_server.exceptions import (
 )
 from hsync_server.file_lock_manager import get_file_lock_manager
 from hsync_server.hashes import get_or_compute_sha256, get_sha256_hash
+from hsync_server.history import capture_file
 from hsync_server.metrics import (
     record_bytes_saved,
     record_delta_transfer,
@@ -427,6 +432,15 @@ async def delta_apply(
             ):
                 log.info(f"Delta apply rejected (destination changed): {file_location}")
                 return JSONResponse(status_code=409, content={"detail": "destination_changed"})
+            # Preserve the content this publish replaces (ADR-0057).
+            await asyncio.to_thread(
+                capture_file,
+                bucket,
+                file_location,
+                bucket_dir=local_bucket,
+                reason=HISTORY_REASON_OVERWRITE,
+                cid=cid,
+            )
             replace(part_path, file_location)
             part_path = None
             src = await record_published_version(

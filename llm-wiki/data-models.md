@@ -80,6 +80,32 @@ deleted-and-recreated while the body ran is answered `409 destination_changed`
 and the temp artifact is discarded — the commit can never resurrect a removed
 name or clobber a recreated file.
 
+## History store (`history.py`, ADR-0057)
+
+The server keeps one blob per path, so the content an overwrite replaces or a
+delete removes would be lost. `hsync_server/history.py` preserves those bytes per
+bucket under `<state dir>/history`, outside every served bucket — no peer sees
+them, the wire protocol is unchanged.
+
+| Symbol | Role |
+| --- | --- |
+| `capture_file` | link-or-copy a regular file into a new entry (`reason` = `overwrite` \| `delete`), write `entry.json` atomically, return the entry id (or `None` on any failure — a recovery copy never aborts the operation) |
+| `entries` | the bucket's entries, newest first, skipping a damaged record |
+| `prune` | retention by age (`retention_days`) then the oldest over `max_bytes`; the byte budget counts the recorded payload, not the record |
+
+Contract and helpers live in `hsync-common`:
+`hsync-common/hsync_common/models/history.py::HistoryEntry`,
+`::parse_history_entry`, `hsync-common/hsync_common/models/history.py::history_entry_dir`.
+Bounded by `HISTORY_RETENTION_DAYS_DEFAULT` / `HISTORY_QUOTA_PERCENT_DEFAULT` /
+`HISTORY_QUOTA_FLOOR_MB_DEFAULT`
+(`hsync-common/hsync_common/defaults.py`).
+
+Capture is hooked into `hsync_server/maintenance.py::delete_path_state` (before the
+tombstone and the unlink) and into both publish paths
+(`hsync_server/api/files/upload.py`, `hsync_server/api/files/delta/apply.py`,
+before the atomic `replace`), so an overwrite and a deletion both leave a
+recoverable copy.
+
 ## On-disk layout
 
 ```
@@ -88,6 +114,7 @@ name or clobber a recreated file.
 <state_dir>/server/<bucket>.db      # versions + tombstones, one per bucket (ADR-0025)
 <state_dir>/server/auth.db          # accounts + membership (global)
 <state_dir>/.hsyncnodeid               # reserved server node cid
+<state_dir>/history/<bucket>/<id>/...   # preserved bytes, ADR-0057
 <name>.part                            # in-progress resumable upload
 ```
 
