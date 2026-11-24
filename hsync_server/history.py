@@ -48,6 +48,7 @@ __all__ = [
     "buckets",
     "capture_file",
     "entries",
+    "entry",
     "prune",
     "storage_bytes",
 ]
@@ -57,10 +58,11 @@ _SECONDS_PER_DAY = 86_400
 
 @dataclass(frozen=True)
 class HistoryItem:
-    """One stored entry: the minted id plus its validated record."""
+    """One stored entry: the minted id, its validated record and its payload."""
 
     entry_id: str
     entry: HistoryEntry
+    payload: Path
 
 
 @dataclass(frozen=True)
@@ -133,6 +135,7 @@ def capture_file(
     if src_file is None:
         return None
     entry_id = _mint_entry_id()
+    directory: Path | None = None
     try:
         directory = history_entry_dir(_root(), bucket, entry_id)
         payload = history_entry_payload_path(directory, relpath)
@@ -144,7 +147,11 @@ def capture_file(
             partial = payload.with_name(payload.name + ".part")
             shutil.copy2(src, partial)
             os.replace(partial, payload)
-    except OSError:
+    except (OSError, ValueError):
+        # Without its record the directory is unreadable garbage; leaving it
+        # would inflate the store until a prune sweep found it.
+        if directory is not None:
+            shutil.rmtree(directory, ignore_errors=True)
         log.warning(f'history: could not preserve "{abs_path}"')
         return None
     record = HistoryEntry(
@@ -184,6 +191,21 @@ def buckets() -> list[str]:
     return sorted(child.name for child in root.iterdir() if child.is_dir())
 
 
+def entry(bucket: str, entry_id: str) -> HistoryItem | None:
+    """Return one entry by id, or ``None`` when it is absent or unreadable."""
+    root = _root()
+    try:
+        directory = history_entry_dir(root, bucket, entry_id)
+        raw = json.loads((directory / HISTORY_ENTRY_FILENAME).read_text(encoding="utf-8"))
+        parsed = parse_history_entry(raw)
+        if parsed is None:
+            return None
+        payload = history_entry_payload_path(directory, parsed["relpath"])
+    except (OSError, ValueError):
+        return None
+    return HistoryItem(entry_id=entry_id, entry=parsed, payload=payload)
+
+
 def entries(bucket: str) -> list[HistoryItem]:
     """Return the bucket's entries, newest first; a damaged record is skipped."""
     root = _root()
@@ -193,18 +215,11 @@ def entries(bucket: str) -> list[HistoryItem]:
         return []
     if not directory.is_dir():
         return []
-    items: list[HistoryItem] = []
-    for child in directory.iterdir():
-        if not child.is_dir():
-            continue
-        try:
-            entry_dir = history_entry_dir(root, bucket, child.name)
-            raw = json.loads((entry_dir / HISTORY_ENTRY_FILENAME).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        parsed = parse_history_entry(raw)
-        if parsed is not None:
-            items.append(HistoryItem(entry_id=child.name, entry=parsed))
+    items = [
+        found
+        for child in directory.iterdir()
+        if child.is_dir() and (found := entry(bucket, child.name)) is not None
+    ]
     items.sort(key=lambda item: (item.entry["recorded_at"], item.entry_id), reverse=True)
     return items
 

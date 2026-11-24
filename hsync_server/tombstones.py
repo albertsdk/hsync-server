@@ -36,6 +36,7 @@ __all__ = [
     "clear_deletion",
     "clear_deletion_tree",
     "deletion_marker_snapshot",
+    "deletion_vclock",
     "destination_mutation_since",
     "get_tombstone_store",
     "record_deletion",
@@ -213,6 +214,26 @@ def record_path_deletion(
         prev_vclock=stored["vclock"] if stored else None,
     )
     return True
+
+
+def deletion_vclock(
+    bucket: str,
+    bucket_dir: str,
+    abs_path: str,
+) -> dict[str, int] | None:
+    """Return the stored deletion marker's vector clock, if any.
+
+    A path that is being re-created on the server's own behalf (``restore``) must
+    advertise a clock that supersedes the deletion it replaces, so the caller
+    merges this clock instead of starting from an empty one (ADR-0003).
+    Consumers: ``hsync_server.maintenance`` (``restore_entry``).
+    """
+    relpath = relpath_in_bucket(abs_path, bucket_dir)
+    if not relpath:
+        return None
+    with _registry.lock(bucket):
+        found = get_tombstone_store(bucket).get(relpath)
+    return dict(found["vclock"]) if found else None
 
 
 def deletion_marker_snapshot(

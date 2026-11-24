@@ -382,10 +382,24 @@ tombstone) and the upload publish path
   unparsable entry cannot be restored, so it is charged its directory size and
   reclaimed first. `dry_run` reports the same counts without deleting.
 
-The admin surface is `hsync-server admin history list|prune`
-(`hsync_server/__main__.py::history_list` / `::history_prune`); the default size
-budget comes from `hsync_common/disk.py::share_of_volume_bytes` over the state
-dir, and `--max-size 0` leaves the age bound alone.
+Restore is the inverse and lives in `hsync_server/maintenance.py::restore_entry`,
+not in the store: it re-publishes the payload through a `.part` sibling, re-applies
+the recorded mtime/mode, refreshes the SHA-256 cache, clears the deletion marker
+(`hsync_server/tombstones.py::clear_deletion`) and records a version whose clock
+merges the marker's (`hsync_server/tombstones.py::deletion_vclock`) and any
+surviving version clock before ticking under the server cid — so the restored path
+is causally *after* the deletion it replaces. It returns
+`hsync_server/maintenance.py::RestoreOutcome` (`RestoreStatus`:
+`restored` | `unchanged` | `conflict` | `missing` | `damaged` | `failed`), keeps
+the entry (retention decides when the copy goes away) and never replaces a
+symlink. `overwrite=True` captures the replaced content first, so a restore is
+itself recoverable.
+
+The admin surface is `hsync-server admin history list|prune|restore`
+(`hsync_server/__main__.py::history_list` / `::history_prune` / `::history_restore`);
+the default size budget comes from `hsync_common/disk.py::share_of_volume_bytes`
+over the state dir, and `--max-size 0` leaves the age bound alone. `restore --json`
+exits 0 for every status so the caller reads the report, not the exit code.
 
 ## State-DB maintenance (`state_maintenance.py`)
 

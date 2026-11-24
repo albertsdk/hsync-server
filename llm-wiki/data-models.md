@@ -90,8 +90,14 @@ them, the wire protocol is unchanged.
 | Symbol | Role |
 | --- | --- |
 | `capture_file` | link-or-copy a regular file into a new entry (`reason` = `overwrite` \| `delete`), write `entry.json` atomically, return the entry id (or `None` on any failure — a recovery copy never aborts the operation) |
+| `entry` | one entry by id (`HistoryItem`: the record plus its verified payload path), or `None` when absent or unreadable |
 | `entries` | the bucket's entries, newest first, skipping a damaged record |
 | `prune` | retention by age (`retention_days`) then the oldest over `max_bytes`; the byte budget counts the recorded payload, not the record |
+
+Restore is not a store operation: `hsync_server/maintenance.py::restore_entry`
+publishes a payload back into the bucket and returns
+`hsync_server/maintenance.py::RestoreOutcome`, because the resulting path must be a
+live, causally newer version (`RestoreStatus`), not another entry.
 
 Contract and helpers live in `hsync-common`:
 `hsync-common/hsync_common/models/history.py::HistoryEntry`,

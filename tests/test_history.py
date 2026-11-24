@@ -11,8 +11,10 @@ unknown reason).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -28,7 +30,7 @@ from typer.testing import CliRunner
 from hsync_server import __main__ as cli
 from hsync_server import config as server_config
 from hsync_server import history as history_mod
-from hsync_server import maintenance
+from hsync_server import maintenance, tombstones, versions
 
 runner = CliRunner()
 
@@ -54,6 +56,19 @@ def bucket_dir(tmp_path):
 def _write(path: Path, payload: bytes = b"content") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
+    return path
+
+
+def _replace(path: Path, payload: bytes) -> Path:
+    """Replace *path* the way a publish does: a new inode, never an in-place write.
+
+    The store captures by hardlink, so truncating the original in place would also
+    rewrite the preserved copy; every writer in the server publishes through an
+    atomic rename instead.
+    """
+    staged = path.with_name(path.name + ".staged")
+    staged.write_bytes(payload)
+    os.replace(staged, path)
     return path
 
 
@@ -267,6 +282,151 @@ def test_the_delete_path_captures_before_the_unlink(state_dir, bucket_dir, monke
     assert stored.read_bytes() == b"last copy"
 
 
+class TestRestore:
+    """ADR-0057 restore: the entry goes back to a live, causally newer file."""
+
+    def test_the_bytes_and_the_recorded_metadata_come_back(self, state_dir, bucket_dir):
+        source = _write(bucket_dir / "docs" / "report.txt", b"first draft")
+        os.utime(source, ns=(1_600_000_000_000_000_000, 1_600_000_000_000_000_000))
+        maintenance.delete_path_state("photos", str(source), bucket_dir=str(bucket_dir), cid=None)
+        (item,) = history_mod.entries("photos")
+        assert not source.exists()
+
+        outcome = maintenance.restore_entry("photos", item.entry_id, bucket_dir=str(bucket_dir))
+
+        assert outcome.status is maintenance.RestoreStatus.RESTORED
+        assert outcome.relpath == "docs/report.txt"
+        assert outcome.size == len(b"first draft")
+        assert source.read_bytes() == b"first draft"
+        assert source.stat().st_mtime == 1_600_000_000
+
+    def test_a_restored_path_is_no_longer_deleted(self, state_dir, bucket_dir):
+        """The invariant: the next cycle must not answer with the old deletion."""
+        source = _write(bucket_dir / "gone.txt", b"payload")
+        maintenance.delete_path_state(
+            "photos",
+            str(source),
+            bucket_dir=str(bucket_dir),
+            cid="abcdefghijklmnopqrstu",
+        )
+        (item,) = history_mod.entries("photos")
+
+        maintenance.restore_entry("photos", item.entry_id, bucket_dir=str(bucket_dir))
+
+        assert tombstones.deletion_vclock("photos", str(bucket_dir), str(source)) is None
+        recorded = versions.server_version_info("photos", str(bucket_dir), str(source))
+        assert recorded is not None
+        server_cid = versions.get_server_cid()
+        assert recorded["origin_cid"] == server_cid
+        # The restore supersedes the deletion instead of racing it: every clock
+        # the marker carried survives in the new version.
+        assert recorded["vclock"][server_cid] >= 1
+        assert recorded["vclock"]["abcdefghijklmnopqrstu"] >= 1
+
+    def test_the_entry_survives_the_restore(self, state_dir, bucket_dir):
+        """Retention, not the restore, decides when the copy goes away."""
+        source = _write(bucket_dir / "keep.txt", b"payload")
+        maintenance.delete_path_state("photos", str(source), bucket_dir=str(bucket_dir), cid=None)
+        (item,) = history_mod.entries("photos")
+
+        maintenance.restore_entry("photos", item.entry_id, bucket_dir=str(bucket_dir))
+
+        assert [found.entry_id for found in history_mod.entries("photos")] == [item.entry_id]
+
+    def test_an_occupied_path_is_left_alone(self, state_dir, bucket_dir):
+        entry_id = _capture(bucket_dir, "a.txt", payload=b"preserved")
+        _replace(bucket_dir / "a.txt", b"current")
+
+        outcome = maintenance.restore_entry("photos", entry_id, bucket_dir=str(bucket_dir))
+
+        assert outcome.status is maintenance.RestoreStatus.CONFLICT
+        assert (bucket_dir / "a.txt").read_bytes() == b"current"
+
+    def test_overwriting_preserves_what_is_being_replaced(self, state_dir, bucket_dir):
+        entry_id = _capture(bucket_dir, "a.txt", payload=b"preserved")
+        _replace(bucket_dir / "a.txt", b"current")
+
+        outcome = maintenance.restore_entry(
+            "photos", entry_id, bucket_dir=str(bucket_dir), overwrite=True
+        )
+
+        assert outcome.status is maintenance.RestoreStatus.RESTORED
+        assert (bucket_dir / "a.txt").read_bytes() == b"preserved"
+        # Both captures share a second, so the order between them is arbitrary:
+        # assert the set, not which entry got listed first.
+        replaced = {
+            (found.entry["sha256"], found.entry["reason"])
+            for found in history_mod.entries("photos")
+        }
+        assert replaced == {
+            (hashlib.sha256(b"preserved").hexdigest(), HISTORY_REASON_OVERWRITE),
+            (hashlib.sha256(b"current").hexdigest(), HISTORY_REASON_OVERWRITE),
+        }
+
+    def test_restoring_the_same_bytes_twice_changes_nothing(self, state_dir, bucket_dir):
+        entry_id = _capture(bucket_dir, "same.txt", payload=b"same")
+        (bucket_dir / "same.txt").unlink()
+
+        first = maintenance.restore_entry("photos", entry_id, bucket_dir=str(bucket_dir))
+        second = maintenance.restore_entry("photos", entry_id, bucket_dir=str(bucket_dir))
+
+        assert first.status is maintenance.RestoreStatus.RESTORED
+        assert second.status is maintenance.RestoreStatus.UNCHANGED
+        assert len(history_mod.entries("photos")) == 1  # no spurious capture
+
+    def test_a_symlink_at_the_destination_is_not_replaced(self, state_dir, bucket_dir, tmp_path):
+        entry_id = _capture(bucket_dir, "target.txt", payload=b"preserved")
+        (bucket_dir / "target.txt").unlink()
+        link = bucket_dir / "target.txt"
+        try:
+            link.symlink_to(_write(tmp_path / "elsewhere.txt", b"other"))
+        except OSError:
+            pytest.skip("symlinks need a privilege on this platform")
+
+        outcome = maintenance.restore_entry(
+            "photos", entry_id, bucket_dir=str(bucket_dir), overwrite=True
+        )
+
+        assert outcome.status is maintenance.RestoreStatus.CONFLICT
+        assert link.is_symlink()
+
+    def test_a_missing_payload_is_reported(self, state_dir, bucket_dir):
+        entry_id = _capture(bucket_dir, "a.txt", payload=b"gone")
+        (bucket_dir / "a.txt").unlink()
+        history_mod.entry("photos", entry_id).payload.unlink()
+
+        outcome = maintenance.restore_entry("photos", entry_id, bucket_dir=str(bucket_dir))
+
+        assert outcome.status is maintenance.RestoreStatus.MISSING
+        assert not (bucket_dir / "a.txt").exists()
+
+    def test_a_damaged_payload_is_never_published(self, state_dir, bucket_dir):
+        entry_id = _capture(bucket_dir, "a.txt", payload=b"0123456789")
+        (bucket_dir / "a.txt").unlink()
+        history_mod.entry("photos", entry_id).payload.write_bytes(b"tampered!")
+
+        outcome = maintenance.restore_entry("photos", entry_id, bucket_dir=str(bucket_dir))
+
+        assert outcome.status is maintenance.RestoreStatus.DAMAGED
+        assert not (bucket_dir / "a.txt").exists()
+
+    def test_a_refused_write_is_reported_not_raised(self, state_dir, bucket_dir):
+        entry_id = _capture(bucket_dir, "docs/report.txt", payload=b"payload")
+        shutil.rmtree(bucket_dir / "docs")
+        _write(bucket_dir / "docs", b"a file where a directory must go")
+
+        outcome = maintenance.restore_entry("photos", entry_id, bucket_dir=str(bucket_dir))
+
+        assert outcome.status is maintenance.RestoreStatus.FAILED
+
+    def test_an_unknown_entry_is_reported(self, state_dir, bucket_dir):
+        outcome = maintenance.restore_entry(
+            "photos", "1700000000-deadbeef", bucket_dir=str(bucket_dir)
+        )
+
+        assert outcome.status is maintenance.RestoreStatus.MISSING
+
+
 class TestHistoryCommands:
     def test_list_prints_what_was_preserved(self, state_dir, bucket_dir):
         _capture(bucket_dir, "docs/report.txt")
@@ -332,6 +492,72 @@ class TestHistoryCommands:
 
     def test_an_invalid_bucket_is_refused(self, state_dir):
         result = runner.invoke(cli.app, ["admin", "history", "list", "--bucket", "../etc"])
+
+        assert result.exit_code == 1
+        assert "invalid bucket name" in result.output
+
+    def test_restore_puts_the_file_back(self, state_dir, bucket_dir, monkeypatch):
+        monkeypatch.setattr(server_config, "get_buckets_path", lambda: str(bucket_dir.parent))
+        entry_id = _capture(bucket_dir, "a.txt", payload=b"abc", reason=HISTORY_REASON_DELETE)
+        (bucket_dir / "a.txt").unlink()
+
+        result = runner.invoke(
+            cli.app, ["admin", "history", "restore", entry_id, "--bucket", "photos"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Restored a.txt (3 B)." in result.output
+        assert (bucket_dir / "a.txt").read_bytes() == b"abc"
+
+    def test_restore_emits_json(self, state_dir, bucket_dir, monkeypatch):
+        monkeypatch.setattr(server_config, "get_buckets_path", lambda: str(bucket_dir.parent))
+        entry_id = _capture(bucket_dir, "a.txt", payload=b"abc", reason=HISTORY_REASON_DELETE)
+        (bucket_dir / "a.txt").unlink()
+
+        result = runner.invoke(
+            cli.app,
+            ["admin", "history", "restore", entry_id, "--bucket", "photos", "--json"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output) == {
+            "status": "restored",
+            "path": "a.txt",
+            "file": str(bucket_dir / "a.txt"),
+            "size": 3,
+        }
+
+    def test_restore_asks_before_replacing_a_file(self, state_dir, bucket_dir, monkeypatch):
+        monkeypatch.setattr(server_config, "get_buckets_path", lambda: str(bucket_dir.parent))
+        entry_id = _capture(bucket_dir, "a.txt", payload=b"preserved")
+        _replace(bucket_dir / "a.txt", b"current")
+        command = ["admin", "history", "restore", entry_id, "--bucket", "photos"]
+
+        refused = runner.invoke(cli.app, command)
+        assert refused.exit_code == 1
+        assert "pass --overwrite" in refused.output
+        assert (bucket_dir / "a.txt").read_bytes() == b"current"
+
+        replaced = runner.invoke(cli.app, [*command, "--overwrite"])
+        assert replaced.exit_code == 0, replaced.output
+        assert (bucket_dir / "a.txt").read_bytes() == b"preserved"
+
+    def test_restore_reports_an_unknown_entry(self, state_dir, bucket_dir, monkeypatch):
+        monkeypatch.setattr(server_config, "get_buckets_path", lambda: str(bucket_dir.parent))
+
+        result = runner.invoke(
+            cli.app,
+            ["admin", "history", "restore", "1700000000-deadbeef", "--bucket", "photos"],
+        )
+
+        assert result.exit_code == 1
+        assert "no usable history entry" in result.output
+
+    def test_restore_refuses_an_invalid_bucket(self, state_dir):
+        result = runner.invoke(
+            cli.app,
+            ["admin", "history", "restore", "1700000000-deadbeef", "--bucket", "../etc"],
+        )
 
         assert result.exit_code == 1
         assert "invalid bucket name" in result.output
