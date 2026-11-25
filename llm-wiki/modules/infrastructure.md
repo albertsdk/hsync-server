@@ -373,7 +373,11 @@ tombstone) and the upload publish path
   (copy fallback on another volume), writes `entry.json` atomically at 0640 and
   returns the entry id. It skips a symlink, a non-regular file and a path outside
   the bucket, and returns `None` instead of raising: a recovery copy must never
-  abort the operation it makes recoverable.
+  abort the operation it makes recoverable. The link shares the inode with the
+  live file, so the copy stays valid **only** because both capture hooks publish a
+  new inode atomically (`.part` + `replace`, see `_copy_payload`
+  `hsync_server/maintenance.py::_copy_payload` for the same pattern): an in-place
+  rewrite of a live file would also rewrite the preserved bytes it protects.
 - `entries()` / `buckets()` / `storage_bytes()` read the store; a damaged record
   is skipped rather than listed.
 - `prune()` (`hsync_server/history.py::prune`) applies the age bound
