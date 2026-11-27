@@ -226,6 +226,7 @@ async def _park_literal_payload(
     """
     file_directory = str(Path(file_location).parent)
     literal_tmp: str | None = None
+    decompressed_tmp: str | None = None
     try:
         async with NamedTemporaryFile(
             delete=False, dir=file_directory, prefix=".hsync-delta-lit-"
@@ -255,10 +256,14 @@ async def _park_literal_payload(
             except zstd.ZstdError as exc:
                 raise ValidationError(message=f"Invalid compressed payload: {exc}") from exc
             replace(decompressed_tmp, literal_tmp)
+            decompressed_tmp = None
         return literal_tmp, literal_size
     except BaseException:
-        if literal_tmp is not None:
-            Path(literal_tmp).unlink(missing_ok=True)
+        # On any failure remove every temp we created (a partial ``.decompressed``
+        # is otherwise left behind in the bucket on a bad compressed payload).
+        for leftover in (literal_tmp, decompressed_tmp):
+            if leftover is not None:
+                Path(leftover).unlink(missing_ok=True)
         raise
 
 

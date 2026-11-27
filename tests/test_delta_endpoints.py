@@ -550,6 +550,27 @@ class TestDeltaApply:
         assert "HSYNC-4004" in resp.text
         assert (bucket_dir / "docs/big.bin").read_bytes() == base
 
+    async def test_invalid_compressed_payload_leaves_no_decompressed_temp(
+        self, client, bucket_dir, tmp_path
+    ):
+        """Regression: a rejected compressed literal must not leak its partial
+        ``.decompressed`` sibling into the bucket (the pre-refactor cleanup
+        removed it; the extracted helper must too)."""
+        bad_frame = b"not-a-zstd-frame"
+        base = _base_bytes()
+        new = bytearray(base)
+        new[BLOCK : BLOCK + 32] = b"Q" * 32
+        _write_base(bucket_dir, base)
+        payload = _apply_multipart(
+            base, bytes(new), tmp_path, compressed=True, payload_size=len(bad_frame)
+        )
+        payload["files"]["file"] = ("delta.bin", bad_frame, "application/octet-stream")
+
+        resp = await client.post("/api/v1/buckets/bucket1/files/delta/apply", **payload)
+
+        assert resp.status_code == 400
+        assert list(bucket_dir.rglob("*.decompressed")) == []
+
     async def test_conflict_lost_copy_has_no_part_suffix(self, client, bucket_dir, tmp_path):
         """Regression: the conflict-lost copy must be named from the FINAL
         path (ADR-0021). The old code passed the temporary ``.delta.part``
