@@ -100,6 +100,24 @@ def _require_valid_bucket(bucket: str) -> None:
         _fail(f"invalid bucket name: {bucket!r}")
 
 
+def _resolve_bucket_root(bucket: str | None) -> Path:
+    """Validate the optional *bucket* and return the existing buckets root.
+
+    Shared by the maintenance commands, which all checked the root (and the
+    per-bucket subdirectory when one is named) before touching the store.
+    """
+    from hsync_server.config import get_buckets_path
+
+    if bucket is not None:
+        _require_valid_bucket(bucket)
+    root = Path(get_buckets_path())
+    if not root.is_dir():
+        _fail(f"buckets root does not exist: {root}")
+    if bucket is not None and not (root / bucket).is_dir():
+        _fail(f"bucket does not exist: {bucket}")
+    return root
+
+
 def _is_loopback_host(host: str) -> bool:
     """True when *host* binds loopback only (``localhost``, ``127.0.0.0/8``, ``::1``).
 
@@ -1021,19 +1039,9 @@ def maintenance_prune_conflicts(
     eligible; every removal goes through the same state-consistent delete as the
     REST endpoint (tombstone, hash/version cleanup, directory prune).
     """
-    from pathlib import Path
-
-    from hsync_server.config import get_buckets_path
     from hsync_server.maintenance import prune_conflicted_copies
 
-    if bucket is not None:
-        _require_valid_bucket(bucket)
-    root = Path(get_buckets_path())
-    if not root.is_dir():
-        _fail(f"buckets root does not exist: {root}")
-    if bucket is not None and not (root / bucket).is_dir():
-        _fail(f"bucket does not exist: {bucket}")
-
+    root = _resolve_bucket_root(bucket)
     removed = prune_conflicted_copies(
         buckets_root=root,
         bucket=bucket,
@@ -1081,19 +1089,9 @@ def maintenance_prune_backups(
     interrupted publish, so it is kept; only the residue of a publish that did
     finish is removed.
     """
-    from pathlib import Path
-
-    from hsync_server.config import get_buckets_path
     from hsync_server.maintenance import prune_orphaned_backups
 
-    if bucket is not None:
-        _require_valid_bucket(bucket)
-    root = Path(get_buckets_path())
-    if not root.is_dir():
-        _fail(f"buckets root does not exist: {root}")
-    if bucket is not None and not (root / bucket).is_dir():
-        _fail(f"bucket does not exist: {bucket}")
-
+    root = _resolve_bucket_root(bucket)
     removed = prune_orphaned_backups(
         buckets_root=root,
         bucket=bucket,
