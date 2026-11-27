@@ -106,7 +106,7 @@ async def run_periodic_prune(stop: asyncio.Event, *, interval_s: float = SWEEP_I
     while True:
         try:
             await asyncio.to_thread(prune_now)
-        except Exception as exc:  # noqa: BLE001 - a sweep must not kill the server
+        except Exception as exc:
             log.warning(f"History retention sweep failed: {exc}")
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval_s)

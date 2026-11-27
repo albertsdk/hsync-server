@@ -125,7 +125,7 @@ def verify_token(token: str, store: AuthStore) -> AuthContext:
     parsed = parse_token(token)
     if parsed is None:
         _dummy_verify()
-        raise InvalidApiKeyError()
+        raise InvalidApiKeyError
 
     account_id, secret = parsed
 
@@ -150,7 +150,7 @@ def verify_token(token: str, store: AuthStore) -> AuthContext:
     account = store.get_account(account_id)
     if account is None:
         _dummy_verify()
-        raise InvalidApiKeyError()
+        raise InvalidApiKeyError
 
     verified_kind: str | None = store.verify_secret_with_kind(secret, account)
     if verified_kind is None:
@@ -158,7 +158,7 @@ def verify_token(token: str, store: AuthStore) -> AuthContext:
             f"[SECURITY] Invalid API key for account {account.id} "
             f"(name={account.name}, prefix={account.key_prefix})"
         )
-        raise InvalidApiKeyError()
+        raise InvalidApiKeyError
 
     # Cache the KDF result. Prior entries carry the tested prior hash so a later
     # rotation invalidates them; a repeated request within the same grace window
@@ -168,7 +168,7 @@ def verify_token(token: str, store: AuthStore) -> AuthContext:
 
     ctx = _check_account(account, account.key_generation, verified_kind)
     if ctx is None:
-        raise InvalidApiKeyError()
+        raise InvalidApiKeyError
     return ctx
 
 
@@ -257,7 +257,7 @@ def verify_api_key(
     credentials = token.credentials
     if not credentials:
         log.warning("Authentication attempt with empty Bearer credentials")
-        raise MissingApiKeyError()
+        raise MissingApiKeyError
 
     store = get_auth_store()
     ctx = verify_token(credentials, store)
@@ -274,5 +274,5 @@ def require_admin(
 ) -> AuthContext:
     """Dependency: caller must be ``role=admin``."""
     if ctx.role != "admin":
-        raise ForbiddenError()
+        raise ForbiddenError
     return ctx

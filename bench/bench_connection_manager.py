@@ -29,7 +29,7 @@ from pathlib import Path
 # Allow ``from common import ...`` when run from the bench/ directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import (  # noqa: E402  (import after sys.path tweak)
+from common import (
     BenchResult,
     add_json_out,
     maybe_write_json,
@@ -37,8 +37,8 @@ from common import (  # noqa: E402  (import after sys.path tweak)
     print_table,
 )
 
-import hsync_server.api.connection_manager as connection_manager  # noqa: E402
-from hsync_server.api.connection_manager import BucketConnectionManager  # noqa: E402
+from hsync_server.api import connection_manager
+from hsync_server.api.connection_manager import BucketConnectionManager
 
 
 def main() -> None:

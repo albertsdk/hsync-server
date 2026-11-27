@@ -37,8 +37,8 @@ from pathlib import Path
 # Allow ``from common import ...`` when run from the bench/ directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import zstandard as zstd  # noqa: E402
-from common import (  # noqa: E402  (import after sys.path tweak)
+import zstandard as zstd
+from common import (
     BenchResult,
     add_json_out,
     maybe_write_json,
@@ -46,13 +46,13 @@ from common import (  # noqa: E402  (import after sys.path tweak)
     measure_async,
     print_table,
 )
-from hsync_common.compression import (  # noqa: E402
+from hsync_common.compression import (
     COMPRESSION_LEVEL,
     compress_data,
     decompress_data,
 )
 
-from hsync_server.compression import async_compress_stream  # noqa: E402
+from hsync_server.compression import async_compress_stream
 
 
 def _payload(size: int, seed: int) -> bytes:

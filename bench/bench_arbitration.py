@@ -32,7 +32,7 @@ from pathlib import Path
 # Allow ``from common import ...`` when run from the bench/ directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import (  # noqa: E402  (import after sys.path tweak)
+from common import (
     BenchResult,
     add_json_out,
     isolate_server_state,
@@ -45,12 +45,12 @@ from common import (  # noqa: E402  (import after sys.path tweak)
 # Point the version store (state DB + .hsyncnodeid) at a temp state dir.
 isolate_server_state()
 
-from hsync_server.arbitration import (  # noqa: E402
+from hsync_server.arbitration import (
     ArbitrationOutcome,
     arbitrate_upload,
     conflicted_copy_name,
 )
-from hsync_server.versions import get_version_store, reset_cache  # noqa: E402
+from hsync_server.versions import get_version_store, reset_cache
 
 
 def main() -> None:

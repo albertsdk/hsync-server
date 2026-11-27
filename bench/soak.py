@@ -197,7 +197,7 @@ def _worker(
                         continue
                     state.set_expected(rel, data)
                 state.bump_ops()
-            except Exception as exc:  # noqa: BLE001 - soak must record, not crash
+            except Exception as exc:
                 state.record_error(f"op {kind}", "exception", f"{type(exc).__name__}: {exc}")
 
 

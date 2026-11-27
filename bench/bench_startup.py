@@ -36,7 +36,7 @@ from pathlib import Path
 # Allow ``from common import ...`` when run from the bench/ directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import (  # noqa: E402  (import after sys.path tweak)
+from common import (
     BenchResult,
     add_json_out,
     isolate_server_state,

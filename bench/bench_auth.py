@@ -32,7 +32,7 @@ os.environ.setdefault("HSYNC_SCRYPT_N", "16")
 # Allow ``from common import ...`` when run from the bench/ directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import (  # noqa: E402  (import after sys.path tweak)
+from common import (
     BenchResult,
     add_json_out,
     make_cid,
@@ -42,8 +42,8 @@ from common import (  # noqa: E402  (import after sys.path tweak)
     print_table,
 )
 
-from hsync_server.auth import _cache_key  # noqa: E402
-from hsync_server.auth_store import TOKEN_PREFIX, parse_token  # noqa: E402
+from hsync_server.auth import _cache_key
+from hsync_server.auth_store import TOKEN_PREFIX, parse_token
 
 
 def _token(n: int, *, secret: str | None = None, account_id: str | None = None) -> str:

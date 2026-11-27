@@ -217,7 +217,7 @@ async def _resolve_delta_target(
 
 @auth_router.post(rest_bucket_template(REST_DELTA_APPLY_SUFFIX))
 @limiter.limit(RATE_LIMIT_DELTA)
-async def delta_apply(
+async def delta_apply(  # noqa: C901 - refactor pending
     request: Request,  # Required by rate limiter
     bucket: str,
     ctx: Annotated[AuthContext, Depends(verify_api_key)],

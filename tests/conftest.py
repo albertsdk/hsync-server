@@ -595,7 +595,7 @@ def _wait_for_server_ready(
             r = httpx.get(f"{base_url}/health", timeout=1.0, verify=verify)
             if r.status_code == 200:
                 return
-        except Exception as exc:  # noqa: BLE001 - startup not ready yet
+        except Exception as exc:
             last_exc = exc
         time.sleep(0.15)
     tail = _log_tail(log_path)

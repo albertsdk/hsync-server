@@ -30,7 +30,7 @@ from pathlib import Path
 # Allow ``from common import ...`` when run from the bench/ directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import (  # noqa: E402  (import after sys.path tweak)
+from common import (
     BenchResult,
     add_json_out,
     isolate_server_state,
@@ -42,8 +42,8 @@ from common import (  # noqa: E402  (import after sys.path tweak)
 # Point the bucket root at a temp dir (get_settings() is cached), then import.
 isolate_server_state()
 
-from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket  # noqa: E402
-from hsync_server.config import get_buckets_path  # noqa: E402
+from hsync_server.api.utils import is_valid_bucket, resolve_within_bucket
+from hsync_server.config import get_buckets_path
 
 
 def main() -> None:

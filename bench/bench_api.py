@@ -233,7 +233,7 @@ def run(
         proc.terminate()
         try:
             proc.wait(timeout=15)
-        except Exception:  # noqa: BLE001 - best-effort teardown of a bench process
+        except Exception:
             proc.kill()
 
 

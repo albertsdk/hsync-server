@@ -59,7 +59,7 @@ class BucketsMixin(AuthStoreBase):
                 bucket_map[b] = {"name": b, "on_disk": b in fs_dirs, "owner": None, "members": []}
             member_entry: dict[str, str] = {
                 "id": r["client_id"],
-                "name": r["client_name"] if r["client_name"] else "?",
+                "name": r["client_name"] or "?",
                 "role": r["role"],
             }
             if r["role"] == "owner":

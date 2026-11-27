@@ -206,7 +206,7 @@ class MaxRequestSizeMiddleware:
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
                 if received > self._max_size:
-                    raise _RequestBodyTooLarge()
+                    raise _RequestBodyTooLarge
             return message
 
         response_started = False

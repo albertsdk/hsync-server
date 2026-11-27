@@ -60,7 +60,7 @@ def _version_callback(value: bool) -> None:
     """Show version and exit."""
     if value:
         print(f"hsync-server {HSYNC_VERSION}")
-        raise typer.Exit()
+        raise typer.Exit
 
 
 def _validate_log_level(value: str | None) -> str | None:
@@ -376,13 +376,13 @@ def main(
     # Settings validation runs lazily here; translate any ValidationError into
     # a user-friendly message before the logger is even configured.
     try:
-        effective_log_level = log_level if log_level else get_log_level()
+        effective_log_level = log_level or get_log_level()
         effective_host, port_candidate = _resolve_bind_host_port(host, port)
-        effective_port = port_candidate if port_candidate else get_port()
+        effective_port = port_candidate or get_port()
         effective_ssl_enabled = ssl_enabled or get_ssl_enabled()
-        effective_ssl_certfile = ssl_certfile if ssl_certfile else get_ssl_certfile()
-        effective_ssl_keyfile = ssl_keyfile if ssl_keyfile else get_ssl_keyfile()
-        effective_ssl_cert_dir = ssl_cert_dir if ssl_cert_dir else get_ssl_cert_dir()
+        effective_ssl_certfile = ssl_certfile or get_ssl_certfile()
+        effective_ssl_keyfile = ssl_keyfile or get_ssl_keyfile()
+        effective_ssl_cert_dir = ssl_cert_dir or get_ssl_cert_dir()
     except ValidationError as exc:
         for err in exc.errors():
             print(f"Configuration error: {err['msg']}", file=sys.stderr)

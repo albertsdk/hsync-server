@@ -161,7 +161,9 @@ async def download_file(
             media_type=CONTENT_TYPE_OCTET_STREAM,
             headers={
                 "Content-Encoding": CONTENT_ENCODING_ZSTD,
-                "Content-Disposition": build_content_disposition(filename.split("/")[-1]),
+                "Content-Disposition": build_content_disposition(
+                    filename.rsplit("/", maxsplit=1)[-1]
+                ),
                 # The compressed body is chunked (no Content-Length); this lets a
                 # client that does not read the listing still know the final size
                 # for progress/pre-allocation. A resumed transfer uses identity.

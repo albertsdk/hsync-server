@@ -326,7 +326,7 @@ async def _upload_duplicate_shortcut(
 
 @auth_router.post(rest_bucket_template(REST_FILES_SUFFIX))
 @limiter.limit(RATE_LIMIT_UPLOAD)
-async def upload_file(
+async def upload_file(  # noqa: C901 - refactor pending
     request: Request,  # Required by rate limiter
     bucket: str,
     ctx: Annotated[AuthContext, Depends(verify_api_key)],

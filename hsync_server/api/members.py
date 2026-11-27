@@ -69,7 +69,7 @@ def _check_owner_or_admin(bucket: str, ctx: AuthContext) -> None:
     if role == "owner":
         return
     if role == "member":
-        raise ForbiddenError()
+        raise ForbiddenError
     raise BucketNotFoundError(details={"bucket": bucket})
 
 
