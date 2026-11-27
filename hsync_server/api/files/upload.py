@@ -66,10 +66,12 @@ from hsync_server.constants import BACKUP_SUFFIX, DEFAULT_FILE_PERMISSIONS, Acti
 from hsync_server.exceptions import (
     ChecksumMismatchError,
     ConflictError,
+    ConflictLostError,
     FileTooLargeError,
     InvalidFilenameError,
     InvalidPathError,
     InvalidPermissionFormatError,
+    SupersededError,
     UploadError,
     ValidationError,
 )
@@ -564,30 +566,39 @@ async def _receive_new_upload_body(
     # If size > 0, this might be the first chunk of a multi-chunk upload.
     if size > 0 and Path(partial_file_path).exists():
         remove(partial_file_path)
-    async with NamedTemporaryFile(
-        delete=False, dir=file_directory, prefix=".hsync-upload-"
-    ) as temp_file:
-        file_location_tmp = str(temp_file.name)
-        while chunk := await file.read(_UPLOAD_COPY_CHUNK):
-            total_bytes += len(chunk)
-            enforce_size_cap(total_bytes, max_upload_size)
-            await temp_file.write(chunk)
-            if fused_sha is not None:
-                fused_sha.update(chunk)
-        # Ensure written data reaches physical storage
-        await _flush_to_disk(temp_file)
-    if is_compressed and total_bytes > 0:
-        total_bytes = await _expand_compressed_upload_temp(
-            file_location_tmp,
-            declared_size=size,
-            compressed_bytes=total_bytes,
-            max_upload_size=max_upload_size,
-        )
-    if size > 0 and total_bytes < size and not is_compressed:
-        # Move temp file to partial file location (same-filesystem rename).
-        replace(file_location_tmp, partial_file_path)
-        return None, total_bytes, _partial_upload_response(total_bytes, size)
-    return file_location_tmp, total_bytes, None
+    file_location_tmp: str | None = None
+    try:
+        async with NamedTemporaryFile(
+            delete=False, dir=file_directory, prefix=".hsync-upload-"
+        ) as temp_file:
+            file_location_tmp = str(temp_file.name)
+            while chunk := await file.read(_UPLOAD_COPY_CHUNK):
+                total_bytes += len(chunk)
+                enforce_size_cap(total_bytes, max_upload_size)
+                await temp_file.write(chunk)
+                if fused_sha is not None:
+                    fused_sha.update(chunk)
+            # Ensure written data reaches physical storage
+            await _flush_to_disk(temp_file)
+        if is_compressed and total_bytes > 0:
+            total_bytes = await _expand_compressed_upload_temp(
+                file_location_tmp,
+                declared_size=size,
+                compressed_bytes=total_bytes,
+                max_upload_size=max_upload_size,
+            )
+        if size > 0 and total_bytes < size and not is_compressed:
+            # Move temp file to partial file location (same-filesystem rename).
+            replace(file_location_tmp, partial_file_path)
+            return None, total_bytes, _partial_upload_response(total_bytes, size)
+        return file_location_tmp, total_bytes, None
+    except BaseException:
+        # Any failure here (size cap, bad compressed payload, disk error, client
+        # disconnect) must not leave the hidden ``.hsync-upload-*`` temp behind:
+        # it is a helper-local the caller cannot see in its own cleanup.
+        if file_location_tmp is not None:
+            Path(file_location_tmp).unlink(missing_ok=True)
+        raise
 
 
 async def _verify_upload_checksum(file_location_tmp: str, *, declared: str, fused_sha: Any) -> str:
@@ -659,6 +670,13 @@ def _reject_covered_by_tree_delete(file_location: str, path: str, file: UploadFi
         message="Path is being deleted",
         details={"path": path, "filename": file.filename},
     )
+
+
+def _restore_backup_on_failure(backup_path: str | None, file_location: str | None) -> None:
+    """Restore the pre-publish ``.backup`` snapshot after an upload failure."""
+    if backup_path and Path(backup_path).exists() and file_location:
+        replace(backup_path, file_location)
+        log.info(f"Restored backup for file: {file_location}")
 
 
 @auth_router.post(rest_bucket_template(REST_FILES_SUFFIX))
@@ -847,27 +865,37 @@ async def upload_file(
         incoming_vclock_raw = decode_wire_vclock(vclock)
 
         local_bucket = f"{buckets_path}/{bucket}"
-        src, resolution, result, early = await _arbitrate_publish_upload(
-            bucket=bucket,
-            path=path,
-            file=file,
-            cid=cid,
-            mtime=mtime,
-            permissions=permissions,
-            version_id=version_id,
-            corrected_mtime=corrected_mtime,
-            incoming_vclock_raw=incoming_vclock_raw,
-            local_bucket=local_bucket,
-            file_location=file_location,
-            file_location_tmp=file_location_tmp,
-            backup_path=backup_path,
-            sha256sum_tmp=sha256sum_tmp,
-            bucket_root=bucket_root,
-            dest_existed=dest_existed,
-            dest_marker=dest_marker,
-        )
+        try:
+            src, resolution, result, early = await _arbitrate_publish_upload(
+                bucket=bucket,
+                path=path,
+                file=file,
+                cid=cid,
+                mtime=mtime,
+                permissions=permissions,
+                version_id=version_id,
+                corrected_mtime=corrected_mtime,
+                incoming_vclock_raw=incoming_vclock_raw,
+                local_bucket=local_bucket,
+                file_location=file_location,
+                file_location_tmp=file_location_tmp,
+                backup_path=backup_path,
+                sha256sum_tmp=sha256sum_tmp,
+                bucket_root=bucket_root,
+                dest_existed=dest_existed,
+                dest_marker=dest_marker,
+            )
+        except (ConflictLostError, SupersededError):
+            # A lost arbitration consumes the temp (moved to a conflicted copy,
+            # or discarded) before raising: clear it so the failure cleanup does
+            # not delete a concurrent resumable upload's ``.part``.
+            file_location_tmp = None
+            raise
         if early is not None:
             return early
+        # The temp was atomically published to its final path; clear it so the
+        # ``finally`` cleanup leaves the (preserved) partial/backup alone.
+        file_location_tmp = None
 
         return await _broadcast_and_respond(
             src=src,
@@ -884,9 +912,7 @@ async def upload_file(
     except OSError as e:
         log.error(f"Upload failed for file {file.filename}: {e}", exc_info=True)
         # Restore from backup if it exists
-        if backup_path and Path(backup_path).exists() and file_location:
-            replace(backup_path, file_location)
-            log.info(f"Restored backup for file: {file_location}")
+        _restore_backup_on_failure(backup_path, file_location)
         raise UploadError(
             message=f"Upload failed for file {file.filename}",
             # Only expose the exception type, never the raw message

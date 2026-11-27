@@ -316,6 +316,61 @@ class TestResumableUpload:
         assert temp_buckets_dir not in body_str
         assert "partial_file" not in body_str
 
+    @pytest.mark.asyncio
+    async def test_failed_compressed_upload_leaves_no_hidden_temp(
+        self, client: AsyncClient, temp_buckets_dir
+    ):
+        """Regression: a bad compressed payload must not leak the hidden
+        ``.hsync-upload-*`` temp in the bucket directory (the copy helper must
+        clean its own temp, which the caller cannot see)."""
+        bucket_path = os.path.join(temp_buckets_dir, "leakbucket")
+        os.makedirs(bucket_path)
+
+        response = await client.post(
+            "/api/v1/buckets/leakbucket/files",
+            files={"file": ("z.bin", io.BytesIO(b"not-a-zstd-frame"), "application/octet-stream")},
+            data={
+                "cid": "TestClientXY1k4567890",
+                "path": "",
+                "permissions": "644",
+                "size": "100",
+                "compressed": "true",
+                "sha256sum": hashlib.sha256(b"unused").hexdigest(),
+            },
+        )
+        assert response.status_code == 400, response.text
+        leftovers = [f for f in os.listdir(bucket_path) if f.startswith(".hsync-upload-")]
+        assert leftovers == []
+
+    @pytest.mark.asyncio
+    async def test_successful_upload_preserves_a_concurrent_part_file(
+        self, client: AsyncClient, temp_buckets_dir
+    ):
+        """Regression: a successful non-resumable upload must not delete a
+        concurrent resumable upload's ``.part`` (the failure cleanup used to run
+        on the success path too)."""
+        bucket_path = os.path.join(temp_buckets_dir, "keepbucket")
+        os.makedirs(bucket_path)
+        # A concurrent resumable upload for the same path, mid-flight.
+        foreign_part = os.path.join(bucket_path, "k.txt.part")
+        with open(foreign_part, "wb") as f:
+            f.write(b"PARTIAL")
+
+        content = b"hello"
+        response = await client.post(
+            "/api/v1/buckets/keepbucket/files",
+            files={"file": ("k.txt", io.BytesIO(content), "text/plain")},
+            data={
+                "cid": "TestClientXY1k4567890",
+                "path": "",
+                "permissions": "644",
+                "sha256sum": hashlib.sha256(content).hexdigest(),
+            },
+        )
+        assert response.status_code == 201, response.text
+        assert os.path.exists(os.path.join(bucket_path, "k.txt"))
+        assert os.path.exists(foreign_part), "foreign .part was deleted on success"
+
 
 # ---------------------------------------------------------------------------
 # Conflicted copy tests (ADR-0021 — Dropbox-style conflict resolution)
