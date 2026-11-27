@@ -215,9 +215,171 @@ async def _resolve_delta_target(
     return file_location, bucket_root, dest_existed, dest_marker
 
 
+async def _park_literal_payload(
+    file: UploadFile, file_location: str, *, compressed: bool
+) -> tuple[str, int]:
+    """Stream the literal payload to a temp sibling; return ``(path, size)``.
+
+    The temp is removed before an error propagates, so the caller never has to
+    track a file it was not handed; a compressed payload is decompressed in place
+    under the same anti-bomb cap.
+    """
+    file_directory = str(Path(file_location).parent)
+    literal_tmp: str | None = None
+    try:
+        async with NamedTemporaryFile(
+            delete=False, dir=file_directory, prefix=".hsync-delta-lit-"
+        ) as tmp:
+            literal_tmp = str(tmp.name)
+            total = 0
+            while chunk := await file.read(8192):
+                total += len(chunk)
+                if total > DELTA_MAX_LITERAL_SIZE:
+                    raise ValidationError(
+                        message="Literal payload exceeds maximum size",
+                        details={"max": DELTA_MAX_LITERAL_SIZE},
+                    )
+                await tmp.write(chunk)
+            await _flush_to_disk(tmp)
+        literal_size = total
+        if compressed:
+            # Anti decompression-bomb: expansion is hard-capped.
+            decompressed_tmp = f"{literal_tmp}.decompressed"
+            try:
+                literal_size = await asyncio.to_thread(
+                    decompress_file_to_file,
+                    literal_tmp,
+                    decompressed_tmp,
+                    DELTA_MAX_LITERAL_SIZE,
+                )
+            except zstd.ZstdError as exc:
+                raise ValidationError(message=f"Invalid compressed payload: {exc}") from exc
+            replace(decompressed_tmp, literal_tmp)
+        return literal_tmp, literal_size
+    except BaseException:
+        if literal_tmp is not None:
+            Path(literal_tmp).unlink(missing_ok=True)
+        raise
+
+
+def _incoming_corrected_mtime(meta: dict[str, Any]) -> int:
+    """Decode the ADR-0023 corrected mtime; 0 when absent or unusable."""
+    raw_corrected = meta.get("corrected_mtime")
+    if isinstance(raw_corrected, int) and not isinstance(raw_corrected, bool) and raw_corrected > 0:
+        return int(clamp_incoming_corrected_mtime(float(raw_corrected)))
+    return 0
+
+
+def _raise_on_delta_conflict(
+    delta_result: Any, file_location: str, part_path: str, rebuilt_sha256: str
+) -> None:
+    """Raise the conflict error for a rejected delta, parking/removing the artifact.
+
+    The caller's cleanup is guarded by an existence check, so the ``.delta.part``
+    path it holds need not be reset here.
+    """
+    rejection = plan_conflict_rejection(
+        delta_result,
+        kind="Delta upload",
+        final_path=file_location,
+        sha_prefix=rebuilt_sha256[:12],
+    )
+    if rejection is None:
+        return
+    if rejection.conflicted_path is not None:
+        # Preserve the incoming bytes under the FINAL path name: the `.delta.part`
+        # artifact must never leak into the synced tree (ADR-0021 canonical
+        # `<stem>_conflicted_copy_…`).
+        replace(part_path, rejection.conflicted_path)
+    elif part_path and Path(part_path).exists():
+        remove(part_path)
+    raise rejection.error
+
+
+async def _publish_delta(
+    *,
+    part_path: str,
+    file_location: str,
+    bucket: str,
+    bucket_root: str,
+    local_bucket: str,
+    dest_existed: bool,
+    dest_marker: Any,
+    meta: dict[str, Any],
+    permissions: str | None,
+    cid: str,
+    delta_result: Any,
+    rebuilt_sha256: str,
+    new_size: int,
+    literal_size: int,
+    rebuild_duration: float,
+    start_time: float,
+    path: str,
+) -> JSONResponse:
+    """Publish a verified delta rebuild: timestamps, atomic rename, cache, event."""
+    resolution = delta_result.outcome.value
+    if (
+        delta_result.outcome is ArbitrationOutcome.accepted_conflict_won
+        and Path(file_location).exists()
+    ):
+        ts = conflict_timestamp()
+        conflicted = conflicted_copy_name(file_location, delta_result.loser_cid, ts)
+        # Preserve the previous (losing) content before overwriting.
+        copy2(file_location, conflicted)
+        log.warning(
+            f"Delta conflict on {path}: previous version preserved as {Path(conflicted).name}"
+        )
+    update_file_timestamp(part_path, str(meta.get("mtime") or ""))
+    if permissions:
+        await set_permissions(part_path, permissions)
+    if destination_mutation_since(bucket, bucket_root, file_location, dest_existed, dest_marker):
+        log.info(f"Delta apply rejected (destination changed): {file_location}")
+        return JSONResponse(status_code=409, content={"detail": "destination_changed"})
+    # Preserve the content this publish replaces (ADR-0057).
+    await asyncio.to_thread(
+        capture_file,
+        bucket,
+        file_location,
+        bucket_dir=local_bucket,
+        reason=HISTORY_REASON_OVERWRITE,
+        cid=cid,
+    )
+    replace(part_path, file_location)
+    src = await record_published_version(
+        bucket=bucket,
+        local_bucket=local_bucket,
+        file_location=file_location,
+        base_hash=rebuilt_sha256,
+        version_id=str(meta.get("version_id") or "") or None,
+        origin_cid=cid if is_valid_cid(cid) else None,
+        arbitration=delta_result,
+    )
+    if src:
+        manager = bucket_manager.get_manager(bucket)
+        await manager.send_message(Event(cid, local_bucket, bucket, EventName.modified, src))
+    record_delta_transfer("upload", "success")
+    record_transfer_duration("upload", "apply", rebuild_duration)
+    record_transfer_duration("upload", "total", time.time() - start_time)
+    # Bytes saved = new file size - literal size (what was actually uploaded)
+    record_bytes_saved("upload", max(0, new_size - literal_size))
+    log.info(
+        f"Delta apply completed for {path} ({new_size} bytes) "
+        f"{format_duration(time.time() - start_time, subsecond=True)}"
+    )
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "ok",
+            "sha256": rebuilt_sha256,
+            "size": new_size,
+            "resolution": resolution,
+        },
+    )
+
+
 @auth_router.post(rest_bucket_template(REST_DELTA_APPLY_SUFFIX))
 @limiter.limit(RATE_LIMIT_DELTA)
-async def delta_apply(  # noqa: C901 - refactor pending
+async def delta_apply(
     request: Request,  # Required by rate limiter
     bucket: str,
     ctx: Annotated[AuthContext, Depends(verify_api_key)],
@@ -231,7 +393,6 @@ async def delta_apply(  # noqa: C901 - refactor pending
         return refusal
 
     literal_tmp: str | None = None
-    decompressed_tmp: str | None = None
     part_path: str | None = None
     try:
         file_location, bucket_root, dest_existed, dest_marker = await _resolve_delta_target(
@@ -295,37 +456,9 @@ async def delta_apply(  # noqa: C901 - refactor pending
                 )
 
             # Park the literal payload on disk (streamed, never fully in RAM).
-            file_directory = str(Path(file_location).parent)
-            async with NamedTemporaryFile(
-                delete=False, dir=file_directory, prefix=".hsync-delta-lit-"
-            ) as tmp:
-                literal_tmp = str(tmp.name)
-                total = 0
-                while chunk := await file.read(8192):
-                    total += len(chunk)
-                    if total > DELTA_MAX_LITERAL_SIZE:
-                        raise ValidationError(
-                            message="Literal payload exceeds maximum size",
-                            details={"max": DELTA_MAX_LITERAL_SIZE},
-                        )
-                    await tmp.write(chunk)
-                await _flush_to_disk(tmp)
-
-            literal_size = total
-            if meta.get("compressed") is True:
-                # Anti decompression-bomb: expansion is hard-capped.
-                decompressed_tmp = f"{literal_tmp}.decompressed"
-                try:
-                    literal_size = await asyncio.to_thread(
-                        decompress_file_to_file,
-                        literal_tmp,
-                        decompressed_tmp,
-                        DELTA_MAX_LITERAL_SIZE,
-                    )
-                except zstd.ZstdError as exc:
-                    raise ValidationError(message=f"Invalid compressed payload: {exc}") from exc
-                replace(decompressed_tmp, literal_tmp)
-                decompressed_tmp = None
+            literal_tmp, literal_size = await _park_literal_payload(
+                file, file_location, compressed=meta.get("compressed") is True
+            )
 
             # 2. Validate ops against the real bounds before touching anything.
             base_size = Path(file_location).stat().st_size
@@ -373,14 +506,7 @@ async def delta_apply(  # noqa: C901 - refactor pending
             raw_vclock = meta.get("vclock")
             incoming_vclock_raw = decode_wire_vclock(raw_vclock)
 
-            raw_corrected = meta.get("corrected_mtime")
-            incoming_corrected = (
-                int(clamp_incoming_corrected_mtime(float(raw_corrected)))
-                if isinstance(raw_corrected, int)
-                and not isinstance(raw_corrected, bool)
-                and raw_corrected > 0
-                else 0
-            )
+            incoming_corrected = _incoming_corrected_mtime(meta)
             delta_result = arbitrate_upload(
                 bucket=bucket,
                 relpath=delta_relpath,
@@ -392,91 +518,27 @@ async def delta_apply(  # noqa: C901 - refactor pending
                 incoming_corrected_mtime=incoming_corrected,
             )
 
-            rejection = plan_conflict_rejection(
-                delta_result,
-                kind="Delta upload",
-                final_path=file_location,
-                sha_prefix=rebuilt_sha256[:12],
-            )
-            if rejection is not None:
-                if rejection.conflicted_path is not None:
-                    # Preserve the incoming bytes under the FINAL path name: the
-                    # `.delta.part` artifact must never leak into the synced tree
-                    # (ADR-0021 canonical `<stem>_conflicted_copy_…`).
-                    replace(part_path, rejection.conflicted_path)
-                elif part_path and Path(part_path).exists():
-                    remove(part_path)
-                part_path = None
-                raise rejection.error
+            _raise_on_delta_conflict(delta_result, file_location, part_path, rebuilt_sha256)
 
             # 5. Publish: timestamps/permissions, atomic rename, cache, broadcast.
-            resolution = delta_result.outcome.value
-            if (
-                delta_result.outcome is ArbitrationOutcome.accepted_conflict_won
-                and Path(file_location).exists()
-            ):
-                ts = conflict_timestamp()
-                conflicted = conflicted_copy_name(file_location, delta_result.loser_cid, ts)
-                # Preserve the previous (losing) content before overwriting.
-                copy2(file_location, conflicted)
-                log.warning(
-                    f"Delta conflict on {path}: previous version preserved as "
-                    f"{Path(conflicted).name}"
-                )
-
-            update_file_timestamp(part_path, str(meta.get("mtime") or ""))
-            if permissions:
-                await set_permissions(part_path, permissions)
-            if destination_mutation_since(
-                bucket, bucket_root, file_location, dest_existed, dest_marker
-            ):
-                log.info(f"Delta apply rejected (destination changed): {file_location}")
-                return JSONResponse(status_code=409, content={"detail": "destination_changed"})
-            # Preserve the content this publish replaces (ADR-0057).
-            await asyncio.to_thread(
-                capture_file,
-                bucket,
-                file_location,
-                bucket_dir=local_bucket,
-                reason=HISTORY_REASON_OVERWRITE,
-                cid=cid,
-            )
-            replace(part_path, file_location)
-            part_path = None
-            src = await record_published_version(
-                bucket=bucket,
-                local_bucket=local_bucket,
+            return await _publish_delta(
+                part_path=part_path,
                 file_location=file_location,
-                base_hash=rebuilt_sha256,
-                version_id=str(meta.get("version_id") or "") or None,
-                origin_cid=cid if is_valid_cid(cid) else None,
-                arbitration=delta_result,
-            )
-            if src:
-                manager = bucket_manager.get_manager(bucket)
-                await manager.send_message(
-                    Event(cid, local_bucket, bucket, EventName.modified, src)
-                )
-
-            record_delta_transfer("upload", "success")
-            record_transfer_duration("upload", "apply", rebuild_duration)
-            record_transfer_duration("upload", "total", time.time() - start_time)
-            # Bytes saved = new file size - literal size (what was actually uploaded)
-            bytes_saved = max(0, new_size - literal_size)
-            record_bytes_saved("upload", bytes_saved)
-
-            log.info(
-                f"Delta apply completed for {path} ({new_size} bytes) "
-                f"{format_duration(time.time() - start_time, subsecond=True)}"
-            )
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "status": "ok",
-                    "sha256": rebuilt_sha256,
-                    "size": new_size,
-                    "resolution": resolution,
-                },
+                bucket=bucket,
+                bucket_root=bucket_root,
+                local_bucket=local_bucket,
+                dest_existed=dest_existed,
+                dest_marker=dest_marker,
+                meta=meta,
+                permissions=permissions,
+                cid=cid,
+                delta_result=delta_result,
+                rebuilt_sha256=rebuilt_sha256,
+                new_size=new_size,
+                literal_size=literal_size,
+                rebuild_duration=rebuild_duration,
+                start_time=start_time,
+                path=path,
             )
     except (
         InvalidBucketNameError,
@@ -500,7 +562,7 @@ async def delta_apply(  # noqa: C901 - refactor pending
             details={"path": path, "error": type(exc).__name__},
         ) from exc
     finally:
-        for leftover in (literal_tmp, decompressed_tmp, part_path):
+        for leftover in (literal_tmp, part_path):
             if leftover and Path(leftover).exists():
                 try:
                     Path(leftover).unlink()

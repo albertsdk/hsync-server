@@ -294,83 +294,88 @@ async def handle_renamed_event(
         return None
 
     if src.get("path"):
-        src_dir = Dir.from_dict(src, bucket_dir)
-        dst_dir = Dir.from_dict(dst, bucket_dir)
-        if not _validate_path(src_dir.path, bucket_dir):
-            return None
-        if not _validate_path(dst_dir.path, bucket_dir):
-            return None
-        if src_dir.path and dst_dir.path:
-            try:
-                rename(src_dir.path, dst_dir.path)
-            except FileNotFoundError:
-                # A move is reported for a directory *and* its descendants (the
-                # polling watcher and scan-based pairing do that). The ancestor
-                # event is applied first, so the descendant's source is already
-                # gone while its destination exists: this event is redundant,
-                # not an error. Skipping keeps the log honest; the ancestor's
-                # broadcast still reaches every peer.
-                if not Path(dst_dir.path).exists():
-                    raise
-                log.debug(
-                    f"{ActionLabel.RENAME} Skipped already-applied directory rename "
-                    f'"{src_dir.path}" -> "{dst_dir.path}" (CID: {cid})'
-                )
-                return None
-            log.info(
-                f'{ActionLabel.RENAME} Renamed "{src_dir.path}" -> "{dst_dir.path}" (CID: {cid})'
-            )
-            # Causal bookkeeping is best-effort: the on-disk rename already
-            # happened, so a failure here must not abort the event broadcast
-            # (peers would never learn of the rename).
-            try:
-                move_version_prefix(bucket, bucket_dir, src_dir.path, dst_dir.path)
-                # The destination may carry deletion markers from an earlier
-                # delete; the rename repopulates it, so they must be dropped or
-                # peers could treat the renamed tree as deleted.
-                clear_deletion_tree(bucket, bucket_dir, dst_dir.path)
-            except Exception as e:  # pragma: no cover - best-effort bookkeeping
-                log.warning(f"Could not update causal state for {dst_dir.path}: {e}")
-            return Event(cid, bucket_dir, bucket, EventName.renamed, src_dir, dst_dir)
-
-    elif src.get("filepath"):
-        src_file = File.from_dict(src, bucket_dir, False)
-        dst_file = File.from_dict(dst, bucket_dir, False)
-        if not _validate_path(src_file.filepath, bucket_dir):
-            return None
-        if not _validate_path(dst_file.filepath, bucket_dir):
-            return None
-        if src_file.filepath and dst_file.filepath:
-            try:
-                rename(src_file.filepath, dst_file.filepath)
-            except FileNotFoundError:
-                # Same redundancy as the directory branch: a descendant was
-                # moved by its renamed ancestor, so its own event has nothing
-                # left to do. Not an error.
-                if not Path(dst_file.filepath).exists():
-                    raise
-                log.debug(
-                    f"{ActionLabel.RENAME} Skipped already-applied rename "
-                    f'"{src_file.filepath}" -> "{dst_file.filepath}" (CID: {cid})'
-                )
-                return None
-            log.info(
-                f'{ActionLabel.RENAME} Renamed "{src_file.filepath}" -> "{dst_file.filepath}" (CID: {cid})'
-            )
-            # Causal bookkeeping is best-effort: the on-disk rename already
-            # happened, so a failure here must not abort the event broadcast
-            # (peers would never learn of the rename).
-            try:
-                move_version(bucket, bucket_dir, src_file.filepath, dst_file.filepath)
-                # The destination may carry a stale deletion marker from an
-                # earlier delete; creating content there (as in upload/add) must
-                # drop it.
-                clear_deletion(bucket, bucket_dir, dst_file.filepath)
-            except Exception as e:  # pragma: no cover - best-effort bookkeeping
-                log.warning(f"Could not update causal state for {dst_file.filepath}: {e}")
-            return Event(cid, bucket_dir, bucket, EventName.renamed, src_file, dst_file)
-
+        return _handle_dir_rename(src, dst, bucket_dir, bucket, cid)
+    if src.get("filepath"):
+        return _handle_file_rename(src, dst, bucket_dir, bucket, cid)
     return None
+
+
+def _handle_dir_rename(
+    src: dict[str, Any], dst: dict[str, Any], bucket_dir: str, bucket: str, cid: str
+) -> Event | None:
+    """Apply a directory rename event; None when it is redundant or rejected."""
+    src_dir = Dir.from_dict(src, bucket_dir)
+    dst_dir = Dir.from_dict(dst, bucket_dir)
+    if not _validate_path(src_dir.path, bucket_dir):
+        return None
+    if not _validate_path(dst_dir.path, bucket_dir):
+        return None
+    if not (src_dir.path and dst_dir.path):
+        return None
+    try:
+        rename(src_dir.path, dst_dir.path)
+    except FileNotFoundError:
+        # A move is reported for a directory *and* its descendants (the polling
+        # watcher and scan-based pairing do that). The ancestor event is applied
+        # first, so the descendant's source is already gone while its destination
+        # exists: this event is redundant, not an error.
+        if not Path(dst_dir.path).exists():
+            raise
+        log.debug(
+            f"{ActionLabel.RENAME} Skipped already-applied directory rename "
+            f'"{src_dir.path}" -> "{dst_dir.path}" (CID: {cid})'
+        )
+        return None
+    log.info(f'{ActionLabel.RENAME} Renamed "{src_dir.path}" -> "{dst_dir.path}" (CID: {cid})')
+    # Causal bookkeeping is best-effort: the on-disk rename already happened, so a
+    # failure here must not abort the event broadcast (peers would never learn).
+    try:
+        move_version_prefix(bucket, bucket_dir, src_dir.path, dst_dir.path)
+        # The destination may carry deletion markers from an earlier delete; the
+        # rename repopulates it, so they must be dropped or peers could treat the
+        # renamed tree as deleted.
+        clear_deletion_tree(bucket, bucket_dir, dst_dir.path)
+    except Exception as e:  # pragma: no cover - best-effort bookkeeping
+        log.warning(f"Could not update causal state for {dst_dir.path}: {e}")
+    return Event(cid, bucket_dir, bucket, EventName.renamed, src_dir, dst_dir)
+
+
+def _handle_file_rename(
+    src: dict[str, Any], dst: dict[str, Any], bucket_dir: str, bucket: str, cid: str
+) -> Event | None:
+    """Apply a file rename event; None when it is redundant or rejected."""
+    src_file = File.from_dict(src, bucket_dir, False)
+    dst_file = File.from_dict(dst, bucket_dir, False)
+    if not _validate_path(src_file.filepath, bucket_dir):
+        return None
+    if not _validate_path(dst_file.filepath, bucket_dir):
+        return None
+    if not (src_file.filepath and dst_file.filepath):
+        return None
+    try:
+        rename(src_file.filepath, dst_file.filepath)
+    except FileNotFoundError:
+        # Same redundancy as the directory branch: a descendant was moved by its
+        # renamed ancestor, so its own event has nothing left to do.
+        if not Path(dst_file.filepath).exists():
+            raise
+        log.debug(
+            f"{ActionLabel.RENAME} Skipped already-applied rename "
+            f'"{src_file.filepath}" -> "{dst_file.filepath}" (CID: {cid})'
+        )
+        return None
+    log.info(
+        f'{ActionLabel.RENAME} Renamed "{src_file.filepath}" -> "{dst_file.filepath}" (CID: {cid})'
+    )
+    # Causal bookkeeping is best-effort (see the directory branch).
+    try:
+        move_version(bucket, bucket_dir, src_file.filepath, dst_file.filepath)
+        # The destination may carry a stale deletion marker from an earlier delete;
+        # creating content there (as in upload/add) must drop it.
+        clear_deletion(bucket, bucket_dir, dst_file.filepath)
+    except Exception as e:  # pragma: no cover - best-effort bookkeeping
+        log.warning(f"Could not update causal state for {dst_file.filepath}: {e}")
+    return Event(cid, bucket_dir, bucket, EventName.renamed, src_file, dst_file)
 
 
 async def handle_symlink_event(

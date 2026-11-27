@@ -112,6 +112,120 @@ async def _broadcast_rename(
     )
 
 
+def _resolve_rename_endpoints(bucket: str, src: str, dst: str) -> tuple[str, str, bool]:
+    """Confine and sanity-check both rename endpoints; return (src, dst, is_dir).
+
+    Both endpoints are peer-supplied and untrusted. ``resolve_final=False`` keeps
+    a link at either end as the LINK entry, so a move never dereferences it.
+    """
+    src_path = resolve_within_bucket(bucket, src, resolve_final=False)
+    dst_path = resolve_within_bucket(bucket, dst, resolve_final=False)
+    if src_path is None:
+        raise InvalidPathError(details={"path": src})
+    if dst_path is None:
+        raise InvalidPathError(details={"path": dst})
+    src_obj = Path(src_path)
+    # A dangling link is a real entry: ``exists()`` follows the link and would
+    # report a genuinely present rename source as missing.
+    if not (src_obj.is_symlink() or src_obj.exists()):
+        raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": src})
+    # Moving content into a subtree another client is removing would recreate
+    # what it deleted (see hsync_common.deletions).
+    if covered_by_tree_delete(dst_path):
+        log.debug(f"[TREE-DELETE] Refused a rename inside an in-flight delete: {dst_path}")
+        raise ConflictError(
+            message="Path is being deleted",
+            details={"bucket": bucket, "filename": dst},
+        )
+    if src_obj.is_symlink():
+        # Links replicate structurally (path + target), never as content: a
+        # "rename" would have to be a symlink create + delete pair.
+        raise InvalidPathError(
+            details={"path": src, "reason": "symlinks replicate structurally, not by rename"}
+        )
+    return src_path, dst_path, src_obj.is_dir()
+
+
+def _apply_rename_move(
+    *,
+    bucket: str,
+    src: str,
+    dst: str,
+    src_path: str,
+    dst_path: str,
+    is_dir: bool,
+    local_bucket: str,
+    expected_sha256: str,
+    cid: str,
+) -> File | None:
+    """Check the destination, tombstone the source, move, and move causal state.
+
+    Runs without an ``await`` between the destination check and the move, so the
+    pair is atomic on one event loop. Returns the source's ``File`` model (files
+    only) for the caller's metadata pass.
+    """
+    src_meta: File | None = None
+    try:
+        if Path(dst_path).is_symlink() or Path(dst_path).exists():
+            raise ConflictError(
+                message="Destination already exists",
+                details={"bucket": bucket, "filename": dst},
+            )
+        if not is_dir:
+            src_meta = File.get(src_path)
+            if src_meta is None:
+                # Vanished between the existence check and here.
+                raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": src})
+            if expected_sha256 and (
+                not src_meta.sha256sum
+                or not hmac.compare_digest(expected_sha256, src_meta.sha256sum)
+            ):
+                raise ConflictError(
+                    message="Source content no longer matches the expected checksum",
+                    details={"bucket": bucket, "filename": src},
+                )
+        # Tombstones first, exactly like the delete endpoint: a crash between the
+        # marker and the move leaves a harmless marker (the next upload clears
+        # it), while the reverse order could lose the deletion proof.
+        if is_dir:
+            # The version entries are carried to the destination below, so they
+            # must survive this tombstone pass.
+            record_deletion_tree(bucket, local_bucket, src_path, cid=cid, clear_versions=False)
+        else:
+            record_path_deletion(
+                bucket,
+                local_bucket,
+                src_path,
+                sha256sum=src_meta.sha256sum if src_meta else None,
+                cid=cid,
+            )
+        dst_parent = Path(dst_path).parent
+        if not dst_parent.exists():
+            dst_parent.mkdir(parents=True, exist_ok=True)
+        replace(src_path, dst_path)
+        invalidate_sha256_cache(src_path)
+        invalidate_sha256_cache(dst_path)
+        # Causal ownership moves with the content: a rename is not an edit, so the
+        # stored clock is carried over unchanged (no tick). The destination may
+        # carry markers from an earlier delete; the rename repopulates it, so they
+        # must be dropped or peers would treat it as deleted.
+        if is_dir:
+            move_version_prefix(bucket, local_bucket, src_path, dst_path)
+            clear_deletion_tree(bucket, local_bucket, dst_path)
+        else:
+            move_version(bucket, local_bucket, src_path, dst_path)
+            clear_deletion(bucket, local_bucket, dst_path)
+    except OSError as e:
+        # Only the exception type is exposed: the raw message embeds absolute
+        # filesystem paths.
+        log.error(f'Rename failed for "{src}" -> "{dst}": {e}')
+        raise FileOperationError(
+            message="Rename failed",
+            details={"src": src, "dst": dst, "error": type(e).__name__},
+        ) from e
+    return src_meta
+
+
 @auth_router.patch(rest_bucket_template(REST_FILES_SUFFIX))
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def rename_file(
@@ -172,111 +286,26 @@ async def rename_file(
         permissions=permissions,
     )
 
-    # Both endpoints are peer-supplied and untrusted: confine them to *this*
-    # bucket. resolve_final=False keeps a link at either end as the LINK entry,
-    # so a move never dereferences it into the target file.
-    src_path = resolve_within_bucket(bucket, src, resolve_final=False)
-    dst_path = resolve_within_bucket(bucket, dst, resolve_final=False)
-    if src_path is None:
-        raise InvalidPathError(details={"path": src})
-    if dst_path is None:
-        raise InvalidPathError(details={"path": dst})
-
-    src_obj = Path(src_path)
-    # A dangling link is a real entry: ``exists()`` follows the link and would
-    # report a genuinely present rename source as missing.
-    if not (src_obj.is_symlink() or src_obj.exists()):
-        raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": src})
-    # Moving content into a subtree another client is removing would recreate
-    # what it deleted (see hsync_common.deletions).
-    if covered_by_tree_delete(dst_path):
-        log.debug(f"[TREE-DELETE] Refused a rename inside an in-flight delete: {dst_path}")
-        raise ConflictError(
-            message="Path is being deleted",
-            details={"bucket": bucket, "filename": dst},
-        )
-    if src_obj.is_symlink():
-        # Links replicate structurally (path + target), never as content: a
-        # "rename" would have to be a symlink create + delete pair, which the
-        # symlink surface already expresses without moving any bytes.
-        raise InvalidPathError(
-            details={"path": src, "reason": "symlinks replicate structurally, not by rename"}
-        )
-
-    is_dir = src_obj.is_dir()
+    src_path, dst_path, is_dir = _resolve_rename_endpoints(bucket, src, dst)
     local_bucket = f"{get_buckets_path()}/{bucket}"
     origin_cid = cid if is_valid_cid(cid) else ""
 
     # Everything below runs without an ``await`` between the destination check
-    # and the move. On one event loop that makes "destination absent" +
-    # "rename" atomic with respect to every other request, so a concurrently
-    # created file is never silently overwritten — the same reasoning that
-    # keeps the delete path synchronous.
-    src_meta: File | None = None
-    try:
-        if Path(dst_path).is_symlink() or Path(dst_path).exists():
-            raise ConflictError(
-                message="Destination already exists",
-                details={"bucket": bucket, "filename": dst},
-            )
-
-        if not is_dir:
-            src_meta = File.get(src_path)
-            if src_meta is None:
-                # Vanished between the existence check and here.
-                raise HSyncFileNotFoundError(details={"bucket": bucket, "filename": src})
-            if expected_sha256 and (
-                not src_meta.sha256sum
-                or not hmac.compare_digest(expected_sha256, src_meta.sha256sum)
-            ):
-                raise ConflictError(
-                    message="Source content no longer matches the expected checksum",
-                    details={"bucket": bucket, "filename": src},
-                )
-
-        # Tombstones first, exactly like the delete endpoint: a crash between
-        # the marker and the move leaves a harmless marker (the next upload
-        # clears it), while the reverse order could lose the deletion proof and
-        # let an offline peer resurrect the vacated path.
-        if is_dir:
-            # The version entries are carried to the destination below, so they
-            # must survive this tombstone pass.
-            record_deletion_tree(bucket, local_bucket, src_path, cid=cid, clear_versions=False)
-        else:
-            record_path_deletion(
-                bucket,
-                local_bucket,
-                src_path,
-                sha256sum=src_meta.sha256sum if src_meta else None,
-                cid=cid,
-            )
-
-        dst_parent = Path(dst_path).parent
-        if not dst_parent.exists():
-            dst_parent.mkdir(parents=True, exist_ok=True)
-
-        replace(src_path, dst_path)
-        invalidate_sha256_cache(src_path)
-        invalidate_sha256_cache(dst_path)
-
-        # Causal ownership moves with the content: a rename is not an edit, so
-        # the stored clock is carried over unchanged (no tick). The destination
-        # may carry markers from an earlier delete; the rename repopulates it,
-        # so they must be dropped or peers would treat it as deleted.
-        if is_dir:
-            move_version_prefix(bucket, local_bucket, src_path, dst_path)
-            clear_deletion_tree(bucket, local_bucket, dst_path)
-        else:
-            move_version(bucket, local_bucket, src_path, dst_path)
-            clear_deletion(bucket, local_bucket, dst_path)
-    except OSError as e:
-        # Only the exception type is exposed: the raw message embeds absolute
-        # filesystem paths.
-        log.error(f'Rename failed for "{src}" -> "{dst}": {e}')
-        raise FileOperationError(
-            message="Rename failed",
-            details={"src": src, "dst": dst, "error": type(e).__name__},
-        ) from e
+    # and the move. On one event loop that makes "destination absent" + "rename"
+    # atomic with respect to every other request, so a concurrently created file
+    # is never silently overwritten — the same reasoning that keeps the delete
+    # path synchronous.
+    src_meta = _apply_rename_move(
+        bucket=bucket,
+        src=src,
+        dst=dst,
+        src_path=src_path,
+        dst_path=dst_path,
+        is_dir=is_dir,
+        local_bucket=local_bucket,
+        expected_sha256=expected_sha256,
+        cid=cid,
+    )
 
     # The move vacated the source path: keep the (possibly now empty) parent
     # directory alive with a sentinel, exactly like a delete does.

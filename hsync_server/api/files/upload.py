@@ -20,7 +20,7 @@ from os.path import samefile
 from pathlib import Path
 from shutil import copy2
 from time import monotonic
-from typing import Annotated
+from typing import Annotated, Any
 
 import aiofiles
 import zstandard as zstd
@@ -324,9 +324,346 @@ async def _upload_duplicate_shortcut(
     )
 
 
+async def _expand_compressed_upload_temp(
+    file_location_tmp: str,
+    *,
+    declared_size: int,
+    compressed_bytes: int,
+    max_upload_size: int,
+) -> int:
+    """Expand the compressed upload temp onto itself; return the decompressed size.
+
+    The expansion is hard-capped (anti decompression-bomb) and streamed through a
+    worker thread, so neither the compressed input nor the expanded output (each
+    up to the cap) is ever fully buffered in memory.
+    """
+    if declared_size > 0:
+        max_decompressed = declared_size
+    elif max_upload_size > 0:
+        max_decompressed = max_upload_size
+    else:
+        raise ValidationError(
+            message="Missing/invalid 'size' for compressed upload",
+            details={"size": declared_size},
+        )
+    decompressed_tmp = f"{file_location_tmp}.decompressed"
+    try:
+        try:
+            decompressed_bytes = await asyncio.to_thread(
+                decompress_file_to_file,
+                file_location_tmp,
+                decompressed_tmp,
+                max_decompressed,
+            )
+        except zstd.ZstdError as exc:
+            raise ValidationError(
+                message=f"Invalid compressed payload: {exc}",
+                details={"size": declared_size, "compressed_bytes": compressed_bytes},
+            ) from exc
+        if declared_size > 0 and decompressed_bytes != declared_size:
+            raise ValidationError(
+                message=(
+                    f"Decompressed size mismatch: expected {declared_size}, "
+                    f"got {decompressed_bytes}"
+                ),
+                details={"expected": declared_size, "actual": decompressed_bytes},
+            )
+        # Swap the expanded content back onto the upload temp path
+        # (same-filesystem rename).
+        replace(decompressed_tmp, file_location_tmp)
+        return decompressed_bytes
+    finally:
+        if Path(decompressed_tmp).exists():
+            remove(decompressed_tmp)
+
+
+async def _append_resumable_upload(
+    file: UploadFile,
+    partial_file_path: str,
+    *,
+    offset: int,
+    size: int,
+    max_upload_size: int,
+    fused_sha: Any,
+) -> tuple[int, JSONResponse | None]:
+    """Append the incoming body to an existing ``.part`` under the per-path lock.
+
+    Returns ``(total_bytes, early_response)``; ``early_response`` is a resync (202
+    with the true offset) or a partial (202) response when the body is not the
+    final chunk. The lock is held on the ``.part`` path so two concurrent uploads
+    of one destination cannot interleave appends (the arbitration lock below keys
+    on the final path, so this cannot self-deadlock).
+    """
+    async with get_file_lock_manager().acquire(partial_file_path):
+        tmp_exists = Path(partial_file_path).exists()
+        current_size = Path(partial_file_path).stat().st_size if tmp_exists else 0
+        if current_size != offset:
+            # A duplicate writer appended bytes, or the .part is gone (the peer
+            # that completed the upload already renamed it). Keep the .part, do
+            # not write the body, and answer 202 with the true offset.
+            log.warning(
+                f"Upload offset resync for {file.filename}: "
+                f"local .part has {current_size} bytes, client offset {offset}"
+            )
+            return 0, _resync_upload_response(current_size, size)
+        total_bytes = offset
+        # Fused checksum (resume): ingest the already-received prefix so the digest
+        # covers the complete file. Compressed uploads are never resumable
+        # (rejected above), so fused_sha is set here.
+        async with aiofiles.open(partial_file_path, "rb") as prefix:
+            while prefix_chunk := await prefix.read(_UPLOAD_COPY_CHUNK):
+                fused_sha.update(prefix_chunk)
+        async with aiofiles.open(partial_file_path, "ab") as f:
+            while chunk := await file.read(_UPLOAD_COPY_CHUNK):
+                total_bytes += len(chunk)
+                enforce_size_cap(total_bytes, max_upload_size)
+                await f.write(chunk)
+                fused_sha.update(chunk)
+            # Ensure appended data reaches physical storage
+            await _flush_to_disk(f)
+        if size > 0 and total_bytes < size:
+            # Partial upload - more chunks expected
+            return total_bytes, _partial_upload_response(total_bytes, size)
+        return total_bytes, None
+
+
+async def _arbitrate_publish_upload(
+    *,
+    bucket: str,
+    path: str,
+    file: UploadFile,
+    cid: str,
+    mtime: str,
+    permissions: str,
+    version_id: str,
+    corrected_mtime: int,
+    incoming_vclock_raw: Any,
+    local_bucket: str,
+    file_location: str,
+    file_location_tmp: str,
+    backup_path: str | None,
+    sha256sum_tmp: str,
+    bucket_root: str,
+    dest_existed: bool,
+    dest_marker: Any,
+) -> tuple[Any, str, Any, JSONResponse | None]:
+    """Arbitrate the incoming upload against the stored version and publish it.
+
+    Runs the whole critical section under the per-path lock (read store → decide →
+    write file → record, ADR-0022 §3.4.6), so two concurrent uploads for one path
+    are ordered. Returns ``(src, resolution, result, early_response)``;
+    ``early_response`` is a 409 when the destination changed under the upload. A
+    lost arbitration raises.
+    """
+    lock_manager = get_file_lock_manager()
+    async with lock_manager.acquire(file_location):
+        relpath = relpath_in_bucket(file_location, local_bucket) or ""
+        disk_hash = get_sha256_hash(file_location) if Path(file_location).exists() else None
+        # ADR-0023 receiver-side guard: a far-future peer value cannot win every
+        # tie-break; it is clamped against the receiver's corrected clock.
+        incoming_corrected = int(clamp_incoming_corrected_mtime(float(corrected_mtime)))
+        result = arbitrate_upload(
+            bucket=bucket,
+            relpath=relpath,
+            incoming_hash=sha256sum_tmp,
+            incoming_vclock_raw=incoming_vclock_raw,
+            incoming_version_id=version_id,
+            incoming_origin_cid=cid if is_valid_cid(cid) else None,
+            disk_hash=disk_hash,
+            incoming_corrected_mtime=incoming_corrected,
+        )
+        rejection = plan_conflict_rejection(
+            result,
+            kind="Upload",
+            final_path=file_location,
+            sha_prefix=sha256sum_tmp[:12],
+            has_backup=bool(backup_path and Path(backup_path).exists()),
+        )
+        if rejection is not None:
+            if rejection.conflicted_path is not None:
+                # Incoming loses the tie-break: preserve its bytes as a conflicted
+                # copy, keep the winner on disk, reject.
+                replace(file_location_tmp, rejection.conflicted_path)
+            elif Path(file_location_tmp).exists():
+                # Stale upload (causally dominated): discard the temp file.
+                remove(file_location_tmp)
+            if rejection.discard_backup and backup_path and Path(backup_path).exists():
+                remove(backup_path)
+            raise rejection.error
+        # accepted or accepted_conflict_won: write the incoming content. On
+        # accepted_conflict_won, preserve the previous (losing) content as a
+        # conflicted copy using the backup created earlier.
+        resolution = result.outcome.value
+        if (
+            result.outcome is ArbitrationOutcome.accepted_conflict_won
+            and backup_path
+            and Path(backup_path).exists()
+        ):
+            ts = conflict_timestamp()
+            conflicted = conflicted_copy_name(file_location, result.loser_cid, ts)
+            replace(backup_path, conflicted)
+            log.warning(
+                f'{ActionLabel.UPLOAD} Conflict detected on "{bucket}/{path}/{file.filename}" '
+                f"(prev SHA {(disk_hash or '')[:12]}…, new SHA {sha256sum_tmp[:12]}…): "
+                f'previous version preserved as "{Path(conflicted).name}"'
+            )
+        elif backup_path and Path(backup_path).exists():
+            remove(backup_path)
+        if destination_mutation_since(
+            bucket, bucket_root, file_location, dest_existed, dest_marker
+        ):
+            log.info(
+                f'Upload rejected (destination changed): "{_wire_relpath(bucket, path, file.filename)}"'
+            )
+            return (
+                None,
+                "",
+                None,
+                JSONResponse(status_code=409, content={"detail": "destination_changed"}),
+            )
+        # Atomically move file to final destination (same-filesystem rename).
+        replace(file_location_tmp, file_location)
+        # Metadata only on content that passed integrity verification.
+        update_file_timestamp(file_location, mtime)
+        if permissions:
+            await set_permissions(file_location, permissions)
+        # Captured while STILL holding the lock: the model must describe exactly
+        # the generation this upload published, or a later same-path upload could
+        # broadcast its content under this CID.
+        src = await record_published_version(
+            bucket=bucket,
+            local_bucket=local_bucket,
+            file_location=file_location,
+            base_hash=sha256sum_tmp,
+            version_id=version_id or None,
+            origin_cid=cid if is_valid_cid(cid) else None,
+            arbitration=result,
+        )
+        return src, resolution, result, None
+
+
+async def _receive_new_upload_body(
+    file: UploadFile,
+    *,
+    file_directory: str,
+    partial_file_path: str,
+    size: int,
+    max_upload_size: int,
+    is_compressed: bool,
+    fused_sha: Any,
+) -> tuple[str | None, int, JSONResponse | None]:
+    """Copy a new/first-chunk body to a hidden temp file, expanding if compressed.
+
+    Returns ``(file_location_tmp, total_bytes, early_response)``; ``early_response``
+    is a 202 partial response when the body is not the final chunk (``None``
+    otherwise, and ``file_location_tmp`` is a valid temp then). The temp is created
+    in the destination directory so the final rename is an atomic same-filesystem
+    move (the dot prefix keeps it out of /files listings).
+    """
+    total_bytes = 0
+    # If size > 0, this might be the first chunk of a multi-chunk upload.
+    if size > 0 and Path(partial_file_path).exists():
+        remove(partial_file_path)
+    async with NamedTemporaryFile(
+        delete=False, dir=file_directory, prefix=".hsync-upload-"
+    ) as temp_file:
+        file_location_tmp = str(temp_file.name)
+        while chunk := await file.read(_UPLOAD_COPY_CHUNK):
+            total_bytes += len(chunk)
+            enforce_size_cap(total_bytes, max_upload_size)
+            await temp_file.write(chunk)
+            if fused_sha is not None:
+                fused_sha.update(chunk)
+        # Ensure written data reaches physical storage
+        await _flush_to_disk(temp_file)
+    if is_compressed and total_bytes > 0:
+        total_bytes = await _expand_compressed_upload_temp(
+            file_location_tmp,
+            declared_size=size,
+            compressed_bytes=total_bytes,
+            max_upload_size=max_upload_size,
+        )
+    if size > 0 and total_bytes < size and not is_compressed:
+        # Move temp file to partial file location (same-filesystem rename).
+        replace(file_location_tmp, partial_file_path)
+        return None, total_bytes, _partial_upload_response(total_bytes, size)
+    return file_location_tmp, total_bytes, None
+
+
+async def _verify_upload_checksum(file_location_tmp: str, *, declared: str, fused_sha: Any) -> str:
+    """Return the received digest, raising when it does not match *declared*."""
+    if fused_sha is not None:
+        # Uncompressed uploads: the digest was fused into the copy loop (no
+        # second full read of the temp file).
+        actual = fused_sha.hexdigest()
+    else:
+        # Compressed uploads: the fused hasher would cover the raw compressed
+        # bytes — hash the finalized decompressed file.
+        actual = await compute_sha256_async(file_location_tmp)
+    if not hmac.compare_digest(declared, actual):
+        raise ChecksumMismatchError(
+            message=f"Checksum mismatch: expected {declared}, got {actual}",
+            details={"expected": declared, "actual": actual},
+        )
+    return actual
+
+
+async def _broadcast_and_respond(
+    *,
+    src: Any,
+    cid: str,
+    local_bucket: str,
+    bucket: str,
+    total_bytes: int,
+    t0: float,
+    resolution: str,
+    result: Any,
+    path: str,
+    file: UploadFile,
+) -> JSONResponse:
+    """Broadcast the pre-captured metadata (outside the lock) and build the 201."""
+    if src:
+        manager = bucket_manager.get_manager(bucket)
+        await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))
+    log.info(
+        f'{ActionLabel.UPLOAD} "{_wire_relpath(bucket, path, file.filename)}" (CID: {cid}) '
+        f"{format_bytes(total_bytes)} {format_duration(monotonic() - t0, subsecond=True)}"
+    )
+    return JSONResponse(
+        status_code=201,
+        content={
+            "info": "File uploaded successfully",
+            "file": _wire_relpath(bucket, path, file.filename),
+            "resolution": resolution,
+            # ADR-0023: the recorded causal version (merged clock + corrected mtime)
+            # so the uploader can mirror the agreed base exactly.
+            "version": {
+                "vclock": result.record_vclock,
+                "corrected_mtime": result.record_corrected_mtime,
+            },
+        },
+    )
+
+
+def _reject_covered_by_tree_delete(file_location: str, path: str, file: UploadFile) -> None:
+    """Refuse an upload landing inside a subtree another client is removing.
+
+    Such a file recreates what the deleting peer removed, the rmtree fails with
+    ENOTEMPTY and the tree stays half present (see ``hsync_common.deletions``); the
+    peer re-offers the content once the removal completed.
+    """
+    if not covered_by_tree_delete(file_location):
+        return
+    log.debug(f"[TREE-DELETE] Refused an upload inside an in-flight delete: {file_location}")
+    raise ConflictError(
+        message="Path is being deleted",
+        details={"path": path, "filename": file.filename},
+    )
+
+
 @auth_router.post(rest_bucket_template(REST_FILES_SUFFIX))
 @limiter.limit(RATE_LIMIT_UPLOAD)
-async def upload_file(  # noqa: C901 - refactor pending
+async def upload_file(
     request: Request,  # Required by rate limiter
     bucket: str,
     ctx: Annotated[AuthContext, Depends(verify_api_key)],
@@ -412,19 +749,8 @@ async def upload_file(  # noqa: C901 - refactor pending
 
         # Define file paths
         file_location = f"{file_directory}/{file.filename}"
-        # A subtree another client is removing right now is closed to writes: a
-        # file landing inside it recreates what the deleting peer removed, the
-        # rmtree fails with ENOTEMPTY and the tree stays half present (see
-        # hsync_common.deletions). The peer re-offers the content once the
-        # removal completed.
-        if covered_by_tree_delete(file_location):
-            log.debug(
-                f"[TREE-DELETE] Refused an upload inside an in-flight delete: {file_location}"
-            )
-            raise ConflictError(
-                message="Path is being deleted",
-                details={"path": path, "filename": file.filename},
-            )
+        # A subtree another client is removing right now is closed to writes.
+        _reject_covered_by_tree_delete(file_location, path, file)
         # The destination is snapshotted before the body streams: if it is
         # deleted, renamed away or recreated while the upload runs, the final
         # move must not commit over it (same contract as the P2P master gate).
@@ -482,288 +808,78 @@ async def upload_file(  # noqa: C901 - refactor pending
         fused_sha = None if is_compressed else hashlib.sha256()
 
         if is_resumable:
-            # Serialize the append phase per path: two concurrent uploads of the
-            # same destination (a duplicate watcher + full-sync trigger, or a
-            # retry racing the initial sync) must not append to the same .part at
-            # once — the second writer's preflight offset would go stale
-            # mid-request and the file would be corrupted. The arbitration lock
-            # below uses the final path as its key, so holding this lock on the
-            # .part path cannot self-deadlock.
-            async with get_file_lock_manager().acquire(partial_file_path):
-                tmp_exists = Path(partial_file_path).exists()
-                current_size = Path(partial_file_path).stat().st_size if tmp_exists else 0
-                if current_size != offset:
-                    # The .part holds a different size than the offset the peer
-                    # probed: a duplicate writer appended bytes, or the .part is
-                    # gone (the peer that completed the upload already renamed
-                    # it). The server keeps the .part, never writes the client's
-                    # body, and answers 202 with the true offset so the peer
-                    # re-probes and resumes (or restarts).
-                    log.warning(
-                        f"Upload offset resync for {file.filename}: "
-                        f"local .part has {current_size} bytes, client offset {offset}"
-                    )
-                    return _resync_upload_response(current_size, size)
-
-                total_bytes = offset
-                # Fused checksum (resume): ingest the already-received prefix so
-                # the digest covers the complete file. Compressed uploads are
-                # never resumable (rejected above), so fused_sha is set here.
-                assert fused_sha is not None
-                async with aiofiles.open(partial_file_path, "rb") as prefix:
-                    while prefix_chunk := await prefix.read(_UPLOAD_COPY_CHUNK):
-                        fused_sha.update(prefix_chunk)
-                async with aiofiles.open(partial_file_path, "ab") as f:
-                    while chunk := await file.read(_UPLOAD_COPY_CHUNK):
-                        total_bytes += len(chunk)
-                        enforce_size_cap(total_bytes, max_upload_size)
-                        await f.write(chunk)
-                        fused_sha.update(chunk)
-                    # Ensure appended data reaches physical storage
-                    await _flush_to_disk(f)
-
-                if size > 0 and total_bytes < size:
-                    # Partial upload - more chunks expected
-                    return _partial_upload_response(total_bytes, size)
-
+            total_bytes, early = await _append_resumable_upload(
+                file,
+                partial_file_path,
+                offset=offset,
+                size=size,
+                max_upload_size=max_upload_size,
+                fused_sha=fused_sha,
+            )
+            if early is not None:
+                return early
             # Upload complete - verify and finalize
             file_location_tmp = partial_file_path
         else:
-            # Standard upload to temp file (new upload or first chunk)
-            total_bytes = 0
-
-            # If size > 0, this might be first chunk of a multi-chunk upload
-            if size > 0 and Path(partial_file_path).exists():
-                remove(partial_file_path)
-
-            # Create the temp file in the destination directory so the final
-            # os.replace() below resolves to an atomic same-filesystem rename
-            # instead of a non-atomic copy+remove (which could leave a torn file).
-            # The dot prefix keeps the in-flight artifact hidden: it must not
-            # appear in /files listings (peers would sync torn content).
-            async with NamedTemporaryFile(
-                delete=False, dir=file_directory, prefix=".hsync-upload-"
-            ) as temp_file:
-                file_location_tmp = str(temp_file.name)
-                while chunk := await file.read(_UPLOAD_COPY_CHUNK):
-                    total_bytes += len(chunk)
-                    enforce_size_cap(total_bytes, max_upload_size)
-                    await temp_file.write(chunk)
-                    if fused_sha is not None:
-                        fused_sha.update(chunk)
-                # Ensure written data reaches physical storage
-                await _flush_to_disk(temp_file)
-
-            if is_compressed and total_bytes > 0:
-                # Anti decompression-bomb: the compressed payload may expand
-                # arbitrarily, so the decompressed size is hard-capped. The
-                # cap is the declared file size when known (the content must
-                # match it exactly — integrity is verified below), otherwise
-                # the configured upload limit.
-                if size > 0:
-                    max_decompressed = size
-                elif max_upload_size > 0:
-                    max_decompressed = max_upload_size
-                else:
-                    raise ValidationError(
-                        message="Missing/invalid 'size' for compressed upload",
-                        details={"size": size},
-                    )
-                # Streaming decompression: the compressed temp file is expanded
-                # into a second temp file chunk-by-chunk, so neither the
-                # compressed input nor the expanded output (each up to the cap)
-                # is ever fully buffered in memory. The expand runs in a
-                # worker thread (blocking file I/O + CPU-bound decompression
-                # must not stall the event loop).
-                decompressed_tmp = f"{file_location_tmp}.decompressed"
-                try:
-                    try:
-                        decompressed_bytes = await asyncio.to_thread(
-                            decompress_file_to_file,
-                            file_location_tmp,
-                            decompressed_tmp,
-                            max_decompressed,
-                        )
-                    except zstd.ZstdError as exc:
-                        raise ValidationError(
-                            message=f"Invalid compressed payload: {exc}",
-                            details={"size": size, "compressed_bytes": total_bytes},
-                        ) from exc
-                    if size > 0 and decompressed_bytes != size:
-                        raise ValidationError(
-                            message=(
-                                f"Decompressed size mismatch: expected {size}, "
-                                f"got {decompressed_bytes}"
-                            ),
-                            details={"expected": size, "actual": decompressed_bytes},
-                        )
-                    # Swap the expanded content back onto the upload temp path
-                    # (same-filesystem rename).
-                    replace(decompressed_tmp, file_location_tmp)
-                    total_bytes = decompressed_bytes
-                finally:
-                    if Path(decompressed_tmp).exists():
-                        remove(decompressed_tmp)
-
-            # Check if this is partial upload (size provided but not fully received)
-            if size > 0 and total_bytes < size and not is_compressed:
-                # Move temp file to partial file location (same-filesystem rename)
-                replace(file_location_tmp, partial_file_path)
-                file_location_tmp = None
-                return _partial_upload_response(total_bytes, size)
+            file_location_tmp, total_bytes, early = await _receive_new_upload_body(
+                file,
+                file_directory=file_directory,
+                partial_file_path=partial_file_path,
+                size=size,
+                max_upload_size=max_upload_size,
+                is_compressed=is_compressed,
+                fused_sha=fused_sha,
+            )
+            if early is not None:
+                return early
 
         # SHA-256 integrity is mandatory: the received bytes must hash to the
-        # declared checksum, otherwise the upload is rejected (400).  Verify
-        # *before* touching any file metadata so rejected uploads are as
-        # cheap as possible and never alter existing on-disk state.
-        if fused_sha is not None:
-            # Uncompressed uploads: the digest was fused into the copy loop
-            # (no second full read of the temp file).
-            sha256sum_tmp = fused_sha.hexdigest()
-        else:
-            # Compressed uploads: the fused hasher would cover the raw
-            # compressed bytes — hash the finalized decompressed file.
-            sha256sum_tmp = await compute_sha256_async(file_location_tmp)
-        if not hmac.compare_digest(sha256sum, sha256sum_tmp):
-            raise ChecksumMismatchError(
-                message=f"Checksum mismatch: expected {sha256sum}, got {sha256sum_tmp}",
-                details={"expected": sha256sum, "actual": sha256sum_tmp},
-            )
+        # declared checksum, otherwise the upload is rejected (400). Verify
+        # *before* touching any file metadata so rejected uploads never alter
+        # existing on-disk state.
+        assert file_location_tmp is not None  # a completed/partial upload holds a temp
+        sha256sum_tmp = await _verify_upload_checksum(
+            file_location_tmp, declared=sha256sum, fused_sha=fused_sha
+        )
 
         # Parse the incoming causal vector clock (JSON form field; malformed ⇒
         # empty clock, handled natively by the arbitration matrix).
         incoming_vclock_raw = decode_wire_vclock(vclock)
 
         local_bucket = f"{buckets_path}/{bucket}"
-        # The per-path lock serializes the arbitration critical section: read
-        # store → decide → write file → record. Two concurrent uploads for the
-        # same path are ordered, so the second sees the version the first
-        # registered (ADR-0022 §3.4.6).
-        lock_manager = get_file_lock_manager()
-        async with lock_manager.acquire(file_location):
-            relpath = relpath_in_bucket(file_location, local_bucket) or ""
-            disk_hash = get_sha256_hash(file_location) if Path(file_location).exists() else None
-
-            # ADR-0023 receiver-side guard: a far-future peer value cannot win
-            # every tie-break — it is clamped against the receiver's corrected
-            # clock (conflict engineering).
-            incoming_corrected = int(clamp_incoming_corrected_mtime(float(corrected_mtime)))
-            result = arbitrate_upload(
-                bucket=bucket,
-                relpath=relpath,
-                incoming_hash=sha256sum_tmp,
-                incoming_vclock_raw=incoming_vclock_raw,
-                incoming_version_id=version_id,
-                incoming_origin_cid=cid if is_valid_cid(cid) else None,
-                disk_hash=disk_hash,
-                incoming_corrected_mtime=incoming_corrected,
-            )
-
-            rejection = plan_conflict_rejection(
-                result,
-                kind="Upload",
-                final_path=file_location,
-                sha_prefix=sha256sum_tmp[:12],
-                has_backup=bool(backup_path and Path(backup_path).exists()),
-            )
-            if rejection is not None:
-                if rejection.conflicted_path is not None:
-                    # Incoming loses the tie-break: preserve its bytes as a
-                    # conflicted copy, keep the winner on disk, reject.
-                    replace(file_location_tmp, rejection.conflicted_path)
-                elif Path(file_location_tmp).exists():
-                    # Stale upload (causally dominated): discard the temp file,
-                    # no conflicted copy (the ancestor's data is in the winner).
-                    remove(file_location_tmp)
-                file_location_tmp = None
-                if rejection.discard_backup and backup_path and Path(backup_path).exists():
-                    remove(backup_path)
-                raise rejection.error
-
-            # accepted or accepted_conflict_won: write the incoming content.
-            # On accepted_conflict_won, preserve the previous (losing) content
-            # as a conflicted copy using the backup created earlier.
-            resolution = result.outcome.value
-            if (
-                result.outcome is ArbitrationOutcome.accepted_conflict_won
-                and backup_path
-                and Path(backup_path).exists()
-            ):
-                ts = conflict_timestamp()
-                conflicted = conflicted_copy_name(file_location, result.loser_cid, ts)
-                replace(backup_path, conflicted)
-                _prev_sha = (disk_hash or "")[:12]
-                _new_sha = sha256sum_tmp[:12]
-                log.warning(
-                    f'{ActionLabel.UPLOAD} Conflict detected on "{bucket}/{path}/{file.filename}" '
-                    f"(prev SHA {_prev_sha}…, new SHA {_new_sha}…): "
-                    f'previous version preserved as "{Path(conflicted).name}"'
-                )
-            elif backup_path and Path(backup_path).exists():
-                remove(backup_path)
-
-            if destination_mutation_since(
-                bucket,
-                bucket_root,
-                file_location,
-                dest_existed,
-                dest_marker,
-            ):
-                log.info(
-                    f'Upload rejected (destination changed): "{_wire_relpath(bucket, path, file.filename)}"'
-                )
-                return JSONResponse(status_code=409, content={"detail": "destination_changed"})
-
-            # Atomically move file to final destination (same-filesystem rename)
-            replace(file_location_tmp, file_location)
-            file_location_tmp = None  # Don't clean up - it's been moved
-
-            # Set timestamps and permissions on the *final* file after the
-            # atomic rename — metadata is only applied to content that passed
-            # integrity verification.
-            update_file_timestamp(file_location, mtime)
-
-            if permissions:
-                await set_permissions(file_location, permissions)
-
-            # Cache, tombstone, causal version and broadcast metadata are
-            # captured while STILL holding the per-path lock: the model must
-            # describe exactly the generation this upload published, or a
-            # later same-path upload could broadcast its content under this
-            # CID. The shared helper keeps the cache order canonical.
-            src = await record_published_version(
-                bucket=bucket,
-                local_bucket=local_bucket,
-                file_location=file_location,
-                base_hash=sha256sum_tmp,
-                version_id=version_id or None,
-                origin_cid=cid if is_valid_cid(cid) else None,
-                arbitration=result,
-            )
-
-        # Broadcast the pre-captured metadata outside the lock.
-        if src:
-            manager = bucket_manager.get_manager(bucket)
-            await manager.send_message(Event(cid, local_bucket, bucket, EventName.added, src))
-
-        log.info(
-            f'{ActionLabel.UPLOAD} "{_wire_relpath(bucket, path, file.filename)}" (CID: {cid}) '
-            f"{format_bytes(total_bytes)} "
-            f"{format_duration(monotonic() - t0, subsecond=True)}"
+        src, resolution, result, early = await _arbitrate_publish_upload(
+            bucket=bucket,
+            path=path,
+            file=file,
+            cid=cid,
+            mtime=mtime,
+            permissions=permissions,
+            version_id=version_id,
+            corrected_mtime=corrected_mtime,
+            incoming_vclock_raw=incoming_vclock_raw,
+            local_bucket=local_bucket,
+            file_location=file_location,
+            file_location_tmp=file_location_tmp,
+            backup_path=backup_path,
+            sha256sum_tmp=sha256sum_tmp,
+            bucket_root=bucket_root,
+            dest_existed=dest_existed,
+            dest_marker=dest_marker,
         )
-        return JSONResponse(
-            status_code=201,
-            content={
-                "info": "File uploaded successfully",
-                "file": _wire_relpath(bucket, path, file.filename),
-                "resolution": resolution,
-                # ADR-0023: the recorded causal version (merged clock + corrected
-                # mtime) so the uploader can mirror the agreed base exactly.
-                "version": {
-                    "vclock": result.record_vclock,
-                    "corrected_mtime": result.record_corrected_mtime,
-                },
-            },
+        if early is not None:
+            return early
+
+        return await _broadcast_and_respond(
+            src=src,
+            cid=cid,
+            local_bucket=local_bucket,
+            bucket=bucket,
+            total_bytes=total_bytes,
+            t0=t0,
+            resolution=resolution,
+            result=result,
+            path=path,
+            file=file,
         )
     except OSError as e:
         log.error(f"Upload failed for file {file.filename}: {e}", exc_info=True)
